@@ -27,6 +27,7 @@ public class ResourceConfigPanel extends BorderPane {
     
     private TextField basePathField;
     private Map<ToolType, ToolPathControl> toolControls;
+    private boolean hasUnsavedChanges = false;
     
     /**
      * Create a new resource configuration panel
@@ -42,6 +43,9 @@ public class ResourceConfigPanel extends BorderPane {
         setTop(createHeaderPanel());
         setCenter(createToolsPanel());
         setBottom(createButtonPanel());
+        
+        // Mark as no unsaved changes initially
+        hasUnsavedChanges = false;
     }
     
     /**
@@ -60,6 +64,11 @@ public class ResourceConfigPanel extends BorderPane {
         Label basePathLabel = new Label("Base Resources Path:");
         basePathField = new TextField(resourceParams.getBaseResourcePath());
         basePathField.setPrefWidth(400);
+        basePathField.textProperty().addListener((obs, oldVal, newVal) -> {
+            if (!oldVal.equals(newVal)) {
+                handlePathChange();
+            }
+        });
         
         Button browseButton = new Button("Browse...");
         browseButton.setOnAction(e -> {
@@ -169,12 +178,20 @@ public class ResourceConfigPanel extends BorderPane {
             
             alert.showAndWait().ifPresent(result -> {
                 if (result == ButtonType.OK) {
-                    // Create new parameters with the current base path
-                    String currentBasePath = basePathField.getText();
-                    resourceParams = new MetaResourceParameters(currentBasePath);
+                    // Get the application executable directory
+                    String execPath = new File("").getAbsolutePath();
+                    String defaultResourcePath = new File(execPath, "Resources").getAbsolutePath();
+                    
+                    // Create new parameters with the default path
+                    resourceParams = new MetaResourceParameters(defaultResourcePath);
+                    basePathField.setText(defaultResourcePath);
                     
                     // Update UI
                     updateUI();
+                    
+                    showAlert(Alert.AlertType.INFORMATION, 
+                        "Configuration Reset", 
+                        "Tool paths have been reset to their defaults.");
                 }
             });
         });
@@ -192,6 +209,7 @@ public class ResourceConfigPanel extends BorderPane {
             boolean success = resourceIO.saveParameters(resourceParams);
             
             if (success) {
+                markChangesSaved();
                 showAlert(Alert.AlertType.INFORMATION, 
                         "Configuration Saved", 
                         "Resource configuration has been saved successfully.");
@@ -282,11 +300,14 @@ public class ResourceConfigPanel extends BorderPane {
         // Update base path from text field
         String basePath = basePathField.getText();
         if (!basePath.equals(resourceParams.getBaseResourcePath())) {
-            updateBaseResourcePath(basePath);
+            resourceParams.setBaseResourcePath(basePath);
         }
         
         // Save parameters
-        resourceIO.saveParameters(resourceParams);
+        boolean success = resourceIO.saveParameters(resourceParams);
+        if (success) {
+            markChangesSaved();
+        }
     }
     
     /**
@@ -322,6 +343,7 @@ public class ResourceConfigPanel extends BorderPane {
             pathField.textProperty().addListener((obs, oldVal, newVal) -> {
                 resourceParams.setToolPath(toolType, newVal);
                 updateStatusIndicator();
+                handlePathChange();
             });
             
             // Browse button
@@ -397,6 +419,34 @@ public class ResourceConfigPanel extends BorderPane {
             
             getChildren().addAll(statusIndicator, nameLabel, pathField, browseButton);
             
+            // Add download link if available
+            if (toolType.hasDownloadUrl()) {
+                Hyperlink downloadLink = new Hyperlink("Download");
+                downloadLink.setStyle("-fx-text-fill: blue;");
+                downloadLink.setOnAction(e -> {
+                    try {
+                        java.awt.Desktop.getDesktop().browse(
+                            new java.net.URI(toolType.getDownloadUrl()));
+                    } catch (Exception ex) {
+                        showAlert(Alert.AlertType.ERROR, 
+                            "Cannot Open URL", 
+                            "Failed to open the download URL. Please visit: " + toolType.getDownloadUrl());
+                    }
+                });
+                getChildren().add(downloadLink);
+            }
+            
+            // Highlight PFind, DBReducer, DeepDetect, FlashLFQ, and FunctionDB that come with the software
+            boolean isIncluded = (toolType == ToolType.PFIND || toolType == ToolType.DBREDUCER || 
+                toolType == ToolType.DEEPDETECT || toolType == ToolType.FLASHLFQ || 
+                toolType == ToolType.FUNCDB);
+            
+            if (isIncluded) {
+                Label includedLabel = new Label("(Included)");
+                includedLabel.setStyle("-fx-text-fill: darkgreen; -fx-font-style: italic;");
+                getChildren().add(includedLabel);
+            }
+            
             // Update the indicator after all fields are initialized
             updateStatusIndicator();
         }
@@ -432,5 +482,64 @@ public class ResourceConfigPanel extends BorderPane {
         private void setTooltip(Tooltip tooltip) {
             Tooltip.install(statusIndicator, tooltip);
         }
+    }
+    
+    /**
+     * Handle a text field change - mark that changes have been made
+     */
+    private void handlePathChange() {
+        hasUnsavedChanges = true;
+    }
+    
+    /**
+     * Check if there are unsaved changes and prompt the user
+     * @return true if it's ok to proceed, false if the operation should be cancelled
+     */
+    public boolean checkUnsavedChanges() {
+        if (!hasUnsavedChanges) {
+            return true;
+        }
+        
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+        alert.setTitle("Unsaved Changes");
+        alert.setHeaderText("You have unsaved changes");
+        alert.setContentText("Would you like to save your changes before continuing?");
+        
+        ButtonType saveButton = new ButtonType("Save");
+        ButtonType dontSaveButton = new ButtonType("Don't Save");
+        ButtonType cancelButton = new ButtonType("Cancel", ButtonBar.ButtonData.CANCEL_CLOSE);
+        
+        alert.getButtonTypes().setAll(saveButton, dontSaveButton, cancelButton);
+        
+        alert.showAndWait();
+        ButtonType result = alert.getResult();
+        
+        if (result == saveButton) {
+            // Save changes
+            boolean success = resourceIO.saveParameters(resourceParams);
+            if (success) {
+                hasUnsavedChanges = false;
+                return true;
+            } else {
+                showAlert(Alert.AlertType.ERROR, 
+                        "Save Failed", 
+                        "Failed to save resource configuration.");
+                return false;
+            }
+        } else if (result == dontSaveButton) {
+            // Discard changes
+            hasUnsavedChanges = false;
+            return true;
+        } else {
+            // Cancel
+            return false;
+        }
+    }
+
+    /**
+     * Mark that changes have been saved
+     */
+    private void markChangesSaved() {
+        hasUnsavedChanges = false;
     }
 } 

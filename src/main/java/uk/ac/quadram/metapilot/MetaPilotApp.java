@@ -118,6 +118,21 @@ public class MetaPilotApp extends Application {
         
         tabPane.getTabs().addAll(mainTab, resourcesTab, databaseTab);
         
+        // Add a tab change listener to check for unsaved changes
+        tabPane.getSelectionModel().selectedItemProperty().addListener((observable, oldTab, newTab) -> {
+            if (oldTab == resourcesTab) {
+                // When leaving resources tab, check for unsaved changes
+                Pane content = (Pane) oldTab.getContent();
+                if (content instanceof ResourceConfigPanel) {
+                    ResourceConfigPanel configPanel = (ResourceConfigPanel) content;
+                    if (!configPanel.checkUnsavedChanges()) {
+                        // User cancelled, go back to resources tab
+                        Platform.runLater(() -> tabPane.getSelectionModel().select(oldTab));
+                    }
+                }
+            }
+        });
+        
         root.setCenter(tabPane);
         
         // Create the scene
@@ -140,6 +155,17 @@ public class MetaPilotApp extends Application {
         // Set window close handler to save configurations before exit
         primaryStage.setOnCloseRequest(event -> {
             try {
+                // Check if there are unsaved changes in the resource panel
+                Tab resourcesTabRef = tabPane.getTabs().get(1); // Resources tab is the second tab
+                if (resourcesTabRef != null && resourcesTabRef.getContent() instanceof ResourceConfigPanel) {
+                    ResourceConfigPanel configPanel = (ResourceConfigPanel) resourcesTabRef.getContent();
+                    if (!configPanel.checkUnsavedChanges()) {
+                        // User cancelled, prevent window from closing
+                        event.consume();
+                        return;
+                    }
+                }
+                
                 // Save the MAG database configuration
                 saveMagDbConfiguration();
                 

@@ -15,27 +15,40 @@ public class MetaResourceParameters {
 	// Tool types
 	public enum ToolType {
 		// DDA tools
-		PFIND("pFind"),
-		MAXQUANT("MaxQuant"),
-		DBREDUCER("DBReducer"),
+		PFIND("pFind", ""),
+		MAXQUANT("MaxQuant", "https://www.maxquant.org/maxquant/"),
+		DBREDUCER("DBReducer", ""),
 		
 		// DIA tools
-		FRAGPIPE("FragPipe"),
-		SAGE("Sage"),
-		FLASHLFQ("FlashLFQ"),
-		FUNCDB("FunctionDB"),
-		MSCONVERT("msconvert"),
-		DIANN("DiaNN"),
-		DEEPDETECT("DeepDetect");
+		FRAGPIPE("FragPipe", "https://fragpipe.nesvilab.org/"),
+		SAGE("Sage", "https://github.com/lazear/sage"),
+		FLASHLFQ("FlashLFQ", ""),
+		FUNCDB("FunctionDB", ""),
+		MSCONVERT("msconvert", "https://proteowizard.sourceforge.io/download.html"),
+		DIANN("DiaNN", "https://github.com/vdemichev/DiaNN/releases"),
+		DEEPDETECT("DeepDetect", "");
 		
 		private final String displayName;
+		private final String downloadUrl;
 		
-		ToolType(String displayName) {
+		ToolType(String displayName, String downloadUrl) {
 			this.displayName = displayName;
+			this.downloadUrl = downloadUrl;
 		}
 		
 		public String getDisplayName() {
 			return displayName;
+		}
+		
+		public String getDownloadUrl() {
+			return downloadUrl;
+		}
+		
+		/**
+		 * Check if this tool has a download URL
+		 */
+		public boolean hasDownloadUrl() {
+			return downloadUrl != null && !downloadUrl.isEmpty();
 		}
 		
 		public static ToolType[] getDDATools() {
