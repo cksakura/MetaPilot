@@ -52,7 +52,6 @@ import uk.ac.quadram.metapilot.task.par.MetaSources;
 import uk.ac.quadram.metapilot.task.pfind.MetaPilotMagTask;
 import uk.ac.quadram.metapilot.task.pfind.gui.MetaPilotPFindMainFrame;
 import uk.ac.quadram.metapilot.task.pfind.par.MetaParameterPFind;
-import uk.ac.quadram.metapilot.task.v2.MetaLabTaskV2;
 import uk.ac.quadram.metapilot.task.v2.par.MetaParameterMQ;
 import uk.ac.quadram.metapilot.task.v2.par.MetaSourcesIOV2;
 import uk.ac.quadram.metapilot.task.v2.par.MetaSourcesV2;
@@ -490,7 +489,7 @@ public abstract class MetaLabTask extends SwingWorker<Boolean, String> {
 					File setting = new File(file, "resources" + versionFile);
 
 					MetaSourcesV2 advPar = MetaSourcesIOV2.parse(setting);
-
+/*
 					MetaLabTaskV2 task = new MetaLabTaskV2(metaPar, advPar, bar1, bar2);
 					try {
 						task.execute();
@@ -508,7 +507,7 @@ public abstract class MetaLabTask extends SwingWorker<Boolean, String> {
 							LOGGER.error("Task failed :(  please contact us to get a solution", e);
 						}
 					}
-
+*/
 					File report = new File(metaPar.getReportDir(), "index.html");
 					try {
 						java.awt.Desktop.getDesktop().browse(report.toURI());

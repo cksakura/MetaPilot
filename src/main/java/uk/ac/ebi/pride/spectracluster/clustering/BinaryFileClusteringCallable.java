@@ -222,7 +222,7 @@ public class BinaryFileClusteringCallable implements Callable<ClusteringJobRefer
                 Defaults.getDefaultPrecursorIonTolerance(),
                 clusteringPrecision,
                 peakFilterFunction,
-                comparisonPredicate);
+                ComparisonPredicates.and(comparisonPredicate));
 
         return clusteringEngine;
     }

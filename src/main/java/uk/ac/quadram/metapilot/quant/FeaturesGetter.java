@@ -9,8 +9,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.zip.DataFormatException;
 
-import org.apache.xmlbeans.xml.stream.XMLStreamException;
-
 import uk.ac.quadram.metapilot.core.aminoacid.AminoAcidProperty;
 import uk.ac.quadram.metapilot.core.math.MathTool;
 import uk.ac.quadram.metapilot.quant.labelfree.FreeFeature;
@@ -36,21 +34,21 @@ public class FeaturesGetter {
 	private double ms1TotalCurrent;
 	private SpectraList scanlist;
 
-	public FeaturesGetter(String file) throws IOException, XMLStreamException, DataFormatException {
+	public FeaturesGetter(String file) throws IOException, DataFormatException {
 		this(file, QParameter.default_parameter());
 	}
 
 	public FeaturesGetter(String file, QParameter parameter)
-			throws IOException, XMLStreamException, DataFormatException {
+			throws IOException, DataFormatException {
 
 		this(new File(file), parameter);
 	}
 
-	public FeaturesGetter(File file) throws IOException, XMLStreamException, DataFormatException {
+	public FeaturesGetter(File file) throws IOException, DataFormatException {
 		this(file, QParameter.default_parameter());
 	}
 
-	public FeaturesGetter(File file, QParameter parameter) throws IOException, XMLStreamException, DataFormatException {
+	public FeaturesGetter(File file, QParameter parameter) throws IOException, DataFormatException {
 
 		this.createReader(file);
 
@@ -75,11 +73,11 @@ public class FeaturesGetter {
 		this.leastINum = parameter.getLeastINum();
 	}
 
-	protected void createReader(File file) throws IOException, XMLStreamException, DataFormatException {
+	protected void createReader(File file) throws IOException, DataFormatException {
 
-		MzxmlReader reader = new MzxmlReader(file);
-		this.scanlist = reader.getMS1Spectralist();
-		this.ms1TotalCurrent = reader.getMS1TotalCurrent();
+//		MzxmlReader reader = new MzxmlReader(file);
+//		this.scanlist = reader.getMS1Spectralist();
+//		this.ms1TotalCurrent = reader.getMS1TotalCurrent();
 	}
 
 	/**

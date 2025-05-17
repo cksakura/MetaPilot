@@ -1,0 +1,30 @@
+2025-05-17 10:53:43.048 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.ResourceManager - Updated path for DiaNNPath to E:\Exported\Resources\Resources\DIA-NN\2.0\DiaNN.exe
+2025-05-17 10:53:43.050 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.ResourceManager - Updated path for FragPipePath to E:\Exported\Resources\Resources\fragpipe\bin\fragpipe.bat
+2025-05-17 10:53:43.051 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.ResourceManager - Updated path for pFindPath to E:\Exported\Resources\Resources\DBReducer\pFind3\bin\pFind.exe
+2025-05-17 10:53:43.051 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.ResourceManager - Updated path for DeepDetectPath to E:\Exported\Resources\Resources\DeepDetect\DeepDetect.exe
+2025-05-17 10:53:43.051 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.ResourceManager - Updated path for SagePath to E:\Exported\Resources\Resources\sage\sage.exe
+2025-05-17 10:53:43.051 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.ResourceManager - Updated path for MaxQuantPath to E:\Exported\Resources\Resources\mq_bin\MaxQuantCmd.exe
+2025-05-17 10:53:43.052 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.ResourceManager - Updated path for DBReducerPath to E:\Exported\Resources\Resources\DBReducer\DBReducer\DBReducer.exe
+2025-05-17 10:53:43.052 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.ResourceManager - Updated path for FunctionDBPath to E:\Exported\Resources\Resources\function\func_def.db
+2025-05-17 10:53:43.052 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.ResourceManager - Updated path for FlashLFQPath to E:\Exported\Resources\Resources\FlashLFQ\CMD.exe
+2025-05-17 10:53:43.052 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.ResourceManager - Updated path for MSConvertPath to E:\Exported\Resources\Resources\ProteoWizard\msconvert.exe
+2025-05-17 10:53:43.056 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.ResourceManager - Updated parameter files at: C:\Users\kchen2\.git\MetaPilot\resources_dia.json
+2025-05-17 10:53:57.342 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.ResourceManager - Updated path for DiaNNPath to E:\Exported\Resources\DIA-NN\2.0\DiaNN.exe
+2025-05-17 10:53:57.343 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.ResourceManager - Updated path for FragPipePath to E:\Exported\Resources\fragpipe\bin\fragpipe.bat
+2025-05-17 10:53:57.343 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.ResourceManager - Updated path for pFindPath to E:\Exported\Resources\DBReducer\pFind3\bin\pFind.exe
+2025-05-17 10:53:57.343 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.ResourceManager - Updated path for DeepDetectPath to E:\Exported\Resources\DeepDetect\DeepDetect.exe
+2025-05-17 10:53:57.343 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.ResourceManager - Updated path for SagePath to E:\Exported\Resources\sage\sage.exe
+2025-05-17 10:53:57.343 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.ResourceManager - Updated path for MaxQuantPath to E:\Exported\Resources\mq_bin\MaxQuantCmd.exe
+2025-05-17 10:53:57.343 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.ResourceManager - Updated path for DBReducerPath to E:\Exported\Resources\DBReducer\DBReducer\DBReducer.exe
+2025-05-17 10:53:57.345 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.ResourceManager - Updated path for FunctionDBPath to E:\Exported\Resources\function\func_def.db
+2025-05-17 10:53:57.345 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.ResourceManager - Updated path for FlashLFQPath to E:\Exported\Resources\FlashLFQ\CMD.exe
+2025-05-17 10:53:57.345 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.ResourceManager - Updated path for MSConvertPath to E:\Exported\Resources\ProteoWizard\msconvert.exe
+2025-05-17 10:53:57.346 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.ResourceManager - Updated parameter files at: C:\Users\kchen2\.git\MetaPilot\resources_dia.json
+2025-05-17 11:09:21.877 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.MetaResourceIO - Config file doesn't exist, creating default parameters
+2025-05-17 11:10:40.782 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.MetaResourceIO - Config file doesn't exist, creating default parameters
+2025-05-17 11:10:41.097 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.MetaResourceIO - Config file doesn't exist, creating default parameters
+2025-05-17 15:34:51.251 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.MetaResourceIO - Config file doesn't exist, creating default parameters
+2025-05-17 15:34:51.551 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.MetaResourceIO - Config file doesn't exist, creating default parameters
+2025-05-17 15:50:21.636 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.MetaResourceIO - Config file doesn't exist, creating default parameters
+2025-05-17 15:50:21.932 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.MetaResourceIO - Config file doesn't exist, creating default parameters
+2025-05-17 15:51:37.599 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.MetaResourceIO - Successfully saved parameters to C:\Users\kchen2\.git\MetaPilot\config\meta_resources.params

@@ -11,7 +11,6 @@ import javax.swing.JScrollPane;
 import javax.swing.UIManager;
 
 import uk.ac.quadram.metapilot.core.model.ConsoleTextArea;
-import uk.ac.quadram.metapilot.task.mag.MagDatabase;
 import uk.ac.quadram.metapilot.task.mag.par.MetaParaIOMag;
 import uk.ac.quadram.metapilot.task.mag.par.MetaSourcesIoMag;
 import uk.ac.quadram.metapilot.task.mag.par.MetaSourcesMag;
@@ -74,13 +73,13 @@ public class MagDownloadFrame extends JFrame {
 		getContentPane().add(magPanel, "cell 0 0,grow");
 		magPanel.setLayout(new MigLayout("", "[80][200:250,grow][:60:80][:40:60][:80:100][:40:60]", "[40][40]"));
 
-		MagDatabase[] magDbs = new MagDatabase[MagDatabase.values().length - 1];
-		System.arraycopy(MagDatabase.values(), 0, magDbs, 0, magDbs.length);
+//		MagDatabase[] magDbs = new MagDatabase[MagDatabase.values().length - 1];
+//		System.arraycopy(MagDatabase.values(), 0, magDbs, 0, magDbs.length);
 
 		JLabel nameLabel = new JLabel("Catalogue name");
 		magPanel.add(nameLabel, "cell 0 1,alignx trailing");
 
-		nameTextField = new JTextField(magDbs[0].getNameString());
+//		nameTextField = new JTextField(magDbs[0].getNameString());
 		nameTextField.setEditable(false);
 		magPanel.add(nameTextField, "cell 1 1,grow");
 		nameTextField.setColumns(10);
@@ -88,7 +87,7 @@ public class MagDownloadFrame extends JFrame {
 		JLabel versionLabel = new JLabel("Version");
 		magPanel.add(versionLabel, "cell 2 1,alignx trailing");
 
-		versionTextField = new JTextField(magDbs[0].getVersionString());
+//		versionTextField = new JTextField(magDbs[0].getVersionString());
 		versionTextField.setEditable(false);
 		magPanel.add(versionTextField, "cell 3 1,grow");
 		versionTextField.setColumns(10);
@@ -96,13 +95,13 @@ public class MagDownloadFrame extends JFrame {
 		JLabel countLabel = new JLabel("Genomes count");
 		magPanel.add(countLabel, "cell 4 1,alignx trailing");
 
-		countTextField = new JTextField(String.valueOf(magDbs[0].getGenomeCount()));
+//		countTextField = new JTextField(String.valueOf(magDbs[0].getGenomeCount()));
 		countTextField.setEditable(false);
 		magPanel.add(countTextField, "cell 5 1,grow");
 		countTextField.setColumns(10);
 
-		MagDownloadPanel metaLabDownloadPanel = new MagDownloadPanel(magDbs[0], msm, msmPath, this, frame);
-		getContentPane().add(metaLabDownloadPanel, "cell 0 1,grow");
+//		MagDownloadPanel metaLabDownloadPanel = new MagDownloadPanel(magDbs[0], msm, msmPath, this, frame);
+//		getContentPane().add(metaLabDownloadPanel, "cell 0 1,grow");
 
 		JScrollPane scrollPane = new JScrollPane();
 		getContentPane().add(scrollPane, "cell 0 2,grow");
@@ -116,7 +115,7 @@ public class MagDownloadFrame extends JFrame {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
-
+/*
 		JComboBox<MagDatabase> comboBox = new JComboBox<MagDatabase>();
 		comboBox.addActionListener(l -> {
 
@@ -132,6 +131,6 @@ public class MagDownloadFrame extends JFrame {
 			comboBox.addItem(magDb);
 		}
 		magPanel.add(comboBox, "cell 0 0 2 1,growx");
-
+*/
 	}
 }

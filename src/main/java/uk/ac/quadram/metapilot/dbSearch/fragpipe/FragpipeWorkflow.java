@@ -81,8 +81,8 @@ public class FragpipeWorkflow {
 
 	public void config(MetaParameterMag metaPar, File output) throws IOException {
 
-		setDatabase(metaPar.getCurrentDb());
-		setIonMobility(metaPar.getMetadata().isTimsTof());
+//		setDatabase(metaPar.getCurrentDb());
+//		setIonMobility(metaPar.getMetadata().isTimsTof());
 		
 		/*
 		int termini = 2;

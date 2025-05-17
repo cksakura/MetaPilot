@@ -19,7 +19,6 @@ import uk.ac.quadram.metapilot.task.dia.par.MetaParaIoDia;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
 import uk.ac.quadram.metapilot.task.dia.par.MetaSourcesDia;
 import uk.ac.quadram.metapilot.task.fragpipe.MetaLabMagFragpipeTask;
-import uk.ac.quadram.metapilot.task.hgm.HgmHapPFindTask;
 import uk.ac.quadram.metapilot.task.hgm.par.MetaParaIOHGM;
 import uk.ac.quadram.metapilot.task.hgm.par.MetaParameterHGM;
 import uk.ac.quadram.metapilot.task.hgm.par.MetaSourcesHGM;
@@ -105,10 +104,6 @@ public class MetaPilotMagTask extends MetaLabTask {
 		if (metaPar.getWorkflowType() == MetaLabWorkflowType.pFindWorkflow) {
 
 			idenTask = new MetaIdenPFindTask((MetaParameterPFind) metaPar, msv, bar1, bar2, null);
-
-		} else if (metaPar.getWorkflowType() == MetaLabWorkflowType.pFindHGM) {
-
-			idenTask = new HgmHapPFindTask((MetaParameterHGM) metaPar, (MetaSourcesHGM) msv, bar1, bar2, null);
 
 		} else if (metaPar.getWorkflowType() == MetaLabWorkflowType.pFindMAG) {
 

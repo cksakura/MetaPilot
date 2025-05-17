@@ -3,10 +3,11 @@ package uk.ac.ebi.pride.spectracluster.util.predicate;
 import uk.ac.ebi.pride.spectracluster.util.function.IFunction;
 
 import java.util.Arrays;
+import java.util.List;
 
 /**
  * Utility class for working with Predicates
- *
+ * 
  * @author Rui Wang
  * @version $Id$
  */
@@ -36,8 +37,9 @@ public final class Predicates {
      * @param <T>        predicate input object
      * @return a new predicate represents the AND of all predicates
      */
+    @SafeVarargs
     public static <T> IPredicate<T> and(final IPredicate<? super T>... predicates) {
-        return and(Arrays.asList(predicates));
+        return and((Iterable<? extends IPredicate<? super T>>) Arrays.asList(predicates));
     }
 
     /**
@@ -64,10 +66,10 @@ public final class Predicates {
      * @param <T>        predicate input object
      * @return a new predicate represents the OR of all predicates
      */
+    @SafeVarargs
     public static <T> IPredicate<T> or(final IPredicate<? super T>... predicates) {
-        return or(Arrays.asList(predicates));
+        return or((Iterable<? extends IPredicate<? super T>>) Arrays.asList(predicates));
     }
-
 
     /**
      * Combine a predicate and a function together

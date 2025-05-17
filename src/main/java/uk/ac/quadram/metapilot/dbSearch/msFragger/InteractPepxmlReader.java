@@ -105,7 +105,7 @@ public class InteractPepxmlReader {
 			}
 		}
 
-		PeptideProphehPSM pppsm = new PeptideProphehPSM(start_scan, assumed_charge, precursor_neutral_mass,
+		PeptideProphehPSM pppsm = new PeptideProphehPSM(protein, start_scan, assumed_charge, precursor_neutral_mass,
 				retention_time_sec, peptide, massdiff, num_missed_cleavages, protein, hyperscore, nextscore, expect,
 				probability);
 		pppsm.setQvalue(qvalue);
@@ -151,46 +151,6 @@ public class InteractPepxmlReader {
 		return psms;
 	}
 
-	private static void test(String pepxml, String proxml) throws DocumentException, IOException {
-		PepProphetReader reader = new PepProphetReader(pepxml);
-		PeptideProphehPSM[] psms = reader.getPSMs(0.01, proxml);
-		Arrays.sort(psms, new PeptideProphehPSM.InverseProbabilityComparator());
-
-		int target = 0;
-		int decoy = 0;
-		for (int i = 0; i < psms.length; i++) {
-			if (psms[i].isTarget()) {
-				target++;
-			} else {
-				decoy++;
-			}
-		}
-
-		double fdr = (double) decoy / (double) target;
-		System.out.println(target + "\t" + decoy + "\t" + fdr);
-	}
-	
-	private static void batchRead(String in) throws DocumentException, IOException {
-		int total = 0;
-		File[] files = (new File(in)).listFiles();
-		for (int i = 0; i < files.length; i++) {
-			if (files[i].getName().endsWith("xml") && files[i].getName().startsWith("Run1")) {
-				PepProphetReader reader = new PepProphetReader(files[i]);
-				PeptideProphehPSM psm = null;
-				int count = 0;
-				while (reader.hasNext()) {
-					psm = reader.next();
-					double qvalue = psm.getQvalue();
-					if (qvalue < 0.01) {
-						count++;
-					}
-				}
-				System.out.println(files[i] + "\t" + count);
-				total += count;
-			}
-		}
-		System.out.println("total\t" + total);
-	}
 
 	public static void main(String[] args) {
 		// TODO Auto-generated method stub

@@ -60,7 +60,6 @@ import uk.ac.quadram.metapilot.quant.flashLFQ.FlashLfqQuanPeptide;
 import uk.ac.quadram.metapilot.quant.flashLFQ.FlashLfqTask;
 import uk.ac.quadram.metapilot.task.MetaReportCopyTask;
 import uk.ac.quadram.metapilot.task.MetaReportTask;
-import uk.ac.quadram.metapilot.task.hgm.HMGenomeHtmlWriter;
 import uk.ac.quadram.metapilot.task.io.MetaTreeHandler;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;

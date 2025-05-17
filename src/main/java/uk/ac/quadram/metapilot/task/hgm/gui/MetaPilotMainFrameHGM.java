@@ -202,10 +202,10 @@ public class MetaPilotMainFrameHGM extends MetaPilotPFindMainFrame {
 		mntmDownloadDb.setIcon(
 				new ImageIcon(MetaPilotMainFrameHGM.class.getResource("/toolbarButtonGraphics/general/Import16.gif")));
 		mntmDownloadDb.addActionListener(l -> {
-			HGMDownloadFrame frame = new HGMDownloadFrame();
-			frame.setAlwaysOnTop(true);
-			frame.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
-			frame.setVisible(true);
+//			HGMDownloadFrame frame = new HGMDownloadFrame();
+//			frame.setAlwaysOnTop(true);
+//			frame.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
+//			frame.setVisible(true);
 		});
 		mnTools.add(mntmDownloadDb);
 
