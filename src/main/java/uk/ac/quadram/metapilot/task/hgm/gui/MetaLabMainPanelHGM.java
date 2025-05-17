@@ -161,7 +161,7 @@ public class MetaLabMainPanelHGM extends MetaPilotPFindMainPanel {
 
 		MetaParameterPFind parV3 = (MetaParameterPFind) par;
 
-		metaLabModPanel = new MetaLabModPanel(parV3, PFindModIO.getMods(msv.getMod()));
+//		metaLabModPanel = new MetaLabModPanel(parV3, PFindModIO.getMods(msv.getMod()));
 		parameterPanel.add(metaLabModPanel, "cell 0 0,grow");
 
 		metaLabEnzymePanel = new MetaLabEnzymePanel(parV3, PFindEnzymeIO.getEnzymes(msv.getEnzyme()));

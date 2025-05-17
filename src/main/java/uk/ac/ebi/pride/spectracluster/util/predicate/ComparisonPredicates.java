@@ -1,6 +1,7 @@
 package uk.ac.ebi.pride.spectracluster.util.predicate;
 
 import java.util.Arrays;
+import java.util.List;
 
 /**
  * Utility class for working with Predicates
@@ -30,15 +31,9 @@ public final class ComparisonPredicates {
         };
     }
 
-    /**
-     * Perform AND operations on a group of predicates
-     *
-     * @param predicates a group of input predicates
-     * @param <T>        predicate input object
-     * @return a new predicate represents the AND of all predicates
-     */
+    @SafeVarargs
     public static <T> IComparisonPredicate<T> and(final IComparisonPredicate<? super T>... predicates) {
-        return and(Arrays.asList(predicates));
+        return and((Iterable<? extends IComparisonPredicate<? super T>>) Arrays.asList(predicates));
     }
 
     /**
@@ -61,15 +56,9 @@ public final class ComparisonPredicates {
         };
     }
 
-    /**
-     * Perform OR operations on a group of predicates
-     *
-     * @param predicates a group of input predicates
-     * @param <T>        predicate input object
-     * @return a new predicate represents the OR of all predicates
-     */
+    @SafeVarargs
     public static <T> IComparisonPredicate<T> or(final IComparisonPredicate<? super T>... predicates) {
-        return or(Arrays.asList(predicates));
+        return or((Iterable<? extends IComparisonPredicate<? super T>>) Arrays.asList(predicates));
     }
 
     /**

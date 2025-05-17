@@ -11,10 +11,6 @@ import java.util.HashSet;
 
 import javax.swing.JProgressBar;
 
-import uk.ac.quadram.metapilot.dbSearch.msFragger.MSFraggerTask;
-import uk.ac.quadram.metapilot.dbSearch.open.task.OpenExportTask;
-import uk.ac.quadram.metapilot.dbSearch.open.task.OpenQuanTask;
-import uk.ac.quadram.metapilot.dbSearch.open.task.OpenSearchValidationTask;
 import uk.ac.quadram.metapilot.task.MetaDbCreateTask;
 import uk.ac.quadram.metapilot.task.MetaLabTask;
 import uk.ac.quadram.metapilot.task.MetaLabWorkflowType;
@@ -43,10 +39,6 @@ public class MetaLabTaskV2 extends MetaLabTask {
 	private MetaFuncTaskV2 funcTask;
 	private MetaMQSearchTask closedTask;
 
-	private OpenExportTask exportTask;
-	private OpenQuanTask quanTask;
-	private OpenSearchValidationTask openValidTask;
-	private MSFraggerTask openTask;
 	private MetaDbCreateXTandemTask dbcTask2;
 	private MetaSpectraConvertTaskV2 spcTask2;
 
@@ -170,69 +162,7 @@ public class MetaLabTaskV2 extends MetaLabTask {
 				}
 			}
 
-			case MSFraggerWorkflow: {
-
-				File resultFile = null;
-				if (metaPar.isOpenSearch()) {
-					resultFile = new File(result, "msfragger_open_search");
-				} else {
-					resultFile = new File(result, "msfragger_closed_search");
-				}
-
-				if (!resultFile.exists()) {
-					resultFile.mkdirs();
-				}
-				metaPar.setDbSearchResultFile(resultFile);
-
-				exportTask = new OpenExportTask(metaPar, advPar, bar1, bar2, null);
-
-				quanTask = new OpenQuanTask(metaPar, advPar, bar1, bar2, exportTask);
-
-				openValidTask = new OpenSearchValidationTask(metaPar, advPar, bar1, bar2, quanTask);
-
-				openTask = new MSFraggerTask(metaPar, advPar, bar1, bar2, openValidTask);
-
-				if (metaPar.getMscp().isSsdb()) {
-
-					dbcTask2 = new MetaDbCreateXTandemTask(metaPar, advPar, bar1, bar2, openTask);
-
-					spcTask2 = new MetaSpectraConvertTaskV2(metaPar, advPar, bar1, bar2, dbcTask2);
-
-					spcTask2.execute();
-
-					if (!spcTask2.get()) {
-						return false;
-					}
-
-					if (!dbcTask2.get()) {
-						return false;
-					}
-
-				} else {
-
-					spcTask2 = new MetaSpectraConvertTaskV2(metaPar, advPar, bar1, bar2, openTask);
-
-					spcTask2.execute();
-
-					if (!spcTask2.get()) {
-						return false;
-					}
-				}
-
-				if (!openTask.get()) {
-					return false;
-				}
-
-				if (!openValidTask.get()) {
-					return false;
-				}
-
-				if (!quanTask.get()) {
-					return false;
-				}
-
-				return exportTask.get();
-			}
+			case MSFraggerWorkflow: {}
 
 			case TaxonomyAnalysis: {
 
@@ -296,28 +226,12 @@ public class MetaLabTaskV2 extends MetaLabTask {
 			this.closedTask.cancel(true);
 		}
 
-		if (this.exportTask != null && !this.exportTask.isDone()) {
-			this.exportTask.cancel(true);
-		}
-
-		if (this.quanTask != null && !this.quanTask.isDone()) {
-			this.quanTask.cancel(true);
-		}
-
 		if (this.spcTask2 != null && !this.spcTask2.isDone()) {
 			this.spcTask2.cancel(true);
 		}
 
 		if (this.dbcTask2 != null && !this.dbcTask2.isDone()) {
 			this.dbcTask2.cancel(true);
-		}
-
-		if (this.openTask != null && !this.openTask.isDone()) {
-			this.openTask.cancel(true);
-		}
-
-		if (this.openValidTask != null && !this.openValidTask.isDone()) {
-			this.openValidTask.cancel(true);
 		}
 
 		if (this.taxaTask != null && !this.taxaTask.isDone()) {

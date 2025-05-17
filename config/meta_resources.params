@@ -1,0 +1,16 @@
+# MetaPilot Resource Configuration
+# Generated on Sat May 17 15:51:37 EDT 2025
+
+BASE_PATH=E:\Exported
+
+# Tool Paths
+FUNCDB=E:\Exported\FunctionDB\func_def.db
+DIANN=E:\Exported\DiaNN\DiaNN.exe
+PFIND=E:\Exported\pFind\pFind.exe
+SAGE=E:\Exported\Sage\sage.exe
+MSCONVERT=E:\Exported\msconvert\msconvert.exe
+DBREDUCER=E:\Exported\DBReducer\DBReducer.exe
+DEEPDETECT=E:\Exported\DeepDetect\DeepDetect.exe
+FLASHLFQ=E:\Exported\FlashLFQ\CMD.exe
+MAXQUANT=E:\Exported\MaxQuant\MaxQuantCmd.exe
+FRAGPIPE=E:\Exported\FragPipe\fragpipe.bat
