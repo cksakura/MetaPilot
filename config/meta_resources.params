@@ -1,16 +1,16 @@
 # MetaPilot Resource Configuration
-# Generated on Sat May 17 15:51:37 EDT 2025
+# Generated on Sat May 17 16:04:40 EDT 2025
 
-BASE_PATH=E:\Exported
+BASE_PATH=E:\Exported\Resources
 
 # Tool Paths
-FUNCDB=E:\Exported\FunctionDB\func_def.db
-DIANN=E:\Exported\DiaNN\DiaNN.exe
-PFIND=E:\Exported\pFind\pFind.exe
-SAGE=E:\Exported\Sage\sage.exe
-MSCONVERT=E:\Exported\msconvert\msconvert.exe
-DBREDUCER=E:\Exported\DBReducer\DBReducer.exe
-DEEPDETECT=E:\Exported\DeepDetect\DeepDetect.exe
-FLASHLFQ=E:\Exported\FlashLFQ\CMD.exe
-MAXQUANT=E:\Exported\MaxQuant\MaxQuantCmd.exe
-FRAGPIPE=E:\Exported\FragPipe\fragpipe.bat
+MAXQUANT=E:\Exported\Resources\mq_bin\MaxQuantCmd.exe
+DEEPDETECT=E:\Exported\Resources\DeepDetect\DeepDetect.exe
+FLASHLFQ=E:\Exported\Resources\FlashLFQ\CMD.exe
+MSCONVERT=E:\Exported\Resources\ProteoWizard\msconvert.exe
+PFIND=E:\Exported\Resources\DBReducer\pFind3\bin\pFind.exe
+DBREDUCER=E:\Exported\Resources\DBReducer\DBReducer\DBReducer.exe
+SAGE=E:\Exported\Resources\sage\sage.exe
+FUNCDB=E:\Exported\Resources\function\func_def.db
+FRAGPIPE=E:\Exported\Resources\fragpipe\bin\fragpipe.bat
+DIANN=E:\Exported\Resources\DIA-NN\2.0\DiaNN.exe
