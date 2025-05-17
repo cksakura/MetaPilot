@@ -28,3 +28,8 @@
 2025-05-17 15:50:21.636 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.MetaResourceIO - Config file doesn't exist, creating default parameters
 2025-05-17 15:50:21.932 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.MetaResourceIO - Config file doesn't exist, creating default parameters
 2025-05-17 15:51:37.599 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.MetaResourceIO - Successfully saved parameters to C:\Users\kchen2\.git\MetaPilot\config\meta_resources.params
+2025-05-17 16:02:29.759 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.MetaResourceIO - Successfully loaded parameters from C:\Users\kchen2\.git\MetaPilot\config\meta_resources.params
+2025-05-17 16:02:30.085 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.MetaResourceIO - Successfully loaded parameters from C:\Users\kchen2\.git\MetaPilot\config\meta_resources.params
+2025-05-17 16:03:54.251 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.MetaResourceIO - Successfully loaded parameters from C:\Users\kchen2\.git\MetaPilot\config\meta_resources.params
+2025-05-17 16:03:54.599 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.MetaResourceIO - Successfully loaded parameters from C:\Users\kchen2\.git\MetaPilot\config\meta_resources.params
+2025-05-17 16:04:40.256 [JavaFX Application Thread] INFO  uk.ac.quadram.metapilot.resources.MetaResourceIO - Successfully saved parameters to C:\Users\kchen2\.git\MetaPilot\config\meta_resources.params

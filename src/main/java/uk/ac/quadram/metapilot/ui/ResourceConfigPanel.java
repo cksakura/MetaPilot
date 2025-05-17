@@ -211,26 +211,56 @@ public class ResourceConfigPanel extends BorderPane {
      * Update the base resource path and refresh all tools
      */
     private void updateBaseResourcePath(String newPath) {
-        resourceParams.setBaseResourcePath(newPath);
-        updateUI();
+        // Confirm with the user before updating all paths
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+        alert.setTitle("Update Resource Paths");
+        alert.setHeaderText("Update Tool Paths");
+        alert.setContentText("Changing the base resource path will update all tool paths. Continue?");
+        
+        alert.showAndWait().ifPresent(result -> {
+            if (result == ButtonType.OK) {
+                resourceParams.setBaseResourcePath(newPath);
+                updateUI();
+                
+                // Show which tools were found
+                StringBuilder foundTools = new StringBuilder();
+                StringBuilder missingTools = new StringBuilder();
+                
+                for (ToolType toolType : ToolType.values()) {
+                    if (resourceParams.isToolAvailable(toolType)) {
+                        if (foundTools.length() > 0) foundTools.append(", ");
+                        foundTools.append(toolType.getDisplayName());
+                    } else {
+                        if (missingTools.length() > 0) missingTools.append(", ");
+                        missingTools.append(toolType.getDisplayName());
+                    }
+                }
+                
+                String message = "Base path updated.\n\n";
+                if (foundTools.length() > 0) {
+                    message += "Found tools: " + foundTools.toString() + "\n\n";
+                }
+                if (missingTools.length() > 0) {
+                    message += "Missing tools: " + missingTools.toString();
+                }
+                
+                showAlert(Alert.AlertType.INFORMATION, "Resources Updated", message);
+            } else {
+                // Revert the text field
+                basePathField.setText(resourceParams.getBaseResourcePath());
+            }
+        });
     }
     
     /**
      * Update the UI to reflect current parameter values
      */
     private void updateUI() {
+        // Update the base path field
         basePathField.setText(resourceParams.getBaseResourcePath());
         
-        // Force a refresh for all tool controls
-        if (getScene() != null) {
-            Platform.runLater(() -> {
-                // This will rebuild the entire panel
-                BorderPane parent = (BorderPane) getParent();
-                if (parent != null) {
-                    parent.setCenter(new ResourceConfigPanel());
-                }
-            });
-        }
+        // Force a refresh of the tools panel
+        setCenter(createToolsPanel());
     }
     
     /**
@@ -281,7 +311,6 @@ public class ResourceConfigPanel extends BorderPane {
             
             // Status indicator
             statusIndicator = new Circle(8);
-            updateStatusIndicator();
             
             // Tool name label
             Label nameLabel = new Label(toolType.getDisplayName() + ":");
@@ -367,6 +396,9 @@ public class ResourceConfigPanel extends BorderPane {
             });
             
             getChildren().addAll(statusIndicator, nameLabel, pathField, browseButton);
+            
+            // Update the indicator after all fields are initialized
+            updateStatusIndicator();
         }
         
         /**
@@ -376,11 +408,21 @@ public class ResourceConfigPanel extends BorderPane {
             ToolStatus status = resourceParams.getToolStatus(toolType);
             
             if (status == ToolStatus.AVAILABLE) {
-                statusIndicator.setFill(Color.GREEN);
-                setTooltip(new Tooltip("Tool is available at the specified path"));
+                statusIndicator.setFill(Color.LIMEGREEN);
+                statusIndicator.setStroke(Color.DARKGREEN);
+                statusIndicator.setStrokeWidth(1.0);
+                setTooltip(new Tooltip("Tool found at: " + resourceParams.getToolPath(toolType)));
+                
+                // Also give a visual indication in the text field
+                pathField.setStyle("-fx-text-fill: darkgreen; -fx-border-color: lightgreen; -fx-border-width: 1px;");
             } else {
                 statusIndicator.setFill(Color.RED);
-                setTooltip(new Tooltip("Tool is not available at the specified path"));
+                statusIndicator.setStroke(Color.DARKRED);
+                statusIndicator.setStrokeWidth(1.0);
+                setTooltip(new Tooltip("Tool not found at: " + resourceParams.getToolPath(toolType)));
+                
+                // Reset text field style
+                pathField.setStyle("");
             }
         }
         

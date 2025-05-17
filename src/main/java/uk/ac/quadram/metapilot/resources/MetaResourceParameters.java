@@ -97,15 +97,15 @@ public class MetaResourceParameters {
 		}
 
 		// Define default relative paths for each tool
-		toolInfoMap.put(ToolType.PFIND, new ToolInfo(ToolType.PFIND, "pFind", "pFind.exe"));
-		toolInfoMap.put(ToolType.MAXQUANT, new ToolInfo(ToolType.MAXQUANT, "MaxQuant", "MaxQuantCmd.exe"));
-		toolInfoMap.put(ToolType.DBREDUCER, new ToolInfo(ToolType.DBREDUCER, "DBReducer", "DBReducer.exe"));
-		toolInfoMap.put(ToolType.FRAGPIPE, new ToolInfo(ToolType.FRAGPIPE, "FragPipe", "fragpipe.bat"));
-		toolInfoMap.put(ToolType.SAGE, new ToolInfo(ToolType.SAGE, "Sage", "sage.exe"));
+		toolInfoMap.put(ToolType.PFIND, new ToolInfo(ToolType.PFIND, "DBReducer\\pFind3\\bin", "pFind.exe"));
+		toolInfoMap.put(ToolType.MAXQUANT, new ToolInfo(ToolType.MAXQUANT, "mq_bin", "MaxQuantCmd.exe"));
+		toolInfoMap.put(ToolType.DBREDUCER, new ToolInfo(ToolType.DBREDUCER, "DBReducer\\DBReducer", "DBReducer.exe"));
+		toolInfoMap.put(ToolType.FRAGPIPE, new ToolInfo(ToolType.FRAGPIPE, "fragpipe\\bin", "fragpipe.bat"));
+		toolInfoMap.put(ToolType.SAGE, new ToolInfo(ToolType.SAGE, "sage", "sage.exe"));
 		toolInfoMap.put(ToolType.FLASHLFQ, new ToolInfo(ToolType.FLASHLFQ, "FlashLFQ", "CMD.exe"));
-		toolInfoMap.put(ToolType.FUNCDB, new ToolInfo(ToolType.FUNCDB, "FunctionDB", "func_def.db"));
-		toolInfoMap.put(ToolType.MSCONVERT, new ToolInfo(ToolType.MSCONVERT, "msconvert", "msconvert.exe"));
-		toolInfoMap.put(ToolType.DIANN, new ToolInfo(ToolType.DIANN, "DiaNN", "DiaNN.exe"));
+		toolInfoMap.put(ToolType.FUNCDB, new ToolInfo(ToolType.FUNCDB, "function", "func_def.db"));
+		toolInfoMap.put(ToolType.MSCONVERT, new ToolInfo(ToolType.MSCONVERT, "ProteoWizard", "msconvert.exe"));
+		toolInfoMap.put(ToolType.DIANN, new ToolInfo(ToolType.DIANN, "DIA-NN\\2.0", "DiaNN.exe"));
 		toolInfoMap.put(ToolType.DEEPDETECT, new ToolInfo(ToolType.DEEPDETECT, "DeepDetect", "DeepDetect.exe"));
 
 		// Initialize full paths for all tools
@@ -143,8 +143,8 @@ public class MetaResourceParameters {
 	}
 
 	/**
-	 * Update all tool paths based on the new base resource path Only updates paths
-	 * that don't already exist
+	 * Update all tool paths based on the new base resource path
+	 * Always updates the paths based on the new base path and checks if tools are available
 	 */
 	public void updateAllPaths(String newBasePath) {
 		// Check if the new base path is valid
@@ -156,16 +156,11 @@ public class MetaResourceParameters {
 
 		for (Map.Entry<ToolType, ToolInfo> entry : toolInfoMap.entrySet()) {
 			ToolInfo toolInfo = entry.getValue();
-
-			// If the tool info doesn't have a path yet or if current path doesn't exist
-			if (toolInfo.getFullPath() == null || toolInfo.getFullPath().isEmpty()
-					|| !new File(toolInfo.getFullPath()).exists()) {
-
-				// Create a new path based on the base resource path
-				File newPath = new File(newBasePath, toolInfo.getRelativePath());
-				toolInfo.setFullPath(newPath.getAbsolutePath());
-			}
-
+			
+			// Always create a new path based on the base resource path
+			File newToolPath = new File(newBasePath, toolInfo.getRelativePath());
+			toolInfo.setFullPath(newToolPath.getAbsolutePath());
+			
 			// Update tool status
 			updateToolStatus(entry.getKey());
 		}
