@@ -448,7 +448,7 @@ public abstract class MetaLabTask extends SwingWorker<Boolean, String> {
 					JProgressBar bar1 = new JProgressBar();
 					JProgressBar bar2 = new JProgressBar();
 
-					File file = new File(ClassLoader.getSystemClassLoader().getResource(".").getPath());
+					File file = getApplicationBaseDirectory();
 					File setting = new File(file, "resources" + versionFile);
 
 					MetaSourcesV2 advPar = MetaSourcesIOV2.parse(setting);
@@ -485,7 +485,7 @@ public abstract class MetaLabTask extends SwingWorker<Boolean, String> {
 					JProgressBar bar1 = new JProgressBar();
 					JProgressBar bar2 = new JProgressBar();
 
-					File file = new File(ClassLoader.getSystemClassLoader().getResource(".").getPath());
+					File file = getApplicationBaseDirectory();
 					File setting = new File(file, "resources" + versionFile);
 
 					MetaSourcesV2 advPar = MetaSourcesIOV2.parse(setting);
@@ -559,6 +559,64 @@ public abstract class MetaLabTask extends SwingWorker<Boolean, String> {
 
 		MetaLabTask.run(args);
 
+	}
+
+	/**
+	 * Gets the application base directory using multiple fallback mechanisms
+	 * @return A File representing the application base directory
+	 */
+	public static File getApplicationBaseDirectory() {
+		File baseDir = null;
+		
+		// First attempt: using ClassLoader.getSystemClassLoader().getResource(".")
+		URL resourceUrl = ClassLoader.getSystemClassLoader().getResource(".");
+		if (resourceUrl != null) {
+			try {
+				baseDir = new File(resourceUrl.getPath());
+				LOGGER.info("Using ClassLoader.getSystemClassLoader().getResource(\".\") to find base directory: " + baseDir);
+				return baseDir;
+			} catch (Exception e) {
+				LOGGER.warn("Could not use ClassLoader.getSystemClassLoader().getResource(\".\") to find base directory", e);
+			}
+		}
+		
+		// Second attempt: using Thread.currentThread().getContextClassLoader().getResource(".")
+		ClassLoader cl = Thread.currentThread().getContextClassLoader();
+		if (cl != null) {
+			URL contextResource = cl.getResource(".");
+			if (contextResource != null) {
+				try {
+					baseDir = new File(contextResource.getPath());
+					LOGGER.info("Using Thread.currentThread().getContextClassLoader().getResource(\".\") to find base directory: " + baseDir);
+					return baseDir;
+				} catch (Exception e) {
+					LOGGER.warn("Could not use Thread.currentThread().getContextClassLoader().getResource(\".\") to find base directory", e);
+				}
+			}
+		}
+		
+		// Third attempt: using current working directory
+		baseDir = new File(System.getProperty("user.dir"));
+		LOGGER.info("Using System.getProperty(\"user.dir\") to find base directory: " + baseDir);
+		
+		// Make sure Resources directory exists
+		File resourcesDir = new File(baseDir, "Resources");
+		if (!resourcesDir.exists()) {
+			LOGGER.warn("Resources directory not found at: " + resourcesDir.getAbsolutePath());
+			
+			// If Resources directory doesn't exist in the current directory, 
+			// check if it exists one directory up (happens sometimes with projects run from IDEs)
+			File parentDir = baseDir.getParentFile();
+			if (parentDir != null) {
+				File parentResourcesDir = new File(parentDir, "Resources");
+				if (parentResourcesDir.exists()) {
+					baseDir = parentDir;
+					LOGGER.info("Found Resources directory in parent directory: " + baseDir);
+				}
+			}
+		}
+		
+		return baseDir;
 	}
 
 }

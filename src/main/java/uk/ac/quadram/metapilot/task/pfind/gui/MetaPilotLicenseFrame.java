@@ -34,6 +34,7 @@ import javax.swing.border.TitledBorder;
 import javax.swing.filechooser.FileFilter;
 
 import org.apache.commons.io.FileUtils;
+import uk.ac.quadram.metapilot.task.MetaLabTask;
 
 public class MetaPilotLicenseFrame extends JFrame {
 
@@ -77,8 +78,7 @@ public class MetaPilotLicenseFrame extends JFrame {
 	 */
 	public MetaPilotLicenseFrame() throws URISyntaxException, IOException {
 
-		this.propertyFile = new File(ClassLoader.getSystemClassLoader().getResource(".").toURI().getPath(),
-				"user.properties");
+		this.propertyFile = new File(MetaLabTask.getApplicationBaseDirectory(), "parameter_license.properties");
 
 		String nameString = "";
 		String affiliationString = "";
@@ -271,9 +271,8 @@ public class MetaPilotLicenseFrame extends JFrame {
 			}
 
 			try {
-				FileUtils.copyFile(licenseFile, new File(
-						ClassLoader.getSystemClassLoader().getResource(".").toURI().getPath(), licenseFile.getName()));
-			} catch (IOException | URISyntaxException e) {
+				FileUtils.copyFile(licenseFile, new File(MetaLabTask.getApplicationBaseDirectory(), licenseFile.getName()));
+			} catch (IOException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}

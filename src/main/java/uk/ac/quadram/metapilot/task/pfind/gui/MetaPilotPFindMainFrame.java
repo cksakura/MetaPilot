@@ -38,6 +38,7 @@ import uk.ac.quadram.metapilot.task.v2.par.MetaParameterMQ;
 import uk.ac.quadram.metapilot.task.v2.par.MetaSourcesIOV2;
 import uk.ac.quadram.metapilot.task.v2.par.MetaSourcesV2;
 import net.miginfocom.swing.MigLayout;
+import uk.ac.quadram.metapilot.task.MetaLabTask;
 
 public class MetaPilotPFindMainFrame extends JFrame {
 
@@ -98,11 +99,9 @@ public class MetaPilotPFindMainFrame extends JFrame {
 
 		this.getContentPane().add(tabbedPane, "cell 0 0,grow");
 
-		File parameter = new File(ClassLoader.getSystemClassLoader().getResource(".").toURI().getPath(),
-				"parameters" + MetaParaIOMQ.versionFile);
+		File parameter = new File(MetaLabTask.getApplicationBaseDirectory(), "parameters" + MetaParaIOMQ.versionFile);
 
-		File resources = new File(ClassLoader.getSystemClassLoader().getResource(".").toURI().getPath(),
-				"resources" + MetaParaIOMQ.versionFile);
+		File resources = new File(MetaLabTask.getApplicationBaseDirectory(), "resources" + MetaParaIOMQ.versionFile);
 
 		MetaSourcesV2 msv2 = MetaSourcesIOV2.parse(resources);
 
@@ -174,7 +173,7 @@ public class MetaPilotPFindMainFrame extends JFrame {
 		}
 
 		setIconImage(Toolkit.getDefaultToolkit()
-				.getImage(MetaPilotPFindMainFrame.class.getResource("/uk/ac/quadram/metapilot/icon/metalab_128.png")));
+				.getImage(MetaPilotPFindMainFrame.class.getResource("/MetaPilot.png")));
 
 		setTitle("MetaLab " + MetaParaIOMQ.version);
 
