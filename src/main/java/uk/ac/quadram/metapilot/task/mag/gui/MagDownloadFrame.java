@@ -20,6 +20,7 @@ import javax.swing.JComboBox;
 import javax.swing.border.TitledBorder;
 import javax.swing.JLabel;
 import javax.swing.JTextField;
+import uk.ac.quadram.metapilot.task.MetaLabTask;
 
 public class MagDownloadFrame extends JFrame {
 
@@ -41,8 +42,7 @@ public class MagDownloadFrame extends JFrame {
 				try {
 					UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
 
-					File resources = new File(ClassLoader.getSystemClassLoader().getResource(".").toURI().getPath(),
-							"resources_" + MetaParaIOMag.version + ".json");
+					File resources = new File(MetaLabTask.getApplicationBaseDirectory(), "resources_" + MetaParaIOMag.version + ".json");
 
 					MetaSourcesMag msm = MetaSourcesIoMag.parse(resources);
 

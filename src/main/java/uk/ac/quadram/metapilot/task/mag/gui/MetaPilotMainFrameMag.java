@@ -34,6 +34,7 @@ import uk.ac.quadram.metapilot.task.par.MetaParameter;
 import uk.ac.quadram.metapilot.task.pfind.gui.MetaPilotLicenseFrame;
 import uk.ac.quadram.metapilot.task.v2.gui.MetaLabSourcePathDialog;
 import net.miginfocom.swing.MigLayout;
+import uk.ac.quadram.metapilot.task.MetaLabTask;
 
 public class MetaPilotMainFrameMag extends MetaPilotMainFrameHGM {
 
@@ -82,21 +83,17 @@ public class MetaPilotMainFrameMag extends MetaPilotMainFrameHGM {
 
 	protected void initial() throws IOException, URISyntaxException {
 
-		File parameter = new File(ClassLoader.getSystemClassLoader().getResource(".").toURI().getPath(),
-				"parameters" + MetaParaIOMag.versionFile);
+		File parameter = new File(MetaLabTask.getApplicationBaseDirectory(), "parameter" + MetaParaIOMag.versionFile);
 
-		File resources = new File(ClassLoader.getSystemClassLoader().getResource(".").toURI().getPath(),
-				"resources" + MetaParaIOMag.versionFile);
+		File resources = new File(MetaLabTask.getApplicationBaseDirectory(), "resources" + MetaParaIOMag.versionFile);
 
-		File dbpar = new File(ClassLoader.getSystemClassLoader().getResource(".").toURI().getPath(),
-				MagDbConfigIO.versionFile);
+		File dbpar = new File(MetaLabTask.getApplicationBaseDirectory(), "dbpar" + MetaParaIOMag.versionFile);
 		
 		MetaSourcesMag msv2;
 		if (resources.exists()) {
 			msv2 = MetaSourcesIoMag.parse(resources);
 		} else {
-			File oldResources = new File(ClassLoader.getSystemClassLoader().getResource(".").toURI().getPath(),
-					"resources" + MetaParaIOMag.oldVersionFiles[0]);
+			File oldResources = new File(MetaLabTask.getApplicationBaseDirectory(), "resources" + MetaParaIOMag.oldVersionFiles[0]);
 
 			if (oldResources.exists()) {
 				msv2 = MetaSourcesIoMag.parse(oldResources);
@@ -122,7 +119,7 @@ public class MetaPilotMainFrameMag extends MetaPilotMainFrameHGM {
 		getContentPane().add(contentPane, "cell 0 0,grow");
 
 		setIconImage(Toolkit.getDefaultToolkit()
-				.getImage(MetaPilotMainFrameMag.class.getResource("/bmi/med/uOttawa/metalab/icon/mag_128.png")));
+				.getImage(MetaPilotMainFrameMag.class.getResource("/MetaPilot.png")));
 
 		setTitle("MetaLab " + MetaParaIOMag.version);
 
