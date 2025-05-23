@@ -1,7 +1,7 @@
 package uk.ac.quadram.metapilot.task.dia.par;
 
 import uk.ac.quadram.metapilot.task.mag.par.MetaParameterMag;
-import uk.ac.quadram.metapilot.task.par.MetaParameter;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 
 public class MetaParameterDia extends MetaParameterMag {
 
@@ -11,7 +11,7 @@ public class MetaParameterDia extends MetaParameterMag {
 	private String[] library;
 	private String[] models;
 
-	public MetaParameterDia(MetaParameter metaPar, String magDb, String magDbVersion, boolean librarySearch,
+	public MetaParameterDia(MetaBaseParameter metaPar, String magDb, String magDbVersion, boolean librarySearch,
 			boolean selfModelSearch, String[] library, boolean useModel, String[] models) {
 		super(metaPar);
 		// TODO Auto-generated constructor stub

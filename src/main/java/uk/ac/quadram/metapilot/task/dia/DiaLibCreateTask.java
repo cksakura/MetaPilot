@@ -14,8 +14,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
-import javax.swing.JProgressBar;
-
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -25,12 +23,20 @@ import uk.ac.quadram.metapilot.dbSearch.deepDetect.DeepDetectTask;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNParquetReader;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNTask;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiannParameter;
-import uk.ac.quadram.metapilot.task.MetaLabTask;
+import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
+import uk.ac.quadram.metapilot.task.MetaAbstractTask;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
-import uk.ac.quadram.metapilot.task.dia.par.MetaSourcesDia;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 
-public class DiaLibCreateTask extends MetaLabTask {
+/**
+ * DIA library build task (Migrated to JavaFX Task)
+ * 
+ * @author Kai Cheng
+ *
+ */
+public class DiaLibCreateTask extends MetaAbstractTask {
 
 	private static String taskName = "MAG spectra libarary create task";
 	private static final Logger LOGGER = LogManager.getLogger(DiaLibCreateTask.class);
@@ -47,14 +53,14 @@ public class DiaLibCreateTask extends MetaLabTask {
 	public static final int fromProtein = 1;
 	public static final int fromPeptide = 2;
 
-	public DiaLibCreateTask(MetaParameterDia metaPar, MetaSourcesDia advPar, JProgressBar bar, String filePath,
-			String enzyme, int miss, String libName) {
-		super(metaPar, advPar, bar);
+	public DiaLibCreateTask(MetaParameterDia metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
+			String filePath, ArrayList<String> pathList, int buildType) {
+		super(metaPar, mrp, progressBar, null);
 		this.magDbItem = metaPar.getUsedMagDbItem();
 		this.filePath = filePath;
-		this.enzyme = enzyme;
-		this.libName = libName;
-		this.miss = miss;
+		this.enzyme = pathList.get(0);
+		this.libName = pathList.get(1);
+		this.miss = Integer.parseInt(pathList.get(2));
 
 		if (filePath.endsWith(".speclib")) {
 			this.taskType = fromLibrary;
@@ -65,20 +71,14 @@ public class DiaLibCreateTask extends MetaLabTask {
 		}
 	}
 
-	public DiaLibCreateTask(MetaParameterDia metaPar, MetaSourcesDia advPar, JProgressBar bar, String filePath,
-			String enzyme, int miss, String libName, int taskType) {
-		super(metaPar, advPar, bar);
+	@Override
+	protected void initial() {
+		// TODO Auto-generated method stub
 
-		this.magDbItem = metaPar.getUsedMagDbItem();
-		this.filePath = filePath;
-		this.enzyme = enzyme;
-		this.libName = libName;
-		this.miss = miss;
-		this.taskType = taskType;
 	}
 
 	@Override
-	protected Boolean doInBackground() throws Exception {
+	protected Boolean call() throws Exception {
 
 		File libFolder = new File(magDbItem.getCurrentFile(), "libraries");
 		if (!libFolder.exists()) {
@@ -90,7 +90,7 @@ public class DiaLibCreateTask extends MetaLabTask {
 			libFile.mkdir();
 		}
 
-		DiaNNTask diaNNTask = new DiaNNTask(((MetaSourcesDia) msv).getDiann());
+		DiaNNTask diaNNTask = new DiaNNTask(mrp.getToolPath(ToolType.DIANN));
 		DiannParameter diannPar = new DiannParameter();
 		diannPar.setThreads(metaPar.getThreadCount());
 		diannPar.setEnzyme(enzyme);
@@ -107,7 +107,7 @@ public class DiaLibCreateTask extends MetaLabTask {
 
 			File pepFile = new File(libFile, libName + ".predicted.tsv");
 			if (!pepFile.exists()) {
-				DeepDetectTask deepDetectTask = new DeepDetectTask(((MetaSourcesDia) msv).getDeepDetect());
+				DeepDetectTask deepDetectTask = new DeepDetectTask(metaPar, mrp, progressBar, null);
 				DeepDetectParameter deepDetectPar = new DeepDetectParameter();
 				deepDetectPar.setMissCleavage(miss);
 				if (enzyme.equals("Lys-C")) {
@@ -325,18 +325,28 @@ public class DiaLibCreateTask extends MetaLabTask {
 		}
 
 		magDbItem.addPepLib(libName, pepSet.size(), enzyme, miss);
-
 		return true;
 	}
 
-	@Override
 	public void forceStop() {
-		// TODO Auto-generated method stub
-
+		// Cancel this task
+		this.cancel();
 	}
 
 	public static void main(String[] args) {
 		// TODO Auto-generated method stub
+	}
+
+	@Override
+	protected String getTaskName() {
+		// TODO Auto-generated method stub
+		return taskName;
+	}
+
+	@Override
+	protected Logger getLogger() {
+		// TODO Auto-generated method stub
+		return LOGGER;
 	}
 
 }

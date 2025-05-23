@@ -8,16 +8,15 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.util.Date;
-import javax.swing.JProgressBar;
-import javax.swing.SwingWorker;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.task.MetaAbstractTask;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
-import uk.ac.quadram.metapilot.task.dia.par.MetaSourcesDia;
-import uk.ac.quadram.metapilot.task.par.MetaSources;
 
 public class MetaDiaTargetDBTask extends MetaAbstractTask {
 
@@ -31,9 +30,8 @@ public class MetaDiaTargetDBTask extends MetaAbstractTask {
 	protected static final Logger LOGGER = LogManager.getLogger(MetaDiaTargetDBTask.class);
 	protected static final String taskName = "Create function database";
 
-	public MetaDiaTargetDBTask(MetaParameterDia metaPar, MetaSources msv, JProgressBar bar1, JProgressBar bar2,
-			SwingWorker<Boolean, Object> nextWork) {
-		super(metaPar, msv, bar1, bar2, nextWork);
+	public MetaDiaTargetDBTask(MetaParameterDia metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar) {
+		super(metaPar, mrp, progressBar);
 		// TODO Auto-generated constructor stub
 	}
 
@@ -60,7 +58,7 @@ public class MetaDiaTargetDBTask extends MetaAbstractTask {
 	}
 
 	@Override
-	protected Boolean doInBackground() throws Exception {
+	protected Boolean call() throws Exception {
 		// TODO Auto-generated method stub
 
 		File pythonFile = new File(magDbDir, "profuncSql.py");
@@ -104,7 +102,7 @@ public class MetaDiaTargetDBTask extends MetaAbstractTask {
 			File batFile = new File(pythonFile.getParent(), pythonFile.getName() + ".bat");
 			PrintWriter batWriter = new PrintWriter(batFile);
 
-			File pythonExeFile = new File(((MetaSourcesDia) msv).getPython());
+			File pythonExeFile = new File(mrp.getToolPath(ToolType.PYTHON));
 
 			StringBuilder sb = new StringBuilder();
 			sb.append(pythonExeFile.getName()).append(" ");

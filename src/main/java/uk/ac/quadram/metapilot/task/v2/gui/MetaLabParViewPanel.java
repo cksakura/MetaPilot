@@ -31,7 +31,7 @@ import uk.ac.quadram.metapilot.task.par.MetaSsdbCreatePar;
 import uk.ac.quadram.metapilot.task.pfind.par.MetaParameterPFind;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.par.MetaData;
-import uk.ac.quadram.metapilot.task.par.MetaParameter;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.par.MetaPep2TaxaPar;
 import uk.ac.quadram.metapilot.task.v2.par.MetaMaxQuantPar;
 import uk.ac.quadram.metapilot.task.v2.par.MetaOpenPar;
@@ -55,12 +55,12 @@ public class MetaLabParViewPanel extends JPanel {
 
 	private JScrollPane scrollPane;
 	private JTree tree;
-	private MetaParameter par;
+	private MetaBaseParameter par;
 
 	/**
 	 * Create the panel.
 	 */
-	public MetaLabParViewPanel(MetaParameter par) {
+	public MetaLabParViewPanel(MetaBaseParameter par) {
 
 		setLayout(new MigLayout("", "[400:600:800,grow]", "[300:480:640,grow]"));
 

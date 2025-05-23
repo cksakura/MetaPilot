@@ -1,8 +1,9 @@
 /* MetaPilot Application Styles */
 
 .root {
-    -fx-font-family: 'Segoe UI', Arial, sans-serif;
-    -fx-background-color: #f8f8f8;
+    -fx-font-family: "Segoe UI", Helvetica, Arial, sans-serif;
+    -fx-font-size: 12px;
+    -fx-background-color: #f5f5f5;
 }
 
 .app-title {
@@ -12,28 +13,33 @@
 }
 
 .section-panel {
-    -fx-background-color: #f5f5f5;
-    -fx-padding: 10;
-    -fx-border-color: #cccccc;
-    -fx-border-radius: 5;
+    -fx-background-color: white;
+    -fx-background-radius: 5px;
+    -fx-border-color: #d0d0d0;
+    -fx-border-width: 1px;
+    -fx-border-radius: 5px;
+    -fx-padding: 15px;
 }
 
 .section-title {
     -fx-font-size: 16px;
     -fx-font-weight: bold;
-    -fx-text-fill: #333333;
+    -fx-padding: 0 0 10px 0;
 }
 
 .workflow-box {
     -fx-background-color: white;
-    -fx-border-color: #dddddd;
-    -fx-border-radius: 5;
-    -fx-padding: 15;
-    -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.1), 5, 0, 0, 1);
+    -fx-background-radius: 5px;
+    -fx-border-color: #d0d0d0;
+    -fx-border-width: 1px;
+    -fx-border-radius: 5px;
+    -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.1), 5, 0, 0, 2);
+    -fx-padding: 15px;
 }
 
 .workflow-box:hover {
-    -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.2), 8, 0, 0, 2);
+    -fx-background-color: #f8f8f8;
+    -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.2), 8, 0, 0, 3);
 }
 
 .workflow-title {
@@ -61,9 +67,10 @@
 }
 
 .titled-pane > .title {
-    -fx-background-color: #e7e7e7;
-    -fx-text-fill: #333333;
-    -fx-font-weight: bold;
+    -fx-background-color: #f0f0f0;
+    -fx-border-color: #d0d0d0;
+    -fx-border-width: 1px;
+    -fx-padding: 8px;
 }
 
 Button {
@@ -78,4 +85,167 @@ Button:hover {
 TextField {
     -fx-background-radius: 4;
     -fx-padding: 6;
+}
+
+/* ========== Base Styles ========== */
+
+.root {
+    -fx-font-family: "Segoe UI", Helvetica, Arial, sans-serif;
+    -fx-font-size: 12px;
+    -fx-background-color: #f5f5f5;
+}
+
+/* ========== Panel Styles ========== */
+
+.status-panel {
+    -fx-background-color: white;
+    -fx-background-radius: 3px;
+    -fx-border-color: #cccccc;
+    -fx-border-width: 1px;
+    -fx-border-radius: 3px;
+    -fx-padding: 10px;
+}
+
+/* ========== Control Styles ========== */
+
+.button {
+    -fx-background-color: #4a86e8;
+    -fx-text-fill: white;
+    -fx-background-radius: 3px;
+    -fx-padding: 8px 16px;
+}
+
+.button:hover {
+    -fx-background-color: #3a76d8;
+}
+
+.button:pressed {
+    -fx-background-color: #2a66c8;
+}
+
+.button.secondary {
+    -fx-background-color: #f5f5f5;
+    -fx-text-fill: #555555;
+    -fx-border-color: #cccccc;
+    -fx-border-width: 1px;
+}
+
+.button.secondary:hover {
+    -fx-background-color: #e5e5e5;
+}
+
+.button.secondary:pressed {
+    -fx-background-color: #d5d5d5;
+}
+
+/* ========== Tab Pane Styles ========== */
+
+.tab-pane .tab-header-area .tab-header-background {
+    -fx-background-color: #f5f5f5;
+    -fx-border-color: #d0d0d0;
+    -fx-border-width: 0 0 1 0;
+}
+
+.tab-pane .tab {
+    -fx-background-color: #e5e5e5;
+    -fx-padding: 5 15;
+}
+
+.tab-pane .tab:selected {
+    -fx-background-color: white;
+}
+
+/* ========== Table Styles ========== */
+
+.table-view {
+    -fx-background-color: white;
+    -fx-border-color: #d0d0d0;
+    -fx-border-width: 1px;
+}
+
+.table-view .column-header {
+    -fx-background-color: #f0f0f0;
+    -fx-padding: 8px;
+}
+
+.table-view .table-cell {
+    -fx-padding: 6px;
+}
+
+.table-row-cell:odd {
+    -fx-background-color: #f5f5f5;
+}
+
+.table-row-cell:selected {
+    -fx-background-color: #cfe2ff;
+}
+
+/* ========== Progress Styles ========== */
+
+.progress-bar {
+    -fx-accent: #4a86e8;
+}
+
+.progress-bar .track {
+    -fx-background-color: #f0f0f0;
+}
+
+/* ========== Text Field Styles ========== */
+
+.text-field, .text-area {
+    -fx-background-color: white;
+    -fx-border-color: #cccccc;
+    -fx-border-width: 1px;
+    -fx-border-radius: 3px;
+    -fx-padding: 5px;
+}
+
+.text-field:focused, .text-area:focused {
+    -fx-border-color: #4a86e8;
+    -fx-border-width: 1px;
+}
+
+/* ========== Titled Pane Styles ========== */
+
+.titled-pane {
+    -fx-text-fill: #333333;
+}
+
+/* ========== Dialog Styles ========== */
+
+.dialog-pane {
+    -fx-background-color: white;
+}
+
+.dialog-pane > .button-bar > .container {
+    -fx-padding: 10px;
+}
+
+/* ========== Menu Styles ========== */
+
+.menu-bar {
+    -fx-background-color: #f0f0f0;
+    -fx-border-color: #d0d0d0;
+    -fx-border-width: 0 0 1 0;
+}
+
+.menu:hover, .menu:showing {
+    -fx-background-color: #e0e0e0;
+}
+
+.menu-item:focused {
+    -fx-background-color: #4a86e8;
+}
+
+.menu-item:focused .label {
+    -fx-text-fill: white;
+}
+
+/* ========== Tooltip Styles ========== */
+
+.tooltip {
+    -fx-background-color: #444444;
+    -fx-text-fill: white;
+    -fx-font-size: 11px;
+    -fx-padding: 5px;
 } 

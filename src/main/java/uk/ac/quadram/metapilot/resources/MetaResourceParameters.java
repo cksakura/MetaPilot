@@ -14,49 +14,48 @@ public class MetaResourceParameters {
 
 	// Tool types
 	public enum ToolType {
+		// General tools
+		FUNCDB("FunctionDB", ""), PYTHON("Python", ""),
 		// DDA tools
-		PFIND("pFind", ""),
-		MAXQUANT("MaxQuant", "https://www.maxquant.org/maxquant/"),
-		DBREDUCER("DBReducer", ""),
-		
+		PFIND("pFind", ""), MAXQUANT("MaxQuant", "https://www.maxquant.org/maxquant/"), DBREDUCER("DBReducer", ""),
+		FRAGPIPE("FragPipe", "https://fragpipe.nesvilab.org/"), SAGE("Sage", "https://github.com/lazear/sage"),
+		FLASHLFQ("FlashLFQ", ""), MSCONVERT("msconvert", "https://proteowizard.sourceforge.io/download.html"),
 		// DIA tools
-		FRAGPIPE("FragPipe", "https://fragpipe.nesvilab.org/"),
-		SAGE("Sage", "https://github.com/lazear/sage"),
-		FLASHLFQ("FlashLFQ", ""),
-		FUNCDB("FunctionDB", ""),
-		MSCONVERT("msconvert", "https://proteowizard.sourceforge.io/download.html"),
-		DIANN("DiaNN", "https://github.com/vdemichev/DiaNN/releases"),
-		DEEPDETECT("DeepDetect", "");
-		
+		DIANN("DiaNN", "https://github.com/vdemichev/DiaNN/releases"), DEEPDETECT("DeepDetect", "");
+
 		private final String displayName;
 		private final String downloadUrl;
-		
+
 		ToolType(String displayName, String downloadUrl) {
 			this.displayName = displayName;
 			this.downloadUrl = downloadUrl;
 		}
-		
+
 		public String getDisplayName() {
 			return displayName;
 		}
-		
+
 		public String getDownloadUrl() {
 			return downloadUrl;
 		}
-		
+
 		/**
 		 * Check if this tool has a download URL
 		 */
 		public boolean hasDownloadUrl() {
 			return downloadUrl != null && !downloadUrl.isEmpty();
 		}
-		
-		public static ToolType[] getDDATools() {
-			return new ToolType[] { PFIND, MAXQUANT, DBREDUCER };
+
+		public static ToolType[] getGeneralTools() {
+			return new ToolType[] { FUNCDB, PYTHON };
 		}
-		
+
+		public static ToolType[] getDDATools() {
+			return new ToolType[] { PFIND, MAXQUANT, DBREDUCER, FRAGPIPE, SAGE, FLASHLFQ, MSCONVERT };
+		}
+
 		public static ToolType[] getDIATools() {
-			return new ToolType[] { FRAGPIPE, SAGE, FLASHLFQ, FUNCDB, MSCONVERT, DIANN, DEEPDETECT };
+			return new ToolType[] { DIANN, DEEPDETECT };
 		}
 	}
 
@@ -120,7 +119,7 @@ public class MetaResourceParameters {
 		toolInfoMap.put(ToolType.MSCONVERT, new ToolInfo(ToolType.MSCONVERT, "ProteoWizard", "msconvert.exe"));
 		toolInfoMap.put(ToolType.DIANN, new ToolInfo(ToolType.DIANN, "DIA-NN\\2.0", "DiaNN.exe"));
 		toolInfoMap.put(ToolType.DEEPDETECT, new ToolInfo(ToolType.DEEPDETECT, "DeepDetect", "DeepDetect.exe"));
-
+		toolInfoMap.put(ToolType.PYTHON, new ToolInfo(ToolType.PYTHON, "Python", "python.exe"));
 		// Initialize full paths for all tools
 		for (Map.Entry<ToolType, ToolInfo> entry : toolInfoMap.entrySet()) {
 			ToolInfo toolInfo = entry.getValue();
@@ -156,8 +155,8 @@ public class MetaResourceParameters {
 	}
 
 	/**
-	 * Update all tool paths based on the new base resource path
-	 * Always updates the paths based on the new base path and checks if tools are available
+	 * Update all tool paths based on the new base resource path Always updates the
+	 * paths based on the new base path and checks if tools are available
 	 */
 	public void updateAllPaths(String newBasePath) {
 		// Check if the new base path is valid
@@ -169,11 +168,11 @@ public class MetaResourceParameters {
 
 		for (Map.Entry<ToolType, ToolInfo> entry : toolInfoMap.entrySet()) {
 			ToolInfo toolInfo = entry.getValue();
-			
+
 			// Always create a new path based on the base resource path
 			File newToolPath = new File(newBasePath, toolInfo.getRelativePath());
 			toolInfo.setFullPath(newToolPath.getAbsolutePath());
-			
+
 			// Update tool status
 			updateToolStatus(entry.getKey());
 		}

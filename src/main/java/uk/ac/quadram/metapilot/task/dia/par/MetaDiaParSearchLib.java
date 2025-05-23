@@ -3,7 +3,7 @@ package uk.ac.quadram.metapilot.task.dia.par;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiannParameter;
 import uk.ac.quadram.metapilot.task.dia.DiaLibSearchPar;
 import uk.ac.quadram.metapilot.task.mag.par.MetaParameterMag;
-import uk.ac.quadram.metapilot.task.par.MetaParameter;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 
 public class MetaDiaParSearchLib extends MetaParameterMag {
 
@@ -11,7 +11,7 @@ public class MetaDiaParSearchLib extends MetaParameterMag {
 	private MetaDiaParGenLib diaParGenLib;
 	private boolean isTimsTof;
 
-	public MetaDiaParSearchLib(MetaParameter metaPar, String magDb, String magDbVersion) {
+	public MetaDiaParSearchLib(MetaBaseParameter metaPar, String magDb, String magDbVersion) {
 		super(metaPar);
 		// TODO Auto-generated constructor stub
 		this.magDb = magDb;
@@ -19,7 +19,7 @@ public class MetaDiaParSearchLib extends MetaParameterMag {
 		this.diaLibSearchPar = new DiaLibSearchPar();
 	}
 
-	public MetaDiaParSearchLib(MetaParameter metaPar, String magDb, String magDbVersion,
+	public MetaDiaParSearchLib(MetaBaseParameter metaPar, String magDb, String magDbVersion,
 			DiaLibSearchPar diaLibSearchPar) {
 		super(metaPar);
 		// TODO Auto-generated constructor stub
@@ -28,7 +28,7 @@ public class MetaDiaParSearchLib extends MetaParameterMag {
 		this.diaLibSearchPar = diaLibSearchPar;
 	}
 
-	public MetaDiaParSearchLib(MetaParameter metaPar, String magDb, String magDbVersion,
+	public MetaDiaParSearchLib(MetaBaseParameter metaPar, String magDb, String magDbVersion,
 			DiaLibSearchPar diaLibSearchPar, MetaDiaParGenLib diaParGenLib) {
 		super(metaPar);
 		// TODO Auto-generated constructor stub

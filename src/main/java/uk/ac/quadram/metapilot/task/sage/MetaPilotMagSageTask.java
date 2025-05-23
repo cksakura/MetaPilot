@@ -43,6 +43,9 @@ import uk.ac.quadram.metapilot.dbSearch.sage.SageParameter;
 import uk.ac.quadram.metapilot.dbSearch.sage.SagePeptide;
 import uk.ac.quadram.metapilot.dbSearch.sage.SageResultReader;
 import uk.ac.quadram.metapilot.dbSearch.sage.SageTask;
+import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.spectra.io.MSConvertor;
 import uk.ac.quadram.metapilot.task.MetaReportCopyTask;
 import uk.ac.quadram.metapilot.task.MetaReportTask;
@@ -73,14 +76,14 @@ public class MetaPilotMagSageTask extends MagHapPFindTask {
 
 	private String[] mzMLFiles;
 
-	public MetaPilotMagSageTask(MetaParameterMag metaPar, MetaSourcesMag msv, JProgressBar bar1, JProgressBar bar2,
-			SwingWorker<Boolean, Object> nextWork) {
-		super(metaPar, msv, bar1, bar2, nextWork);
+	public MetaPilotMagSageTask(MetaParameterMag metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
+			JavaFXProgressBar secondBar) {
+		super(metaPar, mrp, progressBar, secondBar);
 		// TODO Auto-generated constructor stub
 	}
 
 	protected void initial() {
-		this.sage = ((MetaSourcesMag) msv).getSage();
+		this.sage = mrp.getToolPath(ToolType.SAGE);
 		this.sageTask = new SageTask(this.sage);
 		this.spConvert = true;
 
@@ -125,7 +128,7 @@ public class MetaPilotMagSageTask extends MagHapPFindTask {
 
 	protected String[] msconvert(String[] raws) throws NumberFormatException, IOException {
 
-		bar2.setString(getTaskName() + ": extracting spectra");
+		progressBar.setString(getTaskName() + ": extracting spectra");
 
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": extracting spectra started");
 		LOGGER.info(getTaskName() + ": extracting spectra started");
@@ -155,16 +158,7 @@ public class MetaPilotMagSageTask extends MagHapPFindTask {
 
 		if (extractRawList.size() > 0) {
 
-			File msconvertFile;
-
-			if (((MetaSourcesV2) msv).findMSConvert()) {
-				msconvertFile = new File(((MetaSourcesV2) msv).getMsconvert());
-			} else {
-				File resourceFile = (new File(((MetaSourcesV2) msv).getMsconvert())).getParentFile().getParentFile();
-				File proteoWizardFile = new File(resourceFile, "ProteoWizard");
-				msconvertFile = new File(proteoWizardFile, "msconvert.exe");
-			}
-
+			File msconvertFile = new File(mrp.getToolPath(ToolType.MSCONVERT));
 			if (msconvertFile.exists()) {
 
 				ExecutorService es = Executors.newFixedThreadPool(metaPar.getThreadCount());
@@ -1323,7 +1317,7 @@ public class MetaPilotMagSageTask extends MagHapPFindTask {
 
 		MagFuncSearcher searcher = null;
 		try {
-			searcher = new MagFuncSearcher(metaPar.getMicroDb(), msv.getFuncDef());
+			searcher = new MagFuncSearcher(metaPar.getMicroDb(), mrp.getToolPath(ToolType.FUNCDB));
 
 		} catch (NumberFormatException | SQLException | IOException e) {
 			// TODO Auto-generated catch block
@@ -1594,7 +1588,7 @@ public class MetaPilotMagSageTask extends MagHapPFindTask {
 
 		setProgress(95);
 
-		bar2.setString(getTaskName() + ": exporting report");
+		progressBar.setString(getTaskName() + ": exporting report");
 
 		LOGGER.info(getTaskName() + ": exporting report started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting report started");

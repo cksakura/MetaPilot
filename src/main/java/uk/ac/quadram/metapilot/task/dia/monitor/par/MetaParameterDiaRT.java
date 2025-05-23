@@ -3,7 +3,7 @@ package uk.ac.quadram.metapilot.task.dia.monitor.par;
 import java.io.File;
 
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
-import uk.ac.quadram.metapilot.task.par.MetaParameter;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 
 public class MetaParameterDiaRT extends MetaParameterDia {
 	
@@ -14,7 +14,7 @@ public class MetaParameterDiaRT extends MetaParameterDia {
 	private File monitorFolder;
 	private File resultFolder;
 
-	public MetaParameterDiaRT(MetaParameter metaPar, String magDb, String magDbVersion, boolean librarySearch,
+	public MetaParameterDiaRT(MetaBaseParameter metaPar, String magDb, String magDbVersion, boolean librarySearch,
 			boolean selfModelSearch, String[] library, boolean useModel, String[] models) {
 		super(metaPar, magDb, magDbVersion, librarySearch, selfModelSearch, library, useModel, models);
 		// TODO Auto-generated constructor stub

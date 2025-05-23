@@ -11,7 +11,7 @@ import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.par.MetaData;
-import uk.ac.quadram.metapilot.task.par.MetaParameter;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.par.MetaPep2TaxaPar;
 import uk.ac.quadram.metapilot.task.par.MetaSsdbCreatePar;
 
@@ -21,7 +21,7 @@ import uk.ac.quadram.metapilot.task.par.MetaSsdbCreatePar;
  * @author Kai Cheng
  *
  */
-public class MetaParameterMQ extends MetaParameter {
+public class MetaParameterMQ extends MetaBaseParameter {
 
 	private MaxquantModification[] fixMods;
 	private MaxquantModification[] variMods;
@@ -66,7 +66,7 @@ public class MetaParameterMQ extends MetaParameter {
 		this.ptp = MetaPep2TaxaPar.getDefault();
 	}
 
-	public MetaParameterMQ(MetaParameter metaPar) {
+	public MetaParameterMQ(MetaBaseParameter metaPar) {
 
 		super(metaPar.getWorkflowType().name(), metaPar.getMetadata().getNoMetaInfo(), metaPar.getResult(),
 				metaPar.getMicroDb(), metaPar.isAppendHostDb(), metaPar.getHostDB(), metaPar.getMs2ScanMode(),
@@ -88,7 +88,7 @@ public class MetaParameterMQ extends MetaParameter {
 		this.ptp = MetaPep2TaxaPar.getDefault();
 	}
 
-	public MetaParameterMQ(MetaParameter metaPar, MaxquantModification[] fixMods, MaxquantModification[] variMods,
+	public MetaParameterMQ(MetaBaseParameter metaPar, MaxquantModification[] fixMods, MaxquantModification[] variMods,
 			Enzyme enzyme, int missCleavages, int digestMode, String quanMode, MaxquantModification[][] labels,
 			MaxquantModification[] isobaric, IsobaricTag isobaricTag, boolean combineLabel, double[][] isoCorFactor,
 			boolean openSearch, MetaMaxQuantPar csp, MetaOpenPar osp, MetaPep2TaxaPar ptp) {

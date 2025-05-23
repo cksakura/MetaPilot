@@ -14,7 +14,7 @@ import javax.swing.JTextField;
 import javax.swing.filechooser.FileFilter;
 import javax.swing.filechooser.FileNameExtensionFilter;
 
-import uk.ac.quadram.metapilot.task.par.MetaParameter;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import net.miginfocom.swing.MigLayout;
 import java.awt.Color;
 import java.awt.Component;
@@ -50,7 +50,7 @@ public class MetaPilotDBPanel extends JPanel {
 	/**
 	 * Create the panel.
 	 */
-	public MetaPilotDBPanel(MetaParameter par) {
+	public MetaPilotDBPanel(MetaBaseParameter par) {
 		setBackground(new Color(255, 208, 199));
 		setLayout(new MigLayout("", "[120][20][590:1390:1710,grow][20][50]", "[30][30][30]"));
 

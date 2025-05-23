@@ -12,8 +12,8 @@ import javax.swing.border.TitledBorder;
 import javax.swing.table.TableModel;
 
 import uk.ac.quadram.metapilot.core.taxonomy.TaxonomyRanks;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
-import uk.ac.quadram.metapilot.task.dia.par.MetaSourcesDia;
 import net.miginfocom.swing.MigLayout;
 
 public class MetaTaxaSelectPanel extends JPanel {
@@ -29,7 +29,7 @@ public class MetaTaxaSelectPanel extends JPanel {
 	/**
 	 * Create the panel.
 	 */
-	public MetaTaxaSelectPanel(MetaParameterDia metaPar, MetaSourcesDia msd) {
+	public MetaTaxaSelectPanel(MetaParameterDia metaPar, MetaResourceParameters mrp) {
 		setBorder(new TitledBorder(
 				new EtchedBorder(EtchedBorder.LOWERED, new Color(255, 255, 255), new Color(160, 160, 160)), "Taxa",
 				TitledBorder.LEADING, TitledBorder.TOP, null, new Color(0, 0, 0)));

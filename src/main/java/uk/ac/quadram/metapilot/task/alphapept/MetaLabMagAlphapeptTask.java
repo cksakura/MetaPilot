@@ -27,6 +27,8 @@ import uk.ac.quadram.metapilot.dbSearch.alphapept.AlphapeptPeptide;
 import uk.ac.quadram.metapilot.dbSearch.alphapept.AlphapeptProReader;
 import uk.ac.quadram.metapilot.dbSearch.alphapept.AlphapeptTask;
 import uk.ac.quadram.metapilot.dbSearch.alphapept.AlphapeptWorkflow;
+import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.MetaReportTask;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
@@ -45,14 +47,14 @@ public class MetaLabMagAlphapeptTask extends MagHapPFindTask {
 	private static final Logger LOGGER = LogManager.getLogger(MetaLabMagAlphapeptTask.class);
 	private static final String taskName = "Alphapept workflow";
 
-	public MetaLabMagAlphapeptTask(MetaParameterMag metaPar, MetaSourcesMag msv, JProgressBar bar1, JProgressBar bar2,
-			SwingWorker<Boolean, Object> nextWork) {
-		super(metaPar, msv, bar1, bar2, nextWork);
+	public MetaLabMagAlphapeptTask(MetaParameterMag metaPar, MetaResourceParameters mrp, JavaFXProgressBar bar1,
+			JavaFXProgressBar bar2) {
+		super(metaPar, mrp, bar1, bar2);
 		// TODO Auto-generated constructor stub
 	}
 
 	protected void initial() {
-		this.alphapept = ((MetaSourcesMag) msv).getAlphapept();
+//		this.alphapept = ((MetaSourcesMag) msv).getAlphapept();
 		this.threadCount = metaPar.getThreadCount();
 		this.alphaPeptTask = new AlphapeptTask(this.alphapept);
 

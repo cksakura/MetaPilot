@@ -29,10 +29,14 @@ import org.apache.logging.log4j.Logger;
 
 import com.sun.management.OperatingSystemMXBean;
 
-import uk.ac.quadram.metapilot.task.MetaLabTask;
+import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
+import uk.ac.quadram.metapilot.task.MetaAbstractTask;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 
-public class DeepDetectTask extends MetaLabTask {
+public class DeepDetectTask extends MetaAbstractTask {
 
 	private static String taskName = "DeepDetect task";
 	private static final Logger LOGGER = LogManager.getLogger(DeepDetectTask.class);
@@ -47,16 +51,12 @@ public class DeepDetectTask extends MetaLabTask {
 	private ExecutorService executor;
 	private int threads;
 	private JTextField timeLeft;
-	
+
 	private MagDbItem magdb;
 
-	public DeepDetectTask(String deepDetect) {
-		this(new File(deepDetect));
-	}
-
-	public DeepDetectTask(File deepDetectFile) {
-		super(new JProgressBar(), deepDetectFile.getParentFile());
-		this.deepDetectFile = deepDetectFile;
+	public DeepDetectTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar) {
+		super(metaPar, mrp, progressBar, null);
+		this.deepDetectFile = new File(mrp.getToolPath(ToolType.DEEPDETECT));
 		String path = deepDetectFile.getAbsolutePath();
 		int id = path.indexOf(":");
 		if (id < 0) {
@@ -70,90 +70,39 @@ public class DeepDetectTask extends MetaLabTask {
 		this.batFileList = new ArrayList<File>();
 	}
 
-	public DeepDetectTask(File deepDetectFile, HashSet<String> genomeSet) {
-		super(new JProgressBar(), deepDetectFile.getParentFile());
-		this.deepDetectFile = deepDetectFile;
-		String path = deepDetectFile.getAbsolutePath();
-		int id = path.indexOf(":");
-		if (id < 0) {
-			Exception e = new IOException(
-					"The absolute path of the DeepDetect executable file (DeepDetect.exe) was not found.");
-			LOGGER.error(taskName + ": can't find DeepDetect.exe", e);
-			System.out.println(format.format(new Date()) + "\t" + taskName + ": can't find DeepDetect.exe");
-		} else {
-			drive = path.substring(0, id);
-		}
-		this.batFileList = new ArrayList<File>();
+	public DeepDetectTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
+			HashSet<String> genomeSet) {
+		this(metaPar, mrp, progressBar);
 		this.genomeSet = genomeSet;
 	}
 
-	public DeepDetectTask(File deepDetectFile, DeepDetectParameter par, MagDbItem magdb, int threads,
-			JProgressBar bar, JTextField timeLeft) {
-		super(bar, magdb.getCurrentFile());
-		this.deepDetectFile = deepDetectFile;
-		String path = deepDetectFile.getAbsolutePath();
-		int id = path.indexOf(":");
-		if (id < 0) {
-			Exception e = new IOException(
-					"The absolute path of the DeepDetect executable file (DeepDetect.exe) was not found.");
-			LOGGER.error(taskName + ": can't find DeepDetect.exe", e);
-			System.out.println(format.format(new Date()) + "\t" + taskName + ": can't find DeepDetect.exe");
-		} else {
-			drive = path.substring(0, id);
-		}
-		this.batFileList = new ArrayList<File>();
-
+	public DeepDetectTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
+			DeepDetectParameter par, MagDbItem magdb, int threads, JTextField timeLeft) {
+		this(metaPar, mrp, progressBar);
 		this.par = par;
 		this.magdb = magdb;
 		this.threads = threads;
 		this.executor = Executors.newFixedThreadPool(threads);
 		this.timeLeft = timeLeft;
 	}
-	
-	public DeepDetectTask(File deepDetectFile, DeepDetectParameter par, MagDbItem magdb,
-			JProgressBar bar, JTextField timeLeft) {
-		super(bar, magdb.getCurrentFile());
-		this.deepDetectFile = deepDetectFile;
-		String path = deepDetectFile.getAbsolutePath();
-		int id = path.indexOf(":");
-		if (id < 0) {
-			Exception e = new IOException(
-					"The absolute path of the DeepDetect executable file (DeepDetect.exe) was not found.");
-			LOGGER.error(taskName + ": can't find DeepDetect.exe", e);
-			System.out.println(format.format(new Date()) + "\t" + taskName + ": can't find DeepDetect.exe");
-		} else {
-			drive = path.substring(0, id);
-		}
-		this.batFileList = new ArrayList<File>();
 
+	public DeepDetectTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
+			DeepDetectParameter par, MagDbItem magdb, JProgressBar bar, JTextField timeLeft) {
+		this(metaPar, mrp, progressBar);
 		this.par = par;
 		this.magdb = magdb;
 
 		long totalMemorySize = ((OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean())
 				.getTotalMemorySize() / 1024 / 1024 / 1024;
-
 		this.threads = (int) (totalMemorySize / 16);
 		this.executor = Executors.newFixedThreadPool(threads);
 		this.timeLeft = timeLeft;
 	}
 
-	public DeepDetectTask(File deepDetectFile, DeepDetectParameter par, MagDbItem magdb, int threads,
-			JProgressBar bar, JTextField timeLeft, HashSet<String> genomeSet) {
-		super(bar, magdb.getCurrentFile());
-
-		this.deepDetectFile = deepDetectFile;
-		String path = deepDetectFile.getAbsolutePath();
-		int id = path.indexOf(":");
-		if (id < 0) {
-			Exception e = new IOException(
-					"The absolute path of the DeepDetect executable file (DeepDetect.exe) was not found.");
-			LOGGER.error(taskName + ": can't find DeepDetect.exe", e);
-			System.out.println(format.format(new Date()) + "\t" + taskName + ": can't find DeepDetect.exe");
-		} else {
-			drive = path.substring(0, id);
-		}
-		this.batFileList = new ArrayList<File>();
-
+	public DeepDetectTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
+			DeepDetectParameter par, MagDbItem magdb, int threads, JProgressBar bar, JTextField timeLeft,
+			HashSet<String> genomeSet) {
+		this(metaPar, mrp, progressBar);
 		this.par = par;
 		this.magdb = magdb;
 		this.threads = threads;
@@ -162,10 +111,16 @@ public class DeepDetectTask extends MetaLabTask {
 		this.genomeSet = genomeSet;
 	}
 
+	@Override
+	protected void initial() {
+		// TODO Auto-generated method stub
+
+	}
+
 	/**
 	 * Predict all the genomes in a MAG database
 	 */
-	protected Boolean doInBackground() throws Exception {
+	protected Boolean call() throws Exception {
 		// TODO Auto-generated method stub
 
 		SwingUtilities.invokeLater(new Runnable() {
@@ -218,7 +173,7 @@ public class DeepDetectTask extends MetaLabTask {
 		int totalGenomeCount = magdb.getSpeciesCount();
 
 		AtomicInteger completedTasks = new AtomicInteger(magdb.getSpeciesCount() - batFileList.size());
-		
+
 		LOGGER.info(taskName + ": " + batFileList.size() + " files will be processed");
 		System.out.println(format.format(new Date()) + "\t" + batFileList.size() + " files will be processed");
 
@@ -262,8 +217,8 @@ public class DeepDetectTask extends MetaLabTask {
 						double progress = (double) completed / (double) totalGenomeCount;
 						int value = (int) (progress * 100);
 						// update the value of the progress bar
-						bar1.setValue(value);
-						bar1.setString(completed + "/" + totalGenomeCount);
+						progressBar.setValue(value);
+						progressBar.setString(completed + "/" + totalGenomeCount);
 
 						long end = System.currentTimeMillis();
 						int runOneTask = (int) ((end - start) / 60000);
@@ -307,7 +262,7 @@ public class DeepDetectTask extends MetaLabTask {
 					FileUtils.deleteQuietly(files[i]);
 				}
 			}
-			
+
 			batFileList = new ArrayList<File>();
 
 			for (int i = 0; i < files.length; i++) {
@@ -425,8 +380,8 @@ public class DeepDetectTask extends MetaLabTask {
 									double progress = (double) completed / (double) totalGenomeCount;
 									int value = (int) (progress * 100);
 									// update the value of the progress bar
-									bar1.setValue(value);
-									bar1.setString(completed + "/" + totalGenomeCount);
+									progressBar.setValue(value);
+									progressBar.setString(completed + "/" + totalGenomeCount);
 
 									long end = System.currentTimeMillis();
 									int runOneTask = (int) ((end - start) / 60000);
@@ -466,8 +421,8 @@ public class DeepDetectTask extends MetaLabTask {
 				}
 			}
 
-			bar1.setValue(100);
-			bar1.setString(totalGenomeCount + "/" + totalGenomeCount);
+			progressBar.setValue(100);
+			progressBar.setString(totalGenomeCount + "/" + totalGenomeCount);
 
 			timeLeft.setText("Task finished");
 
@@ -512,8 +467,6 @@ public class DeepDetectTask extends MetaLabTask {
 	public void forceStop() {
 		if (executor != null) {
 			this.executor.shutdown();
-			this.cancel(true);
-
 			Runtime run = Runtime.getRuntime();
 			try {
 				Process p = run.exec(new String[] { "taskkill", "/F", "/IM", "DeepDetect.exe" });
@@ -629,5 +582,17 @@ public class DeepDetectTask extends MetaLabTask {
 			LOGGER.error(taskName + ": failed", e);
 			System.out.println(format.format(new Date()) + "\t" + taskName + ": failed");
 		}
+	}
+
+	@Override
+	protected String getTaskName() {
+		// TODO Auto-generated method stub
+		return taskName;
+	}
+
+	@Override
+	protected Logger getLogger() {
+		// TODO Auto-generated method stub
+		return LOGGER;
 	}
 }

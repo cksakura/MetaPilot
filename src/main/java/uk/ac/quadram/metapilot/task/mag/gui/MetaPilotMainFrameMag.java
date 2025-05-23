@@ -22,6 +22,7 @@ import javax.swing.filechooser.FileFilter;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import uk.ac.quadram.metapilot.resources.MetaResourceIO;
 import uk.ac.quadram.metapilot.task.MetaLabWorkflowType;
 import uk.ac.quadram.metapilot.task.hgm.gui.MetaPilotMainFrameHGM;
 import uk.ac.quadram.metapilot.task.mag.MagDbConfigIO;
@@ -30,11 +31,11 @@ import uk.ac.quadram.metapilot.task.mag.par.MetaParaIOMag;
 import uk.ac.quadram.metapilot.task.mag.par.MetaParameterMag;
 import uk.ac.quadram.metapilot.task.mag.par.MetaSourcesIoMag;
 import uk.ac.quadram.metapilot.task.mag.par.MetaSourcesMag;
-import uk.ac.quadram.metapilot.task.par.MetaParameter;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.pfind.gui.MetaPilotLicenseFrame;
 import uk.ac.quadram.metapilot.task.v2.gui.MetaLabSourcePathDialog;
 import net.miginfocom.swing.MigLayout;
-import uk.ac.quadram.metapilot.task.MetaLabTask;
+import uk.ac.quadram.metapilot.task.MetaPilotTask;
 
 public class MetaPilotMainFrameMag extends MetaPilotMainFrameHGM {
 
@@ -83,17 +84,17 @@ public class MetaPilotMainFrameMag extends MetaPilotMainFrameHGM {
 
 	protected void initial() throws IOException, URISyntaxException {
 
-		File parameter = new File(MetaLabTask.getApplicationBaseDirectory(), "parameter" + MetaParaIOMag.versionFile);
+		File parameter = new File(MetaPilotTask.getApplicationBaseDirectory(), "parameter" + MetaParaIOMag.versionFile);
 
-		File resources = new File(MetaLabTask.getApplicationBaseDirectory(), "resources" + MetaParaIOMag.versionFile);
+		File resources = new File(MetaPilotTask.getApplicationBaseDirectory(), "resources" + MetaParaIOMag.versionFile);
 
-		File dbpar = new File(MetaLabTask.getApplicationBaseDirectory(), "dbpar" + MetaParaIOMag.versionFile);
+		File dbpar = new File(MetaPilotTask.getApplicationBaseDirectory(), "dbpar" + MetaParaIOMag.versionFile);
 		
 		MetaSourcesMag msv2;
 		if (resources.exists()) {
 			msv2 = MetaSourcesIoMag.parse(resources);
 		} else {
-			File oldResources = new File(MetaLabTask.getApplicationBaseDirectory(), "resources" + MetaParaIOMag.oldVersionFiles[0]);
+			File oldResources = new File(MetaPilotTask.getApplicationBaseDirectory(), "resources" + MetaParaIOMag.oldVersionFiles[0]);
 
 			if (oldResources.exists()) {
 				msv2 = MetaSourcesIoMag.parse(oldResources);
@@ -104,7 +105,7 @@ public class MetaPilotMainFrameMag extends MetaPilotMainFrameHGM {
 			}
 		}
 
-		MetaParameter parV3 = MetaParaIOMag.parse(parameter);
+		MetaBaseParameter parV3 = MetaParaIOMag.parse(parameter);
 
 		MagDbItem[][] magDbItems = MagDbConfigIO.parse(dbpar);
 
@@ -114,7 +115,7 @@ public class MetaPilotMainFrameMag extends MetaPilotMainFrameHGM {
 
 		LOGGER.info("Initial the content panel...");
 		
-		this.contentPane = new MetaPilotMainPanelMag(parV3, msv2);
+		this.contentPane = new MetaPilotMainPanelMag(parV3, (new MetaResourceIO()).loadParameters());
 
 		getContentPane().add(contentPane, "cell 0 0,grow");
 
@@ -159,7 +160,7 @@ public class MetaPilotMainFrameMag extends MetaPilotMainFrameHGM {
 				if (loadPar.getWorkflowType() == MetaLabWorkflowType.pFindMAG) {
 
 					MetaPilotMainFrameMag.this.getContentPane().remove(this.contentPane);
-					contentPane = new MetaPilotMainPanelMag(loadPar, msv2);
+					contentPane = new MetaPilotMainPanelMag(loadPar, (new MetaResourceIO()).loadParameters());
 					MetaPilotMainFrameMag.this.getContentPane().add(contentPane, "cell 0 0,grow");
 					MetaPilotMainFrameMag.this.validate();
 
@@ -191,7 +192,7 @@ public class MetaPilotMainFrameMag extends MetaPilotMainFrameHGM {
 				}
 
 				((MetaPilotMainPanelMag) contentPane).updateParameter();
-				MetaParameter par = ((MetaPilotMainPanelMag) contentPane).getParameter();
+				MetaBaseParameter par = ((MetaPilotMainPanelMag) contentPane).getParameter();
 
 				MetaParaIOMag.export((MetaParameterMag) par, fileToSave);
 			}
@@ -260,7 +261,7 @@ public class MetaPilotMainFrameMag extends MetaPilotMainFrameHGM {
 			public void windowClosing(WindowEvent e) {
 
 				((MetaPilotMainPanelMag) contentPane).updateParameter();
-				MetaParameter par = ((MetaPilotMainPanelMag) contentPane).getParameter();
+				MetaBaseParameter par = ((MetaPilotMainPanelMag) contentPane).getParameter();
 
 				MetaParaIOMag.export((MetaParameterMag) par, parameter);
 
