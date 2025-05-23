@@ -8,7 +8,7 @@ import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantModification;
 import uk.ac.quadram.metapilot.task.MetaLabWorkflowType;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.par.MetaData;
-import uk.ac.quadram.metapilot.task.par.MetaParameter;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.par.MetaPep2TaxaPar;
 import uk.ac.quadram.metapilot.task.par.MetaSsdbCreatePar;
 import uk.ac.quadram.metapilot.task.v2.par.MetaOpenPar;
@@ -17,7 +17,7 @@ import uk.ac.quadram.metapilot.task.v2.par.MetaOpenPar;
  * @author Kai Cheng
  *
  */
-public class MetaParameterPFind extends MetaParameter {
+public class MetaParameterPFind extends MetaBaseParameter {
 
 	private String[] fixMods;
 	private String[] variMods;
@@ -54,7 +54,7 @@ public class MetaParameterPFind extends MetaParameter {
 		this.ptp = MetaPep2TaxaPar.getDefault();
 	}
 
-	public MetaParameterPFind(MetaParameter metaPar) {
+	public MetaParameterPFind(MetaBaseParameter metaPar) {
 
 		super(metaPar.getWorkflowType().name(), metaPar.getMetadata().getNoMetaInfo(), metaPar.getResult(),
 				metaPar.getMicroDb(), metaPar.isAppendHostDb(), metaPar.getHostDB(), metaPar.getMs2ScanMode(),
@@ -90,7 +90,7 @@ public class MetaParameterPFind extends MetaParameter {
 	 * @param combineLabel
 	 * @param isoCorFactor
 	 */
-	public MetaParameterPFind(MetaParameter metaPar, String[] fixMods, String[] variMods, String enzyme,
+	public MetaParameterPFind(MetaBaseParameter metaPar, String[] fixMods, String[] variMods, String enzyme,
 			int missCleavages, int digestMode, String quanMode, MaxquantModification[] isobaric,
 			IsobaricTag isobaricTag, boolean combineLabel, double[][] isoCorFactor) {
 
@@ -110,7 +110,7 @@ public class MetaParameterPFind extends MetaParameter {
 		this.isoCorFactor = isoCorFactor;
 	}
 
-	public MetaParameterPFind(MetaParameter metaPar, String[] fixMods, String[] variMods, String enzyme,
+	public MetaParameterPFind(MetaBaseParameter metaPar, String[] fixMods, String[] variMods, String enzyme,
 			int missCleavages, int digestMode, boolean openSearch, MetaSsdbCreatePar mscp, MetaOpenPar osp,
 			MetaPep2TaxaPar ptp) {
 
@@ -132,7 +132,7 @@ public class MetaParameterPFind extends MetaParameter {
 		this.ptp = ptp;
 	}
 
-	public MetaParameterPFind(MetaParameter metaPar, String[] fixMods, String[] variMods, String enzyme,
+	public MetaParameterPFind(MetaBaseParameter metaPar, String[] fixMods, String[] variMods, String enzyme,
 			int missCleavages, int digestMode, String quanMode, MaxquantModification[] isobaric,
 			IsobaricTag isobaricTag, boolean combineLabel, double[][] isoCorFactor, boolean openSearch, MetaOpenPar osp,
 			MetaPep2TaxaPar ptp) {

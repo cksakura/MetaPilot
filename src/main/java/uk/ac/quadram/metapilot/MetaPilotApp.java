@@ -7,6 +7,11 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
+import javafx.scene.control.Alert;
+import javafx.scene.control.Menu;
+import javafx.scene.control.MenuBar;
+import javafx.scene.control.MenuItem;
+import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.layout.*;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.FileChooser;
@@ -15,6 +20,7 @@ import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
+import javafx.scene.Node;
 import java.io.File;
 import java.io.IOException;
 import java.net.URISyntaxException;
@@ -48,6 +54,10 @@ import uk.ac.quadram.metapilot.resources.MetaResourceIO;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.ui.ResourceConfigPanel;
 import uk.ac.quadram.metapilot.workflows.ResourceConfigWorkflow;
+import uk.ac.quadram.metapilot.registration.RegistrationManager;
+import uk.ac.quadram.metapilot.registration.UserRegistration;
+import uk.ac.quadram.metapilot.ui.RegistrationDialog;
+import uk.ac.quadram.metapilot.update.UpdateChecker;
 
 public class MetaPilotApp extends Application {
     
@@ -57,8 +67,29 @@ public class MetaPilotApp extends Application {
     // The MAG database items
     private MagDbItem[][] magDbItems;
     
+    // Registration manager
+    private RegistrationManager registrationManager;
+    
+    // Update checker
+    private UpdateChecker updateChecker;
+    
+    // Registration email preference key
+    private static final String PREF_REGISTERED_EMAIL = "registeredEmail";
+    
+    // Flag to control whether registration is required
+    private static final boolean REGISTRATION_ENABLED = false; // Set to true when server is available
+    
     @Override
     public void start(Stage primaryStage) {
+        // Initialize registration manager (but don't enforce registration yet)
+        registrationManager = RegistrationManager.getInstance();
+        
+        // Initialize update checker
+        updateChecker = new UpdateChecker(getHostServices());
+        
+        // Only check for updates, don't enforce registration at startup
+        updateChecker.checkForUpdates(false);
+        
         // Initialize the resource parameters
         resourceIO = new MetaResourceIO();
         resourceParams = resourceIO.loadParameters();
@@ -84,11 +115,15 @@ public class MetaPilotApp extends Application {
         
         // Create the main layout
         BorderPane root = new BorderPane();
-        root.setPadding(new Insets(20));
+        root.setPadding(new Insets(5));
         
-        // Create a header with title and logo
-        HBox header = createHeader();
-        root.setTop(header);
+        // Add menu bar
+        MenuBar menuBar = createMenuBar(primaryStage);
+        
+        // Create a VBox to hold the menu bar and header
+        VBox topContainer = new VBox(5);
+        topContainer.getChildren().addAll(menuBar, createHeader());
+        root.setTop(topContainer);
         
         // Create the main content panel with tabs
         TabPane tabPane = new TabPane();
@@ -147,7 +182,7 @@ public class MetaPilotApp extends Application {
         primaryStage.setTitle("MetaPilot");
         primaryStage.setScene(scene);
         try {
-            primaryStage.getIcons().add(new Image(getClass().getResourceAsStream("/bmi/med/uOttawa/metalab/icon/METALAB_Icon_48.png")));
+            primaryStage.getIcons().add(new Image(getClass().getResourceAsStream("/MetaPilot.png")));
         } catch (Exception e) {
             System.err.println("Could not load icon: " + e.getMessage());
         }
@@ -235,7 +270,7 @@ public class MetaPilotApp extends Application {
         
         // Try to load and add the logo
         try {
-            ImageView logoView = new ImageView(new Image(getClass().getResourceAsStream("/bmi/med/uOttawa/metalab/icon/METALAB_Logo_Small.png")));
+            ImageView logoView = new ImageView(new Image(getClass().getResourceAsStream("/MetaPilot.png")));
             logoView.setFitHeight(80);
             logoView.setPreserveRatio(true);
             header.getChildren().add(logoView);
@@ -295,17 +330,52 @@ public class MetaPilotApp extends Application {
         panel.setText("DDA Workflows");
         panel.setCollapsible(false);
         
-        HBox workflowBox = new HBox(20);
+        VBox workflowBox = new VBox(20);
         workflowBox.setPadding(new Insets(15));
-        workflowBox.setAlignment(Pos.CENTER);
         
-        workflowBox.getChildren().addAll(
-            createWorkflowBox("DDA IGC", "Run DDA workflow for IGC database", 
-                e -> launchWorkflow(WorkflowType.DDA_IGC)),
-            createWorkflowBox("DDA MAG", "Run DDA workflow for MAG database", 
-                e -> launchWorkflow(WorkflowType.DDA_MAG))
+        // IGC Database Workflows
+        TitledPane igcPanel = new TitledPane();
+        igcPanel.setText("IGC Database");
+        igcPanel.setCollapsible(false);
+        
+        HBox igcWorkflows = new HBox(20);
+        igcWorkflows.setPadding(new Insets(10));
+        igcWorkflows.setAlignment(Pos.CENTER);
+        
+        igcWorkflows.getChildren().addAll(
+            createWorkflowBox("MaxQuant", "Run DDA workflow using MaxQuant", 
+                e -> launchWorkflow(WorkflowType.DDA_IGC_MAXQUANT)),
+            createWorkflowBox("pFind", "Run DDA workflow using pFind", 
+                e -> launchWorkflow(WorkflowType.DDA_IGC_PFIND)),
+            createWorkflowBox("FragPipe", "Run DDA workflow using FragPipe", 
+                e -> launchWorkflow(WorkflowType.DDA_IGC_FRAGPIPE)),
+            createWorkflowBox("Sage", "Run DDA workflow using Sage", 
+                e -> launchWorkflow(WorkflowType.DDA_IGC_SAGE))
         );
         
+        igcPanel.setContent(igcWorkflows);
+        
+        // MAG Database Workflows
+        TitledPane magPanel = new TitledPane();
+        magPanel.setText("MAG Database");
+        magPanel.setCollapsible(false);
+        
+        HBox magWorkflows = new HBox(20);
+        magWorkflows.setPadding(new Insets(10));
+        magWorkflows.setAlignment(Pos.CENTER);
+        
+        magWorkflows.getChildren().addAll(
+            createWorkflowBox("pFind", "Run DDA workflow using pFind", 
+                e -> launchWorkflow(WorkflowType.DDA_MAG_PFIND)),
+            createWorkflowBox("FragPipe", "Run DDA workflow using FragPipe", 
+                e -> launchWorkflow(WorkflowType.DDA_MAG_FRAGPIPE)),
+            createWorkflowBox("Sage", "Run DDA workflow using Sage", 
+                e -> launchWorkflow(WorkflowType.DDA_MAG_SAGE))
+        );
+        
+        magPanel.setContent(magWorkflows);
+        
+        workflowBox.getChildren().addAll(igcPanel, magPanel);
         panel.setContent(workflowBox);
         
         return panel;
@@ -321,11 +391,11 @@ public class MetaPilotApp extends Application {
         workflowBox.setAlignment(Pos.CENTER);
         
         workflowBox.getChildren().addAll(
-            createWorkflowBox("DIA Normal", "Run DIA workflow in normal mode", 
+            createWorkflowBox("Normal", "Run DIA workflow in normal mode", 
                 e -> launchWorkflow(WorkflowType.DIA_NORMAL)),
-            createWorkflowBox("DIA Target", "Run DIA workflow in target mode", 
+            createWorkflowBox("Target", "Run DIA workflow in target mode", 
                 e -> launchWorkflow(WorkflowType.DIA_TARGET)),
-            createWorkflowBox("DIA Real-time", "Run DIA workflow in real-time mode", 
+            createWorkflowBox("Real-time", "Run DIA workflow in real-time mode", 
                 e -> launchWorkflow(WorkflowType.DIA_REALTIME))
         );
         
@@ -358,32 +428,64 @@ public class MetaPilotApp extends Application {
     }
     
     private enum WorkflowType {
-        DDA_IGC, DDA_MAG, DIA_NORMAL, DIA_TARGET, DIA_REALTIME
+        // DDA IGC Workflows
+        DDA_IGC_MAXQUANT,
+        DDA_IGC_PFIND,
+        DDA_IGC_FRAGPIPE,
+        DDA_IGC_SAGE,
+        
+        // DDA MAG Workflows
+        DDA_MAG_PFIND,
+        DDA_MAG_FRAGPIPE,
+        DDA_MAG_SAGE,
+        
+        // DIA Workflows
+        DIA_NORMAL,
+        DIA_TARGET,
+        DIA_REALTIME
     }
     
     private boolean checkRequiredResources(WorkflowType type) {
         switch (type) {
-            case DDA_IGC:
-                return resourceParams.isToolAvailable(ToolType.PFIND) && 
-                       resourceParams.isToolAvailable(ToolType.DBREDUCER);
-                       
-            case DDA_MAG:
-                return resourceParams.isToolAvailable(ToolType.MAXQUANT) && 
-                       resourceParams.isToolAvailable(ToolType.DBREDUCER);
-                       
+            // DDA IGC Workflows
+            case DDA_IGC_MAXQUANT:
+                return resourceParams.isToolAvailable(ToolType.MAXQUANT);
+            case DDA_IGC_PFIND:
+                return resourceParams.isToolAvailable(ToolType.PFIND);
+            case DDA_IGC_FRAGPIPE:
+                return resourceParams.isToolAvailable(ToolType.FRAGPIPE);
+            case DDA_IGC_SAGE:
+                return resourceParams.isToolAvailable(ToolType.SAGE);
+            
+            // DDA MAG Workflows
+            case DDA_MAG_PFIND:
+                return resourceParams.isToolAvailable(ToolType.PFIND);
+            case DDA_MAG_FRAGPIPE:
+                return resourceParams.isToolAvailable(ToolType.FRAGPIPE);
+            case DDA_MAG_SAGE:
+                return resourceParams.isToolAvailable(ToolType.SAGE);
+            
+            // DIA Workflows
             case DIA_NORMAL:
             case DIA_TARGET:
             case DIA_REALTIME:
-                return resourceParams.isToolAvailable(ToolType.FRAGPIPE) && 
-                       resourceParams.isToolAvailable(ToolType.DIANN);
-                
+                return resourceParams.isToolAvailable(ToolType.DIANN);
+            
             default:
                 return false;
         }
     }
     
     private void launchWorkflow(WorkflowType type) {
-        // First check if all required resources are available
+        // First check if registration is required and enabled
+        if (REGISTRATION_ENABLED && !checkRegistration()) {
+            showWarning("Registration Required", 
+                      "Registration is required to use this workflow. " +
+                      "Please register the application first.");
+            return;
+        }
+        
+        // Then check if all required resources are available
         if (!checkRequiredResources(type)) {
             showWarning("Missing Resources", 
                       "Some required resources are missing for this workflow. " +
@@ -393,16 +495,48 @@ public class MetaPilotApp extends Application {
         
         try {
             switch (type) {
-                case DDA_IGC:
+                case DDA_IGC_MAXQUANT:
                     // Launch the pFind main frame
                     MetaPilotPFindMainFrame pFindFrame = new MetaPilotPFindMainFrame();
                     pFindFrame.setVisible(true);
                     break;
                     
-                case DDA_MAG:
+                case DDA_IGC_PFIND:
+                    // Launch the pFind main frame
+                    pFindFrame = new MetaPilotPFindMainFrame();
+                    pFindFrame.setVisible(true);
+                    break;
+                    
+                case DDA_IGC_FRAGPIPE:
+                    // Launch the pFind main frame
+                    pFindFrame = new MetaPilotPFindMainFrame();
+                    pFindFrame.setVisible(true);
+                    break;
+                    
+                case DDA_IGC_SAGE:
+                    // Launch the pFind main frame
+                    pFindFrame = new MetaPilotPFindMainFrame();
+                    pFindFrame.setVisible(true);
+                    break;
+                    
+                case DDA_MAG_PFIND:
                     // Launch the MAG main frame
                     // Note: Using default constructor if parameters are not supported
                     MetaPilotMainFrameMag magFrame = new MetaPilotMainFrameMag();
+                    magFrame.setVisible(true);
+                    break;
+                    
+                case DDA_MAG_FRAGPIPE:
+                    // Launch the MAG main frame
+                    // Note: Using default constructor if parameters are not supported
+                    magFrame = new MetaPilotMainFrameMag();
+                    magFrame.setVisible(true);
+                    break;
+                    
+                case DDA_MAG_SAGE:
+                    // Launch the MAG main frame
+                    // Note: Using default constructor if parameters are not supported
+                    magFrame = new MetaPilotMainFrameMag();
                     magFrame.setVisible(true);
                     break;
                     
@@ -447,6 +581,125 @@ public class MetaPilotApp extends Application {
         alert.setHeaderText(null);
         alert.setContentText(content + "\n\nError: " + ex.getMessage());
         alert.showAndWait();
+    }
+    
+    /**
+     * Add a menu to the app
+     */
+    private MenuBar createMenuBar(Stage primaryStage) {
+        MenuBar menuBar = new MenuBar();
+        
+        // File menu
+        Menu fileMenu = new Menu("File");
+        MenuItem exitItem = new MenuItem("Exit");
+        exitItem.setOnAction(e -> Platform.exit());
+        fileMenu.getItems().add(exitItem);
+        
+        // Tools menu
+        Menu toolsMenu = new Menu("Tools");
+        MenuItem resourcesItem = new MenuItem("Configure Resources...");
+        resourcesItem.setOnAction(e -> {
+            Scene scene = primaryStage.getScene();
+            TabPane tabPane = (TabPane)((BorderPane)scene.getRoot()).getCenter();
+            Tab resourcesTab = tabPane.getTabs().get(1);
+            tabPane.getSelectionModel().select(resourcesTab);
+        });
+        
+        MenuItem databaseItem = new MenuItem("Configure Database...");
+        databaseItem.setOnAction(e -> {
+            Scene scene = primaryStage.getScene();
+            TabPane tabPane = (TabPane)((BorderPane)scene.getRoot()).getCenter();
+            Tab databaseTab = tabPane.getTabs().get(2);
+            tabPane.getSelectionModel().select(databaseTab);
+        });
+        
+        toolsMenu.getItems().addAll(resourcesItem, databaseItem);
+        
+        // Help menu
+        Menu helpMenu = new Menu("Help");
+        MenuItem checkUpdateItem = new MenuItem("Check for Updates...");
+        checkUpdateItem.setOnAction(e -> updateChecker.checkForUpdates(true));
+        
+        MenuItem aboutItem = new MenuItem("About");
+        aboutItem.setOnAction(e -> showAboutDialog());
+        
+        helpMenu.getItems().addAll(checkUpdateItem, new SeparatorMenuItem(), aboutItem);
+        
+        // Add all menus
+        menuBar.getMenus().addAll(fileMenu, toolsMenu, helpMenu);
+        
+        return menuBar;
+    }
+    
+    /**
+     * Show the about dialog
+     */
+    private void showAboutDialog() {
+        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+        alert.setTitle("About MetaPilot");
+        alert.setHeaderText("MetaPilot v" + UpdateChecker.getCurrentVersion());
+        alert.setContentText(
+            "Comprehensive Workflow Manager for Metaproteomics\n\n" +
+            "© 2024 Quadram Institute Bioscience\n" +
+            "All rights reserved.\n\n" +
+            "Registered to: " + Preferences.userRoot().node(getClass().getPackage().getName()).get(PREF_REGISTERED_EMAIL, "")
+        );
+        alert.showAndWait();
+    }
+    
+    /**
+     * Check if the user is registered
+     * @return true if registration is complete or successful
+     */
+    private boolean checkRegistration() {
+        // Get the preferences node
+        Preferences prefs = Preferences.userRoot().node(getClass().getPackage().getName());
+        
+        // Check if email is stored in preferences
+        String email = prefs.get(PREF_REGISTERED_EMAIL, null);
+        
+        // If email is found, check if it's activated
+        if (email != null && !email.isEmpty()) {
+            if (registrationManager.isRegisteredAndActivated(email)) {
+                // User is registered and activated
+                return true;
+            }
+        }
+        
+        // User is not registered or not activated, show registration dialog
+        RegistrationDialog dialog = new RegistrationDialog();
+        
+        // If we know the email, populate it
+        if (email != null && !email.isEmpty()) {
+            dialog.showExistingRegistration(email, "");
+        }
+        
+        // Show the dialog and wait for result
+        UserRegistration result = dialog.showAndWait().orElse(null);
+        
+        // If user completed registration
+        if (result != null) {
+            // Store email in preferences
+            prefs.put(PREF_REGISTERED_EMAIL, result.getEmail());
+            return true;
+        }
+        
+        // Registration was cancelled
+        return false;
+    }
+    
+    @Override
+    public void stop() {
+        try {
+            // Close registration database connection
+            if (registrationManager != null) {
+                registrationManager.close();
+            }
+            
+            // ... any other cleanup code ...
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
     
     public static void main(String[] args) {

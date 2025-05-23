@@ -19,8 +19,8 @@ import uk.ac.quadram.metapilot.task.MetaLabWorkflowType;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.par.MetaData;
-import uk.ac.quadram.metapilot.task.par.MetaParameter;
-import uk.ac.quadram.metapilot.task.par.MetaParameterIO;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
+import uk.ac.quadram.metapilot.task.par.MetaParameterIOHandler;
 
 public class MetaParaIoDia {
 
@@ -65,7 +65,7 @@ public class MetaParaIoDia {
 
 	public static MetaParameterDia parse(JSONObject obj) {
 
-		MetaParameter metaPar = MetaParameterIO.parseMain(obj);
+		MetaBaseParameter metaPar = MetaParameterIOHandler.parseMain(obj);
 
 		String magDbItem = obj.has("MagDb") ? obj.getString("MagDb") : "";
 		String magDbVersuib = obj.has("MagDbVersion") ? obj.getString("MagDbVersion") : "";

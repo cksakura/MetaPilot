@@ -45,7 +45,7 @@ import org.apache.logging.log4j.Logger;
 
 /**
  * Generate the reports thought submitting the result files to ocpu.
- * 
+ * @deprecated
  * @author Kai Cheng
  *
  */

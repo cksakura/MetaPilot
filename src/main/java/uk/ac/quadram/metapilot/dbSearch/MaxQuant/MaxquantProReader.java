@@ -16,7 +16,7 @@ import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
 import uk.ac.quadram.metapilot.task.io.pro.AbstractMetaProteinReader;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.par.MetaData;
-import uk.ac.quadram.metapilot.task.par.MetaParameter;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.v1.par.MetaParameterV1;
 import uk.ac.quadram.metapilot.task.v2.par.MetaParameterMQ;
 
@@ -339,7 +339,7 @@ public class MaxquantProReader extends AbstractMetaProteinReader {
 		ArrayList<String> intensityTitleList = new ArrayList<String>();
 
 		switch (quanResultType) {
-		case MetaParameter.quanResultCombine: {
+		case MetaBaseParameter.quanResultCombine: {
 
 			if (quanMode.equals(MetaConstants.isotopicLabel)) {
 				if (isotopeLabels[0].length > 0 && isotopeLabels[0][0] != null) {
@@ -361,7 +361,7 @@ public class MaxquantProReader extends AbstractMetaProteinReader {
 
 			break;
 		}
-		case MetaParameter.quanResultSeparate: {
+		case MetaBaseParameter.quanResultSeparate: {
 
 			if (quanMode.equals(MetaConstants.isotopicLabel)) {
 				if (isotopeLabels[0].length > 0 && isotopeLabels[0][0] != null) {
@@ -391,7 +391,7 @@ public class MaxquantProReader extends AbstractMetaProteinReader {
 
 			break;
 		}
-		case MetaParameter.quanResultAll: {
+		case MetaBaseParameter.quanResultAll: {
 
 			if (quanMode.equals(MetaConstants.isotopicLabel)) {
 				if (isotopeLabels[0].length > 0 && isotopeLabels[0][0] != null) {

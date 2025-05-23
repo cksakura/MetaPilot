@@ -37,6 +37,7 @@ import org.dom4j.DocumentException;
 
 import com.sun.management.OperatingSystemMXBean;
 
+import javafx.concurrent.Task;
 import uk.ac.quadram.metapilot.core.function.COGFinder;
 import uk.ac.quadram.metapilot.core.function.CategoryFinder;
 import uk.ac.quadram.metapilot.core.function.GOBPFinder;
@@ -60,11 +61,14 @@ import uk.ac.quadram.metapilot.dbSearch.pfind.PFindPeptide;
 import uk.ac.quadram.metapilot.dbSearch.pfind.PFindProtein;
 import uk.ac.quadram.metapilot.dbSearch.pfind.PFindResultReader;
 import uk.ac.quadram.metapilot.dbSearch.pfind.PFindResultReader.PeptideResult;
+import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
 import uk.ac.quadram.metapilot.dbSearch.pfind.PFindTask;
 import uk.ac.quadram.metapilot.mdb.pep.Pep2TaxaDatabase;
 import uk.ac.quadram.metapilot.mdb.unipept.UnipLCAResult;
 import uk.ac.quadram.metapilot.mdb.unipept.UnipeptRequester;
 import uk.ac.quadram.metapilot.quant.flashLFQ.FlashLfqTask;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.spectra.Spectrum;
 import uk.ac.quadram.metapilot.spectra.io.MSConvertor;
 import uk.ac.quadram.metapilot.spectra.io.MgfReader;
@@ -86,7 +90,7 @@ import uk.ac.quadram.metapilot.task.io.pro.pfind.MetaProteinXMLReader2;
 import uk.ac.quadram.metapilot.task.io.pro.pfind.MetaProteinXMLWriter2;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.par.MetaData;
-import uk.ac.quadram.metapilot.task.par.MetaParameter;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.par.MetaPep2TaxaPar;
 import uk.ac.quadram.metapilot.task.par.MetaSsdbCreatePar;
 import uk.ac.quadram.metapilot.task.pfind.par.MetaParameterPFind;
@@ -149,13 +153,15 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 
 	protected HashMap<String, String> expNameMap;
 	protected File final_pro_xml_file;
-
+	protected JavaFXProgressBar secondBar;
+	
 	private static final Logger LOGGER = LogManager.getLogger(MetaIdenPFindTask.class);
 	private static final String taskName = "pFind workflow";
 
-	public MetaIdenPFindTask(MetaParameterPFind metaPar, MetaSourcesV2 msv, JProgressBar bar1, JProgressBar bar2,
-			SwingWorker<Boolean, Object> nextWork) {
-		super(metaPar, msv, bar1, bar2, nextWork);
+	public MetaIdenPFindTask(MetaParameterPFind metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
+			JavaFXProgressBar secondBar) {
+		super(metaPar, mrp, progressBar);
+		this.secondBar = secondBar;
 	}
 
 	protected void initial() {
@@ -165,11 +171,11 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 		this.ms2Type = ((MetaParameterPFind) metaPar).getMs2ScanMode();
 		this.quanMode = ((MetaParameterPFind) metaPar).getQuanMode();
 
-		File pFindBin = (new File(((MetaSourcesV2) msv).getpFind())).getParentFile();
+		File pFindBin = (new File(mrp.getToolPath(ToolType.PFIND))).getParentFile();
 		this.pFindTask = new PFindTask(pFindBin, metaPar.getThreadCount());
 		this.ptmMap = pFindTask.getPtmMap();
 
-		this.dbReducerExe = new File(((MetaSourcesV2) msv).getDbReducer());
+		this.dbReducerExe = new File(mrp.getToolPath(ToolType.DBREDUCER));
 		if (dbReducerExe.exists() && ms2Type.equals(MetaConstants.HCD_FTMS)
 				&& ((MetaParameterPFind) metaPar).getQuanMode().equals(MetaConstants.labelFree)) {
 			useDBReducer = true;
@@ -243,15 +249,15 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 				+ " GB, the max number of tasks is set as " + maxTaskCount);
 	}
 
-	public MetaParameter getMetaParameter() {
+	public MetaBaseParameter getMetaParameter() {
 		return super.metaPar;
 	}
 
 	@Override
-	protected Boolean doInBackground() throws Exception {
+	protected Boolean call() throws Exception {
 		// TODO Auto-generated method stub
 
-		bar2.setString(getTaskName());
+		progressBar.setString(getTaskName());
 		setProgress(0);
 
 		LOGGER.info(getTaskName() + ": start");
@@ -521,7 +527,7 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 
 	protected String[] msconvert(String[] raws) throws NumberFormatException, IOException {
 
-		bar2.setString(getTaskName() + ": extracting spectra");
+		progressBar.setString(getTaskName() + ": extracting spectra");
 
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": extracting spectra started");
 		LOGGER.info(getTaskName() + ": extracting spectra started");
@@ -552,16 +558,7 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 
 		if (extractRawList.size() > 0) {
 
-			File msconvertFile;
-
-			if (((MetaSourcesV2) msv).findMSConvert()) {
-				msconvertFile = new File(((MetaSourcesV2) msv).getMsconvert());
-			} else {
-				File resourceFile = (new File(((MetaSourcesV2) msv).getMsconvert())).getParentFile().getParentFile();
-				File proteoWizardFile = new File(resourceFile, "ProteoWizard");
-				msconvertFile = new File(proteoWizardFile, "msconvert.exe");
-			}
-
+			File msconvertFile = new File(mrp.getToolPath(ToolType.MSCONVERT));
 			if (msconvertFile.exists()) {
 
 				ExecutorService es = Executors.newFixedThreadPool(metaPar.getThreadCount());
@@ -662,7 +659,7 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 
 	protected String[] extract(String[] raws) throws NumberFormatException, IOException {
 
-		bar2.setString(getTaskName() + ": extracting spectra");
+		progressBar.setString(getTaskName() + ": extracting spectra");
 
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": extracting spectra started");
 		LOGGER.info(getTaskName() + ": extracting spectra started");
@@ -930,38 +927,8 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 	protected boolean createSSDB() {
 		MetaSsdbCreatePar scp = metaPar.getMscp();
 		if (scp.isSsdb()) {
-			MetaDbCreatePFindTask task;
-			if (isMzML || isBrukD) {
-				task = new MetaDbCreatePFindTask((MetaParameterPFind) metaPar, (MetaSourcesV2) msv, bar1, bar2, null,
-						this.mgfs, true);
-			} else {
-				if (scp.isCluster()) {
-					task = new MetaDbCreatePFindTask((MetaParameterPFind) metaPar, (MetaSourcesV2) msv, bar1, bar2,
-							null, this.mgfs, true);
-				} else {
-					task = new MetaDbCreatePFindTask((MetaParameterPFind) metaPar, (MetaSourcesV2) msv, bar1, bar2,
-							null, this.pf2s, false);
-				}
-			}
 
-			task.execute();
-			boolean finish = false;
-			try {
-				finish = task.get();
-			} catch (InterruptedException | ExecutionException e) {
-				// TODO Auto-generated catch block
-				LOGGER.error(getTaskName() + ": error in sample-specific database generation", e);
-				System.err.println(format.format(new Date()) + "\t" + getTaskName()
-						+ ": error in sample-specific database generation");
-			}
-			if (!finish) {
-				LOGGER.error(getTaskName() + ": error in sample-specific database generation");
-				System.err.println(format.format(new Date()) + "\t" + getTaskName()
-						+ ": error in sample-specific database generation");
-				return false;
-			}
-
-			return finish;
+			return false;
 
 		} else {
 			return true;
@@ -970,7 +937,7 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 
 	protected boolean iden() {
 
-		bar2.setString(getTaskName() + ": peptide and protein identification");
+		progressBar.setString(getTaskName() + ": peptide and protein identification");
 
 		LOGGER.info(getTaskName() + ": peptide and protein identification started");
 		System.out.println(
@@ -1079,14 +1046,13 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 			return true;
 		}
 
-		bar2.setString(getTaskName() + ": peptide and protein quantification");
+		progressBar.setString(getTaskName() + ": peptide and protein quantification");
 
 		LOGGER.info(getTaskName() + ": peptide and protein label-free quantification started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName()
 				+ ": peptide and protein label-free quantification started");
 
-		String flashLFQ = ((MetaSourcesV2) msv).getFlashlfq();
-
+		String flashLFQ = mrp.getToolPath(ToolType.FLASHLFQ);
 		FlashLfqTask flashLfqTask = new FlashLfqTask(flashLFQ, metaPar.getThreadCount());
 
 		PFindLabelFreeTask pfindLFTask = new PFindLabelFreeTask(pFindResultReader, flashLfqTask, metadata,
@@ -1118,7 +1084,7 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 			return true;
 		}
 
-		bar2.setString(getTaskName() + ": peptide and protein quantification");
+		progressBar.setString(getTaskName() + ": peptide and protein quantification");
 
 		LOGGER.info(getTaskName() + ": peptide and protein isobaric quantification started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName()
@@ -1169,7 +1135,7 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 
 	protected boolean exportReport() {
 
-		bar2.setString(getTaskName() + ": exporting report");
+		progressBar.setString(getTaskName() + ": exporting report");
 
 		LOGGER.info(getTaskName() + ": exporting report started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting report started");
@@ -2095,173 +2061,12 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 		setProgress(88);
 
 		HashMap<String, ArrayList<PeptideResult>> baseSeqMap = this.pFindResultReader.getBasePeptideMap();
-		TaxonomyDatabase td = new TaxonomyDatabase(msv.getTaxonAll());
+		TaxonomyDatabase td = new TaxonomyDatabase(mrp.getToolPath(ToolType.FUNCDB));
 		HashSet<String> sequenceSet = new HashSet<String>();
 		sequenceSet.addAll(baseSeqMap.keySet());
 
 		if (mptp.isBuildIn() && executeBuiltin) {
 
-			String pep2tax = msv.getPep2tax();
-
-			if ((new File(pep2tax)).exists()) {
-
-				Pep2TaxaDatabase pep2taxDb = new Pep2TaxaDatabase(pep2tax, td);
-
-				TaxonomyRanks ignoreRank = mptp.getIgnoreBlankRank();
-				HashSet<String> exclude = mptp.getExcludeTaxa();
-				HashSet<RootType> rootSet = mptp.getUsedRootTypes();
-
-				HashMap<String, ArrayList<Taxon>> taxaMap = pep2taxDb.pept2TaxaList(sequenceSet);
-				HashMap<String, Integer> lcaIdMap = td.taxa2Lca(taxaMap, ignoreRank, rootSet, exclude);
-
-				String[] sequences = baseSeqMap.keySet().toArray(new String[baseSeqMap.size()]);
-				Arrays.sort(sequences);
-
-				File taxResultFile = new File(taxFile, MetaAlgorithm.Builtin.getName() + ".taxonomy.xml");
-
-				MetaPeptideXMLWriter writer = new MetaPeptideXMLWriter(taxResultFile, MetaConstants.pFind,
-						MetaConstants.labelFree, expNames);
-
-				for (int i = 0; i < sequences.length; i++) {
-
-					ArrayList<PeptideResult> list = baseSeqMap.get(sequences[i]);
-
-					String[] modseqs = new String[list.size()];
-					double[] scores = new double[list.size()];
-					int[] psmCounts = new int[list.size()];
-					double[][] intensities = new double[list.size()][];
-
-					int miss = 0;
-					double mass = Double.MAX_VALUE;
-					double score = 0;
-
-					HashSet<String> proset = new HashSet<String>();
-					for (int j = 0; j < list.size(); j++) {
-						PeptideResult pr = list.get(j);
-						modseqs[j] = pr.getSequence();
-						scores[j] = pr.getRawScore();
-						psmCounts[j] = pr.getMs2Count();
-
-						intensities[j] = new double[expNames.length];
-						if (pepIntensityMap.containsKey(pr.getSequence())) {
-							intensities[j] = pepIntensityMap.get(pr.getSequence());
-						}
-
-						if (pr.getMiss() > miss) {
-							miss = pr.getMiss();
-						}
-						if (pr.getMass() < mass) {
-							mass = pr.getMass();
-						}
-						if (pr.getRawScore() > score) {
-							score = pr.getRawScore();
-						}
-
-						String[] pros = pr.getProteins();
-						for (int k = 0; k < pros.length; k++) {
-							proset.add(pros[k]);
-						}
-					}
-
-					String pro = "";
-
-					StringBuilder prosb = new StringBuilder();
-					for (String p : proset) {
-						prosb.append(p).append(";");
-					}
-					if (prosb.length() > 0) {
-						prosb = prosb.deleteCharAt(prosb.length() - 1);
-					}
-					pro = prosb.toString();
-
-					if (lcaIdMap.containsKey(sequences[i])) {
-						int taxId = lcaIdMap.get(sequences[i]);
-						Taxon lca = td.getTaxonFromId(taxId);
-
-						if (lca != null) {
-
-							PFindPeptide op = new PFindPeptide(sequences[i], miss, mass, pro, modseqs, scores,
-									psmCounts, intensities);
-
-							op.setLca(lca);
-
-							ArrayList<Taxon> taxonList = taxaMap.get(sequences[i]);
-							int[] taxonIds = new int[taxonList.size()];
-							for (int j = 0; j < taxonList.size(); j++) {
-								Taxon taxonj = taxonList.get(j);
-								taxonIds[j] = taxonj.getId();
-								if (taxonj.getMainParentIds() == null) {
-									taxonj.setMainParentIds(td.getMainParentTaxonIds(taxonj));
-								}
-
-								int[] mainTaxonIds = taxonj.getMainParentIds();
-
-								for (int parentId : mainTaxonIds) {
-									Taxon parentTaxon = td.getTaxonFromId(parentId);
-									if (parentTaxon != null) {
-										if (parentTaxon.getMainParentIds() == null) {
-											parentTaxon.setMainParentIds(td.getMainParentTaxonIds(parentId));
-										}
-										writer.addTaxon(parentTaxon);
-									}
-								}
-							}
-							op.setTaxonIds(taxonIds);
-							writer.addPeptide(op);
-						}
-					}
-				}
-				writer.close();
-
-				if (taxResultFile.exists() && taxResultFile.length() > 0) {
-
-					MetaPeptideXMLReader reader = new MetaPeptideXMLReader(taxResultFile);
-
-					File refinedTaxon = new File(taxFile, MetaAlgorithm.Builtin.getName() + ".taxa.refine.csv");
-					reader.exportCsv(taxFile, MetaAlgorithm.Builtin, mptp.getLeastPepCount());
-
-					MetaPeptide[] peps = reader.getPeptides();
-					Taxon[] taxons = reader.getTaxons();
-
-					File megan = new File(taxFile, MetaAlgorithm.Builtin.getName() + ".biom");
-					if (!megan.exists() || megan.length() == 0) {
-						MetaBiomJsonHandler.export(peps, taxons, expNames, megan.getAbsolutePath());
-					}
-
-					File allPepTaxa = new File(taxFile, MetaAlgorithm.Builtin.getName() + ".allPepTaxa.csv");
-					if (!allPepTaxa.exists() || allPepTaxa.length() == 0) {
-						reader.exportPeptideTaxaAll(allPepTaxa);
-					}
-
-					File iMetaLab = new File(taxFile, MetaAlgorithm.Builtin.getName() + ".iMetaLab.tree.csv");
-					if (!iMetaLab.exists() || iMetaLab.length() == 0) {
-						MetaTreeHandler.export(peps, taxons, expNames, iMetaLab);
-					}
-
-					File jsOutput = new File(metaPar.getReportDir() + "\\reports\\metamap\\data\\tree.js");
-					if (!jsOutput.getParentFile().exists()) {
-						jsOutput.getParentFile().mkdirs();
-					}
-
-					if (!jsOutput.exists() || jsOutput.length() == 0) {
-						MetaTreeHandler.exportJS(peps, taxons, expNames, jsOutput);
-					}
-
-					if (megan.exists() && allPepTaxa.exists() && iMetaLab.exists() && jsOutput.exists()) {
-						finish = true;
-					}
-
-					File report_taxonomy_summary = new File(this.reportHtmlDir, "report_taxonomy_summary.html");
-					if (!report_taxonomy_summary.exists() || report_taxonomy_summary.length() == 0) {
-						if (summaryMetaFile.exists()) {
-							finish = task.addTask(MetaReportTask.taxon, refinedTaxon, report_taxonomy_summary,
-									summaryMetaFile);
-						} else {
-							finish = task.addTask(MetaReportTask.taxon, refinedTaxon, report_taxonomy_summary);
-						}
-					}
-				}
-			}
 		}
 
 		setProgress(90);
@@ -2518,29 +2323,6 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 			}
 
 			setProgress(94);
-
-			if (msv.funcAnnoSqlite()) {
-				MetaProtein[] metapros = list.toArray(new MetaProtein[list.size()]);
-				MetaProteinAnnoEggNog[] matchedMPAs = this.funcAnnoSqlite(metapros, fileNames);
-				if (matchedMPAs == null) {
-					LOGGER.error(getTaskName() + ": error in searching functional annotation database");
-					System.err.println(format.format(new Date()) + "\t" + getTaskName()
-							+ ": error in searching functional annotation database");
-					return false;
-				}
-			} else {
-				MetaProteinAnno1[] metapros = new MetaProteinAnno1[list.size()];
-				for (int i = 0; i < metapros.length; i++) {
-					metapros[i] = new MetaProteinAnno1(list.get(i));
-				}
-				boolean match = this.funcAnnoTxt(metapros, fileNames);
-				if (!match) {
-					LOGGER.error(getTaskName() + ": error in searching functional annotation database");
-					System.err.println(format.format(new Date()) + "\t" + getTaskName()
-							+ ": error in searching functional annotation database");
-					return false;
-				}
-			}
 		}
 
 		LOGGER.info(getTaskName() + ": proteins with functional annotations have been exported to "
@@ -2553,47 +2335,6 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 		File funcResultFile = final_pro_xml_file.getParentFile();
 		File funTsv = new File(funcResultFile, "functions.tsv");
 		File funReportTsv = new File(funcResultFile, "functions_report.tsv");
-
-		if (msv.funcAnnoSqlite()) {
-			MetaProteinXMLReader2 funReader = new MetaProteinXMLReader2(final_pro_xml_file);
-			if (!funTsv.exists()) {
-				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": writing results to "
-						+ funTsv.getName() + " started");
-				funReader.exportCsv(funTsv);
-				funReader.exportTsvReport(funReportTsv);
-				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": writing results to "
-						+ funTsv.getName() + " finished");
-			}
-
-			File html = new File(funcResultFile, "functions.html");
-			if (!html.exists()) {
-				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": writing results to "
-						+ html.getName() + " started");
-				funReader.exportHtml(html);
-				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": writing results to "
-						+ html.getName() + " finished");
-			}
-		} else {
-			MetaProteinXMLReader funReader = new MetaProteinXMLReader(final_pro_xml_file);
-
-			if (!funTsv.exists()) {
-				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": writing results to "
-						+ funTsv.getName() + " started");
-				funReader.exportCsv(funTsv);
-				funReportTsv = funTsv;
-				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": writing results to "
-						+ funTsv.getName() + " finished");
-			}
-
-			File html = new File(funcResultFile, "functions.html");
-			if (!html.exists()) {
-				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": writing results to "
-						+ html.getName() + " started");
-				funReader.exportHtml(html);
-				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": writing results to "
-						+ html.getName() + " finished");
-			}
-		}
 
 		boolean finish = false;
 		File report_function_summary = new File(this.reportHtmlDir, "report_function_summary.html");
@@ -2609,197 +2350,6 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": functional annotation finished");
 
 		return finish;
-	}
-
-	protected boolean funcAnnoTxt(MetaProteinAnno1[] metapros, String[] fileNames) {
-
-		LOGGER.info(getTaskName() + ": searching COG database");
-		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": searching COG database");
-
-		HashMap<String, String> cogMap = new HashMap<String, String>();
-		String cogName = "";
-
-		String funcDir = msv.getFunction();
-		File[] funcDbFiles = (new File(funcDir)).listFiles();
-		for (int i = 0; i < funcDbFiles.length; i++) {
-			String name = funcDbFiles[i].getName();
-			if (name.startsWith("COG")) {
-
-				COGFinder cogFinder = new COGFinder(funcDbFiles[i].getAbsolutePath());
-
-				cogFinder.match(metapros);
-				HashMap<String, String> cogMapi = cogFinder.getFunctionMap();
-				if (cogMapi.size() > cogMap.size()) {
-					cogMap = cogMapi;
-					cogName = name;
-				}
-			}
-		}
-
-		if (cogMap.size() == 0) {
-
-			LOGGER.info(getTaskName() + ": species unknown");
-			LOGGER.info(getTaskName() + ": task failed");
-
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": species unknown");
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": task failed");
-
-			return false;
-		}
-
-		ArrayList<String> funcDbNameList = new ArrayList<String>();
-		funcDbNameList.add("COG");
-
-		ArrayList<HashMap<String, String>> funcResultList = new ArrayList<HashMap<String, String>>();
-		funcResultList.add(cogMap);
-
-		String species = cogName.substring(cogName.indexOf("_") + 1, cogName.indexOf("."));
-
-		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": the sample is identified as " + species
-				+ " gut microbiome");
-
-		File nogDb = new File(funcDir, "NOG_" + species + ".gc");
-		if (nogDb.exists()) {
-
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": searching NOG database");
-
-			NOGFinder nogfinder = new NOGFinder(nogDb.getAbsolutePath());
-			funcDbNameList.add(nogfinder.getAbbreviation());
-
-			nogfinder.match(metapros);
-			HashMap<String, String> nogMap = nogfinder.getFunctionMap();
-			funcResultList.add(nogMap);
-		}
-
-		File keggDb = new File(funcDir, "KEGG_" + species + ".gc");
-		if (keggDb.exists()) {
-
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": searching KEGG database");
-
-			KEGGFinder keggfinder = new KEGGFinder(keggDb.getAbsolutePath());
-			funcDbNameList.add(keggfinder.getAbbreviation());
-
-			keggfinder.match(metapros);
-			HashMap<String, String> keggMap = keggfinder.getFunctionMap();
-			funcResultList.add(keggMap);
-		}
-
-		File gobpDb = new File(funcDir, "GOBP_" + species + ".gc");
-		if (gobpDb.exists()) {
-
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": searching GOBP database");
-
-			GOBPFinder gobpfinder = new GOBPFinder(gobpDb.getAbsolutePath());
-			funcDbNameList.add(gobpfinder.getAbbreviation());
-
-			gobpfinder.match(metapros);
-			HashMap<String, String> gobpMap = gobpfinder.getFunctionMap();
-			funcResultList.add(gobpMap);
-		}
-
-		File goccDb = new File(funcDir, "GOCC_" + species + ".gc");
-		if (goccDb.exists()) {
-
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": searching GOCC database");
-
-			GOCCFinder goccfinder = new GOCCFinder(goccDb.getAbsolutePath());
-			funcDbNameList.add(goccfinder.getAbbreviation());
-
-			goccfinder.match(metapros);
-			HashMap<String, String> goccMap = goccfinder.getFunctionMap();
-			funcResultList.add(goccMap);
-		}
-
-		File gomfDb = new File(funcDir, "GOMF_" + species + ".gc");
-		if (gomfDb.exists()) {
-
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": searching GOMF database");
-
-			GOMFFinder gomffinder = new GOMFFinder(gomfDb.getAbsolutePath());
-			funcDbNameList.add(gomffinder.getAbbreviation());
-
-			gomffinder.match(metapros);
-			HashMap<String, String> gomfMap = gomffinder.getFunctionMap();
-			funcResultList.add(gomfMap);
-		}
-
-		File koDb = new File(funcDir, "KO_" + species + ".gc");
-		if (koDb.exists()) {
-
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": searching KO database");
-
-			KOFinder kofinder = new KOFinder(koDb.getAbsolutePath());
-			funcDbNameList.add(kofinder.getAbbreviation());
-
-			kofinder.match(metapros);
-			HashMap<String, String> koMap = kofinder.getFunctionMap();
-			funcResultList.add(koMap);
-		}
-
-		@SuppressWarnings("unchecked")
-		HashMap<String, String>[] maps = funcResultList.toArray(new HashMap[funcResultList.size()]);
-		String[] funcDbNames = funcDbNameList.toArray(new String[funcDbNameList.size()]);
-
-		for (int i = 0; i < fileNames.length; i++) {
-			fileNames[i] = "Intensity " + fileNames[i].substring(fileNames[i].indexOf("_") + 1);
-		}
-
-		MetaProteinXMLWriter writer = new MetaProteinXMLWriter(final_pro_xml_file.getAbsolutePath(),
-				MetaConstants.pFind, ((MetaParameterPFind) this.metaPar).getQuanMode(), fileNames);
-
-		writer.addProteins(metapros, maps, funcDbNames, new CategoryFinder(msv));
-		writer.close();
-
-		if (final_pro_xml_file.exists() && final_pro_xml_file.length() > 0) {
-			LOGGER.info(getTaskName() + ": proteins with functional annotations have been exported to "
-					+ final_pro_xml_file.getName());
-			System.out.println(format.format(new Date()) + "\t" + getTaskName()
-					+ ": proteins with functional annotations have been exported to " + final_pro_xml_file.getName());
-		} else {
-			LOGGER.error(getTaskName() + ": error in proteins functional annotations, task failed");
-			System.err.println(format.format(new Date()) + "\t" + getTaskName()
-					+ ": error in proteins functional annotations, task failed");
-
-			return false;
-		}
-
-		return true;
-	}
-
-	protected MetaProteinAnnoEggNog[] funcAnnoSqlite(MetaProtein[] pros, String[] fileNames) {
-		MetaProteinAnnoEggNog[] metapros = null;
-		IGCFuncSqliteSearcher funcDb = null;
-		try {
-			funcDb = new IGCFuncSqliteSearcher(msv.getFunction(), msv.getFuncDef());
-			metapros = funcDb.match(pros);
-		} catch (NumberFormatException | SQLException | IOException e) {
-			// TODO Auto-generated catch block
-			LOGGER.error(getTaskName() + ": error in proteins functional annotations, task failed", e);
-			System.err.println(format.format(new Date()) + "\t" + getTaskName()
-					+ ": error in proteins functional annotations, task failed");
-			return null;
-		}
-
-		MetaProteinXMLWriter2 writer = new MetaProteinXMLWriter2(final_pro_xml_file.getAbsolutePath(),
-				MetaConstants.pFind, ((MetaParameterPFind) this.metaPar).getQuanMode(), fileNames);
-
-		writer.addProteins(metapros, funcDb.getUsedCogMap(), funcDb.getUsedNogMap(), funcDb.getUsedKeggMap(),
-				funcDb.getUsedGoMap(), funcDb.getUsedEcMap());
-
-		writer.close();
-
-		if (final_pro_xml_file.exists() && final_pro_xml_file.length() > 0) {
-			LOGGER.info(getTaskName() + ": proteins with functional annotations have been exported to "
-					+ final_pro_xml_file.getName());
-			System.out.println(format.format(new Date()) + "\t" + getTaskName()
-					+ ": proteins with functional annotations have been exported to " + final_pro_xml_file.getName());
-		} else {
-			LOGGER.error(getTaskName() + ": error in proteins functional annotations, task failed");
-			System.err.println(format.format(new Date()) + "\t" + getTaskName()
-					+ ": error in proteins functional annotations, task failed");
-		}
-
-		return metapros;
 	}
 
 	// The inner class that implements the watch service loop

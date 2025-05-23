@@ -34,7 +34,9 @@ import javax.swing.border.TitledBorder;
 import javax.swing.filechooser.FileFilter;
 
 import org.apache.commons.io.FileUtils;
-import uk.ac.quadram.metapilot.task.MetaLabTask;
+
+import javafx.scene.control.ProgressBar;
+import uk.ac.quadram.metapilot.task.MetaPilotTask;
 
 public class MetaPilotLicenseFrame extends JFrame {
 
@@ -45,7 +47,7 @@ public class MetaPilotLicenseFrame extends JFrame {
 
 	private JTextField propertyTextField;
 	private JTextField licenseTextField;
-	private JProgressBar propertyBar;
+	private ProgressBar propertyBar;
 	private JProgressBar licenseBar;
 	private JTextField nameTextField;
 	private JTextField affiliaTextField;
@@ -78,7 +80,7 @@ public class MetaPilotLicenseFrame extends JFrame {
 	 */
 	public MetaPilotLicenseFrame() throws URISyntaxException, IOException {
 
-		this.propertyFile = new File(MetaLabTask.getApplicationBaseDirectory(), "parameter_license.properties");
+		this.propertyFile = new File(MetaPilotTask.getApplicationBaseDirectory(), "parameter_license.properties");
 
 		String nameString = "";
 		String affiliationString = "";
@@ -216,8 +218,8 @@ public class MetaPilotLicenseFrame extends JFrame {
 		});
 		exportParPanel.add(generateButton, "cell 0 3,growx");
 
-		propertyBar = new JProgressBar();
-		exportParPanel.add(propertyBar, "cell 2 3 6 1,growx");
+		propertyBar = new ProgressBar();
+//		exportParPanel.add(propertyBar, "cell 2 3 6 1,growx");
 
 		JPanel verifyPanel = new JPanel();
 		verifyPanel.setBorder(
@@ -271,7 +273,7 @@ public class MetaPilotLicenseFrame extends JFrame {
 			}
 
 			try {
-				FileUtils.copyFile(licenseFile, new File(MetaLabTask.getApplicationBaseDirectory(), licenseFile.getName()));
+				FileUtils.copyFile(licenseFile, new File(MetaPilotTask.getApplicationBaseDirectory(), licenseFile.getName()));
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
@@ -355,7 +357,7 @@ public class MetaPilotLicenseFrame extends JFrame {
 			public void windowClosing(WindowEvent e) {
 				ParameterCreateTask task = new ParameterCreateTask(propertyFile, nameTextField.getText(),
 						affiliaTextField.getText(), countryTextField.getText(), emailTextField.getText(),
-						new JProgressBar());
+						new ProgressBar());
 				task.execute();
 
 				e.getWindow().dispose();

@@ -15,6 +15,7 @@ import net.miginfocom.swing.MigLayout;
 import javax.swing.JScrollPane;
 import javax.swing.JTree;
 
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
 import uk.ac.quadram.metapilot.task.dia.par.MetaSourcesDia;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
@@ -43,7 +44,7 @@ public class MagDbStatPanel extends JPanel {
 	/**
 	 * Create the panel.
 	 */
-	public MagDbStatPanel(MetaParameterDia metaPar, MetaSourcesDia msd) {
+	public MagDbStatPanel(MetaParameterDia metaPar, MetaResourceParameters mrp) {
 		setBorder(new TitledBorder(
 				new EtchedBorder(EtchedBorder.LOWERED, new Color(255, 255, 255), new Color(160, 160, 160)),
 				"MAG library status", TitledBorder.LEADING, TitledBorder.TOP, null, new Color(0, 0, 0)));

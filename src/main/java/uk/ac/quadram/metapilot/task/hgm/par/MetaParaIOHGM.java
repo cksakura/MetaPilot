@@ -21,8 +21,8 @@ import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantModification;
 import uk.ac.quadram.metapilot.task.MetaLabWorkflowType;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.par.MetaData;
-import uk.ac.quadram.metapilot.task.par.MetaParameter;
-import uk.ac.quadram.metapilot.task.par.MetaParameterIO;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
+import uk.ac.quadram.metapilot.task.par.MetaParameterIOHandler;
 import uk.ac.quadram.metapilot.task.v2.par.MaxQuantModIO;
 
 public class MetaParaIOHGM {
@@ -75,7 +75,7 @@ public class MetaParaIOHGM {
 
 	public static MetaParameterHGM parse(JSONObject obj) {
 
-		MetaParameter metaPar = MetaParameterIO.parseMain(obj);
+		MetaBaseParameter metaPar = MetaParameterIOHandler.parseMain(obj);
 
 		ArrayList<String> fixModList = new ArrayList<String>();
 		JSONArray fixArray = obj.getJSONArray("fixMods");

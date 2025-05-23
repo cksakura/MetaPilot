@@ -218,4 +218,5 @@
     <factorypathentry kind="VARJAR" id="M2_REPO/pl/edu/icm/JLargeArrays/1.5/JLargeArrays-1.5.jar" enabled="true" runInBatchMode="false"/>
     <factorypathentry kind="VARJAR" id="M2_REPO/de/schlichtherle/truelicense/truelicense-core/1.33/truelicense-core-1.33.jar" enabled="true" runInBatchMode="false"/>
     <factorypathentry kind="VARJAR" id="M2_REPO/de/schlichtherle/truelicense/truelicense-xml/1.33/truelicense-xml-1.33.jar" enabled="true" runInBatchMode="false"/>
+    <factorypathentry kind="VARJAR" id="M2_REPO/org/xerial/sqlite-jdbc/3.45.2.0/sqlite-jdbc-3.45.2.0.jar" enabled="true" runInBatchMode="false"/>
 </factorypath>

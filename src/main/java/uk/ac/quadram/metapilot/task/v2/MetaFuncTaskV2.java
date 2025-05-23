@@ -31,6 +31,8 @@ import uk.ac.quadram.metapilot.core.function.KOFinder;
 import uk.ac.quadram.metapilot.core.function.NOGFinder;
 import uk.ac.quadram.metapilot.core.function.sql.IGCFuncSqliteSearcher;
 import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantProReader;
+import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.MetaAbstractTask;
 import uk.ac.quadram.metapilot.task.MetaReportTask;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
@@ -39,6 +41,7 @@ import uk.ac.quadram.metapilot.task.io.pro.MetaProteinXMLWriter;
 import uk.ac.quadram.metapilot.task.io.pro.pfind.MetaProteinAnnoEggNog;
 import uk.ac.quadram.metapilot.task.io.pro.pfind.MetaProteinXMLReader2;
 import uk.ac.quadram.metapilot.task.io.pro.pfind.MetaProteinXMLWriter2;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.v2.par.MetaSourcesV2;
 import uk.ac.quadram.metapilot.task.v2.par.MetaParameterMQ;
@@ -54,9 +57,8 @@ public class MetaFuncTaskV2 extends MetaAbstractTask {
 	private String searchType;
 	private String quanType;
 
-	public MetaFuncTaskV2(MetaParameterMQ metaPar, MetaSourcesV2 msv2, JProgressBar bar1, JProgressBar bar2,
-			SwingWorker<Boolean, Object> nextWork) {
-		super(metaPar, msv2, bar1, bar2, nextWork);
+	public MetaFuncTaskV2(MetaBaseParameter metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar) {
+		super(metaPar, mrp, progressBar);
 	}
 
 	@Override
@@ -65,12 +67,12 @@ public class MetaFuncTaskV2 extends MetaAbstractTask {
 	}
 	
 	@Override
-	protected Boolean doInBackground() throws Exception {
+	protected Boolean call() throws Exception {
 		// TODO Auto-generated method stub
 
 		boolean finished = false;
 
-		bar2.setString(taskName);
+		progressBar.setString(taskName);
 
 		LOGGER.info(taskName + ": start");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": start");
@@ -346,31 +348,31 @@ public class MetaFuncTaskV2 extends MetaAbstractTask {
 
 		File funTsv = new File(funcResultFile, "functions.tsv");
 
-		if (msv.funcAnnoSqlite()) {
-			boolean match = this.funcAnnoSqlite(metapros, expTitles, funcResultXml);
-			if (!match) {
-				LOGGER.error(taskName + ": error in searching functional annotation database");
-				System.err.println(format.format(new Date()) + "\t" + taskName
-						+ ": error in searching functional annotation database");
-				return false;
-			}
 
-			MetaProteinXMLReader2 funReader = new MetaProteinXMLReader2(funcResultXml);
-
-			System.out.println(format.format(new Date()) + "\t" + taskName + ": writing results to " + funTsv);
-
-			funReader.exportTsv(funTsv);
-
-			File html = new File(funcResultFile, "functions.html");
-
-			System.out.println(format.format(new Date()) + "\t" + taskName + ": writing results to " + html);
-
-			funReader.exportHtml(html);
-
-			if (funTsv.exists() && html.exists()) {
-				finished = true;
-			}
+		boolean match = this.funcAnnoSqlite(metapros, expTitles, funcResultXml);
+		if (!match) {
+			LOGGER.error(taskName + ": error in searching functional annotation database");
+			System.err.println(format.format(new Date()) + "\t" + taskName
+					+ ": error in searching functional annotation database");
+			return false;
 		}
+
+		MetaProteinXMLReader2 funReader = new MetaProteinXMLReader2(funcResultXml);
+
+		System.out.println(format.format(new Date()) + "\t" + taskName + ": writing results to " + funTsv);
+
+		funReader.exportTsv(funTsv);
+
+		File html = new File(funcResultFile, "functions.html");
+
+		System.out.println(format.format(new Date()) + "\t" + taskName + ": writing results to " + html);
+
+		funReader.exportHtml(html);
+
+		if (funTsv.exists() && html.exists()) {
+			finished = true;
+		}
+	
 
 		File reportDir = new File(metaPar.getReportDir() + "\\reports\\rmd_html");
 
@@ -401,211 +403,7 @@ public class MetaFuncTaskV2 extends MetaAbstractTask {
 		return finished;
 	}
 
-	/**
-	 * @deprecated
-	 * @param metapros
-	 * @param fileNames
-	 * @param final_pro_xml_file
-	 * @return
-	 */
-	@SuppressWarnings({ "unchecked", "unused" })
-	private boolean funcAnnoTxt(MetaProteinAnno1[] metapros, String[] fileNames, File final_pro_xml_file) {
-
-		LOGGER.info(taskName + ": searching COG database");
-		System.out.println(format.format(new Date()) + "\t" + taskName + ": searching COG database");
-
-		HashMap<String, String> cogMap = new HashMap<String, String>();
-		String cogName = "";
-
-		String funcDir = msv.getFunction();
-		File[] funcDbFiles = (new File(funcDir)).listFiles();
-		for (int i = 0; i < funcDbFiles.length; i++) {
-			String name = funcDbFiles[i].getName();
-			if (name.startsWith("COG")) {
-
-				COGFinder cogFinder = new COGFinder(funcDbFiles[i].getAbsolutePath());
-
-				cogFinder.match(metapros);
-				HashMap<String, String> cogMapi = cogFinder.getFunctionMap();
-				if (cogMapi.size() > cogMap.size()) {
-					cogMap = cogMapi;
-					cogName = name;
-				}
-			}
-		}
-
-		if (cogMap.size() == 0) {
-
-			LOGGER.info(taskName + ": species unknown");
-			LOGGER.info(taskName + ": task failed");
-
-			System.out.println(format.format(new Date()) + "\t" + taskName + ": species unknown");
-			System.out.println(format.format(new Date()) + "\t" + taskName + ": task failed");
-
-			return false;
-		}
-
-		setProgress(88);
-
-		ArrayList<String> funcDbNameList = new ArrayList<String>();
-		funcDbNameList.add("COG");
-
-		ArrayList<HashMap<String, String>> funcResultList = new ArrayList<HashMap<String, String>>();
-		funcResultList.add(cogMap);
-
-		String species = cogName.substring(cogName.indexOf("_") + 1, cogName.indexOf("."));
-
-		System.out.println(format.format(new Date()) + "\t" + taskName + ": the sample is identified as " + species
-				+ " gut microbiome");
-
-		File nogDb = new File(funcDir, "NOG_" + species + ".gc");
-		if (nogDb.exists()) {
-
-			System.out.println(format.format(new Date()) + "\t" + taskName + ": searching NOG database");
-
-			NOGFinder nogfinder = new NOGFinder(nogDb.getAbsolutePath());
-			funcDbNameList.add(nogfinder.getAbbreviation());
-
-			nogfinder.match(metapros);
-			HashMap<String, String> nogMap = nogfinder.getFunctionMap();
-			funcResultList.add(nogMap);
-		}
-
-		setProgress(90);
-
-		File keggDb = new File(funcDir, "KEGG_" + species + ".gc");
-		if (keggDb.exists()) {
-
-			System.out.println(format.format(new Date()) + "\t" + taskName + ": searching KEGG database");
-
-			KEGGFinder keggfinder = new KEGGFinder(keggDb.getAbsolutePath());
-			funcDbNameList.add(keggfinder.getAbbreviation());
-
-			keggfinder.match(metapros);
-			HashMap<String, String> keggMap = keggfinder.getFunctionMap();
-			funcResultList.add(keggMap);
-		}
-
-		setProgress(92);
-
-		File gobpDb = new File(funcDir, "GOBP_" + species + ".gc");
-		if (gobpDb.exists()) {
-
-			System.out.println(format.format(new Date()) + "\t" + taskName + ": searching GOBP database");
-
-			GOBPFinder gobpfinder = new GOBPFinder(gobpDb.getAbsolutePath());
-			funcDbNameList.add(gobpfinder.getAbbreviation());
-
-			gobpfinder.match(metapros);
-			HashMap<String, String> gobpMap = gobpfinder.getFunctionMap();
-			funcResultList.add(gobpMap);
-		}
-
-		setProgress(94);
-
-		File goccDb = new File(funcDir, "GOCC_" + species + ".gc");
-		if (goccDb.exists()) {
-
-			System.out.println(format.format(new Date()) + "\t" + taskName + ": searching GOCC database");
-
-			GOCCFinder goccfinder = new GOCCFinder(goccDb.getAbsolutePath());
-			funcDbNameList.add(goccfinder.getAbbreviation());
-
-			goccfinder.match(metapros);
-			HashMap<String, String> goccMap = goccfinder.getFunctionMap();
-			funcResultList.add(goccMap);
-		}
-
-		setProgress(96);
-
-		File gomfDb = new File(funcDir, "GOMF_" + species + ".gc");
-		if (gomfDb.exists()) {
-
-			System.out.println(format.format(new Date()) + "\t" + taskName + ": searching GOMF database");
-
-			GOMFFinder gomffinder = new GOMFFinder(gomfDb.getAbsolutePath());
-			funcDbNameList.add(gomffinder.getAbbreviation());
-
-			gomffinder.match(metapros);
-			HashMap<String, String> gomfMap = gomffinder.getFunctionMap();
-			funcResultList.add(gomfMap);
-		}
-
-		setProgress(98);
-
-		File koDb = new File(funcDir, "KO_" + species + ".gc");
-		if (koDb.exists()) {
-
-			System.out.println(format.format(new Date()) + "\t" + taskName + ": searching KO database");
-
-			KOFinder kofinder = new KOFinder(koDb.getAbsolutePath());
-			funcDbNameList.add(kofinder.getAbbreviation());
-
-			kofinder.match(metapros);
-			HashMap<String, String> koMap = kofinder.getFunctionMap();
-			funcResultList.add(koMap);
-		}
-
-		HashMap<String, String>[] maps = funcResultList.toArray(new HashMap[funcResultList.size()]);
-		String[] funcDbNames = funcDbNameList.toArray(new String[funcDbNameList.size()]);
-
-		MetaProteinXMLWriter writer = new MetaProteinXMLWriter(final_pro_xml_file.getAbsolutePath(),
-				searchType, quanType, fileNames);
-
-		writer.addProteins(metapros, maps, funcDbNames, new CategoryFinder(msv));
-		writer.close();
-
-		if (final_pro_xml_file.exists() && final_pro_xml_file.length() > 0) {
-			LOGGER.info(taskName + ": proteins with functional annotations have been exported to "
-					+ final_pro_xml_file.getName());
-			System.out.println(format.format(new Date()) + "\t" + taskName
-					+ ": proteins with functional annotations have been exported to " + final_pro_xml_file.getName());
-		} else {
-			LOGGER.error(taskName + ": error in proteins functional annotations, task failed");
-			System.err.println(format.format(new Date()) + "\t" + taskName
-					+ ": error in proteins functional annotations, task failed");
-
-			return false;
-		}
-
-		return true;
-	}
-
 	private boolean funcAnnoSqlite(MetaProtein[] proteins, String[] fileNames, File final_pro_xml_file) {
-
-		MetaProteinAnnoEggNog[] metapros = null;
-		IGCFuncSqliteSearcher funcDb = null;
-		try {
-			funcDb = new IGCFuncSqliteSearcher(msv.getFunction(), msv.getFuncDef());
-			metapros = funcDb.match(proteins);
-		} catch (NumberFormatException | SQLException | IOException e) {
-			// TODO Auto-generated catch block
-			LOGGER.error(taskName + ": error in proteins functional annotations, task failed", e);
-			System.err.println(format.format(new Date()) + "\t" + taskName
-					+ ": error in proteins functional annotations, task failed");
-			return false;
-		}
-
-		MetaProteinXMLWriter2 writer = new MetaProteinXMLWriter2(final_pro_xml_file.getAbsolutePath(), searchType,
-				quanType, fileNames);
-
-		writer.addProteins(metapros, funcDb.getUsedCogMap(), funcDb.getUsedNogMap(), funcDb.getUsedKeggMap(),
-				funcDb.getUsedGoMap(), funcDb.getUsedEcMap());
-
-		writer.close();
-
-		if (final_pro_xml_file.exists() && final_pro_xml_file.length() > 0) {
-			LOGGER.info(taskName + ": proteins with functional annotations have been exported to "
-					+ final_pro_xml_file.getName());
-			System.out.println(format.format(new Date()) + "\t" + taskName
-					+ ": proteins with functional annotations have been exported to " + final_pro_xml_file.getName());
-		} else {
-			LOGGER.error(taskName + ": error in proteins functional annotations, task failed");
-			System.err.println(format.format(new Date()) + "\t" + taskName
-					+ ": error in proteins functional annotations, task failed");
-
-			return false;
-		}
 
 		return true;
 	}

@@ -13,19 +13,18 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
 
-import javax.swing.JProgressBar;
-import javax.swing.SwingWorker;
-
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNTask;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiannParameter;
+import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.task.dia.DiaLibSearchPar;
 import uk.ac.quadram.metapilot.task.dia.MetaDiaTask;
 import uk.ac.quadram.metapilot.task.dia.monitor.par.MetaParameterDiaRT;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
-import uk.ac.quadram.metapilot.task.dia.par.MetaSourcesDia;
 import uk.ac.quadram.metapilot.task.mag.par.MetaParameterMag;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 
@@ -35,9 +34,9 @@ public class MetaDiaCombineTask extends MetaDiaTask {
 	private static final Logger LOGGER = LogManager.getLogger(MetaDiaMonitorTask.class);
 	private static final String taskName = "Realtime DIA data analysis";
 
-	public MetaDiaCombineTask(MetaParameterDiaRT metaPar, MetaSourcesDia msv, JProgressBar bar1, JProgressBar bar2,
-			SwingWorker<Boolean, Object> nextWork, HashMap<String, String[]> rawResultFileMap) {
-		super(metaPar, msv, bar1, bar2, nextWork);
+	public MetaDiaCombineTask(MetaParameterDiaRT metaPar, MetaResourceParameters mrp, JavaFXProgressBar bar1,
+			JavaFXProgressBar bar2, HashMap<String, String[]> rawResultFileMap) {
+		super(metaPar, mrp, bar1, bar2);
 		this.rawResultFileMap = rawResultFileMap;
 	}
 
@@ -46,7 +45,7 @@ public class MetaDiaCombineTask extends MetaDiaTask {
 		this.magDb = ((MetaParameterMag) metaPar).getUsedMagDbItem();
 		this.threadCount = metaPar.getThreadCount();
 
-		this.diaNNTask = new DiaNNTask(((MetaSourcesDia) msv).getDiann());
+		this.diaNNTask = new DiaNNTask(mrp.getToolPath(ToolType.DIANN));
 		this.diaLibSearchPar = new DiaLibSearchPar();
 		this.diaLibSearchPar.setThreadCount(metaPar.getThreadCount());
 
@@ -57,7 +56,7 @@ public class MetaDiaCombineTask extends MetaDiaTask {
 	}
 
 	@Override
-	protected Boolean doInBackground() throws IOException {
+	protected Boolean call() throws IOException {
 
 		boolean iden = iden();
 		if (!iden) {
@@ -80,7 +79,7 @@ public class MetaDiaCombineTask extends MetaDiaTask {
 
 	protected boolean iden() {
 
-		bar2.setString(getTaskName() + ": peptide and protein identification");
+		progressBar.setString(getTaskName() + ": peptide and protein identification");
 		LOGGER.info(getTaskName() + ": peptide and protein identification started");
 		System.out.println(
 				format.format(new Date()) + "\t" + getTaskName() + ": peptide and protein identification started");

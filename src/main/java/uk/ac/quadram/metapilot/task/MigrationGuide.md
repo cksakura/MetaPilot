@@ -15,41 +15,96 @@ This document guides you through the process of migrating task classes from Swin
 | `cancel(boolean)` | `cancel()` | Cancel the task |
 | `done()` | `setOnSucceeded()`, `setOnFailed()`, `setOnCancelled()` | Called after task completion |
 
+## Progress Bar Migration
+
+We've created a `JavaFXProgressBar` class that wraps the JavaFX `ProgressBar` control to provide the same API as Swing's `JProgressBar`:
+
+```java
+// Old Swing code
+JProgressBar progressBar = new JProgressBar(0, 100);
+progressBar.setStringPainted(true);
+progressBar.setValue(50);
+progressBar.setString("Processing...");
+
+// New JavaFX code
+JavaFXProgressBar progressBar = new JavaFXProgressBar(0, 100, 0);
+progressBar.setStringPainted(true);
+progressBar.setValue(50);
+progressBar.setString("Processing...");
+```
+
 ## Migration Steps
 
-1. Change class declaration from extending `SwingWorker<Boolean, String>` to `Task<Boolean>`
+1. Change class declaration from extending `SwingWorker<Boolean, String>` to `MetaAbstractTask`
 2. Replace `doInBackground()` with `call()`
-3. Replace `publish()` calls with `updateMessage()`
-4. Replace `setProgress(0-100)` with `updateProgress(0.0-1.0, 1.0)`
+3. Replace `publish()` calls with `updateMessage()` or `updateUIMessage()`
+4. Either keep using `setProgress(0-100)` (compatibility method) or use `updateProgress(0.0-1.0, 1.0)`
 5. Replace `cancel(true)` with `cancel()`
 6. Update imports to use JavaFX classes
+7. Replace `JProgressBar` with `JavaFXProgressBar`
+8. Keep using the `done()` method (preserved for compatibility) or use event handlers
 
-## Example
+## Base Class Overview
+
+The MetaAbstractTask extends JavaFX Task and provides compatibility functionality:
+
+- **Progress Tracking**: Both the JavaFX progress model (0.0-1.0) and SwingWorker model (0-100)
+- **Task Lifecycle**: Overrides for `call()`, `done()`, and automatic event handling
+- **Progress Reporting**: Updates progress bars and status messages
+- **Compatibility Methods**: `get()`, `execute()`, `isDone()`, and `setProgress(int)`
+- **UI Thread Safety**: `updateUIMessage()` for thread-safe UI updates
+
+## Example Migration
 
 ### Original SwingWorker code:
 
 ```java
 public class MyTask extends SwingWorker<Boolean, String> {
     
+    private JProgressBar progressBar;
+    
+    public MyTask(JProgressBar progressBar) {
+        this.progressBar = progressBar;
+        addPropertyChangeListener(evt -> {
+            if ("progress".equals(evt.getPropertyName())) {
+                progressBar.setValue((Integer) evt.getNewValue());
+            }
+        });
+    }
+    
     @Override
     protected Boolean doInBackground() throws Exception {
         setProgress(0);
         publish("Starting task...");
         
-        // Do work
+        // Do some work
+        for (int i = 0; i < 100; i++) {
+            Thread.sleep(100);
+            setProgress(i + 1);
+        }
         
-        setProgress(100);
         return true;
     }
     
     @Override
     protected void process(List<String> chunks) {
-        // Update UI with the messages
+        for (String chunk : chunks) {
+            System.out.println(chunk);
+        }
     }
     
     @Override
     protected void done() {
-        // Clean up after completion
+        try {
+            boolean result = get();
+            if (result) {
+                System.out.println("Task completed successfully");
+            } else {
+                System.out.println("Task failed");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 }
 ```
@@ -57,65 +112,83 @@ public class MyTask extends SwingWorker<Boolean, String> {
 ### Migrated to JavaFX Task:
 
 ```java
-public class MyTask extends Task<Boolean> {
+public class MyTask extends MetaAbstractTask {
+    
+    private JavaFXProgressBar progressBar;
+    
+    public MyTask(JavaFXProgressBar progressBar) {
+        super(null, null, progressBar, null, null);
+        // Progress bar binding is handled by the superclass constructor
+    }
+    
+    @Override
+    protected void initial() {
+        // Any initialization code
+    }
+    
+    @Override
+    protected String getTaskName() {
+        return "My Task";
+    }
+    
+    @Override
+    protected Logger getLogger() {
+        return LogManager.getLogger(MyTask.class);
+    }
     
     @Override
     protected Boolean call() throws Exception {
-        updateProgress(0, 100);
+        setProgress(0);  // Can keep using setProgress(int) for compatibility
         updateMessage("Starting task...");
         
-        // Do work
+        // Do some work
+        for (int i = 0; i < 100; i++) {
+            Thread.sleep(100);
+            setProgress(i + 1);  // Works the same as in SwingWorker
+        }
         
-        updateProgress(100, 100);
         return true;
     }
     
-    // For compatibility with old code
-    public Boolean get() throws InterruptedException, ExecutionException {
-        try {
-            return this.getValue();
-        } catch (Exception e) {
-            throw new ExecutionException(e);
-        }
-    }
-    
-    // For compatibility with old code
-    public void execute() {
-        Thread thread = new Thread(this);
-        thread.setDaemon(true);
-        thread.start();
-    }
+    // done() method is inherited from MetaAbstractTask
+    // If you want custom behavior, you can override it
 }
 ```
 
-## Handling UI Updates
+## Using with FXML
 
-In JavaFX, UI updates from background tasks are automatically handled through properties:
+When working with FXML-defined UIs, you can bind the progress property directly to progress bars:
 
 ```java
-Task<Boolean> task = new MyTask();
-// Listen for state changes
-task.setOnSucceeded(event -> {
-    // Handle successful completion
-});
-task.setOnFailed(event -> {
-    // Handle failure
-});
+@FXML
+private ProgressBar progressBar;
 
-// Bind progress to progress indicator/bar
-progressBar.progressProperty().bind(task.progressProperty());
-// Bind message to label
-statusLabel.textProperty().bind(task.messageProperty());
-
-// Start the task
-new Thread(task).start();
-// Or using the compatibility method:
-// task.execute();
+private void setupTask() {
+    MyTask task = new MyTask();
+    progressBar.progressProperty().bind(task.progressProperty());
+    
+    // For message updates
+    task.messageProperty().addListener((obs, oldValue, newValue) -> {
+        statusLabel.setText(newValue);
+    });
+    
+    new Thread(task).start();
+}
 ```
 
-## Important Notes
+## Common Issues to Watch For
 
-1. JavaFX applications have a strong separation of UI and background threads. All UI updates must happen on the JavaFX Application Thread.
-2. `Task` has more built-in support for properties that can be bound directly to UI controls.
-3. When updating progress in JavaFX, you typically use values from 0.0 to 1.0, but we've maintained using 0-100 for compatibility.
-4. The JavaFX Task's `updateProgress()` method expects a pair of numbers representing "progress" and "total". 
+1. **Task Execution**: Use the `execute()` compatibility method or manually create a thread and start it
+2. **Progress Updates**: You can continue using `setProgress(int)` (0-100 range) or use JavaFX's `updateProgress(double, double)` (0.0-1.0 range)
+3. **UI Thread Updates**: Use `updateUIMessage()` for Platform.runLater updates or bind to message property
+4. **Task Cancellation**: Use `cancel()` method (no mayInterruptIfRunning parameter)
+5. **Task Results**: Use `get()` compatibility method to retrieve results
+6. **Exception Handling**: Override `done()` or use event handlers
+
+## Tips for Testing
+
+1. Create simple unit tests for migrated tasks
+2. Test task execution, cancellation, and progress reporting
+3. Verify that UI updates correctly with task progress
+4. Ensure proper lifecycle handling (task completion, failure, cancellation)
+5. Test task chaining to ensure subsequent tasks execute properly 

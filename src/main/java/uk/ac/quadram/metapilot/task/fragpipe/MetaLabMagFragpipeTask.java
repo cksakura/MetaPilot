@@ -22,9 +22,6 @@ import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
-import javax.swing.JProgressBar;
-import javax.swing.SwingWorker;
-
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.math.NumberUtils;
 import org.apache.logging.log4j.LogManager;
@@ -33,6 +30,7 @@ import org.dom4j.DocumentException;
 
 import com.sun.management.OperatingSystemMXBean;
 
+import javafx.concurrent.Task;
 import uk.ac.quadram.metapilot.core.mod.IsobaricTag;
 import uk.ac.quadram.metapilot.core.prodb.FastaManager;
 import uk.ac.quadram.metapilot.core.taxonomy.TaxonomyRanks;
@@ -42,6 +40,9 @@ import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragpipePepReader;
 import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragpipePeptide;
 import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragpipeProReader;
 import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragpipeWorkflow;
+import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.task.MetaReportCopyTask;
 import uk.ac.quadram.metapilot.task.MetaReportTask;
 import uk.ac.quadram.metapilot.task.io.MetaTreeHandler;
@@ -55,7 +56,6 @@ import uk.ac.quadram.metapilot.task.mag.MagFuncSearcher;
 import uk.ac.quadram.metapilot.task.mag.MagHapPFindTask;
 import uk.ac.quadram.metapilot.task.mag.MetaProteinAnnoMag;
 import uk.ac.quadram.metapilot.task.mag.par.MetaParameterMag;
-import uk.ac.quadram.metapilot.task.mag.par.MetaSourcesMag;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.task.pfind.par.MetaParameterPFind;
@@ -69,14 +69,14 @@ public class MetaLabMagFragpipeTask extends MagHapPFindTask {
 	protected static final Logger LOGGER = LogManager.getLogger(MetaLabMagFragpipeTask.class);
 	protected static final String taskName = "FragPipe HAP workflow";
 
-	public MetaLabMagFragpipeTask(MetaParameterMag metaPar, MetaSourcesMag msv, JProgressBar bar1, JProgressBar bar2,
-			SwingWorker<Boolean, Object> nextWork) {
-		super(metaPar, msv, bar1, bar2, nextWork);
+	public MetaLabMagFragpipeTask(MetaParameterMag metaPar, MetaResourceParameters mrp, JavaFXProgressBar bar1,
+			JavaFXProgressBar bar2) {
+		super(metaPar, mrp, bar1, bar2);
 		// TODO Auto-generated constructor stub
 	}
 
 	protected void initial() {
-		this.fragpipeBat = ((MetaSourcesMag) msv).getFragpipe();
+		this.fragpipeBat = mrp.getToolPath(ToolType.FRAGPIPE);
 		this.fragPipeTask = new FragPipeTask(this.fragpipeBat);
 		this.spConvert = false;
 		this.resultFolderFile = new File(metaPar.getResult());
@@ -1496,7 +1496,7 @@ public class MetaLabMagFragpipeTask extends MagHapPFindTask {
 
 		MagFuncSearcher searcher = null;
 		try {
-			searcher = new MagFuncSearcher(metaPar.getMicroDb(), msv.getFuncDef());
+			searcher = new MagFuncSearcher(metaPar.getMicroDb(), mrp.getToolPath(ToolType.FUNCDB));
 
 		} catch (NumberFormatException | SQLException | IOException e) {
 			// TODO Auto-generated catch block
@@ -1767,7 +1767,7 @@ public class MetaLabMagFragpipeTask extends MagHapPFindTask {
 
 		setProgress(95);
 
-		bar2.setString(getTaskName() + ": exporting report");
+		progressBar.setString(getTaskName() + ": exporting report");
 
 		LOGGER.info(getTaskName() + ": exporting report started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting report started");

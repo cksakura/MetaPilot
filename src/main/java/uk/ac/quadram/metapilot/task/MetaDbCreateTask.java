@@ -6,16 +6,14 @@ import java.io.FileReader;
 import java.io.PrintWriter;
 import java.util.Date;
 
-import javax.swing.JProgressBar;
-import javax.swing.SwingWorker;
-
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import uk.ac.quadram.metapilot.task.par.MetaParameter;
+import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.par.MetaSsdbCreatePar;
-import uk.ac.quadram.metapilot.task.v2.par.MetaSourcesV2;
 
 /**
  * Create the sample-specific protein database. <br>
@@ -35,11 +33,10 @@ public abstract class MetaDbCreateTask extends MetaAbstractTask {
 	protected Logger LOGGER = LogManager.getLogger(MetaDbCreateTask.class);
 	protected String taskName = "Sample specific database generation";
 
-	public MetaDbCreateTask(MetaParameter metaPar, MetaSourcesV2 msv2, JProgressBar bar1, JProgressBar bar2,
-			SwingWorker<Boolean, Object> nextWork) {
-		super(metaPar, msv2, bar1, bar2, nextWork);
+	public MetaDbCreateTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar) {
+		super(metaPar, mrp, progressBar);
 	}
-	
+
 	@Override
 	protected void initial() {
 		// TODO Auto-generated method stub
@@ -47,10 +44,12 @@ public abstract class MetaDbCreateTask extends MetaAbstractTask {
 	}
 
 	@Override
-	protected Boolean doInBackground() throws Exception {
-		// TODO Auto-generated method stub
+	protected Boolean call() throws Exception {
+		// Update progress at start
+		updateProgress(0, 100);
+		updateMessage("Starting database creation...");
 
-		bar2.setString(taskName);
+		progressBar.setString(taskName);
 
 		LOGGER.info(taskName + ": start");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": start");
@@ -198,5 +197,9 @@ public abstract class MetaDbCreateTask extends MetaAbstractTask {
 	protected Logger getLogger() {
 		// TODO Auto-generated method stub
 		return LOGGER;
+	}
+
+	public void forceStop() {
+		this.cancel();
 	}
 }

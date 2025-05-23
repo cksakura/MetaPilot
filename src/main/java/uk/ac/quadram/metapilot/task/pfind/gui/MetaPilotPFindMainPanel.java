@@ -36,7 +36,8 @@ import uk.ac.quadram.metapilot.core.mod.IsobaricTag;
 import uk.ac.quadram.metapilot.core.model.ConsoleTextArea;
 import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantModification;
 import uk.ac.quadram.metapilot.license.LicenseVerifier;
-import uk.ac.quadram.metapilot.task.MetaLabTask;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
+import uk.ac.quadram.metapilot.task.MetaPilotTask;
 import uk.ac.quadram.metapilot.task.MetaLabWorkflowType;
 import uk.ac.quadram.metapilot.task.gui.MetaPilotDBPanel;
 import uk.ac.quadram.metapilot.task.gui.MetaLabTaxaPanel;
@@ -44,15 +45,13 @@ import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.par.MetaData;
-import uk.ac.quadram.metapilot.task.par.MetaParameter;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.par.MetaPep2TaxaPar;
 import uk.ac.quadram.metapilot.task.par.MetaSsdbCreatePar;
-import uk.ac.quadram.metapilot.task.pfind.MetaPilotMagTask;
 import uk.ac.quadram.metapilot.task.pfind.par.MetaParameterPFind;
 import uk.ac.quadram.metapilot.task.pfind.par.PFindEnzymeIO;
 import uk.ac.quadram.metapilot.task.pfind.par.PFindModIO;
 import uk.ac.quadram.metapilot.task.v1.gui.StatusPanel;
-import uk.ac.quadram.metapilot.task.v2.MetaLabTaskV2;
 import uk.ac.quadram.metapilot.task.v2.gui.MetaLabMaxQuantPanel;
 import uk.ac.quadram.metapilot.task.v2.gui.MetaLabEnzymePanel;
 import uk.ac.quadram.metapilot.task.v2.gui.MetaLabIOPanel;
@@ -92,8 +91,8 @@ public class MetaPilotPFindMainPanel extends JPanel {
 	protected MetaLabParViewPanel metaLabParViewPanel;
 
 	protected MetaLabWorkflowType workflowType;
-	protected MetaParameter par;
-	protected MetaSourcesV2 msv;
+	protected MetaBaseParameter par;
+	protected MetaResourceParameters mrp;
 	protected JLabel lblLabelQuantificationResult;
 	protected JRadioButton rdbtnCombine;
 	protected JRadioButton rdbtnNotCombine;
@@ -130,7 +129,7 @@ public class MetaPilotPFindMainPanel extends JPanel {
 	protected JCheckBox alphapeptBox;
 	protected JCheckBox sageBox;
 
-	protected MetaLabTask task;
+	protected MetaPilotTask task;
 
 	protected final String helpInfo = "Task failed :(\nplease contact us to get a solution\ntechteam.metalab@gmail.com\n(attaching the files"
 			+ "\"log.txt\" and \"logging.log\" in the result folder could be helpful)";
@@ -138,10 +137,10 @@ public class MetaPilotPFindMainPanel extends JPanel {
 	/**
 	 * Create the panel.
 	 */
-	public MetaPilotPFindMainPanel(MetaParameter par, MetaSourcesV2 msv) {
+	public MetaPilotPFindMainPanel(MetaBaseParameter par, MetaResourceParameters mrp) {
 
 		this.par = par;
-		this.msv = msv;
+		this.mrp = mrp;
 
 		setLayout(new MigLayout("", "[1000:1600:1920,grow]", "[800:900:1080,grow]"));
 
@@ -342,11 +341,11 @@ public class MetaPilotPFindMainPanel extends JPanel {
 		if (this.workflowType == MetaLabWorkflowType.pFindWorkflow) {
 			MetaParameterPFind parV3 = (MetaParameterPFind) par;
 
-			metaLabModPanel = new MetaLabModPanel(parV3, PFindModIO.getMaxQuantMods(msv.getMod()));
-			parameterPanel.add(metaLabModPanel, "cell 0 0,grow");
+//			metaLabModPanel = new MetaLabModPanel(parV3, PFindModIO.getMaxQuantMods(msv.getMod()));
+//			parameterPanel.add(metaLabModPanel, "cell 0 0,grow");
 
-			metaLabEnzymePanel = new MetaLabEnzymePanel(parV3, PFindEnzymeIO.getEnzymes(msv.getEnzyme()));
-			parameterPanel.add(metaLabEnzymePanel, "cell 0 1,grow");
+//			metaLabEnzymePanel = new MetaLabEnzymePanel(parV3, PFindEnzymeIO.getEnzymes(msv.getEnzyme()));
+//			parameterPanel.add(metaLabEnzymePanel, "cell 0 1,grow");
 
 			rdbtnCombine.setSelected(false);
 			rdbtnNotCombine.setSelected(true);
@@ -771,167 +770,8 @@ public class MetaPilotPFindMainPanel extends JPanel {
 
 			if (workflowType == MetaLabWorkflowType.pFindWorkflow) {
 
-				task = new MetaPilotMagTask((MetaParameterPFind) par, msv, progressBar, progressBar_1) {
-
-					public void done() {
-
-						try {
-							Thread.sleep(1000);
-						} catch (InterruptedException e1) {
-							// TODO Auto-generated catch block
-							e1.printStackTrace();
-						}
-
-						progressBar_1.setIndeterminate(false);
-
-						String log = consoleTextArea.getText();
-						try {
-							PrintWriter logwriter = new PrintWriter(new File(par.getResult(), "log.txt"));
-							logwriter.print(log);
-							logwriter.close();
-
-						} catch (FileNotFoundException e) {
-							// TODO Auto-generated catch block
-							e.printStackTrace();
-						}
-
-						setCursor(null);
-
-						btnStart_1.setEnabled(true);
-						btnStop.setEnabled(false);
-						statusPanel.stop();
-						MetaPilotPFindMainPanel.this.repaint();
-
-						if (task.isCancelled()) {
-							progressBar_1.setIndeterminate(false);
-							progressBar_1.setString("Task stopped");
-
-							return;
-						}
-
-						boolean finish = false;
-
-						try {
-
-							finish = get();
-
-							if (finish) {
-
-								progressBar_1.setString("finished");
-
-								btnReportView.setEnabled(true);
-
-								int reply = JOptionPane.showConfirmDialog(MetaPilotPFindMainPanel.this,
-										"Task finished :)\nView the report?", "Finished", JOptionPane.YES_NO_OPTION);
-
-								if (reply == JOptionPane.YES_OPTION) {
-									try {
-										File report = new File(par.getReportDir(), "index.html");
-										java.awt.Desktop.getDesktop().browse(report.toURI());
-									} catch (IOException e) {
-										// TODO Auto-generated catch block
-										e.printStackTrace();
-									}
-								}
-							} else {
-								JOptionPane.showMessageDialog(MetaPilotPFindMainPanel.this, helpInfo, "Error",
-										JOptionPane.ERROR_MESSAGE);
-							}
-
-						} catch (InterruptedException e) {
-							// TODO Auto-generated catch block
-							JOptionPane.showMessageDialog(MetaPilotPFindMainPanel.this, helpInfo, "Error",
-									JOptionPane.ERROR_MESSAGE);
-
-						} catch (ExecutionException e) {
-							// TODO Auto-generated catch block
-							JOptionPane.showMessageDialog(MetaPilotPFindMainPanel.this, helpInfo, "Error",
-									JOptionPane.ERROR_MESSAGE);
-						}
-					}
-				};
 			} else {
 
-				task = new MetaLabTaskV2((MetaParameterMQ) par, msv, progressBar, progressBar_1) {
-
-					public void done() {
-
-						try {
-							Thread.sleep(1000);
-						} catch (InterruptedException e1) {
-							// TODO Auto-generated catch block
-							e1.printStackTrace();
-						}
-
-						progressBar_1.setIndeterminate(false);
-
-						String log = consoleTextArea.getText();
-						try {
-							PrintWriter logwriter = new PrintWriter(new File(par.getResult(), "log.txt"));
-							logwriter.print(log);
-							logwriter.close();
-
-						} catch (FileNotFoundException e) {
-							// TODO Auto-generated catch block
-							e.printStackTrace();
-						}
-
-						setCursor(null);
-
-						btnStart_1.setEnabled(true);
-						btnStop.setEnabled(false);
-						statusPanel.stop();
-						MetaPilotPFindMainPanel.this.repaint();
-
-						if (task.isCancelled()) {
-
-							progressBar_1.setIndeterminate(false);
-							progressBar_1.setString("Task stopped");
-
-							return;
-						}
-
-						boolean finish = false;
-
-						try {
-
-							finish = get();
-
-							if (finish) {
-
-								progressBar_1.setString("finished");
-
-								btnReportView.setEnabled(true);
-
-								int reply = JOptionPane.showConfirmDialog(MetaPilotPFindMainPanel.this,
-										"Task finished :)\nView the report?", "Finished", JOptionPane.YES_NO_OPTION);
-
-								if (reply == JOptionPane.YES_OPTION) {
-									try {
-										File report = new File(par.getReportDir(), "index.html");
-										java.awt.Desktop.getDesktop().browse(report.toURI());
-									} catch (IOException e) {
-										// TODO Auto-generated catch block
-										e.printStackTrace();
-									}
-								}
-							} else {
-								JOptionPane.showMessageDialog(MetaPilotPFindMainPanel.this, helpInfo, "Error",
-										JOptionPane.ERROR_MESSAGE);
-							}
-
-						} catch (InterruptedException e) {
-							// TODO Auto-generated catch block
-							JOptionPane.showMessageDialog(MetaPilotPFindMainPanel.this, helpInfo, "Error",
-									JOptionPane.ERROR_MESSAGE);
-
-						} catch (ExecutionException e) {
-							// TODO Auto-generated catch block
-							JOptionPane.showMessageDialog(MetaPilotPFindMainPanel.this, helpInfo, "Error",
-									JOptionPane.ERROR_MESSAGE);
-						}
-					}
-				};
 			}
 
 			try {
@@ -1363,7 +1203,7 @@ public class MetaPilotPFindMainPanel extends JPanel {
 		}
 	}
 
-	public MetaParameter getParameter() {
+	public MetaBaseParameter getParameter() {
 		return par;
 	}
 
@@ -1378,26 +1218,6 @@ public class MetaPilotPFindMainPanel extends JPanel {
 			MetaParameterMQ parV2 = (MetaParameterMQ) par;
 			MetaSsdbCreatePar mscp = parV2.getMscp();
 			MetaPep2TaxaPar ptp = parV2.getPtp();
-
-			if (!msv.findPT()) {
-				list.add("ProteomicsTools is not found, please check the Setting -> Resource.");
-			}
-			if (mscp.isSsdb()) {
-				if (!msv.findXTandem()) {
-					list.add("X!Tandem is not found, please check the Setting -> Resource.");
-				}
-			}
-			if (!msv.findMaxQuant()) {
-				list.add("MaxQuant is not found, please check the Setting -> Resource.");
-			}
-			if (parV2.isMetaWorkflow() && ptp.isBuildIn()) {
-				if (!msv.findPep2tax()) {
-					list.add("Peptide and taxa mapping database is not found, please check the Setting -> Resource.");
-				}
-				if (!msv.findTaxonAll()) {
-					list.add("Taxonomic tree file is not found, please check the Setting -> Resource.");
-				}
-			}
 
 			if (parV2.getMetadata() == null || parV2.getMetadata().getRawFiles().length == 0) {
 				list.add("Raw files are not found.");
@@ -1446,26 +1266,6 @@ public class MetaPilotPFindMainPanel extends JPanel {
 			MetaParameterMQ parV2 = (MetaParameterMQ) par;
 			MetaSsdbCreatePar mscp = parV2.getMscp();
 			MetaPep2TaxaPar ptp = parV2.getPtp();
-
-			if (!msv.findPT()) {
-				list.add("ProteomicsTools is not found, please check the Setting -> Resource.");
-			}
-			if (mscp.isSsdb()) {
-				if (!msv.findXTandem()) {
-					list.add("X!Tandem is not found, please check the Setting -> Resource.");
-				}
-			}
-			if (!msv.findMSFragger()) {
-				list.add("MSFragger is not found, please check the Setting -> Resource.");
-			}
-			if (parV2.isMetaWorkflow() && ptp.isBuildIn()) {
-				if (!msv.findPep2tax()) {
-					list.add("Peptide and taxa mapping database is not found, please check the Setting -> Resource.");
-				}
-				if (!msv.findTaxonAll()) {
-					list.add("Taxonomic tree file is not found, please check the Setting -> Resource.");
-				}
-			}
 
 			if (parV2.getMetadata() == null || parV2.getMetadata().getRawFiles().length == 0) {
 				list.add("Raw files are not found.");
@@ -1519,29 +1319,6 @@ public class MetaPilotPFindMainPanel extends JPanel {
 		case pFindWorkflow: {
 			MetaParameterPFind parV3 = (MetaParameterPFind) par;
 			MetaPep2TaxaPar ptp = parV3.getPtp();
-
-			if (!msv.findPFind()) {
-				list.add("pFind is not found, please check the Setting -> Resource.");
-			}
-
-			if (parV3.isMetaWorkflow() && ptp.isBuildIn()) {
-				File microDbFile = new File(parV3.getMicroDb());
-				if (microDbFile.exists() && microDbFile.isDirectory()) {
-					File catelogFile = new File(microDbFile, "catalog.db");
-					if (!catelogFile.exists()) {
-						list.add("Gene catelog database is not found");
-					}
-				} else {
-					if (!msv.findPep2tax()) {
-						list.add(
-								"Peptide and taxa mapping database is not found, please check the Setting -> Resource.");
-					}
-				}
-
-				if (!msv.findTaxonAll()) {
-					list.add("Taxonomic tree file is not found, please check the Setting -> Resource.");
-				}
-			}
 
 			if (parV3.getMetadata() == null || parV3.getMetadata().getRawFiles().length == 0) {
 				list.add("Raw files are not found.");
@@ -1602,14 +1379,7 @@ public class MetaPilotPFindMainPanel extends JPanel {
 		case TaxonomyAnalysis: {
 			MetaParameterMQ parV2 = (MetaParameterMQ) par;
 			MetaPep2TaxaPar ptp = parV2.getPtp();
-			if (ptp.isBuildIn()) {
-				if (!msv.findPep2tax()) {
-					list.add("Peptide and taxa mapping database is not found, please check the Setting -> Resource.");
-				}
-				if (!msv.findTaxonAll()) {
-					list.add("Taxonomic tree file is not found, please check the Setting -> Resource.");
-				}
-			}
+
 			MetaPeptide[] peps = parV2.getPeps();
 			if (peps == null) {
 				list.add("No peptides were loaded.");
@@ -1625,9 +1395,6 @@ public class MetaPilotPFindMainPanel extends JPanel {
 
 		case FunctionalAnnotation: {
 			MetaParameterMQ parV2 = (MetaParameterMQ) par;
-			if (!msv.findFunction()) {
-				list.add("Functional database directory is not found, please check the Setting -> Resource.");
-			}
 
 			MetaProtein[] pros = parV2.getPros();
 			if (pros == null) {

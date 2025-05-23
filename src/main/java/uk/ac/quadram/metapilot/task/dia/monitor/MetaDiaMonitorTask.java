@@ -9,9 +9,13 @@ import javax.swing.table.DefaultTableModel;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import javafx.concurrent.Task;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNParquetReader;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNTask;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiannParameter;
+import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.task.dia.DiaLibSearchPar;
 import uk.ac.quadram.metapilot.task.dia.DiaPyTorchModelTask;
 import uk.ac.quadram.metapilot.task.dia.MetaDiaTask;
@@ -59,11 +63,11 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 	private static final Logger LOGGER = LogManager.getLogger(MetaDiaMonitorTask.class);
 	private static final String taskName = "Realtime DIA data analysis";
 
-	public MetaDiaMonitorTask(MetaParameterDiaRT metaPar, MetaSourcesDia msv, JProgressBar bar1, JProgressBar bar2,
-			SwingWorker<Boolean, Object> nextWork, File monitorFolder, File destinationFolder,
+	public MetaDiaMonitorTask(MetaParameterDiaRT metaPar, MetaResourceParameters mrp, JavaFXProgressBar bar1,
+			JavaFXProgressBar bar2, File monitorFolder, File destinationFolder,
 			DefaultTableModel resultTableModel, DefaultListModel<String> rawListModel) {
 
-		super(metaPar, msv, bar1, bar2, nextWork);
+		super(metaPar, mrp, bar1, bar2);
 		this.monitorFolderPath = Paths.get(monitorFolder.getAbsolutePath());
 		this.destinationFolderPath = Paths.get(destinationFolder.getAbsolutePath());
 
@@ -90,7 +94,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 
 	@SuppressWarnings("unchecked")
 	@Override
-	protected Boolean doInBackground() throws IOException {
+	protected Boolean call() throws IOException {
 
 		File magDbFile = this.magDb.getCurrentFile();
 		this.libFolderFile = new File(magDbFile, "libraries");
@@ -323,7 +327,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": processing raw files " + fileName
 					+ " started");
 
-			DiaNNTask diaNNTask = new DiaNNTask(((MetaSourcesDia) msv).getDiann());
+			DiaNNTask diaNNTask = new DiaNNTask(mrp.getToolPath(ToolType.DIANN));
 			diannPar.setThreads(threadCount / maxTaskCount + 1);
 
 			File diaFile = new File(fileAbPath);
@@ -544,7 +548,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 				}
 				int batchThreadCount = threadCount / maxTaskCount + 1;
 				DiaPyTorchModelTask diaModelTask = new DiaPyTorchModelTask((MetaParameterDia) metaPar,
-						(MetaSourcesDia) msv, bar1, pepIntenMap, modelFolderFile, batchThreadCount);
+						mrp, secondBar, pepIntenMap, modelFolderFile, batchThreadCount);
 				diaModelTask.execute();
 
 				SwingUtilities.invokeLater(() -> {

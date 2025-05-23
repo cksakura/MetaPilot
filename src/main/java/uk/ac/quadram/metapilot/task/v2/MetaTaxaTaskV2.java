@@ -23,9 +23,11 @@ import uk.ac.quadram.metapilot.core.taxonomy.Taxon;
 import uk.ac.quadram.metapilot.core.taxonomy.TaxonomyDatabase;
 import uk.ac.quadram.metapilot.core.taxonomy.TaxonomyRanks;
 import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantPepReader;
+import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
 import uk.ac.quadram.metapilot.mdb.pep.Pep2TaxaDatabase;
 import uk.ac.quadram.metapilot.mdb.unipept.UnipLCAResult;
 import uk.ac.quadram.metapilot.mdb.unipept.UnipeptRequester;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.MetaAbstractTask;
 import uk.ac.quadram.metapilot.task.MetaReportTask;
 import uk.ac.quadram.metapilot.task.io.MetaAlgorithm;
@@ -34,6 +36,7 @@ import uk.ac.quadram.metapilot.task.io.MetaTreeHandler;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPeptideXMLReader;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPeptideXMLWriter;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.par.MetaPep2TaxaPar;
 import uk.ac.quadram.metapilot.task.v2.par.MetaSourcesV2;
@@ -46,14 +49,13 @@ import uk.ac.quadram.metapilot.task.v2.par.MetaParameterMQ;
 public class MetaTaxaTaskV2 extends MetaAbstractTask {
 
 	private MetaPep2TaxaPar mptp;
-
+	private String taxDbString;
 	private static Logger LOGGER = LogManager.getLogger(MetaTaxaTaskV2.class);
 	private static final String taskName = "Taxonomy analysis";
 	private static final SimpleDateFormat format = new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss");
 
-	public MetaTaxaTaskV2(MetaParameterMQ metaPar, MetaSourcesV2 msv2, JProgressBar bar1, JProgressBar bar2,
-			SwingWorker<Boolean, Object> nextWork) {
-		super(metaPar, msv2, bar1, bar2, nextWork);
+	public MetaTaxaTaskV2(MetaBaseParameter metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar) {
+		super(metaPar, mrp, progressBar);
 	}
 
 	protected void initial() {
@@ -61,13 +63,13 @@ public class MetaTaxaTaskV2 extends MetaAbstractTask {
 	}
 
 	@Override
-	protected Boolean doInBackground() throws Exception {
+	protected Boolean call() throws Exception {
 		// TODO Auto-generated method stub
 
 		boolean finished1 = false;
 		boolean finished2 = false;
 
-		bar2.setString(taskName);
+		progressBar.setString(taskName);
 
 		LOGGER.info(taskName + ": start");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": start");
@@ -88,20 +90,6 @@ public class MetaTaxaTaskV2 extends MetaAbstractTask {
 			}
 
 			metaPar.setMetafile(summaryMetaFile);
-		}
-
-		String pep2tax = ((MetaSourcesV2) msv).getPep2tax();
-
-		if (mptp.isBuildIn()) {
-			if ((new File(pep2tax)).exists()) {
-				finished1 = builtinCalculate();
-			} else {
-				LOGGER.error(taskName
-						+ ": pep2taxa database was not found, please set it in Setting->Resource, or choose \"Unipept\" in Setting->Taxonomy analysis");
-				System.err.println(format.format(new Date()) + "\t" + taskName
-						+ ": pep2taxa database was not found, please set it in Setting->Resource, or choose \"Unipept\" in Setting->Taxonomy analysis");
-				return false;
-			}
 		}
 
 		if (mptp.isUnipept()) {
@@ -125,339 +113,6 @@ public class MetaTaxaTaskV2 extends MetaAbstractTask {
 		}
 	}
 
-	private boolean builtinCalculate() {
-
-		boolean finished = false;
-
-		File taxFile;
-		if (((MetaParameterMQ) metaPar).getQuickOutput() != null) {
-			taxFile = new File(((MetaParameterMQ) metaPar).getQuickOutput());
-		} else {
-			if (metaPar.getDbSearchResultFile() != null) {
-				taxFile = new File(metaPar.getDbSearchResultFile(), "taxonomy_analysis");
-			} else {
-				taxFile = new File(metaPar.getResult());
-			}
-		}
-
-		if (!taxFile.exists()) {
-			taxFile.mkdir();
-		}
-
-		File taxResultFile = new File(taxFile, MetaAlgorithm.Builtin.getName() + ".taxonomy.xml");
-
-		if (taxResultFile.exists() && taxResultFile.length() > 0) {
-
-			LOGGER.info(taskName + ": taxonomy result file " + taxResultFile.getName() + " was found, go to next step");
-			System.out.println(format.format(new Date()) + "\t" + taskName + ": taxonomy result file "
-					+ taxResultFile.getName() + " was found, go to next step");
-
-			MetaPeptideXMLReader reader = new MetaPeptideXMLReader(taxResultFile);
-
-			File refinedTaxon = new File(taxFile, MetaAlgorithm.Builtin.getName() + ".taxa.refine.csv");
-			reader.exportCsv(taxFile, MetaAlgorithm.Builtin, mptp.getLeastPepCount());
-
-			MetaPeptide[] peps = reader.getPeptides();
-			Taxon[] taxons = reader.getTaxons();
-			String[] expNames = reader.getFileNames();
-
-			File megan = new File(taxFile, MetaAlgorithm.Builtin.getName() + ".biom");
-			if (!megan.exists() || megan.length() == 0) {
-				MetaBiomJsonHandler.export(peps, taxons, expNames, megan.getAbsolutePath());
-			}
-
-			File allPepTaxa = new File(taxFile, MetaAlgorithm.Builtin.getName() + ".allPepTaxa.csv");
-			if (!allPepTaxa.exists() || allPepTaxa.length() == 0) {
-				reader.exportPeptideTaxaAll(allPepTaxa);
-			}
-
-			File iMetaLab = new File(taxFile, MetaAlgorithm.Builtin.getName() + ".iMetaLab.tree.csv");
-			if (!iMetaLab.exists() || iMetaLab.length() == 0) {
-				MetaTreeHandler.export(peps, taxons, expNames, iMetaLab);
-			}
-
-			File jsOutput = new File(metaPar.getReportDir() + "\\reports\\metamap\\data\\tree.js");
-			if (!jsOutput.getParentFile().exists()) {
-				jsOutput.getParentFile().mkdirs();
-			}
-
-			if (!jsOutput.exists() || jsOutput.length() == 0) {
-				MetaTreeHandler.exportJS(peps, taxons, expNames, jsOutput);
-			}
-
-			if (megan.exists() && allPepTaxa.exists() && iMetaLab.exists() && jsOutput.exists()) {
-				finished = true;
-			}
-
-			File reportDir = new File(metaPar.getReportDir() + "\\reports\\rmd_html");
-
-			if (!reportDir.exists()) {
-				reportDir.mkdirs();
-			}
-
-			MetaReportTask task = new MetaReportTask(metaPar.getThreadCount());
-
-			File report_taxonomy_summary = new File(reportDir, "report_taxonomy_summary.html");
-			if (!report_taxonomy_summary.exists() || report_taxonomy_summary.length() == 0) {
-				if (this.metaPar.getMetadata() == null) {
-					task.addTask(MetaReportTask.taxon, refinedTaxon, report_taxonomy_summary);
-				} else {
-					task.addTask(MetaReportTask.taxon, refinedTaxon, report_taxonomy_summary, metaPar.getMetafile());
-				}
-			}
-
-			task.run();
-
-			try {
-				finished = task.get();
-			} catch (InterruptedException | ExecutionException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-
-			return finished;
-
-		} else {
-
-			String pep2taxa = ((MetaSourcesV2) msv).getPep2tax();
-			TaxonomyDatabase taxDb = new TaxonomyDatabase(((MetaSourcesV2) msv).getTaxonAll());
-			HashSet<RootType> rootTypeSet = mptp.getUsedRootTypes();
-			TaxonomyRanks rank = mptp.getIgnoreBlankRank();
-			HashSet<String> excludeSet = mptp.getExcludeTaxa();
-
-			String[] fileNames = null;
-
-			String searchType = "";
-
-			MetaPeptide[] peps = null;
-
-			switch (metaPar.getWorkflowType()) {
-
-			case MaxQuantWorkflow: {
-
-				File maxquantTxt = new File(metaPar.getDbSearchResultFile() + "\\combined\\txt\\peptides.txt");
-
-				if (maxquantTxt.exists()) {
-
-					searchType = MetaConstants.maxQuant;
-					MaxquantPepReader reader = new MaxquantPepReader(maxquantTxt, (MetaParameterMQ) metaPar);
-					fileNames = ((MaxquantPepReader) reader).getIntensityTitle();
-
-					peps = reader.getMetaPeptides();
-
-					MetaPeptideXMLWriter writer = new MetaPeptideXMLWriter(taxResultFile, searchType,
-							((MetaParameterMQ) metaPar).getQuanMode(), fileNames);
-
-					HashSet<String> set = new HashSet<String>();
-					for (int i = 0; i < peps.length; i++) {
-						if (peps[i].isUse()) {
-							set.add(peps[i].getSequence());
-						}
-					}
-
-					System.out.println(
-							format.format(new Date()) + "\t" + taskName + ": Unique peptide counts:" + set.size());
-
-					Pep2TaxaDatabase pep2TaxDb = new Pep2TaxaDatabase(pep2taxa, taxDb);
-
-					HashMap<String, ArrayList<Taxon>> taxaMap = pep2TaxDb.pept2TaxaList(set);
-					HashMap<String, Integer> lcaIdMap = pep2TaxDb.taxa2Lca(taxaMap, rank, rootTypeSet, excludeSet);
-
-					System.out.println(format.format(new Date()) + "\t" + taskName + ": " + lcaIdMap.size()
-							+ " unique peptide are found in pep2tax database");
-
-					for (MetaPeptide metapep : peps) {
-						if (!metapep.isUse()) {
-							continue;
-						}
-						String sequence = metapep.getSequence();
-						if (lcaIdMap.containsKey(sequence)) {
-							int taxId = lcaIdMap.get(sequence);
-							Taxon lca = taxDb.getTaxonFromId(taxId);
-
-							if (lca == null) {
-								continue;
-							}
-							metapep.setLca(lca);
-
-							ArrayList<Taxon> taxonList = taxaMap.get(sequence);
-							int[] taxonIds = new int[taxonList.size()];
-							for (int i = 0; i < taxonList.size(); i++) {
-								Taxon taxoni = taxonList.get(i);
-								taxonIds[i] = taxoni.getId();
-								if (taxoni.getMainParentIds() == null) {
-									taxoni.setMainParentIds(taxDb.getMainParentTaxonIds(taxoni));
-								}
-
-								int[] mainTaxonIds = taxoni.getMainParentIds();
-
-								for (int parentId : mainTaxonIds) {
-									Taxon parentTaxon = taxDb.getTaxonFromId(parentId);
-									if (parentTaxon != null) {
-										if (parentTaxon.getMainParentIds() == null) {
-											parentTaxon.setMainParentIds(taxDb.getMainParentTaxonIds(parentId));
-										}
-										writer.addTaxon(parentTaxon);
-									}
-								}
-							}
-							metapep.setTaxonIds(taxonIds);
-
-							writer.addPeptide(metapep);
-						}
-					}
-					writer.close();
-				}
-
-				break;
-			}
-
-			case TaxonomyAnalysis: {
-
-				searchType = ((MetaParameterMQ) metaPar).getQuanResultType();
-				fileNames = ((MetaParameterMQ) metaPar).getIntensityTitles();
-				peps = ((MetaParameterMQ) metaPar).getPeps();
-
-				MetaPeptideXMLWriter writer = new MetaPeptideXMLWriter(taxResultFile, searchType,
-						((MetaParameterMQ) metaPar).getQuanMode(), fileNames);
-
-				HashSet<String> set = new HashSet<String>();
-				for (int i = 0; i < peps.length; i++) {
-					if (searchType.equals(MetaConstants.maxQuant) && !peps[i].isUse()) {
-						continue;
-					}
-					set.add(peps[i].getSequence());
-				}
-
-				System.out
-						.println(format.format(new Date()) + "\t" + taskName + ": Unique peptide counts:" + set.size());
-
-				Pep2TaxaDatabase pep2TaxDb = new Pep2TaxaDatabase(pep2taxa, taxDb);
-
-				HashMap<String, ArrayList<Taxon>> taxaMap = pep2TaxDb.pept2TaxaList(set);
-				HashMap<String, Integer> lcaIdMap = pep2TaxDb.taxa2Lca(taxaMap, rank, rootTypeSet, excludeSet);
-
-				System.out.println(format.format(new Date()) + "\t" + taskName + ": " + lcaIdMap.size()
-						+ " unique peptide are found in pep2tax database");
-
-				for (MetaPeptide metapep : peps) {
-					if (searchType.equals(MetaConstants.maxQuant) && !metapep.isUse()) {
-						continue;
-					}
-					String sequence = metapep.getSequence();
-					if (lcaIdMap.containsKey(sequence)) {
-						int taxId = lcaIdMap.get(sequence);
-						Taxon lca = taxDb.getTaxonFromId(taxId);
-
-						if (lca == null) {
-							continue;
-						}
-						metapep.setLca(lca);
-
-						ArrayList<Taxon> taxonList = taxaMap.get(sequence);
-						int[] taxonIds = new int[taxonList.size()];
-						for (int i = 0; i < taxonList.size(); i++) {
-							Taxon taxoni = taxonList.get(i);
-							taxonIds[i] = taxoni.getId();
-							if (taxoni.getMainParentIds() == null) {
-								taxoni.setMainParentIds(taxDb.getMainParentTaxonIds(taxoni));
-							}
-
-							int[] mainTaxonIds = taxoni.getMainParentIds();
-
-							for (int parentId : mainTaxonIds) {
-								Taxon parentTaxon = taxDb.getTaxonFromId(parentId);
-								if (parentTaxon != null) {
-									if (parentTaxon.getMainParentIds() == null) {
-										parentTaxon.setMainParentIds(taxDb.getMainParentTaxonIds(parentId));
-									}
-									writer.addTaxon(parentTaxon);
-								}
-							}
-						}
-						metapep.setTaxonIds(taxonIds);
-
-						writer.addPeptide(metapep);
-					}
-				}
-				writer.close();
-
-				break;
-			}
-
-			default:
-				break;
-			}
-		}
-
-		if (!taxResultFile.exists() || taxResultFile.length() == 0) {
-			return false;
-		}
-
-		MetaPeptideXMLReader reader = new MetaPeptideXMLReader(taxResultFile);
-		File refinedTaxon = new File(taxFile, MetaAlgorithm.Builtin.getName() + ".taxa.refine.csv");
-		reader.exportCsv(taxFile, MetaAlgorithm.Builtin, mptp.getLeastPepCount());
-
-		MetaPeptide[] peps = reader.getPeptides();
-		Taxon[] taxons = reader.getTaxons();
-		String[] expNames = reader.getFileNames();
-
-		File megan = new File(taxFile, MetaAlgorithm.Builtin.getName() + ".biom");
-		if (!megan.exists() || megan.length() == 0) {
-			MetaBiomJsonHandler.export(peps, taxons, expNames, megan.getAbsolutePath());
-		}
-
-		File allPepTaxa = new File(taxFile, MetaAlgorithm.Builtin.getName() + ".allPepTaxa.csv");
-		if (!allPepTaxa.exists() || allPepTaxa.length() == 0) {
-			reader.exportPeptideTaxaAll(allPepTaxa);
-		}
-
-		File iMetaLab = new File(taxFile, MetaAlgorithm.Builtin.getName() + ".iMetaLab.tree.csv");
-		if (!iMetaLab.exists() || iMetaLab.length() == 0) {
-			MetaTreeHandler.export(peps, taxons, expNames, iMetaLab);
-		}
-
-		File jsOutput = new File(metaPar.getReportDir() + "\\reports\\metamap\\data\\tree.js");
-		if (!jsOutput.getParentFile().exists()) {
-			jsOutput.getParentFile().mkdirs();
-		}
-		if (!jsOutput.exists() || jsOutput.length() == 0) {
-			MetaTreeHandler.exportJS(peps, taxons, expNames, jsOutput);
-		}
-
-		if (megan.exists() && allPepTaxa.exists() && iMetaLab.exists() && jsOutput.exists()) {
-			finished = true;
-		}
-
-		File reportDir = new File(metaPar.getReportDir() + "\\reports\\rmd_html");
-
-		if (!reportDir.exists()) {
-			reportDir.mkdirs();
-		}
-
-		MetaReportTask task = new MetaReportTask(metaPar.getThreadCount());
-		
-		File report_taxonomy_summary = new File(reportDir, "report_taxonomy_summary.html");
-		if (!report_taxonomy_summary.exists() || report_taxonomy_summary.length() == 0) {
-			if (this.metaPar.getMetafile() != null && this.metaPar.getMetafile().exists()) {
-				task.addTask(MetaReportTask.taxon, refinedTaxon, report_taxonomy_summary, metaPar.getMetafile());
-			} else {
-				task.addTask(MetaReportTask.taxon, refinedTaxon, report_taxonomy_summary);
-			}
-		}
-		
-		task.run();
-
-		try {
-			finished = task.get();
-		} catch (InterruptedException | ExecutionException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-		
-		return finished;
-	}
-
 	private boolean unipeptCalculate() {
 
 		boolean finished = false;
@@ -468,11 +123,11 @@ public class MetaTaxaTaskV2 extends MetaAbstractTask {
 		} else {
 			taxFile = new File(metaPar.getResult());
 		}
-		
+
 		if (!taxFile.exists()) {
 			taxFile.mkdir();
 		}
-		
+
 		File taxResultFile = new File(taxFile, MetaAlgorithm.Unipept.getName() + ".taxonomy.xml");
 
 		if (taxResultFile.exists() && taxResultFile.length() > 0) {
@@ -541,7 +196,7 @@ public class MetaTaxaTaskV2 extends MetaAbstractTask {
 
 		} else {
 
-			TaxonomyDatabase taxDb = new TaxonomyDatabase(((MetaSourcesV2) msv).getTaxonAll());
+			TaxonomyDatabase taxDb = new TaxonomyDatabase(taxDbString);
 			String[] fileNames = null;
 
 			String searchType = "";

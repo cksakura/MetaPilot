@@ -30,7 +30,7 @@ import org.apache.commons.lang3.math.NumberUtils;
 import uk.ac.quadram.metapilot.task.MetaLabWorkflowType;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.task.par.MetaDataIO;
-import uk.ac.quadram.metapilot.task.par.MetaParameter;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.v1.gui.ExpIdDialog;
 import net.miginfocom.swing.MigLayout;
 
@@ -73,7 +73,7 @@ public class MetaLabIOPanel extends JPanel {
 	 * @param rawFiles
 	 * @param pFindResult
 	 */
-	public MetaLabIOPanel(MetaParameter par) {
+	public MetaLabIOPanel(MetaBaseParameter par) {
 
 		MetaData metadata = par.getMetadata();
 
