@@ -1,0 +1,16 @@
+# Compiled class file
+/target/
+
+# Eclipse
+.classpath
+.project
+.settings/
+.factorypath
+
+# Other
+.metadata
+.vscode/
+*.bak
+*~
+*.swp
+*.swo 
