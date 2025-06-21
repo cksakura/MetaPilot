@@ -418,9 +418,7 @@ public class MaxquantPepReader extends AbstractMetaPeptideReader {
 				} else if (title[i].equals("Length")) {
 					lengthId = i;
 				} else if (title[i].equals("Missed cleavages")) {
-					if (parameter.getDigestMode() == MaxquantEnzyme.specific) {
-						missCleaveId = i;
-					}
+					missCleaveId = i;
 				} else if (title[i].equals("Mass")) {
 					massId = i;
 				} else if (title[i].equals("Proteins")) {

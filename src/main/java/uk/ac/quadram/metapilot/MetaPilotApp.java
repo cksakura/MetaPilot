@@ -58,6 +58,16 @@ import uk.ac.quadram.metapilot.registration.RegistrationManager;
 import uk.ac.quadram.metapilot.registration.UserRegistration;
 import uk.ac.quadram.metapilot.ui.RegistrationDialog;
 import uk.ac.quadram.metapilot.update.UpdateChecker;
+import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel;
+import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcPFindPanel;
+import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcFragPipePanel;
+import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcSagePanel;
+import uk.ac.quadram.metapilot.task.dda.mag.gui.MetaPilotDdaMagPfindPanel;
+import uk.ac.quadram.metapilot.task.dda.mag.gui.MetaPilotDdaMagFragPipePanel;
+import uk.ac.quadram.metapilot.task.dda.mag.gui.MetaPilotDdaMagSagePanel;
+import uk.ac.quadram.metapilot.task.dia.gui.MetaPilotDiaNormalPanel;
+import uk.ac.quadram.metapilot.task.dia.gui.MetaPilotDiaTargetPanel;
+import uk.ac.quadram.metapilot.task.dia.gui.MetaPilotDiaRealTimePanel;
 
 public class MetaPilotApp extends Application {
     
@@ -262,7 +272,7 @@ public class MetaPilotApp extends Application {
         titleLabel.setStyle("-fx-font-size: 32px; -fx-font-weight: bold;");
         
         // Add a subtitle
-        Label subtitleLabel = new Label("Comprehensive Workflow Manager for Proteomics");
+        Label subtitleLabel = new Label("Comprehensive Workflow Manager for Metaproteomics");
         subtitleLabel.setStyle("-fx-font-size: 18px;");
         
         // Create a container for the title and subtitle
@@ -332,6 +342,7 @@ public class MetaPilotApp extends Application {
         
         VBox workflowBox = new VBox(20);
         workflowBox.setPadding(new Insets(15));
+        workflowBox.setAlignment(Pos.CENTER);
         
         // IGC Database Workflows
         TitledPane igcPanel = new TitledPane();
@@ -496,69 +507,223 @@ public class MetaPilotApp extends Application {
         try {
             switch (type) {
                 case DDA_IGC_MAXQUANT:
-                    // Launch the pFind main frame
-                    MetaPilotPFindMainFrame pFindFrame = new MetaPilotPFindMainFrame();
-                    pFindFrame.setVisible(true);
+                    // Create a new stage for the MaxQuant workflow
+                    Stage maxQuantStage = new Stage();
+                    maxQuantStage.setTitle("DDA IGC MaxQuant Workflow");
+                    
+                    // Create the MaxQuant panel
+                    MetaPilotDdaIgcMaxQuantPanel maxQuantPanel = new MetaPilotDdaIgcMaxQuantPanel();
+                    
+                    // Create a scene with the panel
+                    Scene scene = new Scene(maxQuantPanel);
+                    try {
+                        scene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
+                    } catch (Exception e) {
+                        System.err.println("Could not load stylesheet: " + e.getMessage());
+                    }
+                    
+                    // Set up the stage
+                    maxQuantStage.setScene(scene);
+                    maxQuantStage.setMinWidth(800);
+                    maxQuantStage.setMinHeight(600);
+                    
+                    // Show the stage
+                    maxQuantStage.show();
                     break;
                     
                 case DDA_IGC_PFIND:
-                    // Launch the pFind main frame
-                    pFindFrame = new MetaPilotPFindMainFrame();
-                    pFindFrame.setVisible(true);
+                    // Create a new stage for the pFind workflow
+                    Stage pFindStage = new Stage();
+                    pFindStage.setTitle("DDA IGC pFind Workflow");
+
+                    // Create the pFind panel
+                    MetaPilotDdaIgcPFindPanel pFindPanel = new MetaPilotDdaIgcPFindPanel();
+
+                    // Create a scene with the panel
+                    Scene pFindScene = new Scene(pFindPanel);
+                    try {
+                        pFindScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
+                    } catch (Exception e) {
+                        System.err.println("Could not load stylesheet: " + e.getMessage());
+                    }
+
+                    // Set up the stage
+                    pFindStage.setScene(pFindScene);
+                    pFindStage.setMinWidth(800);
+                    pFindStage.setMinHeight(600);
+
+                    // Show the stage
+                    pFindStage.show();
                     break;
                     
                 case DDA_IGC_FRAGPIPE:
-                    // Launch the pFind main frame
-                    pFindFrame = new MetaPilotPFindMainFrame();
-                    pFindFrame.setVisible(true);
+                    // Create a new stage for the FragPipe workflow
+                    Stage fragPipeStage = new Stage();
+                    fragPipeStage.setTitle("DDA IGC FragPipe Workflow");
+
+                    // Create the FragPipe panel
+                    MetaPilotDdaIgcFragPipePanel fragPipePanel = new MetaPilotDdaIgcFragPipePanel();
+
+                    // Create a scene with the panel
+                    Scene fragPipeScene = new Scene(fragPipePanel);
+                    try {
+                        fragPipeScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
+                    } catch (Exception e) {
+                        System.err.println("Could not load stylesheet: " + e.getMessage());
+                    }
+
+                    // Set up the stage
+                    fragPipeStage.setScene(fragPipeScene);
+                    fragPipeStage.setMinWidth(800);
+                    fragPipeStage.setMinHeight(600);
+
+                    // Show the stage
+                    fragPipeStage.show();
                     break;
                     
                 case DDA_IGC_SAGE:
-                    // Launch the pFind main frame
-                    pFindFrame = new MetaPilotPFindMainFrame();
-                    pFindFrame.setVisible(true);
+                    // Create a new stage for the IGC Sage workflow
+                    Stage sageStage = new Stage();
+                    sageStage.setTitle("DDA IGC Sage Workflow");
+
+                    // Create the Sage panel
+                    MetaPilotDdaIgcSagePanel sagePanel = new MetaPilotDdaIgcSagePanel();
+
+                    // Create a scene with the panel
+                    Scene sageScene = new Scene(sagePanel);
+                    try {
+                        sageScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
+                    } catch (Exception e) {
+                        System.err.println("Could not load stylesheet: " + e.getMessage());
+                    }
+
+                    // Set up the stage
+                    sageStage.setScene(sageScene);
+                    sageStage.setMinWidth(800);
+                    sageStage.setMinHeight(600);
+
+                    // Show the stage
+                    sageStage.show();
                     break;
                     
                 case DDA_MAG_PFIND:
                     // Launch the MAG main frame
                     // Note: Using default constructor if parameters are not supported
-                    MetaPilotMainFrameMag magFrame = new MetaPilotMainFrameMag();
-                    magFrame.setVisible(true);
+                	// Create a new stage for the pFind workflow
+                    Stage pFindMagStage = new Stage();
+                    pFindMagStage.setTitle("DDA MAG pFind Workflow");
+
+                    // Create the pFind panel
+                    MetaPilotDdaMagPfindPanel pFindMagPanel = new MetaPilotDdaMagPfindPanel();
+
+                    // Create a scene with the panel
+                    Scene pFindMagScene = new Scene(pFindMagPanel);
+                    try {
+                    	pFindMagScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
+                    } catch (Exception e) {
+                        System.err.println("Could not load stylesheet: " + e.getMessage());
+                    }
+
+                    // Set up the stage
+                    pFindMagStage.setScene(pFindMagScene);
+                    pFindMagStage.setMinWidth(800);
+                    pFindMagStage.setMinHeight(600);
+
+                    // Show the stage
+                    pFindMagStage.show();
                     break;
                     
                 case DDA_MAG_FRAGPIPE:
-                    // Launch the MAG main frame
-                    // Note: Using default constructor if parameters are not supported
-                    magFrame = new MetaPilotMainFrameMag();
-                    magFrame.setVisible(true);
+                    // Create a new stage for the MAG FragPipe workflow
+                    Stage fragPipeMagStage = new Stage();
+                    fragPipeMagStage.setTitle("DDA MAG FragPipe Workflow");
+
+                    // Create the MAG FragPipe panel
+                    MetaPilotDdaMagFragPipePanel fragPipeMagPanel = new MetaPilotDdaMagFragPipePanel();
+
+                    // Create a scene with the panel
+                    Scene fragPipeMagScene = new Scene(fragPipeMagPanel);
+                    try {
+                        fragPipeMagScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
+                    } catch (Exception e) {
+                        System.err.println("Could not load stylesheet: " + e.getMessage());
+                    }
+
+                    // Set up the stage
+                    fragPipeMagStage.setScene(fragPipeMagScene);
+                    fragPipeMagStage.setMinWidth(800);
+                    fragPipeMagStage.setMinHeight(600);
+
+                    // Show the stage
+                    fragPipeMagStage.show();
                     break;
                     
                 case DDA_MAG_SAGE:
-                    // Launch the MAG main frame
-                    // Note: Using default constructor if parameters are not supported
-                    magFrame = new MetaPilotMainFrameMag();
-                    magFrame.setVisible(true);
+                    Stage magSageStage = new Stage();
+                    magSageStage.setTitle("DDA MAG Sage Workflow");
+                    MetaPilotDdaMagSagePanel magSagePanel = new MetaPilotDdaMagSagePanel();
+                    Scene magSageScene = new Scene(magSagePanel, 1600, 900);
+                    try {
+                        magSageScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
+                    } catch (Exception e) {
+                        System.err.println("Could not load stylesheet: " + e.getMessage());
+                    }
+                    magSageStage.setScene(magSageScene);
+                    magSageStage.setMinWidth(800);
+                    magSageStage.setMinHeight(600);
+                    magSageStage.show();
                     break;
                     
                 case DIA_NORMAL:
-                    // Launch the DIA Normal main frame
-                    // Note: Using default constructor if parameters are not supported
-                    MetaPilotMainFrameDia diaFrame = new MetaPilotMainFrameDia();
-                    diaFrame.setVisible(true);
+                    Stage diaNormalStage = new Stage();
+                    diaNormalStage.setTitle("DIA Normal Workflow");
+                    MetaPilotDiaNormalPanel diaNormalPanel = new MetaPilotDiaNormalPanel();
+                    Scene diaNormalScene = new Scene(diaNormalPanel, 1600, 900);
+                    try {
+                        diaNormalScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
+                    } catch (Exception e) {
+                        System.err.println("Could not load stylesheet: " + e.getMessage());
+                    }
+                    diaNormalStage.setScene(diaNormalScene);
+                    diaNormalStage.setMinWidth(800);
+                    diaNormalStage.setMinHeight(600);
+                    diaNormalStage.show();
                     break;
                     
                 case DIA_TARGET:
                     // Launch the DIA Target main frame
                     // Note: Using default constructor if parameters are not supported
-                    MetaPilotMainFrameDiaTg diaTgFrame = new MetaPilotMainFrameDiaTg();
-                    diaTgFrame.setVisible(true);
+                    Stage diaTargetStage = new Stage();
+                    diaTargetStage.setTitle("DIA Target Workflow");
+                    MetaPilotDiaTargetPanel diaTargetPanel = new MetaPilotDiaTargetPanel();
+                    Scene diaTargetScene = new Scene(diaTargetPanel, 1600, 900);
+                    try {
+                        diaTargetScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
+                    } catch (Exception e) {
+                        System.err.println("Could not load stylesheet: " + e.getMessage());
+                    }
+                    diaTargetStage.setScene(diaTargetScene);
+                    diaTargetStage.setMinWidth(800);
+                    diaTargetStage.setMinHeight(600);
+                    diaTargetStage.show();
                     break;
                     
                 case DIA_REALTIME:
                     // Launch the DIA Real-time main frame
                     // Note: Using default constructor if parameters are not supported
-                    MetaPilotMainFrameDiaRT diaRtFrame = new MetaPilotMainFrameDiaRT();
-                    diaRtFrame.setVisible(true);
+                    Stage diaRealTimeStage = new Stage();
+                    diaRealTimeStage.setTitle("DIA Real-time Workflow");
+                    MetaPilotDiaRealTimePanel diaRealTimePanel = new MetaPilotDiaRealTimePanel();
+                    Scene diaRealTimeScene = new Scene(diaRealTimePanel, 1600, 900);
+                    try {
+                        diaRealTimeScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
+                    } catch (Exception e) {
+                        System.err.println("Could not load stylesheet: " + e.getMessage());
+                    }
+                    diaRealTimeStage.setScene(diaRealTimeScene);
+                    diaRealTimeStage.setMinWidth(800);
+                    diaRealTimeStage.setMinHeight(600);
+                    diaRealTimeStage.show();
                     break;
             }
         } catch (Exception ex) {
@@ -576,6 +741,16 @@ public class MetaPilotApp extends Application {
     }
     
     private void showError(String title, String content, Exception ex) {
+        // Print detailed error information to console for debugging
+        System.err.println("=== ERROR DETAILS ===");
+        System.err.println("Title: " + title);
+        System.err.println("Content: " + content);
+        System.err.println("Exception: " + ex.getClass().getSimpleName());
+        System.err.println("Message: " + ex.getMessage());
+        System.err.println("Stack trace:");
+        ex.printStackTrace();
+        System.err.println("=====================");
+        
         Alert alert = new Alert(Alert.AlertType.ERROR);
         alert.setTitle(title);
         alert.setHeaderText(null);

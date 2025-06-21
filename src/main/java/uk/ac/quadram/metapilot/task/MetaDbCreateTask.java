@@ -13,7 +13,6 @@ import org.apache.logging.log4j.Logger;
 import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
-import uk.ac.quadram.metapilot.task.par.MetaSsdbCreatePar;
 
 /**
  * Create the sample-specific protein database. <br>
@@ -24,7 +23,6 @@ import uk.ac.quadram.metapilot.task.par.MetaSsdbCreatePar;
  */
 public abstract class MetaDbCreateTask extends MetaAbstractTask {
 
-	protected MetaSsdbCreatePar mscp;
 	protected File dbcFile;
 	protected File ssdbFile;
 	protected String originalFasta;
@@ -40,7 +38,7 @@ public abstract class MetaDbCreateTask extends MetaAbstractTask {
 	@Override
 	protected void initial() {
 		// TODO Auto-generated method stub
-		this.mscp = metaPar.getMscp();
+
 	}
 
 	@Override
@@ -54,7 +52,7 @@ public abstract class MetaDbCreateTask extends MetaAbstractTask {
 		LOGGER.info(taskName + ": start");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": start");
 
-		if (mscp.isCluster()) {
+		if (metaPar.isSpectraCluster()) {
 			this.dbcFile = new File(metaPar.getResult(), "db_generation_msCluster");
 		} else {
 			this.dbcFile = new File(metaPar.getResult(), "db_generation_metaProIq");
@@ -124,7 +122,7 @@ public abstract class MetaDbCreateTask extends MetaAbstractTask {
 
 		int proCount = 0;
 
-		if (mscp.isCluster()) {
+		if (metaPar.isSpectraCluster()) {
 
 			cluster();
 

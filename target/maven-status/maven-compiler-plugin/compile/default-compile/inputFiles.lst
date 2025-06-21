@@ -40,6 +40,7 @@ C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\dbSearch\xt
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\core\function\KEGGFinder.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\ebi\pride\spectracluster\util\Defaults.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\mag\par\MetaParameterMag.java
+C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\common\gui\IsobaricLabelingPanel.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\dbSearch\fragpipe\FragpipePeptide.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\ebi\pride\spectracluster\binning\FixedReferenceMzBinner.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\dbSearch\pfind\PFindPTMReader.java
@@ -70,6 +71,7 @@ C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\ebi\pride\spectracluster\clus
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\ebi\pride\spectracluster\engine\SimilarClusterMergingEngine.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\v2\gui\MetaLabMetaPanel.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\license\LicenseConstants.java
+C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\dia\gui\MetaPilotDiaNormalPanel.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\par\MetaPep2TaxaPar.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\core\tools\FileMonitor.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\mag\MagHapPFindTask.java
@@ -86,6 +88,7 @@ C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\core\mod\Um
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\spectra\Ion.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\dbSearch\tpp\IProProtReader.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\core\ml\SemiSuperClassifier.java
+C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\dia\gui\MetaPilotDiaRealTimePanel.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\MetaLabTaskType.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\core\model\RowObject.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\dbSearch\open\io\package-info.java
@@ -105,6 +108,7 @@ C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\mag\gu
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\dbSearch\alphapept\AlphapeptTask.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\hgm\par\MetaParameterHGM.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\dia\target\gui\MetaFuncSelectPanel.java
+C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\common\gui\ModificationsPanel.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\quant\labelfree\LFreePeptidePair.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\core\math\curveFitting\package-info.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\core\prodb\FastaExtractFrame.java
@@ -143,6 +147,7 @@ C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\core\functi
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\ebi\pride\spectracluster\util\predicate\Predicates.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\mdb\pep\Pep2TaxaDatabase.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\mag\MagDbConfigIO.java
+C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\common\gui\MetaLabIOPanelFX.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\dda\MSConvertTask.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\core\function\eggNOG\EggNogAddDb.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\v1\par\package-info.java
@@ -152,6 +157,7 @@ C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\mag\gu
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\par\package-info.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\dbSearch\MaxQuant\MaxquantEnzymeHandler.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\v2\gui\MetaLabMSFraggerPanel.java
+C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\dia\gui\DiaLibraryGenerationPanel.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\gui\JavaFXProgressBar.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\dia\gui\LibSearchPanel.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\ui\ResourceConfigPanel.java
@@ -209,6 +215,7 @@ C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\ebi\pride\spectracluster\spec
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\ui\RegistrationDialog.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\gui\StatusPanelFX.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\ebi\pride\spectracluster\util\binner\IWideBinner.java
+C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\dda\igc\gui\MetaPilotDdaIgcMaxQuantPanel.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\dbSearch\MaxQuant\MaxquantModHandler.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\dbSearch\philosopher\InteractPepReader.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\ebi\pride\spectracluster\cluster\IClusterStabilityAssessor.java
@@ -365,11 +372,14 @@ C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\core\functi
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\core\prosit\irt\package-info.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\gui\ProgressBarFactory.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\dbSearch\PepProGroup.java
+C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\common\gui\MetadataConfigurationPanel.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\v1\MetaPepIdenTask.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\ebi\pride\spectracluster\util\function\spectrum\BinSpectrumMaxFunction.java
+C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\dda\igc\gui\MetaPilotDdaIgcPFindPanel.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\core\MGYG\MGYGFtpTask.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\dbSearch\xtandem\XTandemTask.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\dbSearch\fragpipe\package-info.java
+C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\dda\mag\gui\MetaPilotDdaMagPfindPanel.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\pfind\par\MetaParameterPFind.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\quant\flashLFQ\FlashLfqPsmReader.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\par\MetaDataIO.java
@@ -498,6 +508,7 @@ C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\registratio
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\dbSearch\psm\SearchedReference.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\v2\gui\MetaLabPFindPanel.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\dbSearch\alphapept\AlphapeptWorkflow.java
+C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\dia\gui\MetaPilotDiaTargetPanel.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\ebi\pride\spectracluster\spectra_list\SpectrumReference.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\ebi\pride\spectracluster\clusteringfilereader\io\IClusterSourceListener.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\core\math\curveFitting\IFunction.java
@@ -533,6 +544,7 @@ C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\mag\lo
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\core\mod\UmElement.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\core\aminoacid\AminoacidFragment.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\quant\flashLFQ\FlashLfqQuanPepReader.java
+C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\common\gui\ConsolePanel.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\ebi\pride\spectracluster\io\BinaryClusterAppender.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\mag\MgnifyDbItem.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\dia\target\par\MetaParIODiaTg.java
@@ -545,6 +557,7 @@ C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\io\pro
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\quant\PixelList.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\dia\gui\MetaPilotMainPanelDia.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\dbSearch\open\quant\OpenQuanProtein.java
+C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\dda\igc\gui\MetaPilotDdaIgcFragPipePanel.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\ebi\pride\spectracluster\clusteringfilereader\objects\ClusteringFileCluster.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\ebi\pride\spectracluster\util\ClusteringJobReference.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\dbSearch\pfind\PFindProtein.java
@@ -581,11 +594,13 @@ C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\ebi\pride\spectracluster\norm
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\ebi\pride\spectracluster\util\predicate\ComparisonPredicates.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\core\function\GOMFFinder.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\quant\Feature.java
+C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\dda\mag\gui\MetaPilotDdaMagSagePanel.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\dbSearch\pia\package-info.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\pfind\par\package-info.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\ebi\pride\spectracluster\similarity\PeakMatchesUtilities.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\dbSearch\pfind\PFindPsmReader.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\MetaPilotTask.java
+C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\dia\gui\DiaModelGenerationPanel.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\ebi\pride\spectracluster\util\ClusterUtilities.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\ebi\pride\spectracluster\io\MGFSpectrumIterable.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\dbSearch\pepxml\SequestHTPSM.java
@@ -605,6 +620,7 @@ C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\ebi\pride\spectracluster\clus
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\ebi\pride\spectracluster\util\PeakUtilities.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\ebi\pride\spectracluster\io\CGFClusterAppender.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\mag\HMGenomeHtmlWriter.java
+C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\dda\mag\gui\MetaPilotDdaMagFragPipePanel.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\ebi\pride\spectracluster\util\predicate\cluster\ClusterOnlyIdentifiedPredicate.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\io\pro\MetaProteinTsvReader.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\core\mod\IsobaricTag.java
@@ -616,6 +632,7 @@ C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\ebi\pride\spectracluster\io\P
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\dia\gui\MagDbModelPanel.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\dia\monitor\gui\MetaPilotMainFrameDiaRT.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\dda\PFindSpectraConvertTask.java
+C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\dda\igc\gui\MetaPilotDdaIgcSagePanel.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\quant\QParameter.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\v1\gui\ParameterPanel.java
 C:\Users\kchen2\.git\MetaPilot\src\main\java\uk\ac\quadram\metapilot\task\mag\MagDbItem.java

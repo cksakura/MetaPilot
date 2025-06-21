@@ -249,8 +249,8 @@ public class MetaLabParViewPanel extends JPanel {
 						add(enzymeNode);
 
 						DefaultMutableTreeNode digestionNode = new DefaultMutableTreeNode("Digestion mode");
-						digestionNode
-								.add(new DefaultMutableTreeNode(MaxquantEnzyme.enzymeModes[parV3.getDigestMode()]));
+//						digestionNode
+//								.add(new DefaultMutableTreeNode(MaxquantEnzyme.enzymeModes[parV3.getDigestMode()]));
 						add(digestionNode);
 
 						DefaultMutableTreeNode missCleavageNode = new DefaultMutableTreeNode("Max missed cleavaged");
@@ -371,8 +371,8 @@ public class MetaLabParViewPanel extends JPanel {
 						add(enzymeNode);
 
 						DefaultMutableTreeNode digestionNode = new DefaultMutableTreeNode("Digestion mode");
-						digestionNode
-								.add(new DefaultMutableTreeNode(MaxquantEnzyme.enzymeModes[parV3.getDigestMode()]));
+//						digestionNode
+//								.add(new DefaultMutableTreeNode(MaxquantEnzyme.enzymeModes[parV3.getDigestMode()]));
 						add(digestionNode);
 
 						DefaultMutableTreeNode missCleavageNode = new DefaultMutableTreeNode("Max missed cleavaged");
@@ -655,26 +655,26 @@ public class MetaLabParViewPanel extends JPanel {
 					} else {
 						MetaParameterMQ parV2 = (MetaParameterMQ) par;
 						DefaultMutableTreeNode fixModNode = new DefaultMutableTreeNode("Fixed modifications");
-						MaxquantModification[] fixedMods = parV2.getFixMods();
-						for (int i = 0; i < fixedMods.length; i++) {
-							fixModNode.add(new DefaultMutableTreeNode(fixedMods[i].getTitle()));
-						}
+//						MaxquantModification[] fixedMods = parV2.getFixMods();
+//						for (int i = 0; i < fixedMods.length; i++) {
+//							fixModNode.add(new DefaultMutableTreeNode(fixedMods[i].getTitle()));
+//						}
 						add(fixModNode);
 
 						DefaultMutableTreeNode variModNode = new DefaultMutableTreeNode("Variable modifications");
-						MaxquantModification[] variMods = parV2.getVariMods();
-						for (int i = 0; i < variMods.length; i++) {
-							variModNode.add(new DefaultMutableTreeNode(variMods[i].getTitle()));
-						}
+//						MaxquantModification[] variMods = parV2.getVariMods();
+//						for (int i = 0; i < variMods.length; i++) {
+//							variModNode.add(new DefaultMutableTreeNode(variMods[i].getTitle()));
+//						}
 						add(variModNode);
 
 						DefaultMutableTreeNode enzymeNode = new DefaultMutableTreeNode("Enzyme");
-						enzymeNode.add(new DefaultMutableTreeNode(parV2.getEnzyme().getName()));
+//						enzymeNode.add(new DefaultMutableTreeNode(parV2.getEnzyme().getName()));
 						add(enzymeNode);
 
 						DefaultMutableTreeNode digestionNode = new DefaultMutableTreeNode("Digestion mode");
-						digestionNode
-								.add(new DefaultMutableTreeNode(MaxquantEnzyme.enzymeModes[parV2.getDigestMode()]));
+//						digestionNode
+//								.add(new DefaultMutableTreeNode(MaxquantEnzyme.enzymeModes[parV2.getDigestMode()]));
 						add(digestionNode);
 
 						DefaultMutableTreeNode missCleavageNode = new DefaultMutableTreeNode("Max missed cleavaged");

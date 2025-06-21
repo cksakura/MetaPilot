@@ -241,9 +241,9 @@ public class MetaParameterPFind extends MetaBaseParameter {
 		return missCleavages;
 	}
 
-	public int getDigestMode() {
-		return digestMode;
-	}
+//	public int getDigestMode() {
+//		return digestMode;
+//	}
 
 	public String getQuanMode() {
 		return quanMode;

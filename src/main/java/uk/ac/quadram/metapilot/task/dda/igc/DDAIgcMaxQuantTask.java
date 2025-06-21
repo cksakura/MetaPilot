@@ -26,9 +26,8 @@ import org.dom4j.io.OutputFormat;
 import org.dom4j.io.SAXReader;
 import org.dom4j.io.XMLWriter;
 
-import uk.ac.quadram.metapilot.core.enzyme.Enzyme;
 import uk.ac.quadram.metapilot.core.math.MathTool;
-import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantModification;
+import uk.ac.quadram.metapilot.core.mod.IsobaricTag;
 import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantParaHandler;
 import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantPep4Meta;
 import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantPepReader;
@@ -46,7 +45,6 @@ import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.task.pfind.MetaDbReducerTask;
-import uk.ac.quadram.metapilot.task.pfind.par.MetaParameterPFind;
 import uk.ac.quadram.metapilot.task.v2.par.MetaMaxQuantPar;
 import uk.ac.quadram.metapilot.task.v2.par.MetaParaIOMQ;
 import uk.ac.quadram.metapilot.task.v2.par.MetaParameterMQ;
@@ -95,7 +93,7 @@ public class DDAIgcMaxQuantTask extends MetaPilotTask {
 		LOGGER.info(taskName + ": started");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": started");
 
-		if (metaPar.getMscp().isSsdb()) {
+		if (metaPar.isReduceDb()) {
 			PFindSpectraConvertTask spTask = new PFindSpectraConvertTask(metaPar, mrp, secondBar);
 			spTask.execute();
 			boolean convert = spTask.getValue();
@@ -106,7 +104,7 @@ public class DDAIgcMaxQuantTask extends MetaPilotTask {
 				return false;
 			}
 
-			MetaDbReducerTask dbrTask = new MetaDbReducerTask((MetaParameterPFind) metaPar, mrp, secondBar);
+			MetaDbReducerTask dbrTask = new MetaDbReducerTask(metaPar, mrp, secondBar);
 			dbrTask.execute();
 			boolean dbReduced = dbrTask.getValue();
 			if (!dbReduced) {
@@ -446,14 +444,23 @@ public class DDAIgcMaxQuantTask extends MetaPilotTask {
 			return peptides;
 		}
 
-		MaxquantModification[] variMods = ((MetaParameterMQ) metaPar).getVariMods();
-		MaxquantModification[] fixMods = ((MetaParameterMQ) metaPar).getFixMods();
-		Enzyme enzyme = ((MetaParameterMQ) metaPar).getEnzyme();
-		int digestMode = ((MetaParameterMQ) metaPar).getDigestMode();
-		int missCleavage = ((MetaParameterMQ) metaPar).getMissCleavages();
+		String[] variMods = metaPar.getVariMods();
+		String[] fixMods = metaPar.getFixMods();
+		String enzyme = metaPar.getEnzyme();
+		int missCleavage = metaPar.getMissCleavages();
+		int digestMode = metaPar.getDigestMode();
+		
+		String[][] labels = metaPar.getIsotopicLabels();
+		String[] isobaricLabels = new String[0];
+		IsobaricTag isobaricTag = metaPar.getIsobaricTag();
+		if (isobaricTag != null) {
+			String[] isobaricReport = isobaricTag.getReportTitle();
+			isobaricLabels = new String[isobaricReport.length];
+			for (int i = 0; i < isobaricLabels.length; i++) {
+				isobaricLabels[i] = isobaricTag.getName() + "-" + isobaricReport[i];
+			}
+		}
 
-		MaxquantModification[][] labels = ((MetaParameterMQ) metaPar).getLabels();
-		MaxquantModification[] isobaric = ((MetaParameterMQ) metaPar).getIsobaric();
 		double[][] isoCorFactor = ((MetaParameterMQ) metaPar).getIsoCorFactor();
 		String quanMode = ((MetaParameterMQ) metaPar).getQuanMode();
 
@@ -669,7 +676,7 @@ public class DDAIgcMaxQuantTask extends MetaPilotTask {
 						}
 
 						Element eEn = DocumentFactory.getInstance().createElement("string");
-						eEn.setText(enzyme.getName());
+						eEn.setText(enzyme);
 						ePg.add(eEn);
 
 					} else if (ePg.getName().equals("variableModifications")) {
@@ -681,7 +688,7 @@ public class DDAIgcMaxQuantTask extends MetaPilotTask {
 
 						for (int i = 0; i < variMods.length; i++) {
 							Element eVm = DocumentFactory.getInstance().createElement("string");
-							eVm.setText(variMods[i].getTitle());
+							eVm.setText(variMods[i]);
 							ePg.add(eVm);
 						}
 
@@ -692,12 +699,12 @@ public class DDAIgcMaxQuantTask extends MetaPilotTask {
 							ePg.remove(eLb);
 						}
 
-						if (quanMode.equals(MetaConstants.isotopicLabel)) {
+						if (quanMode.equals(MetaConstants.isotopicLabel) && labels!=null) {
 							for (int i = 0; i < labels.length; i++) {
 								if (labels[i].length > 0) {
 									StringBuilder sb = new StringBuilder();
 									for (int j = 0; j < labels[i].length; j++) {
-										sb.append(labels[i][j].getTitle()).append(";");
+										sb.append(labels[i][j]).append(";");
 									}
 									sb.deleteCharAt(sb.length() - 1);
 									Element eLb = DocumentFactory.getInstance().createElement("string");
@@ -730,8 +737,8 @@ public class DDAIgcMaxQuantTask extends MetaPilotTask {
 						}
 						if (quanMode.equals(MetaConstants.isobaricLabel)) {
 							HashMap<String, Element> elementMap = new HashMap<String, Element>();
-							for (int i = 0; i < isobaric.length; i++) {
-								String isobaricTitle = isobaric[i].getTitle();
+							for (int i = 0; i < isobaricLabels.length; i++) {
+								String isobaricTitle = isobaricLabels[i];
 
 								if (isobaricTitle.length() > 0) {
 
@@ -947,7 +954,7 @@ public class DDAIgcMaxQuantTask extends MetaPilotTask {
 
 				for (int i = 0; i < fixMods.length; i++) {
 					Element eFm = DocumentFactory.getInstance().createElement("string");
-					eFm.setText(fixMods[i].getTitle());
+					eFm.setText(fixMods[i]);
 					element.add(eFm);
 				}
 			} else if (name.equals("restrictMods")) {
@@ -959,7 +966,7 @@ public class DDAIgcMaxQuantTask extends MetaPilotTask {
 
 				for (int i = 0; i < variMods.length; i++) {
 					Element eVm = DocumentFactory.getInstance().createElement("string");
-					eVm.setText(variMods[i].getTitle());
+					eVm.setText(variMods[i]);
 					element.add(eVm);
 				}
 			} else if (name.equals("peptideFdr")) {

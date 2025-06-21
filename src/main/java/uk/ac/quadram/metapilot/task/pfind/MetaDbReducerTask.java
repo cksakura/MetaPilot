@@ -28,8 +28,8 @@ import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.spectra.cluster.ClusterTask;
 import uk.ac.quadram.metapilot.task.MetaDbCreateTask;
 import uk.ac.quadram.metapilot.task.MetaLabWorkflowType;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
-import uk.ac.quadram.metapilot.task.pfind.par.MetaParameterPFind;
 
 /**
  * Generate sample-specific database in pFind workflow
@@ -46,7 +46,7 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 	private boolean useDBReducer = false;
 	private double psmFdr = 0.01;
 
-	public MetaDbReducerTask(MetaParameterPFind metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar) {
+	public MetaDbReducerTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar) {
 		super(metaPar, mrp, progressBar);
 		this.dbReducerExe = new File(mrp.getToolPath(ToolType.DBREDUCER));
 		this.pFindExe = new File(mrp.getToolPath(ToolType.PFIND));
@@ -59,7 +59,6 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 	@Override
 	protected void initial() {
 		// TODO Auto-generated method stub
-		this.mscp = metaPar.getMscp();
 		String[] rawFiles = metaPar.getMetadata().getRawFiles();
 		String ms2Type = this.metaPar.getMs2ScanMode();
 		String suffix = "";
@@ -112,8 +111,8 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 			System.out.println(format.format(new Date()) + "\t" + taskName + ": clustering MS/MS spectra to "
 					+ clusterMgf + " started");
 
-			ClusterTask clusterTask = new ClusterTask(metaPar.getThreadCount(), true,
-					((MetaParameterPFind) metaPar).getIsobaricTag(), MetaLabWorkflowType.pFindWorkflow.name());
+			ClusterTask clusterTask = new ClusterTask(metaPar.getThreadCount(), true, metaPar.getIsobaricTag(),
+					MetaLabWorkflowType.pFindWorkflow.name());
 
 			clusterTask.runCli(mgfFiles, clusterDir, clusterMgf);
 
@@ -183,8 +182,7 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 				task.setTotalThread(metaPar.getThreadCount());
 
 				task.searchMgf(mgfFilePaths, dbcFile.getAbsolutePath(), originalFasta, ms2Type, psmFdr,
-						((MetaParameterPFind) this.metaPar).getFixMods(),
-						((MetaParameterPFind) this.metaPar).getVariMods());
+						metaPar.getFixMods(), metaPar.getVariMods());
 				task.run(1, mgfFilePaths.length * 48);
 			}
 
@@ -231,13 +229,9 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 				PFindTask task = new PFindTask(pFindBin);
 				task.setTotalThread(metaPar.getThreadCount());
 
-				task.searchMgf(mgfFilePaths, dbcFile.getAbsolutePath(), originalFasta, ms2Type, mscp.isOpen(), false,
-						psmFdr, ((MetaParameterPFind) this.metaPar).getFixMods(),
-						((MetaParameterPFind) this.metaPar).getVariMods(),
-						((MetaParameterPFind) this.metaPar).getEnzyme(),
-						((MetaParameterPFind) this.metaPar).getMissCleavages(),
-						((MetaParameterPFind) this.metaPar).getDigestMode(),
-						((MetaParameterPFind) this.metaPar).getIsobaricTag(), true);
+				task.searchMgf(mgfFilePaths, dbcFile.getAbsolutePath(), originalFasta, ms2Type, false, false, psmFdr,
+						metaPar.getFixMods(), metaPar.getVariMods(), metaPar.getEnzyme(), metaPar.getMissCleavages(),
+						metaPar.getDigestMode(), metaPar.getIsobaricTag(), true);
 				task.run(1, mgfFilePaths.length * 48);
 			}
 
@@ -331,8 +325,7 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 									+ " in original database started...");
 
 							task.searchMgf(new String[] { this.mgfFiles[i] }, firstDir.getAbsolutePath(), originalFasta,
-									ms2Type, 0.01, ((MetaParameterPFind) this.metaPar).getFixMods(),
-									((MetaParameterPFind) this.metaPar).getVariMods());
+									ms2Type, 0.01, metaPar.getFixMods(), metaPar.getVariMods());
 						}
 					}
 				}
@@ -369,23 +362,15 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 
 							if ((new File(this.pf2Files[i])).exists()) {
 								task.searchPF2(new String[] { this.pf2Files[i] }, firstDir.getAbsolutePath(),
-										originalFasta, ms2Type, mscp.isOpen(), false, 0.01,
-										((MetaParameterPFind) this.metaPar).getFixMods(),
-										((MetaParameterPFind) this.metaPar).getVariMods(),
-										((MetaParameterPFind) this.metaPar).getEnzyme(),
-										((MetaParameterPFind) this.metaPar).getMissCleavages(),
-										((MetaParameterPFind) this.metaPar).getDigestMode(),
-										((MetaParameterPFind) this.metaPar).getIsobaricTag(), true);
+										originalFasta, ms2Type, false, false, 0.01, metaPar.getFixMods(),
+										metaPar.getVariMods(), metaPar.getEnzyme(), metaPar.getMissCleavages(),
+										metaPar.getDigestMode(), metaPar.getIsobaricTag(), true);
 							} else {
 
 								task.searchMgf(new String[] { this.mgfFiles[i] }, firstDir.getAbsolutePath(),
-										originalFasta, ms2Type, mscp.isOpen(), false, 0.01,
-										((MetaParameterPFind) this.metaPar).getFixMods(),
-										((MetaParameterPFind) this.metaPar).getVariMods(),
-										((MetaParameterPFind) this.metaPar).getEnzyme(),
-										((MetaParameterPFind) this.metaPar).getMissCleavages(),
-										((MetaParameterPFind) this.metaPar).getDigestMode(),
-										((MetaParameterPFind) this.metaPar).getIsobaricTag(), true);
+										originalFasta, ms2Type, false, false, 0.01, metaPar.getFixMods(),
+										metaPar.getVariMods(), metaPar.getEnzyme(), metaPar.getMissCleavages(),
+										metaPar.getDigestMode(), metaPar.getIsobaricTag(), true);
 							}
 						}
 					}
@@ -514,9 +499,7 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 							+ " against the original database started...");
 
 					task.searchMgf(new String[] { this.mgfFiles[i] }, secondDir.getAbsolutePath(),
-							firstFasta.getAbsolutePath(), ms2Type, 0.01,
-							((MetaParameterPFind) this.metaPar).getFixMods(),
-							((MetaParameterPFind) this.metaPar).getVariMods());
+							firstFasta.getAbsolutePath(), ms2Type, 0.01, metaPar.getFixMods(), metaPar.getVariMods());
 				}
 
 				task.run(threadPoolCount, secondTaskCount * 6);
@@ -554,22 +537,14 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 
 					if ((new File(this.pf2Files[i])).exists()) {
 						task.searchPF2(new String[] { this.pf2Files[i] }, secondDir.getAbsolutePath(),
-								firstFasta.getAbsolutePath(), ms2Type, mscp.isOpen(), true, 0.01,
-								((MetaParameterPFind) this.metaPar).getFixMods(),
-								((MetaParameterPFind) this.metaPar).getVariMods(),
-								((MetaParameterPFind) this.metaPar).getEnzyme(),
-								((MetaParameterPFind) this.metaPar).getMissCleavages(),
-								((MetaParameterPFind) this.metaPar).getDigestMode(),
-								((MetaParameterPFind) this.metaPar).getIsobaricTag(), true);
+								firstFasta.getAbsolutePath(), ms2Type, false, true, 0.01, metaPar.getFixMods(),
+								metaPar.getVariMods(), metaPar.getEnzyme(), metaPar.getMissCleavages(), metaPar.getDigestMode(),
+								metaPar.getIsobaricTag(), true);
 					} else {
 						task.searchMgf(new String[] { this.mgfFiles[i] }, secondDir.getAbsolutePath(),
-								firstFasta.getAbsolutePath(), ms2Type, mscp.isOpen(), true, 0.01,
-								((MetaParameterPFind) this.metaPar).getFixMods(),
-								((MetaParameterPFind) this.metaPar).getVariMods(),
-								((MetaParameterPFind) this.metaPar).getEnzyme(),
-								((MetaParameterPFind) this.metaPar).getMissCleavages(),
-								((MetaParameterPFind) this.metaPar).getDigestMode(),
-								((MetaParameterPFind) this.metaPar).getIsobaricTag(), true);
+								firstFasta.getAbsolutePath(), ms2Type, false, true, 0.01, metaPar.getFixMods(),
+								metaPar.getVariMods(), metaPar.getEnzyme(), metaPar.getMissCleavages(), metaPar.getDigestMode(),
+								metaPar.getIsobaricTag(), true);
 					}
 				}
 

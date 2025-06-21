@@ -206,11 +206,17 @@ public class MetaMQSearchTask extends MetaAbstractTask {
 			return peptides;
 		}
 
-		MaxquantModification[] variMods = ((MetaParameterMQ) metaPar).getVariMods();
-		MaxquantModification[] fixMods = ((MetaParameterMQ) metaPar).getFixMods();
-		Enzyme enzyme = ((MetaParameterMQ) metaPar).getEnzyme();
-		int digestMode = ((MetaParameterMQ) metaPar).getDigestMode();
-		int missCleavage = ((MetaParameterMQ) metaPar).getMissCleavages();
+//		MaxquantModification[] variMods = ((MetaParameterMQ) metaPar).getVariMods();
+//		MaxquantModification[] fixMods = ((MetaParameterMQ) metaPar).getFixMods();
+//		Enzyme enzyme = ((MetaParameterMQ) metaPar).getEnzyme();
+//		int digestMode = ((MetaParameterMQ) metaPar).getDigestMode();
+//		int missCleavage = ((MetaParameterMQ) metaPar).getMissCleavages();
+		
+		MaxquantModification[] variMods = new MaxquantModification[0];
+		MaxquantModification[] fixMods = new MaxquantModification[0];
+		Enzyme enzyme = Enzyme.Trypsin;
+		int missCleavage = 0;
+		int digestMode = 0;
 
 		MaxquantModification[][] labels = ((MetaParameterMQ) metaPar).getLabels();
 		MaxquantModification[] isobaric = ((MetaParameterMQ) metaPar).getIsobaric();
@@ -837,11 +843,17 @@ public class MetaMQSearchTask extends MetaAbstractTask {
 
 	protected void maxquantParTest(String mqpar, String intput, String output) {
 
-		MaxquantModification[] variMods = ((MetaParameterMQ) metaPar).getVariMods();
-		MaxquantModification[] fixMods = ((MetaParameterMQ) metaPar).getFixMods();
-		Enzyme enzyme = ((MetaParameterMQ) metaPar).getEnzyme();
-		int digestMode = ((MetaParameterMQ) metaPar).getDigestMode();
-		int missCleavage = ((MetaParameterMQ) metaPar).getMissCleavages();
+//		MaxquantModification[] variMods = ((MetaParameterMQ) metaPar).getVariMods();
+//		MaxquantModification[] fixMods = ((MetaParameterMQ) metaPar).getFixMods();
+//		Enzyme enzyme = ((MetaParameterMQ) metaPar).getEnzyme();
+//		int digestMode = ((MetaParameterMQ) metaPar).getDigestMode();
+//		int missCleavage = ((MetaParameterMQ) metaPar).getMissCleavages();
+		
+		MaxquantModification[] variMods = new MaxquantModification[0];
+		MaxquantModification[] fixMods = new MaxquantModification[0];
+		Enzyme enzyme = Enzyme.Trypsin;
+		int missCleavage = 0;
+		int digestMode = 0;
 
 		MaxquantModification[][] labels = ((MetaParameterMQ) metaPar).getLabels();
 		MaxquantModification[] isobaric = ((MetaParameterMQ) metaPar).getIsobaric();

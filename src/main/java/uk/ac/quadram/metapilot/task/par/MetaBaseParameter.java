@@ -7,12 +7,14 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.PrintWriter;
 
+import uk.ac.quadram.metapilot.core.mod.IsobaricTag;
 import uk.ac.quadram.metapilot.task.MetaLabWorkflowType;
 
 /**
  * 
- * MetaPilot running parameter, all the generally required parameters are included
- * in this parameter, so parameters for each version could extends this class
+ * MetaPilot running parameter, all the generally required parameters are
+ * included in this parameter, so parameters for each version could extends this
+ * class
  * 
  * @author Kai Cheng
  *
@@ -38,6 +40,17 @@ public class MetaBaseParameter {
 	private boolean isMetaWorkflow;
 
 	private MetaSsdbCreatePar mscp;
+	private String[] variMods;
+	private String[] fixMods;
+	private String enzyme;
+	private String digestMode;
+	private int missCleavages;
+	private boolean reduceDb;
+	private boolean spectraCluster;
+
+	private IsobaricTag isobaricTag;
+	private double[][] isobaricRefTable;
+	private String[][] isotopicLabels;
 
 	private PrintWriter logWriter;
 
@@ -45,8 +58,9 @@ public class MetaBaseParameter {
 	public static final int quanResultSeparate = 1;
 	public static final int quanResultAll = 2;
 
-	public MetaBaseParameter(String workflowType, MetaData metadata, String result, String microDb, boolean appendHostDb,
-			String hostDB, String ms2ScanMode, int coreCount, int threadCount, boolean isMetaWorkflow) {
+	public MetaBaseParameter(String workflowType, MetaData metadata, String result, String microDb,
+			boolean appendHostDb, String hostDB, String ms2ScanMode, int coreCount, int threadCount,
+			boolean isMetaWorkflow) {
 		this.workflowType = workflowType;
 		this.metadata = metadata;
 		this.result = result;
@@ -60,9 +74,9 @@ public class MetaBaseParameter {
 		this.mscp = MetaSsdbCreatePar.getDefault();
 	}
 
-	public MetaBaseParameter(String workflowType, MetaData metadata, String result, String microDb, boolean appendHostDb,
-			String hostDB, String ms2ScanMode, int coreCount, int threadCount, boolean isMetaWorkflow,
-			MetaSsdbCreatePar mscp) {
+	public MetaBaseParameter(String workflowType, MetaData metadata, String result, String microDb,
+			boolean appendHostDb, String hostDB, String ms2ScanMode, int coreCount, int threadCount,
+			boolean isMetaWorkflow, MetaSsdbCreatePar mscp) {
 		this.workflowType = workflowType;
 		this.metadata = metadata;
 		this.result = result;
@@ -73,6 +87,100 @@ public class MetaBaseParameter {
 		this.coreCount = coreCount;
 		this.threadCount = threadCount;
 		this.isMetaWorkflow = isMetaWorkflow;
+	}
+
+	public String[][] getIsotopicLabels() {
+		return isotopicLabels;
+	}
+
+	public void setIsotopicLabels(String[][] isotopicLabels) {
+		this.isotopicLabels = isotopicLabels;
+	}
+
+	public int getMissCleavages() {
+		return missCleavages;
+	}
+
+	public void setMissCleavages(int missCleavages) {
+		this.missCleavages = missCleavages;
+	}
+
+	public boolean isReduceDb() {
+		return reduceDb;
+	}
+
+	public void setReduceDb(boolean reduceDb) {
+		this.reduceDb = reduceDb;
+	}
+
+	public boolean isSpectraCluster() {
+		return spectraCluster;
+	}
+
+	public void setSpectraCluster(boolean spectraCluster) {
+		this.spectraCluster = spectraCluster;
+	}
+
+	public String[] getVariMods() {
+		return variMods;
+	}
+
+	public void setVariMods(String[] variMods) {
+		this.variMods = variMods;
+	}
+
+	public String[] getFixMods() {
+		return fixMods;
+	}
+
+	public void setFixMods(String[] fixMods) {
+		this.fixMods = fixMods;
+	}
+
+	public String getEnzyme() {
+		return enzyme;
+	}
+
+	public void setEnzyme(String enzyme) {
+		this.enzyme = enzyme;
+	}
+	
+	public String getDigestModeString() {
+		return digestMode;
+	}
+
+	public int getDigestMode() {
+		if (digestMode.equals("Semi specific")) {
+			return 1;
+		} else if (digestMode.equals("Unspecific")) {
+			return 0;
+		} else {
+			return 3;
+		}
+	}
+
+	public void setDigestMode(String digestMode) {
+		this.digestMode = digestMode;
+	}
+
+	public IsobaricTag getIsobaricTag() {
+		return isobaricTag;
+	}
+
+	public void setIsobaricTag(IsobaricTag isobaricTag) {
+		this.isobaricTag = isobaricTag;
+	}
+
+	public double[][] getIsobaricRefTable() {
+		return isobaricRefTable;
+	}
+
+	public void setIsobaricRefTable(double[][] isobaricRefTable) {
+		this.isobaricRefTable = isobaricRefTable;
+	}
+
+	public void setLogWriter(PrintWriter logWriter) {
+		this.logWriter = logWriter;
 	}
 
 	public MetaData getMetadata() {
