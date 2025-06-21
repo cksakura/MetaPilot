@@ -983,7 +983,7 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 			this.pFindTask.setTotalThread(metaPar.getThreadCount());
 
 			if (isMzML || isBrukD) {
-
+/*
 				pFindTask.searchMgf(mgfs, resultFolderFile.getAbsolutePath(), db, ms2Type,
 						((MetaParameterPFind) metaPar).isOpenSearch(), true, mosp.getOpenPsmFDR(),
 						((MetaParameterPFind) this.metaPar).getFixMods(),
@@ -992,11 +992,11 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 						((MetaParameterPFind) this.metaPar).getMissCleavages(),
 						((MetaParameterPFind) this.metaPar).getDigestMode(),
 						((MetaParameterPFind) this.metaPar).getIsobaricTag(), false);
-
+*/
 				pFindTask.run(1, mgfs.length * 48);
 
 			} else {
-
+/*
 				pFindTask.searchPF2(pf2s, resultFolderFile.getAbsolutePath(), db, ms2Type,
 						((MetaParameterPFind) metaPar).isOpenSearch(), true, mosp.getOpenPsmFDR(),
 						((MetaParameterPFind) this.metaPar).getFixMods(),
@@ -1005,7 +1005,7 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 						((MetaParameterPFind) this.metaPar).getMissCleavages(),
 						((MetaParameterPFind) this.metaPar).getDigestMode(),
 						((MetaParameterPFind) this.metaPar).getIsobaricTag());
-
+*/
 				pFindTask.run(1, pf2s.length * 48);
 			}
 		}

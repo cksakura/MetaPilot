@@ -25,6 +25,7 @@ uk\ac\quadram\metapilot\task\dia\gui\MetaPilotMainFrameDia$2.class
 uk\ac\quadram\metapilot\dbSearch\fragpipe\FragpipePeptide.class
 uk\ac\quadram\metapilot\dbSearch\open\io\OpenModXmlReader.class
 uk\ac\quadram\metapilot\task\gui\MetaLabTestFrame.class
+uk\ac\quadram\metapilot\task\dda\mag\gui\MetaPilotDdaMagSagePanel$FixedModificationRow.class
 uk\ac\quadram\metapilot\task\v2\gui\MetaLabMetaPanel$16.class
 uk\ac\quadram\metapilot\task\mag\gui\MetaPilotMainFrameMag$3.class
 uk\ac\quadram\metapilot\task\hgm\gui\MetaLabMainPanelHGM$2.class
@@ -93,10 +94,13 @@ uk\ac\quadram\metapilot\task\v2\gui\MetaLabEnzymePanel$12.class
 uk\ac\ebi\pride\spectracluster\util\comparator\PeakMzComparator.class
 uk\ac\quadram\metapilot\task\v2\gui\MetaLabModPanel$1.class
 uk\ac\ebi\pride\spectracluster\similarity\IPeakMatches.class
+uk\ac\quadram\metapilot\task\common\gui\IsobaricLabelingPanel.class
+uk\ac\quadram\metapilot\task\dia\gui\DiaModelGenerationPanel.class
 uk\ac\quadram\metapilot\task\v1\gui\ParameterPanel$3.class
 uk\ac\quadram\metapilot\dbSearch\msFragger\MSFraggerParameter.class
 uk\ac\quadram\metapilot\task\v1\gui\ParameterPanel$19.class
 uk\ac\quadram\metapilot\task\dia\monitor\gui\MetaPilotMainFrameDiaRT.class
+uk\ac\quadram\metapilot\task\common\gui\ConsolePanel.class
 uk\ac\ebi\pride\spectracluster\io\ParserUtilities.class
 uk\ac\quadram\metapilot\task\dia\par\MetaParaIoDia.class
 uk\ac\quadram\metapilot\task\v1\gui\AdvancedSettingPanel$3.class
@@ -124,6 +128,7 @@ uk\ac\ebi\pride\spectracluster\consensus\BinnedGreedyConsensusSpectrum.class
 uk\ac\quadram\metapilot\dbSearch\pfind\PFindResultReader$ProteinGroup.class
 uk\ac\quadram\metapilot\core\taxonomy\TaxonomyDatabase.class
 uk\ac\quadram\metapilot\dbSearch\pfind\PFindResultReader$2.class
+uk\ac\quadram\metapilot\task\dia\gui\DiaLibraryGenerationPanel$1.class
 uk\ac\ebi\pride\spectracluster\util\function\peak\BinnedHighestNPeakFunction.class
 uk\ac\quadram\metapilot\task\dia\par\MetaSourcesDia.class
 uk\ac\quadram\metapilot\dbSearch\alphapept\AlphapeptWorkflow$AlphapeptWorkflowItem.class
@@ -200,8 +205,10 @@ uk\ac\quadram\metapilot\task\pfind\par\MetaParaIOPFind.class
 uk\ac\quadram\metapilot\core\model\ConsoleTextArea$1.class
 uk\ac\quadram\metapilot\core\tools\FormatTool.class
 uk\ac\quadram\metapilot\task\par\MetaSsdbCreatePar.class
+uk\ac\quadram\metapilot\task\dia\gui\MetaPilotDiaRealTimePanel$2.class
 uk\ac\ebi\pride\spectracluster\clustering\BinaryFileClusterer.class
 uk\ac\ebi\pride\spectracluster\util\comparator\QualitySpectrumComparator.class
+uk\ac\quadram\metapilot\task\dia\gui\DiaLibraryGenerationPanel$2.class
 uk\ac\quadram\metapilot\task\mag\MagHapPFindTask$6.class
 uk\ac\quadram\metapilot\task\v1\gui\InputOutputPanel$9.class
 uk\ac\quadram\metapilot\core\model\ConsoleTextArea.class
@@ -215,6 +222,7 @@ uk\ac\quadram\metapilot\task\v2\gui\MetaLabSourcePathDialog$ButtonEditor$2.class
 uk\ac\ebi\pride\spectracluster\spectra_list\BinaryClusterFileScanner.class
 uk\ac\ebi\pride\spectracluster\io\CGFSpectrumIterable$MGFSpectrumIterator.class
 uk\ac\quadram\metapilot\spectra\PeakSegment.class
+uk\ac\quadram\metapilot\task\dia\gui\MetaPilotDiaRealTimePanel$1.class
 uk\ac\quadram\metapilot\core\tools\ResumableDownloadTask.class
 uk\ac\quadram\metapilot\core\prodb\FastaExtractFrame$5.class
 uk\ac\quadram\metapilot\task\v1\gui\InputOutputPanel$16.class
@@ -258,6 +266,7 @@ uk\ac\quadram\metapilot\task\sage\MetaPilotMagSageTask$3.class
 uk\ac\quadram\metapilot\task\pfind\MetaIdenPFindTask$1.class
 uk\ac\quadram\metapilot\task\dia\monitor\gui\MetaPilotMainPanelDiaRT$CheckboxCellRenderer.class
 uk\ac\quadram\metapilot\dbSearch\deepDetect\DeepDetectTask$3.class
+uk\ac\quadram\metapilot\task\dda\mag\gui\MetaPilotDdaMagSagePanel$VariableModificationRow.class
 uk\ac\quadram\metapilot\core\mod\PostTransModification.class
 uk\ac\quadram\metapilot\core\function\eggNOG\EggNogAddDb.class
 uk\ac\quadram\metapilot\task\v2\gui\MetaLabIsobaricQuanPanel$9.class
@@ -275,6 +284,7 @@ uk\ac\quadram\metapilot\quant\Feature.class
 uk\ac\ebi\pride\spectracluster\util\comparator\ClusterComparator.class
 uk\ac\ebi\pride\spectracluster\binning\BinaryFileRebinner.class
 uk\ac\ebi\pride\spectracluster\clusteringfilereader\indexing\ClusteringIndexElement.class
+uk\ac\quadram\metapilot\task\dda\igc\gui\MetaPilotDdaIgcPFindPanel.class
 uk\ac\ebi\pride\spectracluster\util\predicate\ComparisonPredicates$1.class
 uk\ac\quadram\metapilot\task\sage\MetaPilotMagSageTask.class
 uk\ac\quadram\metapilot\task\v2\MetaDbCreateReduceTask$3.class
@@ -288,6 +298,7 @@ uk\ac\quadram\metapilot\task\par\MetaPep2TaxaPar.class
 uk\ac\quadram\metapilot\task\gui\MetaLabTestFrame$2.class
 uk\ac\ebi\pride\spectracluster\engine\GreedyIncrementalClusteringEngine.class
 uk\ac\ebi\pride\spectracluster\engine\IncrementalClusteringEngineFactory.class
+uk\ac\quadram\metapilot\task\dia\gui\MetaPilotDiaTargetPanel$FunctionRow.class
 uk\ac\ebi\pride\spectracluster\io\CGFSpectrumIterable.class
 uk\ac\quadram\metapilot\task\mag\gui\MetaPilotMagDbPanel.class
 uk\ac\quadram\metapilot\dbSearch\pfind\PFindPSM.class
@@ -301,6 +312,7 @@ uk\ac\ebi\pride\spectracluster\similarity\AllPeaksDotProduct.class
 uk\ac\quadram\metapilot\task\v2\MetaDbCreateReduceTask.class
 uk\ac\quadram\metapilot\task\v1\gui\ParameterPanel$18.class
 uk\ac\quadram\metapilot\task\mag\gui\MetaLabSourceDialogMag$ButtonEditor$5.class
+uk\ac\quadram\metapilot\task\dda\mag\gui\MetaPilotDdaMagFragPipePanel.class
 uk\ac\quadram\metapilot\task\mag\MagDbItem.class
 uk\ac\quadram\metapilot\task\pfind\MetaIdenPFindTask$WatchServiceLoop.class
 uk\ac\quadram\metapilot\task\v2\par\MetaSourcesV2.class
@@ -350,6 +362,7 @@ uk\ac\ebi\pride\spectracluster\binning\FixedReferenceMzBinner.class
 uk\ac\quadram\metapilot\dbSearch\PepProGroup.class
 uk\ac\quadram\metapilot\task\dia\DiaSerialTask.class
 uk\ac\quadram\metapilot\dbSearch\open\io\OpenPsmTsvReader$1.class
+uk\ac\quadram\metapilot\task\dia\gui\MetaPilotDiaNormalPanel.class
 uk\ac\ebi\pride\spectracluster\util\function\spectrum\BinSpectrumMaxFunction.class
 uk\ac\quadram\metapilot\task\v2\gui\MetaLabMSFraggerPanel.class
 uk\ac\ebi\pride\spectracluster\util\predicate\cluster_comparison\ClusterShareMajorPeakPredicate.class
@@ -369,6 +382,7 @@ uk\ac\quadram\metapilot\task\v2\gui\MetaLabMetaPanel$5.class
 uk\ac\quadram\metapilot\task\pfind\gui\MetaPilotLicenseFrame$2.class
 uk\ac\ebi\pride\spectracluster\consensus\ConsensusSpectrum$ConsensusSpectrumFactory.class
 uk\ac\quadram\metapilot\core\function\COGFinder.class
+uk\ac\quadram\metapilot\task\dia\gui\MetaPilotDiaTargetPanel$1.class
 uk\ac\quadram\metapilot\task\v2\gui\MetaLabParViewPanel$1.class
 uk\ac\ebi\pride\spectracluster\consensus\IConsensusSpectrumBuilder.class
 uk\ac\quadram\metapilot\task\dia\gui\MetaPilotMainFrameDia$1.class
@@ -403,6 +417,7 @@ uk\ac\quadram\metapilot\core\function\v2\GoOboReader.class
 uk\ac\quadram\metapilot\task\hgm\gui\MetaLabSourceDialogHGM.class
 uk\ac\quadram\metapilot\core\function\KOFinder.class
 uk\ac\quadram\metapilot\task\v2\gui\MetaLabModPanel$3.class
+uk\ac\quadram\metapilot\task\common\gui\MetaLabIOPanelFX$1.class
 uk\ac\quadram\metapilot\workflows\BaseWorkflow.class
 uk\ac\quadram\metapilot\task\hgm\gui\MetaLabSourceDialogHGM$JCheckBoxRenderer2.class
 uk\ac\quadram\metapilot\task\v2\gui\MetaLabMetaPanel$7.class
@@ -507,6 +522,7 @@ uk\ac\quadram\metapilot\task\v2\gui\MetaLabMetaPanel$9.class
 uk\ac\quadram\metapilot\dbSearch\pfind\PFindProteinReader.class
 uk\ac\ebi\pride\spectracluster\quality\IQualityScorer.class
 uk\ac\ebi\pride\spectracluster\engine\IncrementalClusteringEngine.class
+uk\ac\quadram\metapilot\task\dia\gui\DiaModelGenerationPanel$ParameterUpdateCallback.class
 uk\ac\quadram\metapilot\task\v1\MetaLabCli.class
 uk\ac\quadram\metapilot\registration\UserRegistration.class
 uk\ac\quadram\metapilot\core\tools\IntegerTextFilter.class
@@ -518,6 +534,7 @@ uk\ac\quadram\metapilot\dbSearch\pepxml\SequestHTPSM.class
 uk\ac\quadram\metapilot\dbSearch\fragpipe\FragPipeTest$3.class
 uk\ac\quadram\metapilot\dbSearch\open\quant\OpenQuanPeptide.class
 uk\ac\ebi\pride\spectracluster\engine\EngineFactories$IncrementalClusteringEngineFactory.class
+uk\ac\quadram\metapilot\task\dia\gui\DiaModelGenerationPanel$ModelRow.class
 uk\ac\quadram\metapilot\task\v1\gui\MainFrame.class
 uk\ac\ebi\pride\spectracluster\util\SpectrumUtilities.class
 uk\ac\quadram\metapilot\task\pfind\gui\MetaPilotDownloadPanel$5.class
@@ -564,6 +581,7 @@ uk\ac\quadram\metapilot\dbSearch\open\OpenPeptide.class
 uk\ac\quadram\metapilot\dbSearch\pia\ProteinInferenceReader.class
 uk\ac\quadram\metapilot\task\hgm\par\MetaSourcesHGM.class
 uk\ac\quadram\metapilot\core\function\CategoryFinder.class
+uk\ac\quadram\metapilot\task\dia\gui\MetaPilotDiaTargetPanel$2.class
 uk\ac\quadram\metapilot\task\MetaReportTask$1.class
 uk\ac\quadram\metapilot\task\mag\gui\MetaPilotMainPanelMag$1.class
 uk\ac\ebi\pride\spectracluster\consensus\GreedyConsensusSpectrum.class
@@ -591,7 +609,9 @@ uk\ac\quadram\metapilot\task\v2\gui\MetaLabEnzymePanel$5.class
 uk\ac\quadram\metapilot\task\MetaLabTaskType.class
 uk\ac\quadram\metapilot\task\io\pep\MetaPeptide.class
 uk\ac\ebi\pride\spectracluster\util\ClusterCreateListener.class
+uk\ac\quadram\metapilot\task\dda\igc\gui\MetaPilotDdaIgcFragPipePanel.class
 uk\ac\quadram\metapilot\task\dia\monitor\gui\MetaPilotMainPanelDiaRT$1.class
+uk\ac\quadram\metapilot\task\dda\igc\gui\MetaPilotDdaIgcMaxQuantPanel$MetadataRow.class
 uk\ac\quadram\metapilot\task\v1\gui\AdvancedParameterDialog$5.class
 uk\ac\quadram\metapilot\task\v2\par\MetaParameterMQ.class
 uk\ac\quadram\metapilot\gui\StatusPanelFX$StatusPanelTestApp.class
@@ -605,6 +625,7 @@ uk\ac\quadram\metapilot\dbSearch\xtandem\TandemFastaGetter.class
 uk\ac\quadram\metapilot\task\v1\gui\ParameterPanel$17.class
 uk\ac\quadram\metapilot\task\v2\gui\MetaLabModPanel$4.class
 uk\ac\quadram\metapilot\task\v2\gui\MetaLabIsobaricQuanPanel$3.class
+uk\ac\quadram\metapilot\task\common\gui\MetaLabIOPanelFX$2.class
 uk\ac\ebi\pride\spectracluster\similarity\PeakMatches.class
 uk\ac\quadram\metapilot\task\dia\target\gui\MetaPilotMainPanelDiaTg$CheckboxCellRenderer.class
 uk\ac\quadram\metapilot\dbSearch\msFragger\InteractPSM.class
@@ -618,6 +639,7 @@ uk\ac\quadram\metapilot\dbSearch\msFragger\MSFraggerReader$3.class
 uk\ac\quadram\metapilot\task\dda\MSConvertTask$1.class
 uk\ac\quadram\metapilot\task\v2\gui\MetaLabSourcePathDialog$ButtonEditor$8.class
 uk\ac\quadram\metapilot\dbSearch\msFragger\MSFraggerReader.class
+uk\ac\quadram\metapilot\task\dda\mag\gui\MetaPilotDdaMagFragPipePanel$VariableModificationRow.class
 uk\ac\quadram\metapilot\core\enzyme\Enzyme.class
 uk\ac\quadram\metapilot\mdb\unipept\UnipLCAResult.class
 uk\ac\quadram\metapilot\task\mag\MagDbItem$MagPepLib.class
@@ -674,6 +696,7 @@ uk\ac\ebi\pride\spectracluster\util\function\spectrum\RemoveSpectrumEmptyPeakFun
 uk\ac\quadram\metapilot\dbSearch\pia\InferedProtein.class
 uk\ac\quadram\metapilot\dbSearch\pepxml\SequestHTPepxmlReader$1.class
 uk\ac\ebi\pride\spectracluster\clustering\IBinaryClusteringResultListener.class
+uk\ac\quadram\metapilot\task\dia\gui\MetaPilotDiaTargetPanel.class
 uk\ac\ebi\pride\spectracluster\spectrum\ISpectrum.class
 uk\ac\quadram\metapilot\quant\flashLFQ\FlashLfqPsmReader.class
 uk\ac\quadram\metapilot\task\dia\gui\MagDbModelPanel$ButtonEditor.class
@@ -688,6 +711,7 @@ uk\ac\ebi\pride\spectracluster\util\ClusterUtilities.class
 uk\ac\quadram\metapilot\task\pfind\gui\MetaPilotPFindMainPanel$1.class
 uk\ac\quadram\metapilot\core\taxonomy\Taxon.class
 uk\ac\ebi\pride\spectracluster\clustering\ClusteringProcessLauncher.class
+uk\ac\quadram\metapilot\task\common\gui\MetaLabIOPanelFX.class
 uk\ac\ebi\pride\spectracluster\util\function\IFunction.class
 uk\ac\ebi\pride\spectracluster\cli\SpectraClusterCliMain.class
 uk\ac\quadram\metapilot\dbSearch\open\quant\OpenQuanProtein.class
@@ -697,6 +721,7 @@ uk\ac\ebi\pride\spectracluster\similarity\HypergeometricScore.class
 uk\ac\quadram\metapilot\core\mod\IsobaricTag.class
 uk\ac\quadram\metapilot\core\function\sql\IGCFuncSqliteSearcher.class
 uk\ac\quadram\metapilot\core\prodb\FastaExtractFrame$6.class
+uk\ac\quadram\metapilot\task\dda\igc\gui\MetaPilotDdaIgcMaxQuantPanel.class
 uk\ac\quadram\metapilot\core\function\GOCCFinder.class
 uk\ac\quadram\metapilot\core\taxonomy\RootType.class
 uk\ac\quadram\metapilot\quant\flashLFQ\FlashLfqQuanPeptide$XmlFLPepElementParser.class
@@ -778,6 +803,7 @@ uk\ac\quadram\metapilot\dbSearch\MaxQuant\MaxquantMSMSReader.class
 uk\ac\quadram\metapilot\task\dda\mag\DDAMagFragPipeTask$2.class
 uk\ac\ebi\pride\spectracluster\similarity\FrankEtAlDotProduct$1.class
 uk\ac\quadram\metapilot\quant\FeaturesGetter.class
+uk\ac\quadram\metapilot\task\dda\mag\gui\MetaPilotDdaMagSagePanel.class
 uk\ac\ebi\pride\spectracluster\consensus\BinnedGreedyConsensusSpectrum$ConsensusSpectrumFactory.class
 uk\ac\quadram\metapilot\core\math\curveFitting\WeibullFunction.class
 uk\ac\ebi\pride\spectracluster\clustering\ClusterMzComparator.class
@@ -808,11 +834,14 @@ uk\ac\quadram\metapilot\task\v1\gui\InputOutputPanel$15.class
 uk\ac\quadram\metapilot\dbSearch\philosopher\InteractPsm.class
 uk\ac\quadram\metapilot\task\pfind\par\MetaParameterPFind.class
 uk\ac\quadram\metapilot\core\tools\FileHandler.class
+uk\ac\quadram\metapilot\task\dia\gui\DiaModelGenerationPanel$1.class
 uk\ac\quadram\metapilot\task\v2\gui\MetaLabEnzymePanel$4.class
 uk\ac\quadram\metapilot\license\LicenseVerifier.class
+uk\ac\quadram\metapilot\task\common\gui\MetadataConfigurationPanel.class
 uk\ac\ebi\pride\spectracluster\util\IProgressListener.class
 uk\ac\quadram\metapilot\task\v1\gui\MainFrame$3.class
 uk\ac\ebi\pride\spectracluster\io\MSFClusterAppender.class
+uk\ac\quadram\metapilot\task\dda\igc\gui\MetaPilotDdaIgcSagePanel$VariableModificationRow.class
 uk\ac\quadram\metapilot\task\mag\gui\MagDbConfigPanelJavaFX.class
 uk\ac\quadram\metapilot\task\dia\DiaLibCreateTask.class
 uk\ac\quadram\metapilot\task\dia\gui\MagDbPepLibPanel$MagLibTableModel.class
@@ -825,6 +854,7 @@ uk\ac\quadram\metapilot\task\dda\mag\DDAMagPfindTask$3.class
 uk\ac\quadram\metapilot\spectra\RegionTopNIntensityFilter.class
 uk\ac\quadram\metapilot\task\v2\gui\MetaLabIsobaricQuanPanel$4.class
 uk\ac\quadram\metapilot\core\model\ConsoleTextArea$3.class
+uk\ac\quadram\metapilot\task\dda\igc\gui\MetaPilotDdaIgcSagePanel.class
 uk\ac\quadram\metapilot\task\v2\gui\MetaLabSourcePathDialog$ButtonEditor$12.class
 uk\ac\quadram\metapilot\task\v2\gui\MetaLabIsotopicQuanPanel$7.class
 uk\ac\quadram\metapilot\dbSearch\fragpipe\FragPipeTest.class
@@ -842,6 +872,7 @@ uk\ac\quadram\metapilot\spectra\io\ProteomicsTools$2.class
 uk\ac\quadram\metapilot\task\dia\gui\MetaLabSourceDialogDia.class
 uk\ac\quadram\metapilot\task\dia\MetaDiaTask$9.class
 uk\ac\quadram\metapilot\core\ml\SemiSuperClassifier.class
+uk\ac\quadram\metapilot\task\common\gui\ModificationsPanel.class
 uk\ac\ebi\pride\spectracluster\util\function\spectrum\RemoveReporterIonPeaksFunction.class
 uk\ac\quadram\metapilot\task\v1\gui\MetaLabVersions.class
 uk\ac\quadram\metapilot\quant\flashLFQ\FlashLfqTask.class
@@ -864,6 +895,7 @@ uk\ac\quadram\metapilot\task\dda\MSConvertTask.class
 uk\ac\quadram\metapilot\task\par\MetaDataIO$4.class
 uk\ac\quadram\metapilot\dbSearch\sage\SagePsmReader$1.class
 uk\ac\quadram\metapilot\spectra\predict\PredictSpectraReader.class
+uk\ac\quadram\metapilot\task\dia\gui\MetaPilotDiaRealTimePanel$ProcessingRow.class
 uk\ac\quadram\metapilot\task\dia\target\par\MetaParIODiaTg.class
 uk\ac\quadram\metapilot\task\v2\gui\MetaLabPepProViewPanel.class
 uk\ac\ebi\pride\spectracluster\cdf\CumulativeDistributionFunction.class
@@ -886,6 +918,7 @@ uk\ac\ebi\pride\spectracluster\util\function\spectrum\RemoveReporterIonPeaksFunc
 uk\ac\quadram\metapilot\dbSearch\MaxQuant\MaxquantModHandler.class
 uk\ac\quadram\metapilot\task\pfind\gui\MetaPilotDownloadPanel.class
 uk\ac\ebi\pride\spectracluster\cdf\INumberOfComparisonAssessor.class
+uk\ac\quadram\metapilot\task\common\gui\MetaLabIOPanelFX$ExperimentRow.class
 uk\ac\quadram\metapilot\core\mod\UmModification$UmModMassComparator.class
 uk\ac\quadram\metapilot\task\v1\gui\AdvancedParameterDialog$6.class
 uk\ac\quadram\metapilot\task\mag\MagHapPFindTask$ProteinGroup.class
@@ -901,7 +934,9 @@ uk\ac\quadram\metapilot\dbSearch\psm\SearchedReference.class
 uk\ac\quadram\metapilot\spectra\Peak$IntensityComparator.class
 uk\ac\quadram\metapilot\quant\Description.class
 uk\ac\quadram\metapilot\task\dia\gui\MagDbPepLibPanel$ButtonEditor.class
+uk\ac\quadram\metapilot\task\dia\gui\DiaLibraryGenerationPanel$LibraryRow.class
 uk\ac\quadram\metapilot\task\fragpipe\MetaLabMagFragpipeTask$5.class
+uk\ac\quadram\metapilot\task\dia\gui\MetaPilotDiaTargetPanel$TaxaRow.class
 uk\ac\ebi\pride\spectracluster\normalizer\TotalIntensityNormalizer.class
 uk\ac\quadram\metapilot\task\v1\gui\InputOutputPanel$10.class
 uk\ac\quadram\metapilot\core\MGYG\db\ProDbReader.class
@@ -909,17 +944,20 @@ uk\ac\quadram\metapilot\task\par\MetaDataIO$2.class
 uk\ac\quadram\metapilot\core\prodb\FastaExtractFrame$3.class
 uk\ac\quadram\metapilot\dbSearch\pfind\PFindConfig.class
 uk\ac\quadram\metapilot\dbSearch\psm\PeptideModification.class
+uk\ac\quadram\metapilot\task\dda\igc\gui\MetaPilotDdaIgcSagePanel$FixedModificationRow.class
 uk\ac\ebi\pride\spectracluster\io\MGFSpectrumAppenderIntCharge.class
 uk\ac\quadram\metapilot\task\mag\gui\MagDbConfigPanel$1.class
 uk\ac\quadram\metapilot\task\v1\par\AbstractParameter.class
 uk\ac\quadram\metapilot\spectra\Peak$RevIntensityComparator.class
 uk\ac\quadram\metapilot\task\v1\gui\AdvancedSettingPanel$2.class
+uk\ac\quadram\metapilot\task\dia\gui\DiaLibraryGenerationPanel$ParameterUpdateCallback.class
 uk\ac\ebi\pride\spectracluster\io\MGFSpectrumIterable$MGFSpectrumIterator.class
 uk\ac\quadram\metapilot\task\v2\gui\MetaLabEnzymePanel$9.class
 uk\ac\quadram\metapilot\dbSearch\msFragger\MSFraggerReader$4.class
 uk\ac\quadram\metapilot\task\v1\gui\AdvancedSettingPanel.class
 uk\ac\ebi\pride\spectracluster\util\MissingParameterException.class
 uk\ac\quadram\metapilot\dbSearch\dbReducer\DBReducerConfig.class
+uk\ac\quadram\metapilot\task\dda\igc\gui\MetaPilotDdaIgcMaxQuantPanel$IsobaricLabelRow.class
 uk\ac\quadram\metapilot\dbSearch\open\OpenPSM$InverseClassScoreComparator.class
 uk\ac\ebi\pride\spectracluster\util\function\spectrum\HighestNSpectrumPeaksFunction.class
 uk\ac\quadram\metapilot\task\dia\MetaDiaTask$2.class
@@ -962,6 +1000,7 @@ uk\ac\quadram\metapilot\spectra\io\PFindMS1Reader.class
 uk\ac\quadram\metapilot\task\io\pep\MetaPeptideXMLWriter.class
 uk\ac\quadram\metapilot\task\mag\par\MetaSourcesMag.class
 uk\ac\quadram\metapilot\dbSearch\AbstractPSM.class
+uk\ac\quadram\metapilot\task\dda\igc\gui\MetaPilotDdaIgcFragPipePanel$FixedModificationRow.class
 uk\ac\quadram\metapilot\task\par\MetaDataIO$1.class
 uk\ac\quadram\metapilot\task\v2\gui\MetaLabEnzymePanel$11.class
 uk\ac\ebi\pride\spectracluster\similarity\ISimilarityChecker.class
@@ -994,6 +1033,7 @@ uk\ac\quadram\metapilot\task\v2\gui\MetaLabIsobaricQuanPanel$1.class
 uk\ac\ebi\pride\spectracluster\clusteringfilereader\indexing\ClusteringFileIndexer.class
 uk\ac\quadram\metapilot\task\v1\gui\MainFrame$1.class
 uk\ac\quadram\metapilot\core\tools\FileHandler$1.class
+uk\ac\quadram\metapilot\task\dda\mag\gui\MetaPilotDdaMagFragPipePanel$FixedModificationRow.class
 uk\ac\quadram\metapilot\core\tools\ExecutorServiceExample$Task.class
 uk\ac\quadram\metapilot\task\v1\gui\StatusPanel$2.class
 uk\ac\quadram\metapilot\dbSearch\msFragger\MSFraggerReader$1.class
@@ -1022,6 +1062,7 @@ uk\ac\quadram\metapilot\task\mag\gui\MagDbConfigPanel$5$1.class
 uk\ac\ebi\pride\spectracluster\clusteringfilereader\objects\ClusteringFileSpectrumReference$Peak.class
 uk\ac\quadram\metapilot\task\dia\monitor\par\MetaParIODiaRT.class
 uk\ac\quadram\metapilot\task\v1\gui\ExpIdDialog.class
+uk\ac\quadram\metapilot\task\dia\gui\DiaLibraryGenerationPanel.class
 uk\ac\quadram\metapilot\ui\RegistrationDialog.class
 uk\ac\quadram\metapilot\task\dda\PFindSpectraConvertTask.class
 uk\ac\quadram\metapilot\core\tools\FileHandler$2.class
@@ -1047,6 +1088,8 @@ uk\ac\quadram\metapilot\task\v2\gui\MetaLabSourcePathDialog.class
 uk\ac\quadram\metapilot\core\tools\ExecutorServiceExample.class
 uk\ac\quadram\metapilot\task\v2\gui\MetaLabEnzymePanel$3.class
 uk\ac\quadram\metapilot\task\dia\MetaDiaTask$5.class
+uk\ac\quadram\metapilot\task\dia\gui\MetaPilotDiaRealTimePanel.class
+uk\ac\quadram\metapilot\task\dia\gui\DiaModelGenerationPanel$2.class
 uk\ac\quadram\metapilot\task\par\MetaSources.class
 uk\ac\quadram\metapilot\task\mag\gui\MagDbConfigPanel$4.class
 uk\ac\quadram\metapilot\task\dia\monitor\gui\MetaPilotMainFrameDiaRT$2.class
@@ -1061,12 +1104,16 @@ uk\ac\quadram\metapilot\dbSearch\diann\DiannPgMatrixReader.class
 uk\ac\ebi\pride\spectracluster\util\comparator\ClusterSizeComparator.class
 uk\ac\ebi\pride\spectracluster\util\ProgressUpdate$CLUSTERING_STAGE.class
 uk\ac\quadram\metapilot\task\v2\gui\MetaLabSourcePathDialog$ButtonRenderer.class
+uk\ac\quadram\metapilot\task\dda\mag\gui\MetaPilotDdaMagPfindPanel.class
 uk\ac\ebi\pride\spectracluster\clustering\BinaryClusterFileReference.class
 uk\ac\quadram\metapilot\task\v2\gui\MetaLabMetaPanel$13.class
+uk\ac\quadram\metapilot\task\common\gui\IsobaricLabelingPanel$IsobaricLabelRow.class
 uk\ac\quadram\metapilot\task\dia\MetaDiaTask$6.class
+uk\ac\quadram\metapilot\task\dda\igc\gui\MetaPilotDdaIgcFragPipePanel$VariableModificationRow.class
 uk\ac\ebi\pride\spectracluster\clusteringfilereader\objects\PeakMzComparator.class
 uk\ac\quadram\metapilot\quant\flashLFQ\FlashLfqQuanPeptide.class
 uk\ac\quadram\metapilot\resources\MetaResourceParameters.class
+uk\ac\quadram\metapilot\task\common\gui\MetaLabIOPanelFX$PatternRow.class
 uk\ac\ebi\pride\spectracluster\clusteringfilereader\objects\IModification.class
 uk\ac\quadram\metapilot\task\v2\gui\MetaLabIsotopicQuanPanel$8.class
 uk\ac\quadram\metapilot\core\model\LoopedStreams$1.class

@@ -545,27 +545,27 @@ public class MetaParaIOMQ extends MetaParameterIOHandler {
 			boolean isMetaWorkflow = par.isMetaWorkflow();
 			jw.key("isMetaWorkflow").value(isMetaWorkflow);
 
-			MaxquantModification[] fixMods = par.getFixMods();
+			MaxquantModification[] fixMods = new MaxquantModification[] {};
 			jw.key("fixMods").array();
 			for (MaxquantModification fm : fixMods) {
 				jw.object().key("name").value(fm.getTitle()).endObject();
 			}
 			jw.endArray();
 
-			MaxquantModification[] variMods = par.getVariMods();
+			MaxquantModification[] variMods = new MaxquantModification[] {};
 			jw.key("variMods").array();
 			for (MaxquantModification vm : variMods) {
 				jw.object().key("name").value(vm.getTitle()).endObject();
 			}
 			jw.endArray();
 
-			Enzyme enzyme = par.getEnzyme();
+			Enzyme enzyme = Enzyme.Trypsin;
 			jw.key("enzyme").value(enzyme.getName());
 
 			int missCleavages = par.getMissCleavages();
 			jw.key("missCleavages").value(missCleavages);
 
-			int digestMode = par.getDigestMode();
+			int digestMode = 0;
 			jw.key("digestMode").value(digestMode);
 
 			String quantMode = par.getQuanMode();

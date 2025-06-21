@@ -51,8 +51,11 @@ public class MetaLabModPanel extends JPanel {
 		setLayout(new MigLayout("", "[125:375:455,grow][50][125:375:455,grow]",
 				"[25:50:75,grow][50][50][25:50:75,grow][25:50:75,grow][50][50][25:50:75,grow]"));
 
-		MaxquantModification[] fixMods = par.getFixMods();
-		MaxquantModification[] variMods = par.getVariMods();
+//		MaxquantModification[] fixMods = par.getFixMods();
+//		MaxquantModification[] variMods = par.getVariMods();
+		
+		MaxquantModification[] fixMods = new MaxquantModification[] {};
+		MaxquantModification[] variMods = new MaxquantModification[] {};
 
 		this.fmUsed = new HashSet<MaxquantModification>();
 		this.vmUsed = new HashSet<MaxquantModification>();

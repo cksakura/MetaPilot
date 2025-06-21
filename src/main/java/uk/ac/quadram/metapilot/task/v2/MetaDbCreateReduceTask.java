@@ -41,7 +41,6 @@ public class MetaDbCreateReduceTask extends MetaDbCreateTask {
 	@Override
 	protected void initial() {
 		// TODO Auto-generated method stub
-		this.mscp = metaPar.getMscp();
 		this.dbReducerExe = new File(mrp.getToolPath(ToolType.DBREDUCER));
 	}
 

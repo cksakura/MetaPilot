@@ -174,24 +174,12 @@ public class MetaParameterMQ extends MetaBaseParameter {
 		return this.osp.isOpenSearch();
 	}
 
-	public MaxquantModification[] getVariMods() {
-		return variMods;
-	}
-
 	public void setVariMods(MaxquantModification[] variMods) {
 		this.variMods = variMods;
 	}
 
-	public MaxquantModification[] getFixMods() {
-		return fixMods;
-	}
-
 	public void setFixMods(MaxquantModification[] fixMods) {
 		this.fixMods = fixMods;
-	}
-
-	public Enzyme getEnzyme() {
-		return enzyme;
 	}
 
 	public void setEnzyme(Enzyme enzyme) {
@@ -204,10 +192,6 @@ public class MetaParameterMQ extends MetaBaseParameter {
 
 	public void setMissCleavages(int missCleavages) {
 		this.missCleavages = missCleavages;
-	}
-
-	public int getDigestMode() {
-		return digestMode;
 	}
 
 	public void setDigestMode(int digestMode) {

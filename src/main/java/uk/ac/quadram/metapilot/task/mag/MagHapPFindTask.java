@@ -236,6 +236,7 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 					File hapFile = new File(separateResultFolders[i], "hap");
 					File pf2 = new File(spectraDirFile, separateResultFolders[i].getName() + suffix);
 					if (pf2.exists()) {
+/*						
 						pFindTask.searchPF2(new String[] { pf2.getAbsolutePath() }, hapFile.getAbsolutePath(),
 								this.magDb.getHapFastaFile().getAbsolutePath(), ms2Type, isOpenSearch, true,
 								mosp.getOpenPsmFDR(), ((MetaParameterMag) this.metaPar).getFixMods(),
@@ -244,10 +245,12 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 								((MetaParameterMag) this.metaPar).getMissCleavages(),
 								((MetaParameterMag) this.metaPar).getDigestMode(),
 								((MetaParameterMag) this.metaPar).getIsobaricTag());
+*/								
 					} else {
 
 						File pfb = new File(spectraDirFile, separateResultFolders[i].getName() + ".pfb");
 						if (pfb.exists()) {
+/*							
 							pFindTask.searchPF2(new String[] { pfb.getAbsolutePath() }, hapFile.getAbsolutePath(),
 									this.magDb.getHapFastaFile().getAbsolutePath(), ms2Type, isOpenSearch, true,
 									mosp.getOpenPsmFDR(), ((MetaParameterMag) this.metaPar).getFixMods(),
@@ -256,6 +259,7 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 									((MetaParameterMag) this.metaPar).getMissCleavages(),
 									((MetaParameterMag) this.metaPar).getDigestMode(),
 									((MetaParameterMag) this.metaPar).getIsobaricTag());
+*/									
 						} else {
 							File mgFile = new File(spectraDirFile, separateResultFolders[i].getName() + mgfsuffix);
 							if (!mgFile.exists()) {
@@ -263,6 +267,7 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 							}
 
 							if (mgFile.exists()) {
+/*								
 								pFindTask.searchMgf(new String[] { mgFile.getAbsolutePath() },
 										hapFile.getAbsolutePath(), this.magDb.getHapFastaFile().getAbsolutePath(),
 										ms2Type, isOpenSearch, true, mosp.getOpenPsmFDR(),
@@ -272,6 +277,7 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 										((MetaParameterMag) this.metaPar).getMissCleavages(),
 										((MetaParameterMag) this.metaPar).getDigestMode(),
 										((MetaParameterMag) this.metaPar).getIsobaricTag(), false);
+*/										
 							} else {
 								System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": spectra file "
 										+ pf2 + " or " + mgFile + " was not found");
@@ -537,6 +543,7 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 					if (pf2.exists()) {
 
 						if (db.exists() && db.length() > 0) {
+/*							
 							pFindTask.searchPF2(new String[] { pf2.getAbsolutePath() },
 									separateResultFolders[i].getAbsolutePath(), db.getAbsolutePath(), ms2Type,
 									isOpenSearch, true, mosp.getOpenPsmFDR(),
@@ -546,7 +553,7 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 									((MetaParameterMag) this.metaPar).getMissCleavages(),
 									((MetaParameterMag) this.metaPar).getDigestMode(),
 									((MetaParameterMag) this.metaPar).getIsobaricTag());
-
+*/
 						} else {
 
 							System.out.println(
@@ -564,6 +571,7 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 						File pfb = new File(spectraDirFile, separateResultFolders[i].getName() + ".pfb");
 						if (pfb.exists()) {
 							if (db.exists() && db.length() > 0) {
+/*								
 								pFindTask.searchPF2(new String[] { pfb.getAbsolutePath() },
 										separateResultFolders[i].getAbsolutePath(), db.getAbsolutePath(), ms2Type,
 										isOpenSearch, true, mosp.getOpenPsmFDR(),
@@ -573,7 +581,7 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 										((MetaParameterMag) this.metaPar).getMissCleavages(),
 										((MetaParameterMag) this.metaPar).getDigestMode(),
 										((MetaParameterMag) this.metaPar).getIsobaricTag());
-
+*/
 							} else {
 
 								System.out.println(format.format(new Date()) + "\t" + getTaskName()
@@ -595,6 +603,7 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 							if (mgf.exists() && db.exists() && db.length() > 0) {
 
 								if (db.exists() && db.length() > 0) {
+/*									
 									pFindTask.searchMgf(new String[] { mgf.getAbsolutePath() },
 											separateResultFolders[i].getAbsolutePath(), db.getAbsolutePath(), ms2Type,
 											isOpenSearch, true, mosp.getOpenPsmFDR(),
@@ -604,6 +613,7 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 											((MetaParameterMag) this.metaPar).getMissCleavages(),
 											((MetaParameterMag) this.metaPar).getDigestMode(),
 											((MetaParameterMag) this.metaPar).getIsobaricTag(), false);
+*/											
 								} else {
 
 									System.out.println(format.format(new Date()) + "\t" + getTaskName()
@@ -642,6 +652,7 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 					File db = new File(hapFile, separateResultFolders[i].getName() + ".fasta");
 					if (pf2.exists()) {
 						if (db.exists() && db.length() > 0) {
+							
 							pFindTask.searchPF2(new String[] { pf2.getAbsolutePath() },
 									separateResultFolders[i].getAbsolutePath(), db.getAbsolutePath(), ms2Type,
 									isOpenSearch, true, mosp.getOpenPsmFDR(),
@@ -651,6 +662,7 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 									((MetaParameterMag) this.metaPar).getMissCleavages(),
 									((MetaParameterMag) this.metaPar).getDigestMode(),
 									((MetaParameterMag) this.metaPar).getIsobaricTag());
+									
 						} else {
 
 							System.out.println(
