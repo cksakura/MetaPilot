@@ -432,13 +432,19 @@ public class XTandemParameterHandler {
 
 	@SuppressWarnings("unchecked")
 	public static void config(MetaParameterMQ metaPar, MetaSourcesV2 advPar) {
-
+/*
 		MaxquantModification[] variMods = metaPar.getVariMods();
 		MaxquantModification[] fixMods = metaPar.getFixMods();
 		Enzyme enzyme = metaPar.getEnzyme();
 		int digestMode = metaPar.getDigestMode();
 		String quanMode = metaPar.getQuanMode();
-
+*/
+		MaxquantModification[] variMods = new MaxquantModification[] {};
+		MaxquantModification[] fixMods = new MaxquantModification[] {};
+		Enzyme enzyme = Enzyme.Trypsin;
+		int digestMode = 0;
+		String quanMode = metaPar.getQuanMode();
+		
 		MaxquantModification[][] labels = metaPar.getLabels();
 		MaxquantModification[] isobaric = metaPar.getIsobaric();
 		String fasta = metaPar.getCurrentDb();

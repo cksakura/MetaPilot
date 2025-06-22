@@ -31,7 +31,7 @@ import uk.ac.quadram.metapilot.task.par.MetaSsdbCreatePar;
 import uk.ac.quadram.metapilot.task.pfind.par.MetaParameterPFind;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.par.MetaData;
-import uk.ac.quadram.metapilot.task.par.MetaParameter;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.par.MetaPep2TaxaPar;
 import uk.ac.quadram.metapilot.task.v2.par.MetaMaxQuantPar;
 import uk.ac.quadram.metapilot.task.v2.par.MetaOpenPar;
@@ -55,12 +55,12 @@ public class MetaLabParViewPanel extends JPanel {
 
 	private JScrollPane scrollPane;
 	private JTree tree;
-	private MetaParameter par;
+	private MetaBaseParameter par;
 
 	/**
 	 * Create the panel.
 	 */
-	public MetaLabParViewPanel(MetaParameter par) {
+	public MetaLabParViewPanel(MetaBaseParameter par) {
 
 		setLayout(new MigLayout("", "[400:600:800,grow]", "[300:480:640,grow]"));
 
@@ -249,8 +249,8 @@ public class MetaLabParViewPanel extends JPanel {
 						add(enzymeNode);
 
 						DefaultMutableTreeNode digestionNode = new DefaultMutableTreeNode("Digestion mode");
-						digestionNode
-								.add(new DefaultMutableTreeNode(MaxquantEnzyme.enzymeModes[parV3.getDigestMode()]));
+//						digestionNode
+//								.add(new DefaultMutableTreeNode(MaxquantEnzyme.enzymeModes[parV3.getDigestMode()]));
 						add(digestionNode);
 
 						DefaultMutableTreeNode missCleavageNode = new DefaultMutableTreeNode("Max missed cleavaged");
@@ -371,8 +371,8 @@ public class MetaLabParViewPanel extends JPanel {
 						add(enzymeNode);
 
 						DefaultMutableTreeNode digestionNode = new DefaultMutableTreeNode("Digestion mode");
-						digestionNode
-								.add(new DefaultMutableTreeNode(MaxquantEnzyme.enzymeModes[parV3.getDigestMode()]));
+//						digestionNode
+//								.add(new DefaultMutableTreeNode(MaxquantEnzyme.enzymeModes[parV3.getDigestMode()]));
 						add(digestionNode);
 
 						DefaultMutableTreeNode missCleavageNode = new DefaultMutableTreeNode("Max missed cleavaged");
@@ -655,26 +655,26 @@ public class MetaLabParViewPanel extends JPanel {
 					} else {
 						MetaParameterMQ parV2 = (MetaParameterMQ) par;
 						DefaultMutableTreeNode fixModNode = new DefaultMutableTreeNode("Fixed modifications");
-						MaxquantModification[] fixedMods = parV2.getFixMods();
-						for (int i = 0; i < fixedMods.length; i++) {
-							fixModNode.add(new DefaultMutableTreeNode(fixedMods[i].getTitle()));
-						}
+//						MaxquantModification[] fixedMods = parV2.getFixMods();
+//						for (int i = 0; i < fixedMods.length; i++) {
+//							fixModNode.add(new DefaultMutableTreeNode(fixedMods[i].getTitle()));
+//						}
 						add(fixModNode);
 
 						DefaultMutableTreeNode variModNode = new DefaultMutableTreeNode("Variable modifications");
-						MaxquantModification[] variMods = parV2.getVariMods();
-						for (int i = 0; i < variMods.length; i++) {
-							variModNode.add(new DefaultMutableTreeNode(variMods[i].getTitle()));
-						}
+//						MaxquantModification[] variMods = parV2.getVariMods();
+//						for (int i = 0; i < variMods.length; i++) {
+//							variModNode.add(new DefaultMutableTreeNode(variMods[i].getTitle()));
+//						}
 						add(variModNode);
 
 						DefaultMutableTreeNode enzymeNode = new DefaultMutableTreeNode("Enzyme");
-						enzymeNode.add(new DefaultMutableTreeNode(parV2.getEnzyme().getName()));
+//						enzymeNode.add(new DefaultMutableTreeNode(parV2.getEnzyme().getName()));
 						add(enzymeNode);
 
 						DefaultMutableTreeNode digestionNode = new DefaultMutableTreeNode("Digestion mode");
-						digestionNode
-								.add(new DefaultMutableTreeNode(MaxquantEnzyme.enzymeModes[parV2.getDigestMode()]));
+//						digestionNode
+//								.add(new DefaultMutableTreeNode(MaxquantEnzyme.enzymeModes[parV2.getDigestMode()]));
 						add(digestionNode);
 
 						DefaultMutableTreeNode missCleavageNode = new DefaultMutableTreeNode("Max missed cleavaged");

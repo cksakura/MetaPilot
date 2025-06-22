@@ -19,12 +19,12 @@ import javax.swing.UIManager;
 import javax.swing.UnsupportedLookAndFeelException;
 import javax.swing.filechooser.FileFilter;
 
+import uk.ac.quadram.metapilot.resources.MetaResourceIO;
 import uk.ac.quadram.metapilot.task.MetaLabWorkflowType;
 import uk.ac.quadram.metapilot.task.hgm.par.MetaParaIOHGM;
 import uk.ac.quadram.metapilot.task.hgm.par.MetaParameterHGM;
 import uk.ac.quadram.metapilot.task.hgm.par.MetaSourcesHGM;
 import uk.ac.quadram.metapilot.task.hgm.par.MetaSourcesIoHGM;
-import uk.ac.quadram.metapilot.task.par.MetaParameter;
 import uk.ac.quadram.metapilot.task.pfind.gui.MetaPilotLicenseFrame;
 import uk.ac.quadram.metapilot.task.pfind.gui.MetaPilotPFindMainFrame;
 import uk.ac.quadram.metapilot.task.v2.gui.MetaLabSourcePathDialog;
@@ -87,7 +87,7 @@ public class MetaPilotMainFrameHGM extends MetaPilotPFindMainFrame {
 
 		getContentPane().setLayout(new MigLayout("", "[1200:1600:1920,grow 600]", "[800:900:1080,grow]"));
 		
-		this.contentPane = new MetaLabMainPanelHGM(parV3, msv2);
+		this.contentPane = new MetaLabMainPanelHGM(parV3, (new MetaResourceIO()).loadParameters());
 		
 		getContentPane().add(contentPane, "cell 0 0,grow");
 		
@@ -132,7 +132,7 @@ public class MetaPilotMainFrameHGM extends MetaPilotPFindMainFrame {
 				if (loadPar.getWorkflowType() == MetaLabWorkflowType.pFindHGM) {
 					
 					MetaPilotMainFrameHGM.this.getContentPane().remove(this.contentPane);
-					contentPane = new MetaLabMainPanelHGM(loadPar, msv2);
+					contentPane = new MetaLabMainPanelHGM(loadPar, (new MetaResourceIO()).loadParameters());
 					MetaPilotMainFrameHGM.this.getContentPane().add(contentPane, "cell 0 0,grow");
 					MetaPilotMainFrameHGM.this.validate();
 
@@ -163,10 +163,6 @@ public class MetaPilotMainFrameHGM extends MetaPilotPFindMainFrame {
 					fileToSave = new File(fileToSave.getParent(), fileToSave.getName() + ".json");
 				}
 
-				((MetaLabMainPanelHGM) contentPane).updateParameter();
-				MetaParameter par = ((MetaLabMainPanelHGM) contentPane).getParameter();
-
-				MetaParaIOHGM.export((MetaParameterHGM) par, fileToSave);
 			}
 		});
 
@@ -202,10 +198,7 @@ public class MetaPilotMainFrameHGM extends MetaPilotPFindMainFrame {
 		mntmDownloadDb.setIcon(
 				new ImageIcon(MetaPilotMainFrameHGM.class.getResource("/toolbarButtonGraphics/general/Import16.gif")));
 		mntmDownloadDb.addActionListener(l -> {
-//			HGMDownloadFrame frame = new HGMDownloadFrame();
-//			frame.setAlwaysOnTop(true);
-//			frame.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
-//			frame.setVisible(true);
+
 		});
 		mnTools.add(mntmDownloadDb);
 
@@ -242,12 +235,6 @@ public class MetaPilotMainFrameHGM extends MetaPilotPFindMainFrame {
 		addWindowListener(new WindowAdapter() {
 			@Override
 			public void windowClosing(WindowEvent e) {
-
-				((MetaLabMainPanelHGM) contentPane).updateParameter();
-				MetaParameter par = ((MetaLabMainPanelHGM) contentPane).getParameter();
-
-				MetaParaIOHGM.export((MetaParameterHGM) par, parameter);
-
 				e.getWindow().dispose();
 			}
 		});

@@ -28,8 +28,8 @@ import org.apache.logging.log4j.Logger;
 import uk.ac.quadram.metapilot.task.MetaLabWorkflowType;
 import uk.ac.quadram.metapilot.task.mag.MagHapPFindTask;
 import uk.ac.quadram.metapilot.task.par.MetaData;
-import uk.ac.quadram.metapilot.task.par.MetaParameter;
-import uk.ac.quadram.metapilot.task.par.MetaParameterIO;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
+import uk.ac.quadram.metapilot.task.par.MetaParameterIOHandler;
 import uk.ac.quadram.metapilot.task.pfind.par.MetaParaIOPFind;
 import uk.ac.quadram.metapilot.task.pfind.par.MetaParameterPFind;
 import uk.ac.quadram.metapilot.task.v2.gui.MetaLabSourcePathDialog;
@@ -38,7 +38,7 @@ import uk.ac.quadram.metapilot.task.v2.par.MetaParameterMQ;
 import uk.ac.quadram.metapilot.task.v2.par.MetaSourcesIOV2;
 import uk.ac.quadram.metapilot.task.v2.par.MetaSourcesV2;
 import net.miginfocom.swing.MigLayout;
-import uk.ac.quadram.metapilot.task.MetaLabTask;
+import uk.ac.quadram.metapilot.task.MetaPilotTask;
 
 public class MetaPilotPFindMainFrame extends JFrame {
 
@@ -99,21 +99,21 @@ public class MetaPilotPFindMainFrame extends JFrame {
 
 		this.getContentPane().add(tabbedPane, "cell 0 0,grow");
 
-		File parameter = new File(MetaLabTask.getApplicationBaseDirectory(), "parameters" + MetaParaIOMQ.versionFile);
+		File parameter = new File(MetaPilotTask.getApplicationBaseDirectory(), "parameters" + MetaParaIOMQ.versionFile);
 
-		File resources = new File(MetaLabTask.getApplicationBaseDirectory(), "resources" + MetaParaIOMQ.versionFile);
+		File resources = new File(MetaPilotTask.getApplicationBaseDirectory(), "resources" + MetaParaIOMQ.versionFile);
 
 		MetaSourcesV2 msv2 = MetaSourcesIOV2.parse(resources);
 
 		{
-			MetaParameter par = MetaParameterIO.parse(parameter);
+			MetaBaseParameter par = MetaParameterIOHandler.parse(parameter);
 			MetaParameterMQ parV2 = par.getWorkflowType() == MetaLabWorkflowType.MaxQuantWorkflow
 					? MetaParaIOMQ.parse(parameter)
 					: new MetaParameterMQ();
 			parV2.setWorkflowType(MetaLabWorkflowType.MaxQuantWorkflow.name());
-			MetaPilotPFindMainPanel maxquantPanel = new MetaPilotPFindMainPanel(parV2, msv2);
+//			MetaPilotPFindMainPanel maxquantPanel = new MetaPilotPFindMainPanel(parV2, msv2);
 
-			tabbedPane.addTab("<html><br/>MaxQuant<br/>workflow<br/></html>", null, maxquantPanel, null);
+//			tabbedPane.addTab("<html><br/>MaxQuant<br/>workflow<br/></html>", null, maxquantPanel, null);
 			if (par.getWorkflowType() == MetaLabWorkflowType.MaxQuantWorkflow) {
 				tabbedPane.setSelectedIndex(0);
 			}
@@ -131,42 +131,42 @@ public class MetaPilotPFindMainFrame extends JFrame {
 		 * MetaLabWorkflowType.MSFraggerWorkflow) { tabbedPane.setSelectedIndex(1); } }
 		 */
 		{
-			MetaParameter par = MetaParameterIO.parse(parameter);
+			MetaBaseParameter par = MetaParameterIOHandler.parse(parameter);
 			MetaParameterPFind parV3 = par.getWorkflowType() == MetaLabWorkflowType.pFindWorkflow
 					? MetaParaIOPFind.parse(parameter)
 					: new MetaParameterPFind();
 			parV3.setWorkflowType(MetaLabWorkflowType.pFindWorkflow.name());
-			MetaPilotPFindMainPanel pfindPanel = new MetaPilotPFindMainPanel(parV3, msv2);
+//			MetaPilotPFindMainPanel pfindPanel = new MetaPilotPFindMainPanel(parV3, msv2);
 
-			tabbedPane.addTab("<html><br/>pFind<br/>workflow<br/></html>", null, pfindPanel, null);
+//			tabbedPane.addTab("<html><br/>pFind<br/>workflow<br/></html>", null, pfindPanel, null);
 			if (par.getWorkflowType() == MetaLabWorkflowType.pFindWorkflow) {
 				tabbedPane.setSelectedIndex(1);
 			}
 		}
 
 		{
-			MetaParameter par = MetaParameterIO.parse(parameter);
+			MetaBaseParameter par = MetaParameterIOHandler.parse(parameter);
 			MetaParameterMQ parV2 = par.getWorkflowType() == MetaLabWorkflowType.TaxonomyAnalysis
 					? MetaParaIOMQ.parse(parameter)
 					: new MetaParameterMQ(par);
 			par.setMetadata(new MetaData());
 			parV2.setWorkflowType(MetaLabWorkflowType.TaxonomyAnalysis.name());
-			MetaPilotPFindMainPanel taxaPanel = new MetaPilotPFindMainPanel(parV2, msv2);
-			tabbedPane.addTab("<html><br/>Taxonomy<br/>analysis<br/></html>", null, taxaPanel, null);
+//			MetaPilotPFindMainPanel taxaPanel = new MetaPilotPFindMainPanel(parV2, msv2);
+//			tabbedPane.addTab("<html><br/>Taxonomy<br/>analysis<br/></html>", null, taxaPanel, null);
 			if (par.getWorkflowType() == MetaLabWorkflowType.TaxonomyAnalysis) {
 				tabbedPane.setSelectedIndex(2);
 			}
 		}
 
 		{
-			MetaParameter par = MetaParameterIO.parse(parameter);
+			MetaBaseParameter par = MetaParameterIOHandler.parse(parameter);
 			MetaParameterMQ parV2 = par.getWorkflowType() == MetaLabWorkflowType.FunctionalAnnotation
 					? MetaParaIOMQ.parse(parameter)
 					: new MetaParameterMQ(par);
 			par.setMetadata(new MetaData());
 			parV2.setWorkflowType(MetaLabWorkflowType.FunctionalAnnotation.name());
-			MetaPilotPFindMainPanel funcPanel = new MetaPilotPFindMainPanel(parV2, msv2);
-			tabbedPane.addTab("<html><br/>Functional<br/>annotation<br/></html>", null, funcPanel, null);
+//			MetaPilotPFindMainPanel funcPanel = new MetaPilotPFindMainPanel(parV2, msv2);
+//			tabbedPane.addTab("<html><br/>Functional<br/>annotation<br/></html>", null, funcPanel, null);
 			if (par.getWorkflowType() == MetaLabWorkflowType.FunctionalAnnotation) {
 				tabbedPane.setSelectedIndex(3);
 			}
@@ -210,7 +210,7 @@ public class MetaPilotPFindMainFrame extends JFrame {
 			if (returnValue == JFileChooser.APPROVE_OPTION) {
 
 				File file = fileChooser.getSelectedFile();
-				MetaParameter loadPar = MetaParameterIO.parse(file);
+				MetaBaseParameter loadPar = MetaParameterIOHandler.parse(file);
 
 				MetaLabWorkflowType type = loadPar.getWorkflowType();
 
@@ -218,8 +218,8 @@ public class MetaPilotPFindMainFrame extends JFrame {
 				case MaxQuantWorkflow:
 
 					tabbedPane.remove(0);
-					MetaPilotPFindMainPanel maxquantPanel = new MetaPilotPFindMainPanel((MetaParameterMQ) loadPar, msv2);
-					tabbedPane.insertTab("<html><br/>MaxQuant<br/>workflow<br/></html>", null, maxquantPanel, null, 0);
+//					MetaPilotPFindMainPanel maxquantPanel = new MetaPilotPFindMainPanel((MetaParameterMQ) loadPar, msv2);
+//					tabbedPane.insertTab("<html><br/>MaxQuant<br/>workflow<br/></html>", null, maxquantPanel, null, 0);
 					tabbedPane.setSelectedIndex(0);
 
 					break;
@@ -236,8 +236,8 @@ public class MetaPilotPFindMainFrame extends JFrame {
 				case pFindWorkflow:
 
 					tabbedPane.remove(1);
-					MetaPilotPFindMainPanel pfindPanel = new MetaPilotPFindMainPanel((MetaParameterPFind) loadPar, msv2);
-					tabbedPane.insertTab("<html><br/>pFind<br/>workflow<br/></html>", null, pfindPanel, null, 1);
+//					MetaPilotPFindMainPanel pfindPanel = new MetaPilotPFindMainPanel((MetaParameterPFind) loadPar, msv2);
+//					tabbedPane.insertTab("<html><br/>pFind<br/>workflow<br/></html>", null, pfindPanel, null, 1);
 					tabbedPane.setSelectedIndex(1);
 
 					break;
@@ -245,17 +245,17 @@ public class MetaPilotPFindMainFrame extends JFrame {
 				case TaxonomyAnalysis:
 
 					tabbedPane.remove(2);
-					MetaPilotPFindMainPanel taxonPanel = new MetaPilotPFindMainPanel((MetaParameterMQ) loadPar, msv2);
-					tabbedPane.insertTab("<html><br/>Taxonomy<br/>analysis<br/></html>", null, taxonPanel, null, 2);
-					tabbedPane.setSelectedIndex(2);
+//					MetaPilotPFindMainPanel taxonPanel = new MetaPilotPFindMainPanel((MetaParameterMQ) loadPar, msv2);
+//					tabbedPane.insertTab("<html><br/>Taxonomy<br/>analysis<br/></html>", null, taxonPanel, null, 2);
+//					tabbedPane.setSelectedIndex(2);
 
 					break;
 
 				case FunctionalAnnotation:
 
 					tabbedPane.remove(3);
-					MetaPilotPFindMainPanel funcPanel = new MetaPilotPFindMainPanel((MetaParameterMQ) loadPar, msv2);
-					tabbedPane.insertTab("<html><br/>Functional<br/>annotation<br/></html>", null, funcPanel, null, 3);
+//					MetaPilotPFindMainPanel funcPanel = new MetaPilotPFindMainPanel((MetaParameterMQ) loadPar, msv2);
+//					tabbedPane.insertTab("<html><br/>Functional<br/>annotation<br/></html>", null, funcPanel, null, 3);
 					tabbedPane.setSelectedIndex(3);
 
 					break;
@@ -286,7 +286,7 @@ public class MetaPilotPFindMainFrame extends JFrame {
 
 				MetaPilotPFindMainPanel panel = (MetaPilotPFindMainPanel) tabbedPane.getSelectedComponent();
 				panel.updateParameter();
-				MetaParameter par = panel.getParameter();
+				MetaBaseParameter par = panel.getParameter();
 
 				if (par.getWorkflowType() == MetaLabWorkflowType.pFindWorkflow) {
 					MetaParaIOPFind.export((MetaParameterPFind) par, fileToSave);
@@ -371,7 +371,7 @@ public class MetaPilotPFindMainFrame extends JFrame {
 			public void windowClosing(WindowEvent e) {
 				MetaPilotPFindMainPanel panel = (MetaPilotPFindMainPanel) tabbedPane.getSelectedComponent();
 				panel.updateParameter();
-				MetaParameter par = panel.getParameter();
+				MetaBaseParameter par = panel.getParameter();
 
 				if (par.getWorkflowType() == MetaLabWorkflowType.pFindWorkflow) {
 					MetaParaIOPFind.export((MetaParameterPFind) par, parameter);

@@ -1,16 +1,17 @@
 # MetaPilot Resource Configuration
-# Generated on Sat May 17 16:18:51 EDT 2025
+# Generated on Sun Jun 22 16:06:37 EDT 2025
 
 BASE_PATH=E:\Exported\Resources
 
 # Tool Paths
-DEEPDETECT=E:\Exported\Resources\DeepDetect\DeepDetect.exe
 MSCONVERT=E:\Exported\Resources\ProteoWizard\msconvert.exe
-DBREDUCER=E:\Exported\Resources\DBReducer\DBReducer\DBReducer.exe
-SAGE=E:\Exported\Resources\sage\sage.exe
-PFIND=E:\Exported\Resources\DBReducer\pFind3\bin\pFind.exe
 FLASHLFQ=E:\Exported\Resources\FlashLFQ\CMD.exe
-FRAGPIPE=E:\Exported\Resources\fragpipe\bin\fragpipe.bat
-DIANN=C:\DIA-NN\2.0\diann.exe
+SAGE=E:\Exported\Resources\sage\sage.exe
+PYTHON=E:\Exported\Resources\Python\python.exe
+PFIND=D:\DBReducer\pFind3\bin\pFind.exe
 MAXQUANT=E:\Exported\Resources\mq_bin\MaxQuantCmd.exe
+DBREDUCER=D:\DBReducer\DBReducer\DBReducer.exe
+DEEPDETECT=E:\Exported\Resources\DeepDetect\DeepDetect.exe
 FUNCDB=E:\Exported\Resources\function\func_def.db
+DIANN=C:\DIA-NN\2.0\diann.exe
+FRAGPIPE=E:\Exported\Resources\fragpipe\bin\fragpipe.bat

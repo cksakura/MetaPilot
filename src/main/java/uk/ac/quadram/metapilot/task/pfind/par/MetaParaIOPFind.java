@@ -24,12 +24,12 @@ import uk.ac.quadram.metapilot.core.mod.IsobaricTag;
 import uk.ac.quadram.metapilot.core.taxonomy.RootType;
 import uk.ac.quadram.metapilot.core.taxonomy.TaxonomyRanks;
 import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantModification;
-import uk.ac.quadram.metapilot.task.MetaLabTask;
+import uk.ac.quadram.metapilot.task.MetaPilotTask;
 import uk.ac.quadram.metapilot.task.MetaLabWorkflowType;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.par.MetaData;
-import uk.ac.quadram.metapilot.task.par.MetaParameter;
-import uk.ac.quadram.metapilot.task.par.MetaParameterIO;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
+import uk.ac.quadram.metapilot.task.par.MetaParameterIOHandler;
 import uk.ac.quadram.metapilot.task.par.MetaPep2TaxaPar;
 import uk.ac.quadram.metapilot.task.par.MetaSsdbCreatePar;
 import uk.ac.quadram.metapilot.task.v2.par.MaxQuantModIO;
@@ -79,7 +79,7 @@ public class MetaParaIOPFind {
 
 	public static MetaParameterPFind parse(JSONObject obj) {
 
-		MetaParameter metaPar = MetaParameterIO.parseMain(obj);
+		MetaBaseParameter metaPar = MetaParameterIOHandler.parseMain(obj);
 
 		ArrayList<String> fixModList = new ArrayList<String>();
 		JSONArray fixArray = obj.getJSONArray("fixMods");
@@ -187,7 +187,7 @@ public class MetaParaIOPFind {
 			JSONWriter jw = new JSONWriter(writer);
 			jw.object();
 
-			jw.key("version").value(MetaLabTask.version);
+			jw.key("version").value(MetaPilotTask.version);
 
 			jw.key("workflowType").value(MetaLabWorkflowType.MaxQuantWorkflow.name());
 
@@ -347,7 +347,7 @@ public class MetaParaIOPFind {
 			JSONWriter jw = new JSONWriter(writer);
 			jw.object();
 
-			jw.key("version").value(MetaLabTask.version);
+			jw.key("version").value(MetaPilotTask.version);
 
 			String workflowType = par.getWorkflowType().name();
 			jw.key("workflowType").value(workflowType);

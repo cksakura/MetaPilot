@@ -31,13 +31,13 @@ import uk.ac.quadram.metapilot.core.mod.IsobaricTag;
 import uk.ac.quadram.metapilot.core.model.ConsoleTextArea;
 import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantModification;
 import uk.ac.quadram.metapilot.license.LicenseVerifier;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.MetaLabWorkflowType;
 import uk.ac.quadram.metapilot.task.hgm.par.MetaParaIOHGM;
 import uk.ac.quadram.metapilot.task.hgm.par.MetaSourcesHGM;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.par.MetaData;
-import uk.ac.quadram.metapilot.task.par.MetaParameter;
-import uk.ac.quadram.metapilot.task.pfind.MetaPilotMagTask;
 import uk.ac.quadram.metapilot.task.pfind.gui.MetaPilotPFindMainPanel;
 import uk.ac.quadram.metapilot.task.pfind.par.MetaParameterPFind;
 import uk.ac.quadram.metapilot.task.pfind.par.PFindEnzymeIO;
@@ -62,8 +62,8 @@ public class MetaLabMainPanelHGM extends MetaPilotPFindMainPanel {
 	/**
 	 * Create the panel.
 	 */
-	public MetaLabMainPanelHGM(MetaParameter par, MetaSourcesHGM msv) {
-		super(par, msv);
+	public MetaLabMainPanelHGM(MetaBaseParameter metaPar, MetaResourceParameters mrp) {
+		super(metaPar, mrp);
 	}
 
 	protected void initial() {
@@ -162,10 +162,10 @@ public class MetaLabMainPanelHGM extends MetaPilotPFindMainPanel {
 		MetaParameterPFind parV3 = (MetaParameterPFind) par;
 
 //		metaLabModPanel = new MetaLabModPanel(parV3, PFindModIO.getMods(msv.getMod()));
-		parameterPanel.add(metaLabModPanel, "cell 0 0,grow");
+//		parameterPanel.add(metaLabModPanel, "cell 0 0,grow");
 
-		metaLabEnzymePanel = new MetaLabEnzymePanel(parV3, PFindEnzymeIO.getEnzymes(msv.getEnzyme()));
-		parameterPanel.add(metaLabEnzymePanel, "cell 0 1,grow");
+//		metaLabEnzymePanel = new MetaLabEnzymePanel(parV3, PFindEnzymeIO.getEnzymes(msv.getEnzyme()));
+//		parameterPanel.add(metaLabEnzymePanel, "cell 0 1,grow");
 
 		rdbtnCombine.setSelected(false);
 		rdbtnNotCombine.setSelected(true);
@@ -395,86 +395,6 @@ public class MetaLabMainPanelHGM extends MetaPilotPFindMainPanel {
 
 			statusPanel.start();
 
-			task = new MetaPilotMagTask((MetaParameterPFind) par, msv, progressBar, progressBar_1) {
-
-				public void done() {
-
-					try {
-						Thread.sleep(1000);
-					} catch (InterruptedException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-
-					progressBar_1.setIndeterminate(false);
-
-					String log = consoleTextArea.getText();
-					try {
-						PrintWriter logwriter = new PrintWriter(new File(par.getResult(), "log.txt"));
-						logwriter.print(log);
-						logwriter.close();
-
-					} catch (FileNotFoundException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-
-					setCursor(null);
-
-					btnStart_1.setEnabled(true);
-					btnStop.setEnabled(false);
-					statusPanel.stop();
-					MetaLabMainPanelHGM.this.repaint();
-
-					if (task.isCancelled()) {
-						progressBar_1.setIndeterminate(false);
-						progressBar_1.setString("Task stopped");
-
-						return;
-					}
-
-					boolean finish = false;
-
-					try {
-
-						finish = get();
-
-						if (finish) {
-
-							progressBar_1.setString("finished");
-
-							btnReportView.setEnabled(true);
-
-							int reply = JOptionPane.showConfirmDialog(MetaLabMainPanelHGM.this,
-									"Task finished :)\nView the report?", "Finished", JOptionPane.YES_NO_OPTION);
-
-							if (reply == JOptionPane.YES_OPTION) {
-								try {
-									File report = new File(par.getReportDir(), "index.html");
-									java.awt.Desktop.getDesktop().browse(report.toURI());
-								} catch (IOException e) {
-									// TODO Auto-generated catch block
-									e.printStackTrace();
-								}
-							}
-						} else {
-							JOptionPane.showMessageDialog(MetaLabMainPanelHGM.this, helpInfo, "Error",
-									JOptionPane.ERROR_MESSAGE);
-						}
-
-					} catch (InterruptedException e) {
-						// TODO Auto-generated catch block
-						JOptionPane.showMessageDialog(MetaLabMainPanelHGM.this, helpInfo, "Error",
-								JOptionPane.ERROR_MESSAGE);
-
-					} catch (ExecutionException e) {
-						// TODO Auto-generated catch block
-						JOptionPane.showMessageDialog(MetaLabMainPanelHGM.this, helpInfo, "Error",
-								JOptionPane.ERROR_MESSAGE);
-					}
-				}
-			};
-
 			try {
 
 				statusPanel.start();
@@ -637,13 +557,6 @@ public class MetaLabMainPanelHGM extends MetaPilotPFindMainPanel {
 
 		MetaParameterPFind parV3 = (MetaParameterPFind) par;
 
-		if (!msv.findPFind()) {
-			list.add("pFind is not found, please check the Setting -> Resource.");
-		}
-
-		if (!msv.findFlashLFQ()) {
-			list.add("FlashLFQ is not found, please check the Setting -> Resource.");
-		}
 
 		if (parV3.getMetadata() == null || parV3.getMetadata().getRawFiles() == null
 				|| parV3.getMetadata().getRawFiles().length == 0) {

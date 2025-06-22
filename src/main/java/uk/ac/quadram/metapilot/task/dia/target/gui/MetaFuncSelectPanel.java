@@ -8,8 +8,8 @@ import javax.swing.border.EtchedBorder;
 import javax.swing.border.TitledBorder;
 import javax.swing.table.TableModel;
 
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
-import uk.ac.quadram.metapilot.task.dia.par.MetaSourcesDia;
 import uk.ac.quadram.metapilot.task.dia.target.MetaDiaTargetDBTask;
 import net.miginfocom.swing.MigLayout;
 import javax.swing.JComboBox;
@@ -26,7 +26,7 @@ public class MetaFuncSelectPanel extends JPanel {
 	private JComboBox<String> comboBox;
 	private JScrollPane scrollPane;
 	
-	public MetaFuncSelectPanel(MetaParameterDia metaPar, MetaSourcesDia msd) {
+	public MetaFuncSelectPanel(MetaParameterDia metaPar, MetaResourceParameters mrp) {
 		setBorder(new TitledBorder(
 				new EtchedBorder(EtchedBorder.LOWERED, new Color(255, 255, 255), new Color(160, 160, 160)), "Functions",
 				TitledBorder.LEADING, TitledBorder.TOP, null, new Color(0, 0, 0)));

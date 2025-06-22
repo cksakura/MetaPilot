@@ -15,7 +15,7 @@ import uk.ac.quadram.metapilot.task.gui.MetaPilotDBPanel;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagVersion;
 import uk.ac.quadram.metapilot.task.mag.par.MetaParameterMag;
-import uk.ac.quadram.metapilot.task.par.MetaParameter;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import net.miginfocom.swing.MigLayout;
 import javax.swing.JComboBox;
 import javax.swing.JFileChooser;
@@ -39,11 +39,11 @@ public class MetaPilotMagDbPanel extends MetaPilotDBPanel {
 	private JLabel verLabel;
 	private MagDbItem usedMagDbItem;
 
-	public MetaPilotMagDbPanel(MetaParameter par) {
+	public MetaPilotMagDbPanel(MetaBaseParameter par) {
 		this(par, true);
 	}
 
-	public MetaPilotMagDbPanel(MetaParameter par, boolean withHost) {
+	public MetaPilotMagDbPanel(MetaBaseParameter par, boolean withHost) {
 		super();
 		if (withHost) {
 			setLayout(new MigLayout("",
@@ -313,7 +313,7 @@ public class MetaPilotMagDbPanel extends MetaPilotDBPanel {
 		}
 	}
 
-	public MetaPilotMagDbPanel(MetaParameter par, boolean withHost, ItemListener itemListener) {
+	public MetaPilotMagDbPanel(MetaBaseParameter par, boolean withHost, ItemListener itemListener) {
 		super();
 		if (withHost) {
 			setLayout(new MigLayout("",
@@ -579,7 +579,7 @@ public class MetaPilotMagDbPanel extends MetaPilotDBPanel {
 		}
 	}
 
-	public void update(MetaParameter par) {
+	public void update(MetaBaseParameter par) {
 		MagDbItem[] magDbItems = ((MetaParameterMag) par).getAvailableMagDbItem();
 		usedMagDbItem = ((MetaParameterMag) par).getUsedMagDbItem();
 

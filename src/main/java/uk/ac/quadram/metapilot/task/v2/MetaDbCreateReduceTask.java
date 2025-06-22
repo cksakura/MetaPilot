@@ -9,50 +9,46 @@ import java.io.PrintWriter;
 import java.util.Date;
 import java.util.HashMap;
 
-import javax.swing.JProgressBar;
-import javax.swing.SwingWorker;
-
+import javafx.concurrent.Task;
 import uk.ac.quadram.metapilot.core.prodb.FastaReader;
 import uk.ac.quadram.metapilot.core.prodb.ProteinItem;
 import uk.ac.quadram.metapilot.dbSearch.dbReducer.DBReducerTask;
+import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.spectra.cluster.ClusterTask;
 import uk.ac.quadram.metapilot.task.MetaDbCreateTask;
 import uk.ac.quadram.metapilot.task.MetaLabWorkflowType;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
-import uk.ac.quadram.metapilot.task.par.MetaParameter;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.v2.par.MetaParameterMQ;
-import uk.ac.quadram.metapilot.task.v2.par.MetaSourcesV2;
 
 /**
  * Only for the MaxQuant workflow, only used for HCD-FTMS data
- * @author MEDTECHU0188
+ * 
+ * @author Kai Cheng
  *
  */
 public class MetaDbCreateReduceTask extends MetaDbCreateTask {
 
 	private File dbReducerExe;
 
-	public MetaDbCreateReduceTask(MetaParameter metaPar, MetaSourcesV2 msv2, JProgressBar bar1, JProgressBar bar2,
-			SwingWorker<Boolean, Object> nextWork) {
-		super(metaPar, msv2, bar1, bar2, nextWork);
+	public MetaDbCreateReduceTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar) {
+		super(metaPar, mrp, progressBar);
 		// TODO Auto-generated constructor stub
 	}
 
 	@Override
 	protected void initial() {
 		// TODO Auto-generated method stub
-		this.mscp = metaPar.getMscp();
-		File dbReducer = new File(((MetaSourcesV2) msv).getDbReducer());
-		if (dbReducer.exists()) {
-			dbReducerExe = new File(((MetaSourcesV2) msv).getDbReducer());
-		}
+		this.dbReducerExe = new File(mrp.getToolPath(ToolType.DBREDUCER));
 	}
 
 	@Override
 	protected void cluster() {
 		// TODO Auto-generated method stub
 
-		bar2.setString(taskName + ": spectra clustering...");
+		progressBar.setString(taskName + ": spectra clustering...");
 
 		LOGGER.info(taskName + ": spectra cluster started");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": spectra cluster started");
@@ -107,7 +103,7 @@ public class MetaDbCreateReduceTask extends MetaDbCreateTask {
 	protected File[] clusterSearch() {
 		// TODO Auto-generated method stub
 
-		bar2.setString(taskName + ": searching clustered spectra in original database");
+		progressBar.setString(taskName + ": searching clustered spectra in original database");
 
 		LOGGER.info(taskName + ": searching clustered spectra in original database started");
 		System.out.println(format.format(new Date()) + "\t" + taskName
@@ -173,7 +169,7 @@ public class MetaDbCreateReduceTask extends MetaDbCreateTask {
 	protected File[] metaProIQ() {
 		// TODO Auto-generated method stub
 
-		bar2.setString(taskName + ": searching clustered spectra in original database");
+		progressBar.setString(taskName + ": searching clustered spectra in original database");
 
 		LOGGER.info(taskName + ": MetaProIQ started");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": MetaProIQ started");

@@ -20,6 +20,7 @@ import javax.swing.UIManager;
 import javax.swing.UnsupportedLookAndFeelException;
 import javax.swing.filechooser.FileFilter;
 
+import uk.ac.quadram.metapilot.resources.MetaResourceIO;
 import uk.ac.quadram.metapilot.task.MetaLabWorkflowType;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParaIoDia;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
@@ -29,7 +30,7 @@ import uk.ac.quadram.metapilot.task.mag.MagDbConfigIO;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.gui.MetaPilotMainFrameMag;
 import uk.ac.quadram.metapilot.task.mag.par.MetaParameterMag;
-import uk.ac.quadram.metapilot.task.par.MetaParameter;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.pfind.gui.MetaPilotLicenseFrame;
 import uk.ac.quadram.metapilot.task.v2.gui.MetaLabSourcePathDialog;
 import net.miginfocom.swing.MigLayout;
@@ -94,12 +95,12 @@ public class MetaPilotMainFrameDia extends MetaPilotMainFrameMag {
 		
 		getContentPane().setLayout(new MigLayout("", "[1200:1600:1920,grow]", "[800:900:1080,grow]"));
 
-		this.contentPane = new MetaPilotMainPanelDia(par, msv);
+		this.contentPane = new MetaPilotMainPanelDia(par, (new MetaResourceIO()).loadParameters());
 
 		getContentPane().add(contentPane, "cell 0 0,grow");
 
 		setIconImage(Toolkit.getDefaultToolkit()
-				.getImage(MetaPilotMainFrameDia.class.getResource("/bmi/med/uOttawa/metalab/icon/dia_128.png")));
+				.getImage(MetaPilotMainFrameDia.class.getResource("/MetaPilot.png")));
 
 		setTitle("MetaLab " + MetaParaIoDia.version);
 
@@ -138,7 +139,7 @@ public class MetaPilotMainFrameDia extends MetaPilotMainFrameMag {
 				MetaParameterDia loadPar = MetaParaIoDia.parse(file);
 				if (loadPar.getWorkflowType() == MetaLabWorkflowType.DiaNNMAG) {
 					MetaPilotMainFrameDia.this.getContentPane().remove(this.contentPane);
-					contentPane = new MetaPilotMainPanelDia(loadPar, msv);
+					contentPane = new MetaPilotMainPanelDia(loadPar, (new MetaResourceIO()).loadParameters());
 					MetaPilotMainFrameDia.this.getContentPane().add(contentPane, "cell 0 0,grow");
 					MetaPilotMainFrameDia.this.validate();
 
@@ -170,7 +171,7 @@ public class MetaPilotMainFrameDia extends MetaPilotMainFrameMag {
 				}
 
 				((MetaPilotMainPanelDia) contentPane).updateParameter();
-				MetaParameter savePar = ((MetaPilotMainPanelDia) contentPane).getParameter();
+				MetaBaseParameter savePar = ((MetaPilotMainPanelDia) contentPane).getParameter();
 
 				MetaParaIoDia.export((MetaParameterDia) savePar, fileToSave);
 			}
@@ -239,7 +240,7 @@ public class MetaPilotMainFrameDia extends MetaPilotMainFrameMag {
 			public void windowClosing(WindowEvent e) {
 
 				((MetaPilotMainPanelDia) contentPane).updateParameter();
-				MetaParameter par = ((MetaPilotMainPanelDia) contentPane).getParameter();
+				MetaBaseParameter par = ((MetaPilotMainPanelDia) contentPane).getParameter();
 
 				MetaParaIoDia.export((MetaParameterDia) par, parameter);
 				

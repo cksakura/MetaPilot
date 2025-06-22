@@ -49,7 +49,10 @@ import org.apache.commons.io.FileUtils;
 import uk.ac.quadram.metapilot.core.model.ConsoleTextArea;
 import uk.ac.quadram.metapilot.dbSearch.deepDetect.DeepDetectParameter;
 import uk.ac.quadram.metapilot.dbSearch.deepDetect.DeepDetectTask;
+import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
 import uk.ac.quadram.metapilot.license.LicenseVerifier;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.task.MetaLabWorkflowType;
 import uk.ac.quadram.metapilot.task.dia.DiaLibCreateTask;
 import uk.ac.quadram.metapilot.task.dia.DiaPyTorchModelTask;
@@ -87,8 +90,8 @@ public class MetaPilotMainPanelDiaRT extends MetaPilotMainPanelDia {
 	private MagDbPepLibPanel pepLibPanel;
 	private MagDbModelPanel modelPanel;
 
-	public MetaPilotMainPanelDiaRT(MetaParameterDiaRT par, MetaSourcesDia msv) {
-		super(par, msv);
+	public MetaPilotMainPanelDiaRT(MetaParameterDiaRT par, MetaResourceParameters mrp) {
+		super(par, mrp);
 		// TODO Auto-generated constructor stub
 	}
 
@@ -129,29 +132,21 @@ public class MetaPilotMainPanelDiaRT extends MetaPilotMainPanelDia {
 		parameterPanel.add(dbPanel, "cell 0 0 2 1,grow");
 
 		MetaParameterDiaRT diaPar = (MetaParameterDiaRT) par;
-		MetaSourcesDia msd = (MetaSourcesDia) msv;
 		MagDbItem magDbItem = diaPar.getUsedMagDbItem();
 		String[] libs = diaPar.getLibrary();
 		String[] usedModels = diaPar.getModels();
 
-		magDbStatPanel = new MagDbStatPanel(diaPar, (MetaSourcesDia) msv);
+		magDbStatPanel = new MagDbStatPanel(diaPar, mrp);
 		parameterPanel.add(magDbStatPanel, "cell 0 1,grow");
 		JButton predictedButton = magDbStatPanel.getPredictButton();
 		predictedButton.addActionListener(l -> {
-
-			if (!msd.findDeepDetect()) {
-				JOptionPane.showMessageDialog(this, "DeepDetect is not found, please check the Setting -> Resource.",
-						"Warning", JOptionPane.WARNING_MESSAGE);
-				setCursor(null);
-				return;
-			}
 
 			predictedButton.setEnabled(false);
 			magDbStatPanel.getProgressBar().setValue(0);
 			magDbStatPanel.getProgressBar().setStringPainted(true);
 
-			File deepDetectFile = new File(msd.getDeepDetect());
-
+			File deepDetectFile = new File(mrp.getToolPath(ToolType.DEEPDETECT));
+/*
 			deepDetectTask = new DeepDetectTask(deepDetectFile, new DeepDetectParameter(), diaPar.getUsedMagDbItem(),
 					magDbStatPanel.getProgressBar(), magDbStatPanel.getTimeTextField()) {
 				public void done() {
@@ -174,20 +169,6 @@ public class MetaPilotMainPanelDiaRT extends MetaPilotMainPanelDia {
 						finish = get();
 
 						if (finish) {
-							/*
-							 * File repoFile = diaPar.getUsedMagDbItem().getRepositoryFile(); File
-							 * currentFile = diaPar.getUsedMagDbItem().getCurrentFile(); File sqlDbFile =
-							 * new File(currentFile, repoFile.getName() + ".db");
-							 * 
-							 * MagSqliteTask.create(sqlDbFile); try { MagSqliteTask.createTaxaTable(repoFile
-							 * + "\\genomes-all_metadata.tsv", sqlDbFile);
-							 * MagSqliteTask.createFuncTable(repoFile + "\\eggNOG", sqlDbFile);
-							 * 
-							 * } catch (NumberFormatException | IOException e) { // TODO Auto-generated
-							 * catch block LOGGER.error("SQL database: error in creating the SQL database",
-							 * e); System.err.println(format.format(new Date()) + "\t" +
-							 * "SQL database: error in creating the SQL database"); }
-							 */
 							magDbStatPanel.update();
 							magDbStatPanel.getProgressBar().setString("finished");
 
@@ -213,6 +194,7 @@ public class MetaPilotMainPanelDiaRT extends MetaPilotMainPanelDia {
 				}
 			};
 			deepDetectTask.execute();
+*/			
 		});
 
 		JButton updateButton = magDbStatPanel.getUpdateButton();
@@ -323,30 +305,10 @@ public class MetaPilotMainPanelDiaRT extends MetaPilotMainPanelDia {
 			if (fileName.endsWith(".speclib")) {
 				taskType = DiaLibCreateTask.fromLibrary;
 			} else if (fileName.endsWith(".faa") || fileName.endsWith(".fasta")) {
-				if (!msd.findDiaNN()) {
-					JOptionPane.showMessageDialog(this, "DiaNN.exe is not found, please check the Setting -> Resource.",
-							"Warning", JOptionPane.WARNING_MESSAGE);
-					setCursor(null);
-					return;
-				}
-
-				if (!msd.findDeepDetect()) {
-					JOptionPane.showMessageDialog(this,
-							"DeepDetect.exe is not found, please check the Setting -> Resource.", "Warning",
-							JOptionPane.WARNING_MESSAGE);
-					setCursor(null);
-					return;
-				}
 
 				taskType = DiaLibCreateTask.fromProtein;
 
 			} else if (fileName.endsWith(".tsv") || fileName.endsWith(".csv")) {
-				if (!msd.findDiaNN()) {
-					JOptionPane.showMessageDialog(this, "DiaNN.exe is not found, please check the Setting -> Resource.",
-							"Warning", JOptionPane.WARNING_MESSAGE);
-					setCursor(null);
-					return;
-				}
 
 				taskType = DiaLibCreateTask.fromPeptide;
 
@@ -410,8 +372,8 @@ public class MetaPilotMainPanelDiaRT extends MetaPilotMainPanelDia {
 
 			diaPar.setResult(libFile.getAbsolutePath());
 			diaPar.setThreadCount(threadComboBox.getItemAt(threadComboBox.getSelectedIndex()));
-
-			diaLibCreateTask = new DiaLibCreateTask(diaPar, msd, pepLibPanel.getProgressBar(),
+/*
+			diaLibCreateTask = new DiaLibCreateTask(diaPar, mrp, pepLibPanel.getProgressBar(),
 					pepFile.getAbsolutePath(), pepLibPanel.getProtease(), pepLibPanel.getMiss(),
 					pepLibPanel.getPepLibName(), taskType) {
 
@@ -462,19 +424,13 @@ public class MetaPilotMainPanelDiaRT extends MetaPilotMainPanelDia {
 				}
 			};
 			diaLibCreateTask.execute();
+*/			
 		});
 
 		modelPanel = new MagDbModelPanel(magDbItem, usedModels);
 		parameterPanel.add(modelPanel, "cell 1 2,grow");
 		JButton createModelButton = modelPanel.getCreateModelButton();
 		createModelButton.addActionListener(l -> {
-
-			if (!msd.findPython()) {
-				JOptionPane.showMessageDialog(this, "python is not found, please check the Setting -> Resource.",
-						"Warning", JOptionPane.WARNING_MESSAGE);
-				setCursor(null);
-				return;
-			}
 
 			File pepFile = new File(modelPanel.getFilePath());
 			if (!pepFile.exists() || !pepFile.isFile() || pepFile.length() == 0) {
@@ -537,7 +493,7 @@ public class MetaPilotMainPanelDiaRT extends MetaPilotMainPanelDia {
 			diaPar.setThreadCount(threadComboBox.getItemAt(threadComboBox.getSelectedIndex()));
 			diaPar.setResult(modelFile.getAbsolutePath());
 
-			diaModelTask = new DiaPyTorchModelTask((MetaParameterDia) par, msd, modelPanel.getProgressBar(),
+			diaModelTask = new DiaPyTorchModelTask((MetaParameterDia) par, mrp, modelPanel.getProgressBar(),
 					pepFile.getAbsolutePath(), modelFile) {
 				public void done() {
 					try {
@@ -719,11 +675,11 @@ public class MetaPilotMainPanelDiaRT extends MetaPilotMainPanelDia {
 		JButton btnReset = new JButton("Reset");
 		JComboBox<Integer> comboBoxFileCount = new JComboBox<Integer>();
 
-		JProgressBar progressBar = new JProgressBar();
-		runPanel.add(progressBar, "cell 0 2 3 1,growx");
+		JavaFXProgressBar progressBar = new JavaFXProgressBar();
+//		runPanel.add(progressBar, "cell 0 2 3 1,growx");
 
-		JProgressBar progressBar2 = new JProgressBar();
-		runPanel.add(progressBar2, "cell 0 3 3 1,growx");
+		JavaFXProgressBar progressBar2 = new JavaFXProgressBar();
+//		runPanel.add(progressBar2, "cell 0 3 3 1,growx");
 
 		int processorCount = ProcessorCount();
 		diaRTPar.setThreadCount(processorCount);
@@ -772,8 +728,8 @@ public class MetaPilotMainPanelDiaRT extends MetaPilotMainPanelDia {
 
 			rawListModel.clear();
 			resultTableModel.setRowCount(0);
-
-			MetaDiaMonitorTask task = new MetaDiaMonitorTask(diaRTPar, (MetaSourcesDia) msv, progressBar, null, null,
+/*
+			MetaDiaMonitorTask task = new MetaDiaMonitorTask(diaRTPar, mrp, progressBar, null, null,
 					monitorFolder, destinationFolder, resultTableModel, rawListModel) {
 				protected void done() {
 					try {
@@ -845,6 +801,7 @@ public class MetaPilotMainPanelDiaRT extends MetaPilotMainPanelDia {
 				JOptionPane.showMessageDialog(MetaPilotMainPanelDiaRT.this,
 						"Task failed :(\nplease contact us to get a solution", "Error", JOptionPane.ERROR_MESSAGE);
 			}
+*/			
 		});
 
 		JCheckBox chckbxCombine = new JCheckBox(
@@ -950,8 +907,8 @@ public class MetaPilotMainPanelDiaRT extends MetaPilotMainPanelDia {
 			diaRTPar.setStopComplete(false);
 		});
 
-		JProgressBar comProgressBar = new JProgressBar();
-		JProgressBar comProgressBar2 = new JProgressBar();
+		JavaFXProgressBar comProgressBar = new JavaFXProgressBar();
+		JavaFXProgressBar comProgressBar2 = new JavaFXProgressBar();
 
 		// combine panel
 		JPanel rawIOPanel = new JPanel();
@@ -1165,8 +1122,8 @@ public class MetaPilotMainPanelDiaRT extends MetaPilotMainPanelDia {
 		JButton btnCheck = new JButton("Check folder");
 		JButton btnCombine = new JButton("Combine the result");
 
-		combineRunPanel.add(comProgressBar, "cell 0 2 3 1,growx");
-		combineRunPanel.add(comProgressBar2, "cell 0 3 3 1,growx");
+//		combineRunPanel.add(comProgressBar, "cell 0 2 3 1,growx");
+//		combineRunPanel.add(comProgressBar2, "cell 0 3 3 1,growx");
 
 		diaRTPar.setThreadCount(processorCount);
 
@@ -1333,8 +1290,8 @@ public class MetaPilotMainPanelDiaRT extends MetaPilotMainPanelDia {
 				setCursor(null);
 
 			} else {
-
-				MetaDiaCombineTask task = new MetaDiaCombineTask(diaRTPar, (MetaSourcesDia) msv, comProgressBar,
+/*
+				MetaDiaCombineTask task = new MetaDiaCombineTask(diaRTPar, mrp, comProgressBar,
 						comProgressBar2, null, rawResultFileMap) {
 					protected void done() {
 						try {
@@ -1393,6 +1350,7 @@ public class MetaPilotMainPanelDiaRT extends MetaPilotMainPanelDia {
 					JOptionPane.showMessageDialog(MetaPilotMainPanelDiaRT.this,
 							"Task failed :(\nplease contact us to get a solution", "Error", JOptionPane.ERROR_MESSAGE);
 				}
+*/				
 			}
 		});
 	}
@@ -1481,11 +1439,6 @@ public class MetaPilotMainPanelDiaRT extends MetaPilotMainPanelDia {
 		ArrayList<String> list = new ArrayList<String>();
 
 		MetaParameterDia diaPar = (MetaParameterDia) par;
-
-		if (!((MetaSourcesDia) msv).findDiaNN()) {
-			list.add("DIA-NN is not found, please check the Setting -> Resource.");
-		}
-
 		if (diaPar.getMetadata() == null || diaPar.getMetadata().getRawFiles() == null
 				|| diaPar.getMetadata().getRawFiles().length == 0) {
 			list.add("Raw files are not found.");

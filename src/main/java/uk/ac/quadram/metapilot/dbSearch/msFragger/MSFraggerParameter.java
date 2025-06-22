@@ -121,17 +121,17 @@ public class MSFraggerParameter {
 		}
 
 		setDatabase(metaPar.getCurrentDb());
-		int digestMode = metaPar.getDigestMode();
+		String digestMode = metaPar.getDigestModeString();
 		int termini = 2;
 
-		if (digestMode == 0) {
+		if (digestMode.equals("Specific")) {
 			termini = 2;
-		} else if (digestMode == 1 || digestMode == 2 || digestMode == 3) {
-			termini = 1;
-		} else if (digestMode == 4) {
+		} else if (digestMode.equals("Unspecific")) {
 			termini = 0;
+		} else {
+			termini = 1;
 		}
-
+/*
 		setEnzyme(metaPar.getEnzyme(), termini, metaPar.getMissCleavages());
 
 		this.variModMap = new HashMap<String, String>();
@@ -204,7 +204,7 @@ public class MSFraggerParameter {
 				}
 			}
 		}
-
+*/
 		if (metaPar.isOpenSearch()) {
 
 //			setPrecursorMassTol(500, 0, 10, 1);

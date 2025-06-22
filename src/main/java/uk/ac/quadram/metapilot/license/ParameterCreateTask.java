@@ -1,7 +1,5 @@
 package uk.ac.quadram.metapilot.license;
 
-import java.beans.PropertyChangeEvent;
-import java.beans.PropertyChangeListener;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
@@ -10,13 +8,18 @@ import java.io.PrintWriter;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 
-import javax.swing.JProgressBar;
-import javax.swing.SwingWorker;
+import javafx.application.Platform;
+import javafx.concurrent.Task;
+import javafx.scene.control.ProgressBar;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-public class ParameterCreateTask extends SwingWorker<Boolean, Object> {
+/**
+ * Task for creating license parameter files
+ * JavaFX implementation (converted from SwingWorker)
+ */
+public class ParameterCreateTask extends Task<Boolean> {
 
 	private String name;
 	private String affiliation;
@@ -24,7 +27,7 @@ public class ParameterCreateTask extends SwingWorker<Boolean, Object> {
 	private String email;
 
 	private File destFile;
-	private JProgressBar bar;
+	private ProgressBar progressBar;
 
 	protected Logger LOGGER = LogManager.getLogger(ParameterCreateTask.class);
 
@@ -32,59 +35,48 @@ public class ParameterCreateTask extends SwingWorker<Boolean, Object> {
 	 * Used in CMD mode
 	 */
 	public ParameterCreateTask(String file) {
-		this(file, "", "", "", "", new JProgressBar());
+		this(file, "", "", "", "", null);
 	}
 
 	public ParameterCreateTask(String file, String name, String affiliation, String country, String email,
-			JProgressBar bar) {
-		this(new File(file), name, affiliation, country, email, bar);
+			ProgressBar progressBar) {
+		this(new File(file), name, affiliation, country, email, progressBar);
 	}
 
 	public ParameterCreateTask(File file, String name, String affiliation, String country, String email,
-			JProgressBar bar) {
-
+			ProgressBar progressBar) {
 		this.destFile = file;
 		this.name = name;
 		this.affiliation = affiliation;
 		this.country = country;
 		this.email = email;
-		this.bar = bar;
-
-		addPropertyChangeListener(new PropertyChangeListener() {
-
-			@Override
-			public void propertyChange(PropertyChangeEvent evt) {
-				// TODO Auto-generated method stub
-				if ("progress".equals(evt.getPropertyName())) {
-					bar.setValue((Integer) evt.getNewValue());
-				}
-			}
-		});
+		this.progressBar = progressBar;
+		
+		// Bind the progress property to the progress bar if provided
+		if (progressBar != null) {
+			progressBar.progressProperty().bind(this.progressProperty());
+		}
 	}
 
 	@Override
-	protected Boolean doInBackground() throws Exception {
-		// TODO Auto-generated method stub
-
+	protected Boolean call() throws Exception {
 		boolean finished = false;
 
-		bar.setStringPainted(true);
+		// Set string painted is not needed in JavaFX
+		updateMessage("Creating parameters...");
 
 		PrintWriter writer = new PrintWriter(destFile);
 
 		writer.println(LicenseConstants.NAME_STRING + "=" + this.name);
-
 		writer.println(LicenseConstants.AFFILIATION_STRING + "=" + this.affiliation);
-
 		writer.println(LicenseConstants.COUNTRY_STRING + "=" + this.country);
-
 		writer.println(LicenseConstants.EMAIL_STRING + "=" + this.email);
 
 		InetAddress inetAddress = InetAddress.getLocalHost();
 		String localIp = inetAddress.toString();
 		writer.println(LicenseConstants.IP_STRING + "=" + localIp);
 
-		setProgress(10);
+		updateProgress(0.1, 1.0);  // 10%
 
 		byte[] mac = NetworkInterface.getByInetAddress(inetAddress).getHardwareAddress();
 		StringBuffer sb = new StringBuffer();
@@ -101,7 +93,7 @@ public class ParameterCreateTask extends SwingWorker<Boolean, Object> {
 			}
 		}
 		writer.println(LicenseConstants.MAC_STRING + "=" + sb);
-		setProgress(20);
+		updateProgress(0.2, 1.0);  // 20%
 
 		String wmic = "C:\\Windows\\System32\\wbem\\WMIC.exe";
 		if (!((new File(wmic)).exists())) {
@@ -115,7 +107,6 @@ public class ParameterCreateTask extends SwingWorker<Boolean, Object> {
 		}
 
 		try {
-
 			Process p = Runtime.getRuntime().exec(wmic + " baseboard get serialnumber");
 			BufferedReader input = new BufferedReader(new InputStreamReader(p.getInputStream()));
 			String line = null;
@@ -130,7 +121,7 @@ public class ParameterCreateTask extends SwingWorker<Boolean, Object> {
 				writer.println(LicenseConstants.BASEBOARD_STRING + "=" + line);
 			}
 			input.close();
-
+			updateProgress(0.4, 1.0);  // 40%
 		} catch (IOException e) {
 			LOGGER.error("Error in getting the baseboard serial number.", e);
 		}
@@ -150,7 +141,7 @@ public class ParameterCreateTask extends SwingWorker<Boolean, Object> {
 				writer.println(LicenseConstants.DISKDRIVE_STRING + "=" + line);
 			}
 			input.close();
-
+			updateProgress(0.6, 1.0);  // 60%
 		} catch (IOException e) {
 			LOGGER.error("Error in getting the diskdrive serial number.", e);
 		}
@@ -170,7 +161,7 @@ public class ParameterCreateTask extends SwingWorker<Boolean, Object> {
 				writer.println(LicenseConstants.BIOS_STRING + "=" + line);
 			}
 			input.close();
-
+			updateProgress(0.8, 1.0);  // 80%
 		} catch (IOException e) {
 			LOGGER.error("Error in getting the bios serial number.", e);
 		}
@@ -190,20 +181,25 @@ public class ParameterCreateTask extends SwingWorker<Boolean, Object> {
 				writer.println(LicenseConstants.CPU_STRING + "=" + line);
 			}
 			input.close();
-
 		} catch (IOException e) {
 			LOGGER.error("Error in getting the cpu serial number.", e);
 		}
 
 		writer.close();
 
-		setProgress(100);
-		bar.setString("Finished");
+		updateProgress(1.0, 1.0);  // 100%
+		updateMessage("Finished");
 
 		finished = true;
-
 		return finished;
 	}
-
-
+	
+	/**
+	 * Utility method to execute the task
+	 */
+	public void execute() {
+		Thread thread = new Thread(this);
+		thread.setDaemon(true);
+		thread.start();
+	}
 }

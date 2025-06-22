@@ -18,9 +18,6 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 
-import javax.swing.JProgressBar;
-import javax.swing.SwingWorker;
-
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -39,6 +36,9 @@ import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantParaHandler;
 import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantPep4Meta;
 import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantPepReader;
 import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantProReader;
+import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.task.MetaAbstractTask;
 import uk.ac.quadram.metapilot.task.MetaReportCopyTask;
 import uk.ac.quadram.metapilot.task.MetaReportTask;
@@ -46,11 +46,9 @@ import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.par.MetaData;
-import uk.ac.quadram.metapilot.task.v2.par.MetaSourcesV2;
 import uk.ac.quadram.metapilot.task.v2.par.MetaMaxQuantPar;
 import uk.ac.quadram.metapilot.task.v2.par.MetaParaIOMQ;
 import uk.ac.quadram.metapilot.task.v2.par.MetaParameterMQ;
-import uk.ac.quadram.metapilot.task.v2.par.MetaSourcesIOV2;
 
 /**
  * @author Kai Cheng
@@ -59,13 +57,13 @@ import uk.ac.quadram.metapilot.task.v2.par.MetaSourcesIOV2;
 public class MetaMQSearchTask extends MetaAbstractTask {
 
 	private MetaMaxQuantPar mcsp;
-
+	
 	private Logger LOGGER = LogManager.getLogger(MetaMQSearchTask.class);
 	private String taskName = "Closed search";
 
-	public MetaMQSearchTask(MetaParameterMQ metaPar, MetaSourcesV2 msv2, JProgressBar bar1, JProgressBar bar2,
-			SwingWorker<Boolean, Object> nextWork) {
-		super(metaPar, msv2, bar1, bar2, nextWork);
+	public MetaMQSearchTask(MetaParameterMQ metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
+			JavaFXProgressBar secondBar) {
+		super(metaPar, mrp, progressBar);
 	}
 
 	protected void initial() {
@@ -73,10 +71,10 @@ public class MetaMQSearchTask extends MetaAbstractTask {
 	}
 
 	@Override
-	protected Boolean doInBackground() throws Exception {
+	protected Boolean call() throws Exception {
 		// TODO Auto-generated method stub
 
-		bar2.setString(taskName);
+		progressBar.setString(taskName);
 
 		LOGGER.info(taskName + ": started");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": started");
@@ -88,7 +86,7 @@ public class MetaMQSearchTask extends MetaAbstractTask {
 
 		metaPar.setDbSearchResultFile(closedSearchFile);
 
-		File maxquantCmd = new File(((MetaSourcesV2) msv).getMaxquant());
+		File maxquantCmd = new File(mrp.getToolPath(ToolType.MAXQUANT));
 
 		if (maxquantCmd.exists()) {
 
@@ -116,7 +114,7 @@ public class MetaMQSearchTask extends MetaAbstractTask {
 				if (!reportFolder.exists()) {
 					reportFolder.mkdirs();
 				}
-				
+
 				MetaReportTask task = new MetaReportTask(metaPar.getThreadCount());
 
 				File report_ID_summary = new File(reportFolder, "report_ID_summary.html");
@@ -170,7 +168,7 @@ public class MetaMQSearchTask extends MetaAbstractTask {
 				}
 
 				task.run();
-				
+
 				setProgress(60);
 
 				LOGGER.info(taskName + ": finished");
@@ -196,7 +194,6 @@ public class MetaMQSearchTask extends MetaAbstractTask {
 		}
 	}
 
-	@SuppressWarnings("unchecked")
 	public File maxquantSearch() {
 
 		File closedSearchFile = metaPar.getDbSearchResultFile();
@@ -209,11 +206,17 @@ public class MetaMQSearchTask extends MetaAbstractTask {
 			return peptides;
 		}
 
-		MaxquantModification[] variMods = ((MetaParameterMQ) metaPar).getVariMods();
-		MaxquantModification[] fixMods = ((MetaParameterMQ) metaPar).getFixMods();
-		Enzyme enzyme = ((MetaParameterMQ) metaPar).getEnzyme();
-		int digestMode = ((MetaParameterMQ) metaPar).getDigestMode();
-		int missCleavage = ((MetaParameterMQ) metaPar).getMissCleavages();
+//		MaxquantModification[] variMods = ((MetaParameterMQ) metaPar).getVariMods();
+//		MaxquantModification[] fixMods = ((MetaParameterMQ) metaPar).getFixMods();
+//		Enzyme enzyme = ((MetaParameterMQ) metaPar).getEnzyme();
+//		int digestMode = ((MetaParameterMQ) metaPar).getDigestMode();
+//		int missCleavage = ((MetaParameterMQ) metaPar).getMissCleavages();
+		
+		MaxquantModification[] variMods = new MaxquantModification[0];
+		MaxquantModification[] fixMods = new MaxquantModification[0];
+		Enzyme enzyme = Enzyme.Trypsin;
+		int missCleavage = 0;
+		int digestMode = 0;
 
 		MaxquantModification[][] labels = ((MetaParameterMQ) metaPar).getLabels();
 		MaxquantModification[] isobaric = ((MetaParameterMQ) metaPar).getIsobaric();
@@ -238,8 +241,7 @@ public class MetaMQSearchTask extends MetaAbstractTask {
 		int minRatioCount = mcsp.getMinRatioCount();
 		int lfqMinRatioCount = mcsp.getLfqMinRatioCount();
 
-		String maxquantCmd = ((MetaSourcesV2) msv).getMaxquant();
-		File maxquantCmdFile = new File(maxquantCmd);
+		File maxquantCmdFile = new File(mrp.getToolPath(ToolType.MAXQUANT));
 		File mqpar = new File(maxquantCmdFile.getParent(), "mqpar.xml");
 
 		if (!mqpar.exists()) {
@@ -839,14 +841,19 @@ public class MetaMQSearchTask extends MetaAbstractTask {
 		return peptides;
 	}
 
-	@SuppressWarnings("unchecked")
 	protected void maxquantParTest(String mqpar, String intput, String output) {
 
-		MaxquantModification[] variMods = ((MetaParameterMQ) metaPar).getVariMods();
-		MaxquantModification[] fixMods = ((MetaParameterMQ) metaPar).getFixMods();
-		Enzyme enzyme = ((MetaParameterMQ) metaPar).getEnzyme();
-		int digestMode = ((MetaParameterMQ) metaPar).getDigestMode();
-		int missCleavage = ((MetaParameterMQ) metaPar).getMissCleavages();
+//		MaxquantModification[] variMods = ((MetaParameterMQ) metaPar).getVariMods();
+//		MaxquantModification[] fixMods = ((MetaParameterMQ) metaPar).getFixMods();
+//		Enzyme enzyme = ((MetaParameterMQ) metaPar).getEnzyme();
+//		int digestMode = ((MetaParameterMQ) metaPar).getDigestMode();
+//		int missCleavage = ((MetaParameterMQ) metaPar).getMissCleavages();
+		
+		MaxquantModification[] variMods = new MaxquantModification[0];
+		MaxquantModification[] fixMods = new MaxquantModification[0];
+		Enzyme enzyme = Enzyme.Trypsin;
+		int missCleavage = 0;
+		int digestMode = 0;
 
 		MaxquantModification[][] labels = ((MetaParameterMQ) metaPar).getLabels();
 		MaxquantModification[] isobaric = ((MetaParameterMQ) metaPar).getIsobaric();
@@ -1335,7 +1342,7 @@ public class MetaMQSearchTask extends MetaAbstractTask {
 					+ parFile);
 		}
 	}
-	
+
 	private void convertPep2Report(File peptides, File peptideReport) throws IOException {
 
 		MaxquantPepReader pepReader = new MaxquantPepReader(peptides, (MetaParameterMQ) metaPar);
@@ -1548,13 +1555,5 @@ public class MetaMQSearchTask extends MetaAbstractTask {
 	protected Logger getLogger() {
 		// TODO Auto-generated method stub
 		return LOGGER;
-	}
-
-	public static void main(String[] args) {
-		MetaParameterMQ metaPar = MetaParaIOMQ.parse(args[0]);
-		MetaSourcesV2 msv = MetaSourcesIOV2.parse(args[1]);
-
-		MetaMQSearchTask task = new MetaMQSearchTask(metaPar, msv, new JProgressBar(), new JProgressBar(), null);
-		task.maxquantParTest(args[2], args[3], args[3]);
 	}
 }

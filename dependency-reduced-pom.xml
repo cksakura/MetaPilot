@@ -45,6 +45,14 @@
         <version>0.0.8</version>
         <configuration>
           <mainClass>uk.ac.quadram.metapilot.MetaPilotApp</mainClass>
+          <options>
+            <option>--add-opens</option>
+            <option>java.base/java.lang=ALL-UNNAMED</option>
+            <option>--add-opens</option>
+            <option>java.base/java.util=ALL-UNNAMED</option>
+            <option>--add-opens</option>
+            <option>java.base/java.io=ALL-UNNAMED</option>
+          </options>
         </configuration>
       </plugin>
       <plugin>

@@ -6,57 +6,208 @@ import java.util.Map;
 import java.util.prefs.Preferences;
 
 /**
- * Comprehensive resource parameters class to handle all tool paths for
- * MetaPilot. This combines functionality from MetaSourcesMag and MetaSourcesDia
- * into a single class.
+ * Centralized Resource and Tool Path Management System for MetaPilot
+ * 
+ * <h2>Purpose</h2>
+ * This comprehensive resource management class handles all external tool paths and 
+ * dependencies required by MetaPilot workflows. It provides unified configuration,
+ * validation, and persistence of tool locations across different proteomics engines
+ * and analysis pipelines.
+ * 
+ * <h2>Architecture</h2>
+ * <ul>
+ *   <li><strong>Unified Tool Management:</strong> Single interface for all external tools</li>
+ *   <li><strong>Automatic Path Resolution:</strong> Intelligent path construction and validation</li>
+ *   <li><strong>Persistent Configuration:</strong> User preferences saved across sessions</li>
+ *   <li><strong>Status Monitoring:</strong> Real-time availability checking</li>
+ *   <li><strong>Cross-Platform Support:</strong> Windows/Linux/macOS compatibility</li>
+ * </ul>
+ * 
+ * <h2>Supported Tool Categories</h2>
+ * 
+ * <h3>General Tools:</h3>
+ * <ul>
+ *   <li><strong>FunctionDB:</strong> Functional annotation database</li>
+ *   <li><strong>Python:</strong> Python interpreter for scripts</li>
+ * </ul>
+ * 
+ * <h3>DDA (Data-Dependent Acquisition) Tools:</h3>
+ * <ul>
+ *   <li><strong>MaxQuant:</strong> Label-free quantification and identification</li>
+ *   <li><strong>pFind:</strong> Chinese-developed database search engine</li>
+ *   <li><strong>FragPipe:</strong> MSFragger-based analysis pipeline</li>
+ *   <li><strong>Sage:</strong> Fast Rust-based search engine</li>
+ *   <li><strong>FlashLFQ:</strong> Label-free quantification tool</li>
+ *   <li><strong>DBReducer:</strong> Database reduction utility</li>
+ *   <li><strong>msconvert:</strong> Spectrum file conversion (ProteoWizard)</li>
+ * </ul>
+ * 
+ * <h3>DIA (Data-Independent Acquisition) Tools:</h3>
+ * <ul>
+ *   <li><strong>DIA-NN:</strong> Deep learning-based DIA analysis</li>
+ *   <li><strong>DeepDetect:</strong> Advanced detection algorithms</li>
+ * </ul>
+ * 
+ * <h2>Path Management Strategy</h2>
+ * <h3>Base Resource Directory:</h3>
+ * <ul>
+ *   <li>Default: "./Resources/" relative to application</li>
+ *   <li>Configurable through constructor or setter</li>
+ *   <li>All tool paths resolved relative to base directory</li>
+ * </ul>
+ * 
+ * <h3>Tool Path Structure:</h3>
+ * <pre>{@code
+ *   Resources/
+ *   ├── mq_bin/MaxQuantCmd.exe           (MaxQuant)
+ *   ├── DBReducer/pFind3/bin/pFind.exe   (pFind)
+ *   ├── fragpipe/bin/fragpipe.bat        (FragPipe)
+ *   ├── sage/sage.exe                    (Sage)
+ *   ├── DIA-NN/2.0/DiaNN.exe            (DIA-NN)
+ *   ├── ProteoWizard/msconvert.exe       (msconvert)
+ *   ├── FlashLFQ/CMD.exe                 (FlashLFQ)
+ *   ├── function/func_def.db             (FunctionDB)
+ *   └── Python/python.exe                (Python)
+ * }</pre>
+ * 
+ * <h2>Tool Status Management</h2>
+ * <ul>
+ *   <li><strong>AVAILABLE:</strong> Tool executable found and accessible</li>
+ *   <li><strong>UNAVAILABLE:</strong> Tool missing or inaccessible</li>
+ *   <li><strong>Auto-Detection:</strong> Status updated on path changes</li>
+ *   <li><strong>Validation:</strong> File existence checking</li>
+ * </ul>
+ * 
+ * <h2>Configuration Persistence</h2>
+ * <p>Tool paths are automatically saved to Java preferences:</p>
+ * <ul>
+ *   <li><strong>Node:</strong> uk/ac/quadram/metapilot/resources</li>
+ *   <li><strong>Scope:</strong> User-specific preferences</li>
+ *   <li><strong>Keys:</strong> Tool type names and base path</li>
+ *   <li><strong>Automatic Loading:</strong> Restored on application startup</li>
+ * </ul>
+ * 
+ * <h2>Usage Patterns</h2>
+ * 
+ * <h3>Basic Initialization:</h3>
+ * <pre>{@code
+ *   // Use default resource path
+ *   MetaResourceParameters resources = new MetaResourceParameters();
+ *   
+ *   // Check tool availability
+ *   boolean maxQuantReady = resources.isToolAvailable(ToolType.MAXQUANT);
+ * }</pre>
+ * 
+ * <h3>Custom Configuration:</h3>
+ * <pre>{@code
+ *   // Custom base path
+ *   MetaResourceParameters resources = new MetaResourceParameters("C:/Proteomics/Tools");
+ *   
+ *   // Manual tool path override
+ *   resources.setToolPath(ToolType.MAXQUANT, "D:/MaxQuant/bin/MaxQuantCmd.exe");
+ *   
+ *   // Save configuration
+ *   resources.saveToPreferences();
+ * }</pre>
+ * 
+ * <h3>Workflow Integration:</h3>
+ * <pre>{@code
+ *   // Check required tools before workflow
+ *   ToolType[] requiredTools = {ToolType.MAXQUANT, ToolType.MSCONVERT};
+ *   boolean allAvailable = Arrays.stream(requiredTools)
+ *       .allMatch(resources::isToolAvailable);
+ *   
+ *   if (allAvailable) {
+ *       // Launch workflow
+ *       String maxQuantPath = resources.getToolPath(ToolType.MAXQUANT);
+ *       // ... execute analysis
+ *   }
+ * }</pre>
+ * 
+ * <h2>Download Integration</h2>
+ * <p>Some tools provide download URLs for automatic installation:</p>
+ * <ul>
+ *   <li>MaxQuant: Official website download</li>
+ *   <li>FragPipe: Nesvilab releases</li>
+ *   <li>Sage: GitHub releases</li>
+ *   <li>DIA-NN: GitHub releases</li>
+ *   <li>msconvert: ProteoWizard official site</li>
+ * </ul>
+ * 
+ * <h2>Cross-Platform Considerations</h2>
+ * <ul>
+ *   <li><strong>Path Separators:</strong> Automatic OS-specific handling</li>
+ *   <li><strong>Executable Extensions:</strong> .exe for Windows, none for Unix</li>
+ *   <li><strong>Script Handling:</strong> .bat for Windows, .sh for Unix</li>
+ *   <li><strong>Permission Checking:</strong> Executable bit validation on Unix</li>
+ * </ul>
+ * 
+ * <h2>Error Handling</h2>
+ * <ul>
+ *   <li><strong>Missing Tools:</strong> Graceful degradation with clear status</li>
+ *   <li><strong>Invalid Paths:</strong> Automatic correction attempts</li>
+ *   <li><strong>Permission Issues:</strong> Clear error reporting</li>
+ *   <li><strong>Recovery Strategies:</strong> Fallback to default locations</li>
+ * </ul>
+ * 
+ * <h2>Thread Safety</h2>
+ * <p><strong>Note:</strong> This class is NOT thread-safe. External synchronization
+ * is required if accessed from multiple threads concurrently.</p>
+ * 
+ * @author Kai Cheng - Quadram Institute Bioscience
+ * @version 2.0
+ * @since 1.0
+ * 
+ * @see uk.ac.quadram.metapilot.resources.MetaResourceIO
+ * @see uk.ac.quadram.metapilot.ui.ResourceConfigPanel
+ * @see uk.ac.quadram.metapilot.workflows.ResourceConfigWorkflow
  */
 public class MetaResourceParameters {
 
 	// Tool types
 	public enum ToolType {
+		// General tools
+		FUNCDB("FunctionDB", ""), PYTHON("Python", ""),
 		// DDA tools
-		PFIND("pFind", ""),
-		MAXQUANT("MaxQuant", "https://www.maxquant.org/maxquant/"),
-		DBREDUCER("DBReducer", ""),
-		
+		PFIND("pFind", ""), MAXQUANT("MaxQuant", "https://www.maxquant.org/maxquant/"), DBREDUCER("DBReducer", ""),
+		FRAGPIPE("FragPipe", "https://fragpipe.nesvilab.org/"), SAGE("Sage", "https://github.com/lazear/sage"),
+		FLASHLFQ("FlashLFQ", ""), MSCONVERT("msconvert", "https://proteowizard.sourceforge.io/download.html"),
 		// DIA tools
-		FRAGPIPE("FragPipe", "https://fragpipe.nesvilab.org/"),
-		SAGE("Sage", "https://github.com/lazear/sage"),
-		FLASHLFQ("FlashLFQ", ""),
-		FUNCDB("FunctionDB", ""),
-		MSCONVERT("msconvert", "https://proteowizard.sourceforge.io/download.html"),
-		DIANN("DiaNN", "https://github.com/vdemichev/DiaNN/releases"),
-		DEEPDETECT("DeepDetect", "");
-		
+		DIANN("DiaNN", "https://github.com/vdemichev/DiaNN/releases"), DEEPDETECT("DeepDetect", "");
+
 		private final String displayName;
 		private final String downloadUrl;
-		
+
 		ToolType(String displayName, String downloadUrl) {
 			this.displayName = displayName;
 			this.downloadUrl = downloadUrl;
 		}
-		
+
 		public String getDisplayName() {
 			return displayName;
 		}
-		
+
 		public String getDownloadUrl() {
 			return downloadUrl;
 		}
-		
+
 		/**
 		 * Check if this tool has a download URL
 		 */
 		public boolean hasDownloadUrl() {
 			return downloadUrl != null && !downloadUrl.isEmpty();
 		}
-		
-		public static ToolType[] getDDATools() {
-			return new ToolType[] { PFIND, MAXQUANT, DBREDUCER };
+
+		public static ToolType[] getGeneralTools() {
+			return new ToolType[] { FUNCDB, PYTHON };
 		}
-		
+
+		public static ToolType[] getDDATools() {
+			return new ToolType[] { PFIND, MAXQUANT, DBREDUCER, FRAGPIPE, SAGE, FLASHLFQ, MSCONVERT };
+		}
+
 		public static ToolType[] getDIATools() {
-			return new ToolType[] { FRAGPIPE, SAGE, FLASHLFQ, FUNCDB, MSCONVERT, DIANN, DEEPDETECT };
+			return new ToolType[] { DIANN, DEEPDETECT };
 		}
 	}
 
@@ -120,7 +271,7 @@ public class MetaResourceParameters {
 		toolInfoMap.put(ToolType.MSCONVERT, new ToolInfo(ToolType.MSCONVERT, "ProteoWizard", "msconvert.exe"));
 		toolInfoMap.put(ToolType.DIANN, new ToolInfo(ToolType.DIANN, "DIA-NN\\2.0", "DiaNN.exe"));
 		toolInfoMap.put(ToolType.DEEPDETECT, new ToolInfo(ToolType.DEEPDETECT, "DeepDetect", "DeepDetect.exe"));
-
+		toolInfoMap.put(ToolType.PYTHON, new ToolInfo(ToolType.PYTHON, "Python", "python.exe"));
 		// Initialize full paths for all tools
 		for (Map.Entry<ToolType, ToolInfo> entry : toolInfoMap.entrySet()) {
 			ToolInfo toolInfo = entry.getValue();
@@ -156,8 +307,8 @@ public class MetaResourceParameters {
 	}
 
 	/**
-	 * Update all tool paths based on the new base resource path
-	 * Always updates the paths based on the new base path and checks if tools are available
+	 * Update all tool paths based on the new base resource path Always updates the
+	 * paths based on the new base path and checks if tools are available
 	 */
 	public void updateAllPaths(String newBasePath) {
 		// Check if the new base path is valid
@@ -169,11 +320,11 @@ public class MetaResourceParameters {
 
 		for (Map.Entry<ToolType, ToolInfo> entry : toolInfoMap.entrySet()) {
 			ToolInfo toolInfo = entry.getValue();
-			
+
 			// Always create a new path based on the base resource path
 			File newToolPath = new File(newBasePath, toolInfo.getRelativePath());
 			toolInfo.setFullPath(newToolPath.getAbsolutePath());
-			
+
 			// Update tool status
 			updateToolStatus(entry.getKey());
 		}

@@ -29,7 +29,7 @@ import org.dom4j.io.OutputFormat;
 import org.dom4j.io.SAXReader;
 import org.dom4j.io.XMLWriter;
 
-import uk.ac.quadram.metapilot.task.par.MetaParameter;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.v1.par.AbstractParameter;
 import uk.ac.quadram.metapilot.task.v2.par.MetaSourcesIOV2;
 import uk.ac.quadram.metapilot.task.v2.par.MetaSourcesV2;
@@ -93,7 +93,7 @@ public class ProteomicsTools {
 //		this.convertMzxml = parameter.getResource() + "\\ProteomicsTools\\config\\mzxml_convert.param";
 	}
 
-	public ProteomicsTools(MetaParameter metaPar, MetaSourcesV2 advPar) {
+	public ProteomicsTools(MetaBaseParameter metaPar, MetaSourcesV2 advPar) {
 		this.convertCmd = advPar.getProteomicsTools();
 		File parent = (new File(convertCmd)).getParentFile();
 		File config = new File(parent, "config");

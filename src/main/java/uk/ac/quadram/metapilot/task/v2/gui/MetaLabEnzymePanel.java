@@ -44,11 +44,11 @@ public class MetaLabEnzymePanel extends JPanel {
 	 */
 	public MetaLabEnzymePanel(MetaParameterMQ par) {
 
-		Enzyme enzyme = par.getEnzyme();
+//		Enzyme enzyme = par.getEnzyme();
 
-		int missCleavages = par.getMissCleavages();
+//		int missCleavages = par.getMissCleavages();
 
-		int digestMode = par.getDigestMode();
+//		int digestMode = par.getDigestMode();
 
 		JTable tableEnzyme = new JTable() {
 			/**
@@ -70,11 +70,11 @@ public class MetaLabEnzymePanel extends JPanel {
 		Object[][] enzymeObjs = new Object[enzymes.length][];
 		for (int i = 0; i < enzymeObjs.length; i++) {
 			enzymeObjs[i] = enzymes[i].toTableRawObjects();
-			if (enzyme.equals(enzymes[i])) {
+//			if (enzyme.equals(enzymes[i])) {
 				enzymeObjs[i][0] = true;
-			} else {
-				enzymeObjs[i][0] = false;
-			}
+//			} else {
+//				enzymeObjs[i][0] = false;
+//			}
 		}
 
 		modelEnzyme = new DefaultTableModel(enzymeObjs,
@@ -166,11 +166,11 @@ public class MetaLabEnzymePanel extends JPanel {
 		Object[][] modeObjs = new Object[disModes.length][2];
 		for (int i = 0; i < modeObjs.length; i++) {
 			modeObjs[i][1] = disModes[i];
-			if (digestMode == i) {
+//			if (digestMode == i) {
 				modeObjs[i][0] = true;
-			} else {
-				modeObjs[i][0] = false;
-			}
+//			} else {
+//				modeObjs[i][0] = false;
+//			}
 		}
 
 		modelDismode = new DefaultTableModel(modeObjs, new Object[] { "", "Digestion mode" }) {
@@ -229,9 +229,9 @@ public class MetaLabEnzymePanel extends JPanel {
 			comboBox.addItem(i);
 		}
 
-		if (missCleavages <= 5) {
-			comboBox.setSelectedIndex(missCleavages);
-		}
+//		if (missCleavages <= 5) {
+//			comboBox.setSelectedIndex(missCleavages);
+//		}
 
 		tableMode.getSelectionModel().addListSelectionListener(l -> {
 
@@ -248,7 +248,7 @@ public class MetaLabEnzymePanel extends JPanel {
 
 		int missCleavages = par.getMissCleavages();
 
-		int digestMode = par.getDigestMode();
+//		int digestMode = par.getDigestMode();
 
 		JTable tableString = new JTable() {
 			/**
@@ -377,11 +377,11 @@ public class MetaLabEnzymePanel extends JPanel {
 		Object[][] modeObjs = new Object[disModes.length][2];
 		for (int i = 0; i < modeObjs.length; i++) {
 			modeObjs[i][1] = disModes[i];
-			if (digestMode == i) {
+//			if (digestMode == i) {
 				modeObjs[i][0] = true;
-			} else {
-				modeObjs[i][0] = false;
-			}
+//			} else {
+//				modeObjs[i][0] = false;
+//			}
 		}
 
 		modelDismode = new DefaultTableModel(modeObjs, new Object[] { "", "Digestion mode" }) {
