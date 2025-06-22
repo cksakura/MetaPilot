@@ -27,6 +27,220 @@ import org.apache.logging.log4j.Logger;
 import uk.ac.quadram.metapilot.core.tools.ResumableDownloadTask;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 
+/**
+ * MGnify Genome Database FTP Download and Management System
+ * 
+ * <h2>Purpose</h2>
+ * This class provides comprehensive functionality for downloading, updating, and managing
+ * MGnify (formerly EBI Metagenomics) genome databases. MGnify is a major resource for 
+ * metagenome-assembled genomes (MAGs) that are essential for metaproteomics analysis
+ * of environmental and clinical samples.
+ * 
+ * <h2>MGnify Database Structure</h2>
+ * <p>MGnify organizes genomes in a hierarchical structure:</p>
+ * <pre>{@code
+ *   ftp.ebi.ac.uk/pub/databases/metagenomics/mgnify_genomes/
+ *   ├── Catalog1/
+ *   │   └── Version/
+ *   │       └── species_catalogue/
+ *   │           ├── Species1/
+ *   │           │   ├── Genome1.faa
+ *   │           │   └── Genome2.faa
+ *   │           └── Species2/
+ *   │               └── Genome3.faa
+ *   └── Catalog2/
+ *       └── Version/
+ *           └── species_catalogue/
+ *               └── ...
+ * }</pre>
+ * 
+ * <h2>Supported Operations</h2>
+ * 
+ * <h3>Repository Discovery:</h3>
+ * <ul>
+ *   <li><strong>Catalog Enumeration:</strong> Discover all available MGnify catalogs</li>
+ *   <li><strong>Version Detection:</strong> Find latest versions for each catalog</li>
+ *   <li><strong>Genome Counting:</strong> Calculate total genomes per catalog</li>
+ *   <li><strong>Metadata Extraction:</strong> Parse timestamps and versioning</li>
+ * </ul>
+ * 
+ * <h3>Database Downloads:</h3>
+ * <ul>
+ *   <li><strong>Full Catalog Download:</strong> Download entire catalogs</li>
+ *   <li><strong>Selective Download:</strong> Download specific species/genomes</li>
+ *   <li><strong>Resumable Downloads:</strong> Continue interrupted downloads</li>
+ *   <li><strong>Multi-threaded:</strong> Parallel download acceleration</li>
+ * </ul>
+ * 
+ * <h3>Update Management:</h3>
+ * <ul>
+ *   <li><strong>Version Comparison:</strong> Compare local vs remote versions</li>
+ *   <li><strong>Incremental Updates:</strong> Download only new/changed files</li>
+ *   <li><strong>Timestamp Tracking:</strong> Monitor database freshness</li>
+ *   <li><strong>Local Validation:</strong> Verify download integrity</li>
+ * </ul>
+ * 
+ * <h2>FTP Configuration</h2>
+ * <h3>Connection Parameters:</h3>
+ * <ul>
+ *   <li><strong>Server:</strong> ftp.ebi.ac.uk</li>
+ *   <li><strong>Port:</strong> 21 (standard FTP)</li>
+ *   <li><strong>Authentication:</strong> Anonymous access</li>
+ *   <li><strong>Mode:</strong> Passive (firewall-friendly)</li>
+ * </ul>
+ * 
+ * <h3>Base Path:</h3>
+ * <ul>
+ *   <li><strong>Root Directory:</strong> /pub/databases/metagenomics/mgnify_genomes</li>
+ *   <li><strong>Access Pattern:</strong> Public read-only</li>
+ *   <li><strong>Update Frequency:</strong> Regular (varies by catalog)</li>
+ * </ul>
+ * 
+ * <h2>Download Strategies</h2>
+ * 
+ * <h3>Single-threaded Downloads:</h3>
+ * <ul>
+ *   <li><strong>Reliable:</strong> Traditional FTP download</li>
+ *   <li><strong>Resumable:</strong> Can continue interrupted transfers</li>
+ *   <li><strong>Memory Efficient:</strong> Low resource usage</li>
+ *   <li><strong>Progress Tracking:</strong> Real-time progress updates</li>
+ * </ul>
+ * 
+ * <h3>Multi-threaded Downloads:</h3>
+ * <ul>
+ *   <li><strong>Accelerated:</strong> Parallel connection utilization</li>
+ *   <li><strong>Configurable:</strong> Adjustable thread pool size</li>
+ *   <li><strong>Fault Tolerant:</strong> Individual thread failure handling</li>
+ *   <li><strong>Resource Managed:</strong> Automatic connection cleanup</li>
+ * </ul>
+ * 
+ * <h2>Progress Monitoring</h2>
+ * <h3>Progress Indicators:</h3>
+ * <ul>
+ *   <li><strong>JProgressBar Integration:</strong> Swing GUI progress display</li>
+ *   <li><strong>Percentage Tracking:</strong> Real-time completion percentage</li>
+ *   <li><strong>File-level Progress:</strong> Individual file download status</li>
+ *   <li><strong>Catalog-level Progress:</strong> Overall catalog completion</li>
+ * </ul>
+ * 
+ * <h3>Logging and Monitoring:</h3>
+ * <ul>
+ *   <li><strong>Timestamped Logs:</strong> Detailed operation logging</li>
+ *   <li><strong>Error Reporting:</strong> Comprehensive error messages</li>
+ *   <li><strong>Performance Metrics:</strong> Download speed tracking</li>
+ *   <li><strong>Status Updates:</strong> Real-time status information</li>
+ * </ul>
+ * 
+ * <h2>Error Handling and Recovery</h2>
+ * 
+ * <h3>Network Resilience:</h3>
+ * <ul>
+ *   <li><strong>Connection Retry:</strong> Automatic reconnection attempts</li>
+ *   <li><strong>Timeout Management:</strong> Configurable timeout settings</li>
+ *   <li><strong>Graceful Degradation:</strong> Fallback to single-threaded mode</li>
+ *   <li><strong>Partial Recovery:</strong> Resume from last successful point</li>
+ * </ul>
+ * 
+ * <h3>Data Integrity:</h3>
+ * <ul>
+ *   <li><strong>Size Validation:</strong> Compare downloaded vs expected sizes</li>
+ *   <li><strong>Corruption Detection:</strong> Identify incomplete downloads</li>
+ *   <li><strong>Automatic Cleanup:</strong> Remove corrupted partial files</li>
+ *   <li><strong>Retry Logic:</strong> Re-download corrupted files</li>
+ * </ul>
+ * 
+ * <h2>Integration with MAG Workflows</h2>
+ * 
+ * <h3>Database Preparation:</h3>
+ * <ul>
+ *   <li><strong>FASTA Processing:</strong> Handle protein FASTA files</li>
+ *   <li><strong>Index Generation:</strong> Prepare search engine indexes</li>
+ *   <li><strong>Taxonomy Assignment:</strong> Associate genomes with taxonomy</li>
+ *   <li><strong>Metadata Extraction:</strong> Parse genome annotations</li>
+ * </ul>
+ * 
+ * <h3>Search Engine Integration:</h3>
+ * <ul>
+ *   <li><strong>pFind:</strong> Prepare databases for pFind search</li>
+ *   <li><strong>Sage:</strong> Format for Sage search engine</li>
+ *   <li><strong>DIA-NN:</strong> Generate spectral libraries for DIA</li>
+ *   <li><strong>FragPipe:</strong> MSFragger database formatting</li>
+ * </ul>
+ * 
+ * <h2>Performance Considerations</h2>
+ * 
+ * <h3>Network Optimization:</h3>
+ * <ul>
+ *   <li><strong>Passive Mode:</strong> Firewall and NAT compatibility</li>
+ *   <li><strong>Connection Pooling:</strong> Efficient FTP connection reuse</li>
+ *   <li><strong>Bandwidth Management:</strong> Throttling capabilities</li>
+ *   <li><strong>Concurrent Limits:</strong> Respect server connection limits</li>
+ * </ul>
+ * 
+ * <h3>Storage Optimization:</h3>
+ * <ul>
+ *   <li><strong>Disk Space Management:</strong> Monitor available space</li>
+ *   <li><strong>Compression Handling:</strong> Extract compressed archives</li>
+ *   <li><strong>Temporary Files:</strong> Clean up intermediate files</li>
+ *   <li><strong>Directory Structure:</strong> Maintain organized file hierarchy</li>
+ * </ul>
+ * 
+ * <h2>Usage Examples</h2>
+ * 
+ * <h3>Repository Discovery:</h3>
+ * <pre>{@code
+ *   // Discover available MGnify catalogs
+ *   MGYGFtpTask discoveryTask = new MGYGFtpTask(progressBar);
+ *   discoveryTask.execute();
+ *   
+ *   // Get repository information
+ *   MagDbItem[] repositories = discoveryTask.getRepositoryItems();
+ * }</pre>
+ * 
+ * <h3>Catalog Download:</h3>
+ * <pre>{@code
+ *   // Download specific catalog
+ *   MagDbItem catalog = new MagDbItem("human-gut", "MGYG");
+ *   MGYGFtpTask downloadTask = new MGYGFtpTask(catalog, progressBar);
+ *   downloadTask.execute();
+ * }</pre>
+ * 
+ * <h3>Update Check:</h3>
+ * <pre>{@code
+ *   // Compare local vs remote versions
+ *   MagDbItem[] localCatalogs = loadLocalCatalogs();
+ *   MGYGFtpTask updateTask = new MGYGFtpTask(localCatalogs, progressBar);
+ *   updateTask.execute();
+ * }</pre>
+ * 
+ * <h2>Configuration Parameters</h2>
+ * <ul>
+ *   <li><strong>missLength:</strong> 146 bytes (minimum significant file size)</li>
+ *   <li><strong>waitHours:</strong> 4 hours (retry interval for failed downloads)</li>
+ *   <li><strong>Thread Pool:</strong> Configurable for multi-threaded downloads</li>
+ *   <li><strong>Timeout Settings:</strong> Network operation timeouts</li>
+ * </ul>
+ * 
+ * <h2>Thread Safety</h2>
+ * <p>This class extends SwingWorker and is designed for single-threaded execution
+ * per instance. Multiple instances can be used concurrently for different catalogs.</p>
+ * 
+ * <h2>Dependencies</h2>
+ * <ul>
+ *   <li><strong>Apache Commons Net:</strong> FTP client functionality</li>
+ *   <li><strong>Log4j:</strong> Comprehensive logging</li>
+ *   <li><strong>SwingWorker:</strong> Background task execution</li>
+ *   <li><strong>ResumableDownloadTask:</strong> Download resumption capability</li>
+ * </ul>
+ * 
+ * @author Kai Cheng - Quadram Institute Bioscience
+ * @version 2.0
+ * @since 1.0
+ * 
+ * @see uk.ac.quadram.metapilot.task.mag.MagDbItem
+ * @see uk.ac.quadram.metapilot.core.tools.ResumableDownloadTask
+ * @see uk.ac.quadram.metapilot.task.mag
+ */
 public class MGYGFtpTask extends SwingWorker<Boolean, Object> {
 
 	private static final String server = "ftp.ebi.ac.uk";
@@ -253,8 +467,8 @@ public class MGYGFtpTask extends SwingWorker<Boolean, Object> {
 							magDbItem.resetMgygMap();
 						}
 						
-						System.out
-								.println(format.format(new Date()) + "\t" + "parsing new MAG database " + catalogueId);
+						System.
+								out.println(format.format(new Date()) + "\t" + "parsing new MAG database " + catalogueId);
 
 						ftpClient.changeWorkingDirectory(path);
 

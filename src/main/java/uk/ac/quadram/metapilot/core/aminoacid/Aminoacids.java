@@ -9,8 +9,95 @@ import java.util.Iterator;
 
 
 /**
- * @author Kai Cheng
- *
+ * Comprehensive Amino Acid Management System for Proteomics Applications
+ * 
+ * <h2>Purpose</h2>
+ * This class provides a complete amino acid management system for mass spectrometry
+ * and proteomics applications, handling amino acid properties, modifications, and
+ * mass calculations with support for both standard and non-standard amino acids.
+ * 
+ * <h2>Features</h2>
+ * <ul>
+ *   <li><strong>Complete Amino Acid Set:</strong> All 20 standard amino acids plus 
+ *       ambiguous codes (B, Z, X) and pyrrolysine (O)</li>
+ *   <li><strong>Mass Calculations:</strong> Both monoisotopic and average masses</li>
+ *   <li><strong>Modification Support:</strong> Static and variable modifications</li>
+ *   <li><strong>Terminal Modifications:</strong> N-terminal and C-terminal modifications</li>
+ *   <li><strong>Physicochemical Properties:</strong> Hydropathicity, pKa values</li>
+ * </ul>
+ * 
+ * <h2>Mass Types</h2>
+ * <ul>
+ *   <li><strong>Monoisotopic Mass:</strong> Exact mass using most abundant isotopes</li>
+ *   <li><strong>Average Mass:</strong> Weighted average of natural isotope distribution</li>
+ *   <li><strong>Residue Mass:</strong> Mass in peptide context (without H2O)</li>
+ * </ul>
+ * 
+ * <h2>Modification System</h2>
+ * <h3>Static Modifications (Fixed):</h3>
+ * <ul>
+ *   <li>Applied to all instances of an amino acid</li>
+ *   <li>Common example: Carbamidomethylation of cysteine (+57.021 Da)</li>
+ *   <li>Terminal modifications at peptide N/C termini</li>
+ * </ul>
+ * 
+ * <h3>Supported Modifications:</h3>
+ * <ul>
+ *   <li>{@link #setCysCarboxyamidomethylation()} - Standard cysteine alkylation</li>
+ *   <li>{@link #setModification(char, double)} - Custom amino acid modifications</li>
+ *   <li>{@link #setNterminalStaticModif(double)} - N-terminal modifications</li>
+ *   <li>{@link #setCterminalStaticModif(double)} - C-terminal modifications</li>
+ * </ul>
+ * 
+ * <h2>Physical Properties</h2>
+ * <ul>
+ *   <li><strong>Hydropathicity Scale:</strong> Kyte-Doolittle hydropathicity values</li>
+ *   <li><strong>pKa Values:</strong> Bjellqvist et al. pKa values for isoelectric point calculation</li>
+ *   <li><strong>Chemical Composition:</strong> Molecular formulas for each amino acid</li>
+ * </ul>
+ * 
+ * <h2>Mass Calculation Methods</h2>
+ * <ul>
+ *   <li>{@link #getMonoPeptideMass(String)} - Monoisotopic peptide mass (including H2O)</li>
+ *   <li>{@link #getAveragePeptideMass(String)} - Average peptide mass (including H2O)</li>
+ *   <li>{@link #getMonoResiduesMass(String)} - Sum of residue masses only</li>
+ *   <li>{@link #getAverageResiduesMass(String)} - Average residue masses only</li>
+ * </ul>
+ * 
+ * <h2>Special Amino Acids</h2>
+ * <ul>
+ *   <li><strong>B (Asx):</strong> Asparagine or Aspartic acid (average mass)</li>
+ *   <li><strong>Z (Glx):</strong> Glutamine or Glutamic acid (average mass)</li>
+ *   <li><strong>X (Xaa):</strong> Any amino acid (average of all 20)</li>
+ *   <li><strong>O (Pyl):</strong> Pyrrolysine (21st amino acid)</li>
+ * </ul>
+ * 
+ * <h2>Usage Examples</h2>
+ * <pre>{@code
+ *   // Basic usage
+ *   Aminoacids aas = new Aminoacids();
+ *   double mass = aas.getMonoPeptideMass("PEPTIDE");
+ *   
+ *   // With modifications
+ *   aas.setCysCarboxyamidomethylation();
+ *   aas.setModification('M', 15.9949); // Methionine oxidation
+ *   double modifiedMass = aas.getMonoPeptideMass("PEPTIDECM");
+ *   
+ *   // Terminal modifications
+ *   aas.setNterminalStaticModif(42.0106); // Acetylation
+ *   aas.setCterminalStaticModif(-0.9840); // Amidation
+ * }</pre>
+ * 
+ * <h2>Thread Safety</h2>
+ * <p><strong>Note:</strong> This class is NOT thread-safe. Each thread should use
+ * its own instance or external synchronization should be employed.</p>
+ * 
+ * @author Kai Cheng - Quadram Institute Bioscience
+ * @version 2.0
+ * @since 1.0
+ * 
+ * @see Aminoacid
+ * @see uk.ac.quadram.metapilot.core.tools.MwCalculator
  */
 public class Aminoacids {
 

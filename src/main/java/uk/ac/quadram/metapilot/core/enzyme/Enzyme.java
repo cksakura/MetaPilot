@@ -6,8 +6,154 @@ package uk.ac.quadram.metapilot.core.enzyme;
 import java.util.ArrayList;
 
 /**
- * @author Kai Cheng
- *
+ * Comprehensive Proteolytic Enzyme Support for In-Silico Protein Digestion
+ * 
+ * <h2>Purpose</h2>
+ * This enum provides comprehensive support for proteolytic enzymes commonly used in
+ * mass spectrometry-based proteomics. It enables accurate in-silico protein digestion
+ * simulation, essential for database search parameter configuration and theoretical
+ * peptide generation.
+ * 
+ * <h2>Supported Enzymes</h2>
+ * 
+ * <h3>Trypsin Family:</h3>
+ * <ul>
+ *   <li><strong>Trypsin:</strong> Cleaves C-terminal to K,R (not before P)</li>
+ *   <li><strong>Trypsin/P:</strong> Cleaves C-terminal to K,R (including before P)</li>
+ * </ul>
+ * 
+ * <h3>Lysine-Specific Endopeptidases:</h3>
+ * <ul>
+ *   <li><strong>LysC:</strong> Cleaves C-terminal to K (not before P)</li>
+ *   <li><strong>LysC/P:</strong> Cleaves C-terminal to K (including before P)</li>
+ *   <li><strong>LysN:</strong> Cleaves N-terminal to K</li>
+ * </ul>
+ * 
+ * <h3>Arginine-Specific Endopeptidases:</h3>
+ * <ul>
+ *   <li><strong>ArgC:</strong> Cleaves C-terminal to R</li>
+ * </ul>
+ * 
+ * <h3>Acid-Specific Endopeptidases:</h3>
+ * <ul>
+ *   <li><strong>AspC:</strong> Cleaves C-terminal to D (aspartic acid)</li>
+ *   <li><strong>AspN:</strong> Cleaves N-terminal to D (aspartic acid)</li>
+ *   <li><strong>GluC:</strong> Cleaves C-terminal to E (glutamic acid)</li>
+ * </ul>
+ * 
+ * <h3>Chymotrypsin Family:</h3>
+ * <ul>
+ *   <li><strong>ChymoTrypsin:</strong> Cleaves C-terminal to F,W,Y (aromatic residues)</li>
+ *   <li><strong>ChymoTrypsin+:</strong> Extended specificity - cleaves C-terminal to L,M,F,W,Y</li>
+ * </ul>
+ * 
+ * <h3>Other Enzymes:</h3>
+ * <ul>
+ *   <li><strong>GlyN:</strong> Cleaves N-terminal to K (glycine endopeptidase)</li>
+ * </ul>
+ * 
+ * <h2>Cleavage Specificity Model</h2>
+ * <h3>Cleavage Rules:</h3>
+ * <ul>
+ *   <li><strong>cleaveAt:</strong> Amino acids where cleavage occurs</li>
+ *   <li><strong>notCleaveAt:</strong> Amino acids that prevent cleavage (restrictions)</li>
+ *   <li><strong>sense_C:</strong> Cleavage direction (C-terminal = true, N-terminal = false)</li>
+ * </ul>
+ * 
+ * <h3>Cleavage Notation:</h3>
+ * <pre>{@code
+ *   C-terminal cleavage: ...Peptide-K|R-Peptide...
+ *   N-terminal cleavage: ...Peptide-|K-R-Peptide...
+ *   
+ *   Where | represents the cleavage site
+ * }</pre>
+ * 
+ * <h2>Missed Cleavage Support</h2>
+ * <p>The digestion algorithm supports missed cleavages:</p>
+ * <ul>
+ *   <li><strong>0 missed:</strong> Complete digestion at all sites</li>
+ *   <li><strong>1 missed:</strong> Allows one missed cleavage site</li>
+ *   <li><strong>2+ missed:</strong> Multiple missed cleavage sites</li>
+ * </ul>
+ * 
+ * <h2>Output Formats</h2>
+ * 
+ * <h3>Tandem (X! Tandem) Format:</h3>
+ * <pre>{@code
+ *   Trypsin: [KR]|{P}
+ *   LysC:    [K]|{P}
+ * }</pre>
+ * 
+ * <h3>DIA-NN Format:</h3>
+ * <pre>{@code
+ *   Trypsin: K*,R*,!*P
+ *   LysC:    K*,!*P
+ * }</pre>
+ * 
+ * <h2>Peptide Length Filtering</h2>
+ * <ul>
+ *   <li><strong>Minimum Length:</strong> Configurable (default: 6 amino acids)</li>
+ *   <li><strong>Maximum Length:</strong> Typically 50-60 amino acids</li>
+ *   <li><strong>Mass Range:</strong> Usually 400-6000 Da for MS analysis</li>
+ * </ul>
+ * 
+ * <h2>Usage Examples</h2>
+ * 
+ * <h3>Basic Digestion:</h3>
+ * <pre>{@code
+ *   String protein = "MAKGEELFTGVVPILVELDGDVNGHKFSVSGEGEGDATYGKLTLK";
+ *   String[] peptides = Enzyme.Trypsin.digest(protein, 1); // 1 missed cleavage
+ *   
+ *   // Results: ["MAKGEELFTGVVPILVELDGDVNGHK", "FSVSGEGEGDATYGK", "LTLK"]
+ * }</pre>
+ * 
+ * <h3>Custom Length Filtering:</h3>
+ * <pre>{@code
+ *   String[] peptides = Enzyme.Trypsin.digest(protein, 0, 8); // min 8 AA
+ * }</pre>
+ * 
+ * <h3>Search Engine Integration:</h3>
+ * <pre>{@code
+ *   // For X! Tandem
+ *   String tandemFormat = Enzyme.Trypsin.getTandemFormat();
+ *   
+ *   // For DIA-NN
+ *   String diannFormat = Enzyme.Trypsin.getCut();
+ * }</pre>
+ * 
+ * <h2>Biological Context</h2>
+ * <h3>Trypsin Characteristics:</h3>
+ * <ul>
+ *   <li><strong>Specificity:</strong> Basic amino acids (K, R)</li>
+ *   <li><strong>pH Optimum:</strong> 8.0-8.5</li>
+ *   <li><strong>Proline Effect:</strong> Inhibits cleavage at P1' position</li>
+ *   <li><strong>Most Common:</strong> >90% of proteomics experiments</li>
+ * </ul>
+ * 
+ * <h3>Alternative Proteases:</h3>
+ * <ul>
+ *   <li><strong>LysC:</strong> More specific than trypsin, reduces missed cleavages</li>
+ *   <li><strong>AspN:</strong> Provides orthogonal cleavage pattern</li>
+ *   <li><strong>ChymoTrypsin:</strong> Generates different peptide populations</li>
+ * </ul>
+ * 
+ * <h2>Performance Considerations</h2>
+ * <ul>
+ *   <li><strong>Algorithm:</strong> O(n) scanning with regex-like matching</li>
+ *   <li><strong>Memory:</strong> Efficient ArrayList-based peptide collection</li>
+ *   <li><strong>Scalability:</strong> Suitable for whole proteome digestion</li>
+ * </ul>
+ * 
+ * <h2>Thread Safety</h2>
+ * <p>This enum is thread-safe as all methods are stateless and operate only
+ * on input parameters without modifying internal state.</p>
+ * 
+ * @author Kai Cheng - Quadram Institute Bioscience
+ * @version 2.0
+ * @since 1.0
+ * 
+ * @see uk.ac.quadram.metapilot.core.aminoacid.Aminoacids
+ * @see uk.ac.quadram.metapilot.dbSearch
  */
 public enum Enzyme {
 

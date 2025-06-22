@@ -6,6 +6,7 @@ import javafx.beans.property.SimpleIntegerProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
+import javafx.geometry.Pos;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.scene.layout.*;
@@ -22,6 +23,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import uk.ac.quadram.metapilot.core.MGYG.MGYGFtpTask;
+import uk.ac.quadram.metapilot.core.MGYG.MGYGFtpTaskJavaFX;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagVersion;
 
@@ -129,6 +131,27 @@ public class MagDbConfigPanelJavaFX extends BorderPane {
         TableColumn<MagDbItem, Boolean> availableColumn = new TableColumn<>("Available");
         availableColumn.setCellValueFactory(data -> 
             new SimpleBooleanProperty(data.getValue().isAvailable()));
+        availableColumn.setCellFactory(col -> new TableCell<MagDbItem, Boolean>() {
+            private final CheckBox checkBox = new CheckBox();
+            
+            {
+                // Make checkbox non-editable
+                checkBox.setDisable(true);
+                // Center the checkbox in the cell
+                setAlignment(Pos.CENTER);
+            }
+            
+            @Override
+            protected void updateItem(Boolean item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setGraphic(null);
+                } else {
+                    checkBox.setSelected(item);
+                    setGraphic(checkBox);
+                }
+            }
+        });
         availableColumn.setPrefWidth(80);
         
         TableColumn<MagDbItem, String> idColumn = new TableColumn<>("Catalogue ID");
@@ -171,47 +194,68 @@ public class MagDbConfigPanelJavaFX extends BorderPane {
             checkButton.setDisable(true);
             progressBar.setProgress(ProgressBar.INDETERMINATE_PROGRESS);
             
-            Task<Void> checkTask = new Task<Void>() {
-                @Override
-                protected Void call() throws Exception {
-                    // This would call MGYGFtpTask to check MGnify in the real implementation
-                    // For now just simulating a check
-                    updateMessage("Checking MGnify databases...");
-                    Thread.sleep(2000);
-                    
-                    // Simulate finding new databases (in real implementation this would come from the server)
-                    Platform.runLater(() -> {
-                        // Here we would actually check for new databases
-                        // For now, just refresh the table
-                        loadMgnifyTableData();
-                    });
-                    
-                    return null;
-                }
-            };
+            // Create MGYGFtpTaskJavaFX for repository discovery
+            MGYGFtpTaskJavaFX checkTask = new MGYGFtpTaskJavaFX();
+            
+            // Bind progress bar to task progress
+            progressBar.progressProperty().bind(checkTask.progressProperty());
             
             // Handle task completion
             checkTask.setOnSucceeded(event -> {
                 checkButton.setDisable(false);
+                progressBar.progressProperty().unbind();
                 progressBar.setProgress(0);
-                showAlert(Alert.AlertType.INFORMATION,
-                        "Check Complete", 
-                        "MGnify database check completed successfully");
+                
+                // Update the table with discovered repositories
+                MagDbItem[] repositories = checkTask.getRepositoryItems();
+                if (repositories != null && repositories.length > 0) {
+                    // Update magDbItems array
+                    if (magDbItems == null) {
+                        magDbItems = new MagDbItem[2][];
+                    }
+                    magDbItems[0] = repositories;
+                    
+                    // Refresh the table
+                    Platform.runLater(() -> {
+                        loadMgnifyTableData();
+                        loadMgnifyComboBox();
+                    });
+                    
+                    showAlert(Alert.AlertType.INFORMATION,
+                            "Check Complete", 
+                            "Found " + repositories.length + " MGnify databases");
+                } else {
+                    showAlert(Alert.AlertType.WARNING,
+                            "Check Complete", 
+                            "No MGnify databases found");
+                }
             });
             
             checkTask.setOnFailed(event -> {
                 checkButton.setDisable(false);
+                progressBar.progressProperty().unbind();
                 progressBar.setProgress(0);
+                
+                Throwable exception = checkTask.getException();
                 showAlert(Alert.AlertType.ERROR,
                         "Check Failed", 
                         "Failed to check MGnify databases: " + 
-                        checkTask.getException().getMessage());
+                        (exception != null ? exception.getMessage() : "Unknown error"));
+            });
+            
+            checkTask.setOnCancelled(event -> {
+                checkButton.setDisable(false);
+                progressBar.progressProperty().unbind();
+                progressBar.setProgress(0);
+                showAlert(Alert.AlertType.INFORMATION,
+                        "Check Cancelled", 
+                        "MGnify database check was cancelled");
             });
             
             // Start the task
-            ExecutorService executor = Executors.newSingleThreadExecutor();
-            executor.submit(checkTask);
-            executor.shutdown();
+            Thread thread = new Thread(checkTask);
+            thread.setDaemon(true);
+            thread.start();
         });
         
         // Make table take up all available space
@@ -351,49 +395,8 @@ public class MagDbConfigPanelJavaFX extends BorderPane {
             browseButton.setDisable(true);
             mgnifyComboBox.setDisable(true);
             
-            // Create download task
-            Task<Void> downloadTask = new Task<Void>() {
-                @Override
-                protected Void call() throws Exception {
-                    updateMessage("Starting download of " + selectedItem.getIdentifier() + "...");
-                    
-                    // Create directory if needed
-                    if (!repoFile.exists()) {
-                        repoFile.mkdirs();
-                    }
-                    
-                    // Create version directory
-                    String version = selectedItem.getCatalogueVersion();
-                    String dateStr = format.format(new Date());
-                    File versionDir = new File(repoFile, version + "_" + dateStr);
-                    versionDir.mkdirs();
-                    
-                    // Simulate download (in real implementation this would call MGYGFtpTask)
-                    updateMessage("Connecting to MGnify server...");
-                    updateProgress(0.1, 1.0);
-                    Thread.sleep(1000);
-                    
-                    for (int i = 1; i <= 10; i++) {
-                        updateProgress(i / 10.0, 1.0);
-                        updateMessage("Downloading... " + (i * 10) + "%");
-                        Thread.sleep(500);
-                    }
-                    
-                    // Set database as available
-                    selectedItem.setAvailable();
-                    selectedItem.setCurrentFile(versionDir);
-                    
-                    updateMessage("Download completed successfully!");
-                    updateProgress(1.0, 1.0);
-                    
-                    // Update table to show database is now available
-                    Platform.runLater(() -> {
-                        mgnifyTable.refresh();
-                    });
-                    
-                    return null;
-                }
-            };
+            // Create download task using MGYGFtpTaskJavaFX
+            MGYGFtpTaskJavaFX downloadTask = new MGYGFtpTaskJavaFX(selectedItem);
             
             // Bind progress and messages
             mgnifyDLBar.progressProperty().bind(downloadTask.progressProperty());
@@ -409,6 +412,15 @@ public class MagDbConfigPanelJavaFX extends BorderPane {
                 // Unbind properties
                 mgnifyDLBar.progressProperty().unbind();
                 mgnifyConsoleArea.textProperty().unbind();
+                
+                // Set database as available
+                selectedItem.setAvailable();
+                selectedItem.setCurrentFile(repoFile);
+                
+                // Update table to show database is now available
+                Platform.runLater(() -> {
+                    mgnifyTable.refresh();
+                });
                 
                 // Show success message
                 showAlert(Alert.AlertType.INFORMATION, 
@@ -427,16 +439,32 @@ public class MagDbConfigPanelJavaFX extends BorderPane {
                 mgnifyConsoleArea.textProperty().unbind();
                 
                 // Show error message
+                Throwable exception = downloadTask.getException();
                 showAlert(Alert.AlertType.ERROR, 
                          "Download Failed", 
                          "Failed to download the MGnify database: " + 
-                         downloadTask.getException().getMessage());
+                         (exception != null ? exception.getMessage() : "Unknown error"));
+            });
+            
+            downloadTask.setOnCancelled(event -> {
+                // Re-enable UI
+                downloadButton.setDisable(false);
+                browseButton.setDisable(false);
+                mgnifyComboBox.setDisable(false);
+                
+                // Unbind properties
+                mgnifyDLBar.progressProperty().unbind();
+                mgnifyConsoleArea.textProperty().unbind();
+                
+                showAlert(Alert.AlertType.INFORMATION,
+                        "Download Cancelled", 
+                        "MGnify database download was cancelled");
             });
             
             // Start the task
-            ExecutorService executor = Executors.newSingleThreadExecutor();
-            executor.submit(downloadTask);
-            executor.shutdown();
+            Thread thread = new Thread(downloadTask);
+            thread.setDaemon(true);
+            thread.start();
         });
         
         // Set up combobox selection handler
@@ -719,4 +747,6 @@ public class MagDbConfigPanelJavaFX extends BorderPane {
         
         return magDbItems;
     }
+    
+
 } 
