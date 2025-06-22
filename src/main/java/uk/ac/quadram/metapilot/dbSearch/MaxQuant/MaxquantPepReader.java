@@ -24,7 +24,7 @@ import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
 import uk.ac.quadram.metapilot.task.io.pep.AbstractMetaPeptideReader;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.par.MetaData;
-import uk.ac.quadram.metapilot.task.par.MetaParameter;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.v1.par.MetaParameterV1;
 import uk.ac.quadram.metapilot.task.v2.par.MetaParameterMQ;
 
@@ -295,14 +295,14 @@ public class MaxquantPepReader extends AbstractMetaPeptideReader {
 		String[] paraExps = metadata.getExpNames();
 		MaxquantModification[][] isotopeLabels = parameter.getLabels();
 		int isobaricLabelCount = metadata.getLabelTitle().length;
-		int quanResultType = parameter.isCombineLabel() ? MetaParameter.quanResultCombine
-				: MetaParameter.quanResultSeparate;
+		int quanResultType = parameter.isCombineLabel() ? MetaBaseParameter.quanResultCombine
+				: MetaBaseParameter.quanResultSeparate;
 		this.quanMode = parameter.getQuanMode();
 
 		ArrayList<String> intensityTitleList = new ArrayList<String>();
 
 		switch (quanResultType) {
-		case MetaParameter.quanResultCombine: {
+		case MetaBaseParameter.quanResultCombine: {
 			if (quanMode.equals(MetaConstants.isotopicLabel)) {
 				if (isotopeLabels[0].length > 0 && isotopeLabels[0][0] != null) {
 					intensityTitleList.add("Intensity L");
@@ -323,7 +323,7 @@ public class MaxquantPepReader extends AbstractMetaPeptideReader {
 
 			break;
 		}
-		case MetaParameter.quanResultSeparate: {
+		case MetaBaseParameter.quanResultSeparate: {
 			if (quanMode.equals(MetaConstants.isotopicLabel)) {
 				if (isotopeLabels[0].length > 0 && isotopeLabels[0][0] != null) {
 					for (int i = 0; i < paraExps.length; i++) {
@@ -352,7 +352,7 @@ public class MaxquantPepReader extends AbstractMetaPeptideReader {
 
 			break;
 		}
-		case MetaParameter.quanResultAll: {
+		case MetaBaseParameter.quanResultAll: {
 			if (quanMode.equals(MetaConstants.isotopicLabel)) {
 				if (isotopeLabels[0].length > 0 && isotopeLabels[0][0] != null) {
 					intensityTitleList.add("Intensity L");
@@ -418,9 +418,7 @@ public class MaxquantPepReader extends AbstractMetaPeptideReader {
 				} else if (title[i].equals("Length")) {
 					lengthId = i;
 				} else if (title[i].equals("Missed cleavages")) {
-					if (parameter.getDigestMode() == MaxquantEnzyme.specific) {
-						missCleaveId = i;
-					}
+					missCleaveId = i;
 				} else if (title[i].equals("Mass")) {
 					massId = i;
 				} else if (title[i].equals("Proteins")) {

@@ -26,8 +26,8 @@ import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagVersion;
 
 public class MagDbConfigIO {
 
-	public static final String version = "MAGDB 1.1";
-	public static final String versionFile = "MAGDB_1_1.json";
+	public static final String version = "MAGDB 1.0";
+	public static final String versionFile = "MAGDB_1_0.json";
 
 	private static String MGnify = "MGnify";
 	private static String localMAGs = "localMAGs";

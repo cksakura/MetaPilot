@@ -14,6 +14,16 @@ public class MetaPep2TaxaPar {
 	private HashSet<String> excludeTaxa;
 	private int leastPepCount;
 
+	public MetaPep2TaxaPar(HashSet<RootType> usedRootTypes,
+			TaxonomyRanks ignoreBlankRank, HashSet<String> excludeTaxa, int leastPepCount) {
+		this.buildIn = false;
+		this.unipept = true;
+		this.usedRootTypes = usedRootTypes;
+		this.ignoreBlankRank = ignoreBlankRank;
+		this.excludeTaxa = excludeTaxa;
+		this.leastPepCount = leastPepCount;
+	}
+	
 	public MetaPep2TaxaPar(boolean buildIn, boolean unipept, HashSet<RootType> usedRootTypes,
 			TaxonomyRanks ignoreBlankRank, HashSet<String> excludeTaxa, int leastPepCount) {
 		this.buildIn = buildIn;
@@ -85,7 +95,7 @@ public class MetaPep2TaxaPar {
 		HashSet<String> excludeTaxa = new HashSet<String>();
 		excludeTaxa.add("environmental samples");
 
-		MetaPep2TaxaPar mptp = new MetaPep2TaxaPar(true, false, usedRootTypes, ignoreBlankRank, excludeTaxa, 3);
+		MetaPep2TaxaPar mptp = new MetaPep2TaxaPar(false, true, usedRootTypes, ignoreBlankRank, excludeTaxa, 3);
 		return mptp;
 	}
 }

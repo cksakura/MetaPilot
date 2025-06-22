@@ -22,21 +22,23 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-
-import javax.swing.JProgressBar;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import uk.ac.quadram.metapilot.core.math.MathTool;
 import uk.ac.quadram.metapilot.core.tools.FormatTool;
-import uk.ac.quadram.metapilot.task.MetaLabTask;
+import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
+import uk.ac.quadram.metapilot.task.MetaAbstractTask;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
-import uk.ac.quadram.metapilot.task.dia.par.MetaSourcesDia;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.MagSqliteTask;
 
-public class DiaPyTorchModelTask extends MetaLabTask {
+public class DiaPyTorchModelTask extends MetaAbstractTask {
 
 	private static String taskName = "Peptide model predict task";
 	private static final Logger LOGGER = LogManager.getLogger(DiaPyTorchModelTask.class);
@@ -49,9 +51,19 @@ public class DiaPyTorchModelTask extends MetaLabTask {
 	private File modelFolderFile;
 	private boolean addModel;
 	private int threadCount;
+	private Process process;
+	private String pythonExe;
+	private String prismdir;
+	private String result;
+	private String resultName;
+	private String mslfile;
+	private String intensityFile;
+	private String fastadb;
+	private boolean model = false;
 
-	public DiaPyTorchModelTask(MetaParameterDia metaPar, MetaSourcesDia advPar, JProgressBar bar, String filePath) {
-		super(metaPar, advPar, bar);
+	public DiaPyTorchModelTask(MetaParameterDia metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
+			String filePath) {
+		super(metaPar, mrp, progressBar, null);
 		// TODO Auto-generated constructor stub
 		this.magDbItem = metaPar.getUsedMagDbItem();
 		this.filePath = filePath;
@@ -59,9 +71,9 @@ public class DiaPyTorchModelTask extends MetaLabTask {
 		this.threadCount = metaPar.getThreadCount();
 	}
 
-	public DiaPyTorchModelTask(MetaParameterDia metaPar, MetaSourcesDia advPar, JProgressBar bar, String filePath,
-			File modelFolderFile) {
-		super(metaPar, advPar, bar);
+	public DiaPyTorchModelTask(MetaParameterDia metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
+			String filePath, File modelFolderFile) {
+		super(metaPar, mrp, progressBar, null);
 		// TODO Auto-generated constructor stub
 		this.magDbItem = metaPar.getUsedMagDbItem();
 		this.filePath = filePath;
@@ -70,9 +82,9 @@ public class DiaPyTorchModelTask extends MetaLabTask {
 		this.threadCount = metaPar.getThreadCount();
 	}
 
-	public DiaPyTorchModelTask(MetaParameterDia metaPar, MetaSourcesDia advPar, JProgressBar bar,
+	public DiaPyTorchModelTask(MetaParameterDia metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
 			HashMap<String, Double> pepIntenMap) {
-		super(metaPar, advPar, bar);
+		super(metaPar, mrp, progressBar, null);
 		// TODO Auto-generated constructor stub
 		this.magDbItem = metaPar.getUsedMagDbItem();
 		this.pepIntenMap = pepIntenMap;
@@ -80,9 +92,9 @@ public class DiaPyTorchModelTask extends MetaLabTask {
 		this.threadCount = metaPar.getThreadCount();
 	}
 
-	public DiaPyTorchModelTask(MetaParameterDia metaPar, MetaSourcesDia advPar, JProgressBar bar,
+	public DiaPyTorchModelTask(MetaParameterDia metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
 			HashMap<String, Double> pepIntenMap, File modelFolderFile) {
-		super(metaPar, advPar, bar);
+		super(metaPar, mrp, progressBar, null);
 		// TODO Auto-generated constructor stub
 		this.magDbItem = metaPar.getUsedMagDbItem();
 		this.pepIntenMap = pepIntenMap;
@@ -91,9 +103,9 @@ public class DiaPyTorchModelTask extends MetaLabTask {
 		this.threadCount = metaPar.getThreadCount();
 	}
 
-	public DiaPyTorchModelTask(MetaParameterDia metaPar, MetaSourcesDia advPar, JProgressBar bar,
+	public DiaPyTorchModelTask(MetaParameterDia metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
 			HashMap<String, Double> pepIntenMap, File modelFolderFile, int threadCount) {
-		super(metaPar, advPar, bar);
+		super(metaPar, mrp, progressBar, null);
 		// TODO Auto-generated constructor stub
 		this.magDbItem = metaPar.getUsedMagDbItem();
 		this.pepIntenMap = pepIntenMap;
@@ -103,205 +115,169 @@ public class DiaPyTorchModelTask extends MetaLabTask {
 	}
 
 	@Override
-	public void forceStop() {
+	protected void initial() {
 		// TODO Auto-generated method stub
+		
+	}
 
+	public void forceStop() {
+		// Cancel this task
+		this.cancel();
+
+		// Also terminate the process if it's running
+		if (process != null) {
+			process.destroy();
+		}
 	}
 
 	@Override
-	protected Boolean doInBackground() throws Exception {
-		// TODO Auto-generated method stub
+	protected Boolean call() throws Exception {
+		// Update progress at start
+		updateProgress(0, 100);
+		updateMessage("Starting model training...");
 
-		LOGGER.info(taskName + ": peptide model prediction started");
-		System.out.println(format.format(new Date()) + "\t" + taskName + ": peptide model prediction started");
+		if (model) {
+			// code for model training
+			LOGGER.info("Training Prism model from the file " + intensityFile);
+			System.out.println("Training Prism model from the file " + intensityFile);
 
-		File currentFile = magDbItem.getCurrentFile();
-		File predictPepFile = new File(currentFile, "predicted");
-		if (!predictPepFile.exists()) {
-			LOGGER.error(taskName + ": no predicted peptide was found from " + predictPepFile
-					+ ", please predict the peptide first");
-			System.err.println(format.format(new Date()) + "\t" + taskName + ": no predicted peptide was found from "
-					+ predictPepFile + ", please predict the peptide first");
+			String outputFile = result;
 
-			return false;
-		}
+			ProcessBuilder builder = new ProcessBuilder(this.pythonExe, prismdir + "\\bin\\rt-process.py",
+					intensityFile, fastadb, outputFile, "MO");
 
-		File taxDbFile = new File(currentFile, "genomes-all_metadata.tsv");
-		if (!taxDbFile.exists()) {
-			LOGGER.error(taskName + ": taxonomic information was not found from " + taxDbFile);
-			System.out.println(format.format(new Date()) + "\t" + taskName
-					+ ": taxonomic information was not found from " + taxDbFile);
-			return false;
-		}
+			builder.directory(new File(prismdir));
 
-		File funcFolder = new File(currentFile, "eggNOG");
-		if (!funcFolder.exists()) {
-			LOGGER.error(taskName + ": functional annotation information was not found from " + funcFolder);
-			System.out.println(format.format(new Date()) + "\t" + taskName
-					+ ": functional annotation information was not found from " + funcFolder);
-			return false;
-		}
+			Map<String, String> env = builder.environment();
 
-		File sqlDbFile = new File(currentFile, currentFile.getParentFile().getName() + ".db");
+			System.out.println("Training the model, it may take a few minutes or even hours...");
 
-		if (!modelFolderFile.exists()) {
-			modelFolderFile.mkdir();
-		}
+			builder.redirectErrorStream(true);
+			this.process = builder.start();
 
-		File trainFile = new File(modelFolderFile, "trainData.tsv");
-		File datatableFile = new File(modelFolderFile, "predictionData.tsv");
+			InputStream is = process.getInputStream();
+			InputStreamReader isr = new InputStreamReader(is);
+			BufferedReader br = new BufferedReader(isr);
 
-		if (trainFile.exists() && trainFile.length() > 0 && datatableFile.exists() && datatableFile.length() > 0) {
-			try (BufferedReader reader = new BufferedReader(new FileReader(trainFile))) {
-				reader.readLine();
-				while ((reader.readLine()) != null) {
-					trainPepCount++;
+			String line;
+			Pattern p = Pattern.compile(".*loss = .*");
+			double epoch = Double.NaN;
+
+			while ((line = br.readLine()) != null) {
+				System.out.println(line);
+				Matcher m = p.matcher(line);
+
+				if (m.matches()) {
+					String result = m.group();
+					int pos = result.indexOf("loss = ") + "loss = ".length();
+					String strValue = result.substring(pos, result.indexOf(",", pos)).trim();
+					try {
+						double loss = Double.parseDouble(strValue);
+						if (Double.isNaN(epoch)) {
+							epoch = 1.0;
+						}
+
+						// Update progress based on epoch (assuming 50 epochs total)
+						updateProgress(Math.min(epoch * 2, 100), 100);
+						updateMessage("Training model: Epoch " + (int) epoch + " - Loss: " + loss);
+
+						epoch++;
+					} catch (NumberFormatException e) {
+						LOGGER.info(e);
+					}
 				}
-				reader.close();
-			} catch (Exception e) {
-				// TODO Auto-generated catch block
-				LOGGER.error(taskName + ": error in reading the peptide table " + trainFile, e);
-				System.err.println(format.format(new Date()) + "\t" + taskName + ": error in reading the peptide table "
-						+ trainFile);
 			}
 
-			LOGGER.info(taskName + ": the data tables already exist, go to the next step");
-			System.out.println(format.format(new Date()) + "\t" + taskName
-					+ ": the data tables already exist, go to the next step");
-		} else {
-			if (sqlDbFile.exists()) {
-				trainPepCount = prepareFilesSQL(sqlDbFile, predictPepFile, modelFolderFile);
-			} else {
-				trainPepCount = prepareFiles(predictPepFile, taxDbFile, funcFolder, modelFolderFile);
-			}
+			br.close();
+			isr.close();
+			is.close();
 
-			if (trainPepCount > 0) {
-				LOGGER.info(taskName + ": prepare the data tables finished");
-				System.out.println(format.format(new Date()) + "\t" + taskName + ": prepare the data tables finished");
-			} else {
-				LOGGER.error(taskName + ": prepare the data tables failed");
-				System.out.println(format.format(new Date()) + "\t" + taskName + ": prepare the data tables failed");
+			if (0 != process.waitFor()) {
+				System.out.println("Error in training model");
+				LOGGER.error("Error in training model");
+				updateMessage("Error in training model");
 				return false;
 			}
-		}
 
-		LOGGER.info(taskName + ": build the peptide intensity model started");
-		System.out.println(format.format(new Date()) + "\t" + taskName + ": build the peptide intensity model started");
+			// Update progress for successful completion
+			updateProgress(100, 100);
+			updateMessage("Model training completed successfully");
 
-		File predictDataFile = new File(modelFolderFile, "pytorch_predictions.tsv");
+			return true;
 
-		if (!predictDataFile.exists()) {
+		} else {
+			// code for prediction
+			LOGGER.info("Using Prism to predict the spectra in " + mslfile);
+			System.out.println("Using Prism to predict the spectra in " + mslfile);
 
-			LOGGER.info(taskName + ": peptide model prediction by deep learning started");
-			System.out.println(format.format(new Date()) + "\t" + taskName
-					+ ": peptide model prediction by deep learning started");
+			String cmd = this.pythonExe + " " + prismdir + "\\bin\\rt-prediction.py " + mslfile + " " + result + " "
+					+ fastadb;
+			System.out.println(cmd);
 
-			ExecutorService executor = Executors.newFixedThreadPool(1);
-			executor.execute(() -> {
-				buildModel(modelFolderFile, ((MetaSourcesDia) msv).getPython());
-			});
-			executor.shutdown();
+			ProcessBuilder builder = new ProcessBuilder(this.pythonExe, prismdir + "\\bin\\rt-prediction.py", mslfile,
+					result, fastadb);
 
-			try {
-				if (executor.awaitTermination(48, TimeUnit.HOURS)) {
-					if (predictDataFile.exists()) {
-						LOGGER.info(taskName + ": peptide model prediction by deep learning finished");
-						System.out.println(format.format(new Date()) + "\t" + taskName
-								+ ": peptide model prediction by deep learning finished");
-					} else {
-						LOGGER.info(taskName + ": peptide model prediction by deep learning failed");
-						System.out.println(format.format(new Date()) + "\t" + taskName
-								+ ": peptide model prediction by deep learning failed");
-						return false;
+			builder.directory(new File(prismdir));
+
+			Map<String, String> env = builder.environment();
+
+			System.out.println("Predicting, it may take a few minutes or even hours...");
+
+			builder.redirectErrorStream(true);
+			this.process = builder.start();
+
+			InputStream is = process.getInputStream();
+			InputStreamReader isr = new InputStreamReader(is);
+			BufferedReader br = new BufferedReader(isr);
+
+			String line;
+			long totalPeptides = 0;
+			long processedPeptides = 0;
+			Pattern p = Pattern.compile(".*\\speps\\s.*");
+
+			while ((line = br.readLine()) != null) {
+				System.out.println(line);
+				Matcher m = p.matcher(line);
+
+				if (m.matches()) {
+					String result = m.group();
+					int pos = result.indexOf("peps") - 1;
+					String strValue = result.substring(result.lastIndexOf(" ", pos), pos).trim();
+					try {
+						long pepCount = Long.parseLong(strValue);
+						if (totalPeptides == 0) {
+							totalPeptides = pepCount;
+						} else {
+							processedPeptides = pepCount;
+							// Update progress based on processed peptides
+							double progress = (double) processedPeptides / totalPeptides * 100.0;
+							updateProgress(progress, 100);
+							updateMessage(
+									"Predicting spectra: " + processedPeptides + " / " + totalPeptides + " peptides");
+						}
+					} catch (NumberFormatException e) {
+						LOGGER.info(e);
 					}
-				} else {
-					LOGGER.error(taskName + ": peptide model prediction didn't finish in a long time");
-					System.err.println(format.format(new Date()) + "\t" + taskName
-							+ ": peptide model prediction didn't finish in a long time");
-					return false;
 				}
-			} catch (Exception e) {
-				LOGGER.error(taskName + ": error in peptide model prediction by deep learning", e);
-				System.err.println(format.format(new Date()) + "\t" + taskName
-						+ ": error in peptide model prediction by deep learning");
+			}
+
+			br.close();
+			isr.close();
+			is.close();
+
+			if (0 != process.waitFor()) {
+				System.out.println("Error in predicting");
+				LOGGER.error("Error in predicting");
+				updateMessage("Error in predicting spectra");
 				return false;
 			}
-		} else {
-			LOGGER.info(taskName + ": peptide model already exists in " + modelFolderFile);
-			System.out.println(format.format(new Date()) + "\t" + taskName + ": peptide model already exists in "
-					+ modelFolderFile);
+
+			// Update progress for successful completion
+			updateProgress(100, 100);
+			updateMessage("Prediction completed successfully");
+
+			return true;
 		}
-
-		LOGGER.info(taskName + ": predict peptide intensity by deep learning model started");
-		System.out.println(format.format(new Date()) + "\t" + taskName
-				+ ": predict peptide intensity by deep learning model started");
-
-		File predictRankFile = new File(modelFolderFile, "pep_rank.tsv");
-		int predictedCount = 0;
-		if (!predictRankFile.exists() || predictRankFile.length() < 30) {
-			predictedCount = getPepRank(currentFile, modelFolderFile);
-		} else {
-			try (BufferedReader reader = new BufferedReader(new FileReader(predictDataFile))) {
-				reader.readLine();
-				while ((reader.readLine()) != null) {
-					predictedCount++;
-				}
-				reader.close();
-			} catch (Exception e) {
-				// TODO Auto-generated catch block
-				LOGGER.error(taskName + ": error in get the predicted peptide information from " + predictDataFile, e);
-				System.err.println(format.format(new Date()) + "\t" + taskName
-						+ ": error in get the predicted peptide information from " + predictDataFile);
-			}
-		}
-
-		LOGGER.info(taskName + ": calculate peptide rank finished");
-		System.out.println(format.format(new Date()) + "\t" + taskName + ": calculate peptide rank finished");
-
-		double corr = 0.0;
-		File modelInfoFile = new File(modelFolderFile, "pytorch_model_results.txt");
-		try (BufferedReader infoReader = new BufferedReader(new FileReader(modelInfoFile))) {
-			String line = infoReader.readLine();
-			String[] cs = line.split(" ");
-			corr = Double.parseDouble(cs[cs.length - 1]);
-			infoReader.close();
-		} catch (Exception e) {
-			// TODO Auto-generated catch block
-			LOGGER.error(taskName + ": error in get the correlation information from " + modelInfoFile, e);
-			System.err.println(format.format(new Date()) + "\t" + taskName
-					+ ": error in get the correlation information from " + modelInfoFile);
-		}
-
-		double medRankScore = 0;
-
-		File infoFile = new File(modelFolderFile, "pytorch_model_results.txt");
-		if (infoFile.exists()) {
-			try (BufferedReader infoReader = new BufferedReader(new FileReader(infoFile))) {
-				String line = infoReader.readLine();
-				while ((line = infoReader.readLine()) != null) {
-					String[] cs = line.split("\t");
-					if (cs[0].equals("MSE:")) {
-						medRankScore = Double.parseDouble(cs[cs.length - 1]);
-					}
-					break;
-				}
-				infoReader.close();
-			} catch (Exception e) {
-				// TODO Auto-generated catch block
-				LOGGER.error(taskName + ": error in get the correlation information from " + infoFile, e);
-				System.err.println(format.format(new Date()) + "\t" + taskName
-						+ ": error in get the correlation information from " + infoFile);
-			}
-		}
-
-		if (addModel) {
-			magDbItem.addModel(modelFolderFile.getName(), trainPepCount, predictedCount, corr, medRankScore);
-		}
-
-		LOGGER.info(taskName + ": peptide model prediction finished");
-		System.out.println(format.format(new Date()) + "\t" + taskName + ": peptide model prediction finished");
-
-		return true;
 	}
 
 	private int prepareFiles(File predictPepFolder, File taxDbFile, File funcFolder, File modelFolder) {
@@ -2447,5 +2423,17 @@ public class DiaPyTorchModelTask extends MetaLabTask {
 			// TODO Auto-generated catch block
 
 		}
+	}
+
+	@Override
+	protected String getTaskName() {
+		// TODO Auto-generated method stub
+		return taskName;
+	}
+
+	@Override
+	protected Logger getLogger() {
+		// TODO Auto-generated method stub
+		return LOGGER;
 	}
 }

@@ -26,6 +26,7 @@ import javax.swing.JCheckBox;
 import javax.swing.JFileChooser;
 import javax.swing.JProgressBar;
 
+import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagModel;
 
@@ -43,7 +44,7 @@ public class MagDbModelPanel extends JPanel {
 	private String lastUsedFolder;
 	private MagModelTableModel tableModel;
 	private JButton createModelButton;
-	private JProgressBar progressBar;
+	private JavaFXProgressBar progressBar;
 
 	private HashMap<String, MagModel> modelMap;
 	private MagDbItem magDbItem;
@@ -155,8 +156,8 @@ public class MagDbModelPanel extends JPanel {
 		createModelButton = new JButton("Start");
 		createModelPanel.add(createModelButton, "cell 0 3,alignx left");
 
-		progressBar = new JProgressBar();
-		createModelPanel.add(progressBar, "cell 1 3 2 1,growx");
+		progressBar = new JavaFXProgressBar();
+//		createModelPanel.add(progressBar, "cell 1 3 2 1,growx");
 	}
 
 	public String getModelName() {
@@ -171,7 +172,7 @@ public class MagDbModelPanel extends JPanel {
 		return createModelButton;
 	}
 
-	public JProgressBar getProgressBar() {
+	public JavaFXProgressBar getProgressBar() {
 		return progressBar;
 	}
 

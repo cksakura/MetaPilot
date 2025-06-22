@@ -35,6 +35,7 @@ import uk.ac.quadram.metapilot.core.mod.IsobaricTag;
 import uk.ac.quadram.metapilot.core.model.ConsoleTextArea;
 import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantModification;
 import uk.ac.quadram.metapilot.license.LicenseVerifier;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.MetaLabWorkflowType;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.par.MetaParaIOMag;
@@ -42,8 +43,7 @@ import uk.ac.quadram.metapilot.task.mag.par.MetaParameterMag;
 import uk.ac.quadram.metapilot.task.mag.par.MetaSourcesMag;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.par.MetaData;
-import uk.ac.quadram.metapilot.task.par.MetaParameter;
-import uk.ac.quadram.metapilot.task.pfind.MetaPilotMagTask;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.pfind.gui.MetaPilotPFindMainPanel;
 import uk.ac.quadram.metapilot.task.pfind.par.PFindEnzymeIO;
 import uk.ac.quadram.metapilot.task.pfind.par.PFindModIO;
@@ -68,8 +68,8 @@ public class MetaPilotMainPanelMag extends MetaPilotPFindMainPanel {
 	/**
 	 * Create the panel.
 	 */
-	public MetaPilotMainPanelMag(MetaParameter par, MetaSourcesMag msv) {
-		super(par, msv);
+	public MetaPilotMainPanelMag(MetaBaseParameter par, MetaResourceParameters mrp) {
+		super(par, mrp);
 	}
 
 	protected void initial() {
@@ -320,11 +320,11 @@ public class MetaPilotMainPanelMag extends MetaPilotPFindMainPanel {
 
 		MetaParameterMag magPar = (MetaParameterMag) par;
 
-		metaLabModPanel = new MetaLabModPanel(magPar, PFindModIO.getMaxQuantMods(msv.getMod()));
-		parameterPanel.add(metaLabModPanel, "cell 0 2,grow");
+//		metaLabModPanel = new MetaLabModPanel(magPar, PFindModIO.getMaxQuantMods(msv.getMod()));
+//		parameterPanel.add(metaLabModPanel, "cell 0 2,grow");
 
-		metaLabEnzymePanel = new MetaLabEnzymePanel(magPar, PFindEnzymeIO.getEnzymes(msv.getEnzyme()));
-		parameterPanel.add(metaLabEnzymePanel, "cell 0 3,grow");
+//		metaLabEnzymePanel = new MetaLabEnzymePanel(magPar, PFindEnzymeIO.getEnzymes(msv.getEnzyme()));
+//		parameterPanel.add(metaLabEnzymePanel, "cell 0 3,grow");
 
 		rdbtnCombine.setSelected(false);
 		rdbtnNotCombine.setSelected(true);
@@ -545,86 +545,6 @@ public class MetaPilotMainPanelMag extends MetaPilotPFindMainPanel {
 			setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
 
 			statusPanel.start();
-
-			task = new MetaPilotMagTask(par, (MetaSourcesMag) msv, progressBar, progressBar_1) {
-
-				public void done() {
-
-					try {
-						Thread.sleep(1000);
-					} catch (InterruptedException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-
-					progressBar_1.setIndeterminate(false);
-
-					String log = consoleTextArea.getText();
-					try {
-						PrintWriter logwriter = new PrintWriter(new File(par.getResult(), "log.txt"));
-						logwriter.print(log);
-						logwriter.close();
-
-					} catch (FileNotFoundException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-
-					setCursor(null);
-
-					btnStart_1.setEnabled(true);
-					btnStop.setEnabled(false);
-					statusPanel.stop();
-					MetaPilotMainPanelMag.this.repaint();
-
-					if (task.isCancelled()) {
-						progressBar_1.setIndeterminate(false);
-						progressBar_1.setString("Task stopped");
-
-						return;
-					}
-
-					boolean finish = false;
-
-					try {
-
-						finish = get();
-
-						if (finish) {
-
-							progressBar_1.setString("finished");
-
-							btnReportView.setEnabled(true);
-
-							int reply = JOptionPane.showConfirmDialog(MetaPilotMainPanelMag.this,
-									"Task finished :)\nView the report?", "Finished", JOptionPane.YES_NO_OPTION);
-
-							if (reply == JOptionPane.YES_OPTION) {
-								try {
-									File report = new File(par.getReportDir(), "index.html");
-									java.awt.Desktop.getDesktop().browse(report.toURI());
-								} catch (IOException e) {
-									// TODO Auto-generated catch block
-									e.printStackTrace();
-								}
-							}
-						} else {
-							JOptionPane.showMessageDialog(MetaPilotMainPanelMag.this, helpInfo, "Error",
-									JOptionPane.ERROR_MESSAGE);
-						}
-
-					} catch (InterruptedException e) {
-						// TODO Auto-generated catch block
-						JOptionPane.showMessageDialog(MetaPilotMainPanelMag.this, helpInfo, "Error",
-								JOptionPane.ERROR_MESSAGE);
-
-					} catch (ExecutionException e) {
-						// TODO Auto-generated catch block
-						JOptionPane.showMessageDialog(MetaPilotMainPanelMag.this, helpInfo, "Error",
-								JOptionPane.ERROR_MESSAGE);
-					}
-				}
-			};
 
 			try {
 
@@ -921,23 +841,11 @@ public class MetaPilotMainPanelMag extends MetaPilotPFindMainPanel {
 
 		if (par.getWorkflowType() == MetaLabWorkflowType.FragpipeIMMag) {
 
-			if (!((MetaSourcesMag) msv).findFragpipe()) {
-				list.add("Fragpipe is not found, please check the Setting -> Resource.");
-			}
-
 			if (magPar.getFragpipeEnzyme() == null || magPar.getFragpipeEnzyme().length == 0) {
 				list.add("Enzyme is not set.");
 			}
 
 		} else {
-
-			if (!msv.findPFind()) {
-				list.add("pFind is not found, please check the Setting -> Resource.");
-			}
-
-			if (!msv.findFlashLFQ()) {
-				list.add("FlashLFQ is not found, please check the Setting -> Resource.");
-			}
 
 			if (magPar.getEnzyme() == null || magPar.getEnzyme().length() == 0) {
 				list.add("Enzyme is not set.");

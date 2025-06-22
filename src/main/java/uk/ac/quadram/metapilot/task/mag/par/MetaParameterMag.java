@@ -9,7 +9,7 @@ import uk.ac.quadram.metapilot.task.hgm.par.MetaParameterHGM;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagVersion;
 import uk.ac.quadram.metapilot.task.par.MetaData;
-import uk.ac.quadram.metapilot.task.par.MetaParameter;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 
 public class MetaParameterMag extends MetaParameterHGM {
 
@@ -22,11 +22,11 @@ public class MetaParameterMag extends MetaParameterHGM {
 	protected MaxquantModification[] fixMods;
 	protected MaxquantModification[] variMods;
 
-	public MetaParameterMag(MetaParameter metaPar) {
+	public MetaParameterMag(MetaBaseParameter metaPar) {
 		super(metaPar);
 	}
 
-	public MetaParameterMag(MetaParameter metaPar, String[] fixMods, String[] variMods, String enzyme,
+	public MetaParameterMag(MetaBaseParameter metaPar, String[] fixMods, String[] variMods, String enzyme,
 			int missCleavages, int digestMode, String quanMode, MaxquantModification[] isobaric,
 			IsobaricTag isobaricTag, boolean combineLabel, double[][] isoCorFactor, String magDb, String magDbVersion) {
 		super(metaPar, fixMods, variMods, enzyme, missCleavages, digestMode, quanMode, isobaric, isobaricTag,
@@ -35,7 +35,7 @@ public class MetaParameterMag extends MetaParameterHGM {
 		this.magDbVersion = magDbVersion;
 	}
 
-	public MetaParameterMag(MetaParameter metaPar, String[] fixMods, String[] variMods, String enzyme,
+	public MetaParameterMag(MetaBaseParameter metaPar, String[] fixMods, String[] variMods, String enzyme,
 			int missCleavages, int digestMode, String quanMode, MaxquantModification[] isobaric,
 			IsobaricTag isobaricTag, boolean combineLabel, double[][] isoCorFactor, String magDb, String magDbVersion,
 			MagDbItem[][] magDbItems) {

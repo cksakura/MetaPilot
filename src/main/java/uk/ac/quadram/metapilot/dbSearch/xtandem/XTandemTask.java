@@ -491,11 +491,11 @@ public class XTandemTask {
 	@SuppressWarnings("unchecked")
 	public static void run(MetaParameterMQ metaPar, MetaSourcesV2 advPar, File resultDir, File[] mgfs) {
 
-		MaxquantModification[] variMods = metaPar.getVariMods();
-		MaxquantModification[] fixMods = metaPar.getFixMods();
-		Enzyme enzyme = metaPar.getEnzyme();
-		int missCleavage = metaPar.getMissCleavages();
-		int digestMode = metaPar.getDigestMode();
+		MaxquantModification[] variMods = new MaxquantModification[0];
+		MaxquantModification[] fixMods = new MaxquantModification[0];
+		Enzyme enzyme = Enzyme.Trypsin;
+		int missCleavage = 0;
+		int digestMode = 0;
 		String quanMode = metaPar.getQuanMode();
 
 		MaxquantModification[][] labels = metaPar.getLabels();
@@ -832,10 +832,11 @@ public class XTandemTask {
 	@SuppressWarnings("unchecked")
 	public static void run(MetaParameterMQ metaPar, MetaSourcesV2 advPar, File resultDir, File mgf) {
 
-		MaxquantModification[] variMods = metaPar.getVariMods();
-		MaxquantModification[] fixMods = metaPar.getFixMods();
-		Enzyme enzyme = metaPar.getEnzyme();
-		int digestMode = metaPar.getDigestMode();
+		MaxquantModification[] variMods = new MaxquantModification[0];
+		MaxquantModification[] fixMods = new MaxquantModification[0];
+		Enzyme enzyme = Enzyme.Trypsin;
+		int missCleavage = 0;
+		int digestMode = 0;
 		String quanMode = metaPar.getQuanMode();
 
 		MaxquantModification[][] labels = metaPar.getLabels();

@@ -19,18 +19,11 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Enumeration;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.FutureTask;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
-import javax.swing.JProgressBar;
-import javafx.concurrent.Task;
 import javax.swing.UIManager;
 import javax.swing.UnsupportedLookAndFeelException;
-import javafx.concurrent.WorkerStateEvent;
-import javafx.event.EventHandler;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
@@ -39,7 +32,6 @@ import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
-import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -53,104 +45,56 @@ import org.apache.logging.log4j.core.config.builder.impl.BuiltConfiguration;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import uk.ac.quadram.metapilot.task.par.MetaSources;
-import uk.ac.quadram.metapilot.task.pfind.MetaPilotMagTask;
 import uk.ac.quadram.metapilot.task.pfind.gui.MetaPilotPFindMainFrame;
 import uk.ac.quadram.metapilot.task.pfind.par.MetaParameterPFind;
-import uk.ac.quadram.metapilot.task.v2.par.MetaParameterMQ;
-import uk.ac.quadram.metapilot.task.v2.par.MetaSourcesIOV2;
-import uk.ac.quadram.metapilot.task.v2.par.MetaSourcesV2;
+import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
 import uk.ac.quadram.metapilot.license.LicenseVerifier;
+import uk.ac.quadram.metapilot.resources.MetaResourceIO;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.par.MetaData;
-import uk.ac.quadram.metapilot.task.par.MetaParameter;
-import uk.ac.quadram.metapilot.task.par.MetaParameterIO;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
+import uk.ac.quadram.metapilot.task.par.MetaParameterIOHandler;
 
 /**
- * From the version 2.0.0, MetaLab provides a super class of MetaLabTask.
- * Different versions of MetaLabTask could inherit this class to inherit the
+ * MetaPilot provides a super class of MetaPilotTask.
+ * Different versions of MetaPilotTask could inherit this class to inherit the
  * method {@code exportMetadata()} and {@code copyReport()}
  * 
  * (Migrated from SwingWorker to JavaFX Task)
  * 
  * @author Kai Cheng
- * @version 2.0.0
+ * @version 1.0.0
  */
-public abstract class MetaPilotTask extends Task<Boolean> {
+public abstract class MetaPilotTask extends MetaAbstractTask {
 
-	protected MetaParameter metaPar;
-	protected MetaSources msv;
-	protected JProgressBar bar1, bar2;
-
+	protected JavaFXProgressBar secondBar;
 	protected static Logger LOGGER = LogManager.getLogger(MetaPilotTask.class);
 	protected SimpleDateFormat format = new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss");
 	
 	protected ConfigurationBuilder<BuiltConfiguration> builder;
-
-	private static final String taskName = "MetaLab task";
-	public static final String version = "2.3.1";
-	public static final String versionFile = "_2_3_1.json";
-
-	public MetaPilotTask(JProgressBar bar, File logDir) {
-		this.bar1 = bar;
-		this.configLog(logDir);
-		
-		// Set up progress property listeners
-		this.progressProperty().addListener((observable, oldValue, newValue) -> {
-		    if (bar1 != null) {
-		        bar1.setValue(newValue.intValue() * 100);
-		    }
-		});
-	}
 	
-	public MetaPilotTask(MetaParameter metaPar, MetaSources advPar) {
-		this.metaPar = metaPar;
-		this.msv = advPar;
-		this.bar1 = new JProgressBar();
-		this.bar2 = new JProgressBar();
-		this.configLog(new File(metaPar.getResult()));
-		
-		// Set up progress property listeners
-		this.progressProperty().addListener((observable, oldValue, newValue) -> {
-		    if (bar1 != null) {
-		        bar1.setValue(newValue.intValue() * 100);
-		    }
-		});
-	}
-	
-	public MetaPilotTask(MetaParameter metaPar, MetaSources advPar, JProgressBar bar1) {
-		this.metaPar = metaPar;
-		this.msv = advPar;
-		this.bar1 = bar1;
-		this.configLog(new File(metaPar.getResult()));
-		
-		// Set up progress property listeners
-		this.progressProperty().addListener((observable, oldValue, newValue) -> {
-		    if (this.bar1 != null) {
-		        this.bar1.setValue(newValue.intValue() * 100);
-		    }
-		});
-	}
+	protected File final_pep_txt;
+	protected File final_pro_txt;
 
-	public MetaPilotTask(MetaParameter metaPar, MetaSources advPar, JProgressBar bar1, JProgressBar bar2) {
-		this.metaPar = metaPar;
-		this.msv = advPar;
-		this.bar1 = bar1;
-		this.bar2 = bar2;
+	private static final String taskName = "MetaPilot task";
+	public static final String version = "1.0.0";
+	public static final String versionFile = "_1_0_0.json";
+
+	public MetaPilotTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
+			JavaFXProgressBar secondBar) {
+		super(metaPar, mrp, progressBar);
+		this.secondBar = secondBar;
 		this.configLog(new File(metaPar.getResult()));
-		
-		// Set up progress property listeners
 		this.progressProperty().addListener((observable, oldValue, newValue) -> {
-		    if (this.bar1 != null) {
-		        this.bar1.setValue(newValue.intValue() * 100);
-		    }
+			if (this.progressBar != null) {
+				this.progressBar.setValue(newValue.intValue() * 100);
+			}
 		});
 	}
-
-	// NOTE: Subclasses will need to implement the call() method which is the JavaFX equivalent of doInBackground()
-	// @Override
-	// protected abstract Boolean call() throws Exception;
 
 	public abstract void forceStop();
+	
+	protected abstract String getVersion();
 
 	// Helper method to update progress on the Swing progress bar
 	protected void setProgressValue(double value) {
@@ -162,36 +106,6 @@ public abstract class MetaPilotTask extends Task<Boolean> {
 	    updateMessage(message);
 	}
 
-	/**
-	 * Compatibility method to replace SwingWorker's get()
-	 * @return The result of the task execution
-	 * @throws InterruptedException if the task is interrupted
-	 * @throws ExecutionException if the task throws an exception
-	 */
-	public Boolean get() throws InterruptedException, ExecutionException {
-	    try {
-	        // Wait for the task to complete and return the result
-	        return this.getValue();
-	    } catch (Exception e) {
-	        throw new ExecutionException(e);
-	    }
-	}
-	
-	/**
-	 * Compatibility method to replace SwingWorker's get() with timeout
-	 * @param timeout the timeout value
-	 * @param unit the time unit for the timeout value
-	 * @return The result of the task execution
-	 * @throws InterruptedException if the task is interrupted
-	 * @throws ExecutionException if the task throws an exception
-	 * @throws TimeoutException if the task does not complete within the timeout
-	 */
-	public Boolean get(long timeout, TimeUnit unit) 
-	        throws InterruptedException, ExecutionException, TimeoutException {
-	    // This is a simplified implementation - in a real app you would want to implement proper timeout handling
-	    return this.get();
-	}
-	
 	/**
 	 * Compatibility method to start the task execution.
 	 * Equivalent to SwingWorker's execute() method.
@@ -274,33 +188,15 @@ public abstract class MetaPilotTask extends Task<Boolean> {
 			destDir.mkdirs();
 		}
 
-		File resourceReport = new File(msv.getResource(), "report");
-		if (resourceReport.exists()) {
-			LOGGER.info(taskName + ": copying report folder from " + resourceReport + " started");
-
-			try {
-				FileUtils.copyDirectory(resourceReport, destDir);
-			} catch (IOException e) {
-				LOGGER.error(taskName + ": error in creating the report folder", e);
-				System.err
-						.println(format.format(new Date()) + "\t" + taskName + ": error in creating the report folder");
-			}
-
-			LOGGER.info(taskName + ": copying report folder from " + resourceReport + " finished");
-
-			metaPar.setReportDir(destDir);
-
-		} else {
-			try {
-				loadRecourseFromJarByFolder("/uk/ac/quadram/metapilot/report", destDir);
-			} catch (IOException e) {
-				LOGGER.error(taskName + ": error in creating the report folder", e);
-				System.err
-						.println(format.format(new Date()) + "\t" + taskName + ": error in creating the report folder");
-			}
-
-			metaPar.setReportDir(destDir);
+		try {
+			loadRecourseFromJarByFolder("/uk/ac/quadram/metapilot/report", destDir);
+		} catch (IOException e) {
+			LOGGER.error(taskName + ": error in creating the report folder", e);
+			System.err
+					.println(format.format(new Date()) + "\t" + taskName + ": error in creating the report folder");
 		}
+
+		metaPar.setReportDir(destDir);
 	}
 
 	protected void loadRecourseFromJarByFolder(String fromPath, File toPath) throws IOException {
@@ -500,7 +396,7 @@ public abstract class MetaPilotTask extends Task<Boolean> {
 			boolean verified = verifier.verify();
 			if (!verified) {
 
-				LOGGER.info("Thank you for using MetaLab. A license is needed to run MetaLab, "
+				LOGGER.info("Thank you for using MetaPilot. A license is needed to run MetaPilot, "
 						+ "please go to Tools -> Verification for the license.");
 				return;
 			}
@@ -527,46 +423,22 @@ public abstract class MetaPilotTask extends Task<Boolean> {
 					LOGGER.error("Error in reading MetaLab parameter file " + parafile, e);
 				}
 
-				MetaParameter loadPar = MetaParameterIO.parse(obj);
+				MetaBaseParameter loadPar = MetaParameterIOHandler.parse(obj);
 
 				if (loadPar.getWorkflowType() == MetaLabWorkflowType.pFindWorkflow) {
 
 					MetaParameterPFind metaPar = (MetaParameterPFind) loadPar;
 
-					JProgressBar bar1 = new JProgressBar();
-					JProgressBar bar2 = new JProgressBar();
+					JavaFXProgressBar bar1 = new JavaFXProgressBar();
+					JavaFXProgressBar bar2 = new JavaFXProgressBar();
 
 					File file = getApplicationBaseDirectory();
 					File setting = new File(file, "resources" + versionFile);
 
-					MetaSourcesV2 advPar = MetaSourcesIOV2.parse(setting);
+					MetaResourceIO mrio = new MetaResourceIO(setting);
+					MetaResourceParameters mrp = mrio.loadParameters();
 
-					MetaPilotMagTask task = new MetaPilotMagTask(metaPar, advPar, bar1, bar2);
-					try {
-						// Use JavaFX Thread for execution
-						javafx.application.Platform.runLater(() -> {
-						    Thread taskThread = new Thread(task);
-						    taskThread.setDaemon(true);
-						    taskThread.start();
-						});
-						
-						// Wait for completion if needed
-						boolean result = false;
-						try {
-							result = task.get();
-						} catch (InterruptedException | ExecutionException e) {
-							LOGGER.error("Task failed :(  please contact us to get a solution", e);
-						}
-						
-						if (result) {
-							System.out.println(taskName + ": finished");
-						} else {
-							System.out.println(taskName + ": failed");
-						}
-					} catch (Exception e) {
-						LOGGER.error("Task failed :(  please contact us to get a solution", e);
-					}
-/*
+
 					File report = new File(metaPar.getReportDir(), "index.html");
 					try {
 						java.awt.Desktop.getDesktop().browse(report.toURI());
@@ -574,51 +446,9 @@ public abstract class MetaPilotTask extends Task<Boolean> {
 						// TODO Auto-generated catch block
 						e.printStackTrace();
 					}
-*/
+
 				} else {
 
-					MetaParameterMQ metaPar = (MetaParameterMQ) loadPar;
-					JProgressBar bar1 = new JProgressBar();
-					JProgressBar bar2 = new JProgressBar();
-
-					File file = getApplicationBaseDirectory();
-					File setting = new File(file, "resources" + versionFile);
-
-					MetaSourcesV2 advPar = MetaSourcesIOV2.parse(setting);
-/*
-					MetaLabTaskV2 task = new MetaLabTaskV2(metaPar, advPar, bar1, bar2);
-					try {
-						// Use JavaFX Thread for execution
-						javafx.application.Platform.runLater(() -> {
-						    Thread taskThread = new Thread(task);
-						    taskThread.setDaemon(true);
-						    taskThread.start();
-						});
-						
-						// Wait for completion if needed
-						boolean result = false;
-						try {
-							result = task.get();
-						} catch (InterruptedException | ExecutionException e) {
-							LOGGER.error("Task failed :(  please contact us to get a solution", e);
-						}
-						
-						if (result) {
-							System.out.println(taskName + ": finished");
-						} else {
-							System.out.println(taskName + ": failed");
-						}
-					} catch (Exception e) {
-						LOGGER.error("Task failed :(  please contact us to get a solution", e);
-					}
-*/
-					File report = new File(metaPar.getReportDir(), "index.html");
-					try {
-						java.awt.Desktop.getDesktop().browse(report.toURI());
-					} catch (IOException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
 				}
 			}
 		}

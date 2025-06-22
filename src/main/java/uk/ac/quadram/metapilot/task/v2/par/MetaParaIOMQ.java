@@ -28,8 +28,8 @@ import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantModification;
 import uk.ac.quadram.metapilot.task.MetaLabWorkflowType;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.par.MetaData;
-import uk.ac.quadram.metapilot.task.par.MetaParameter;
-import uk.ac.quadram.metapilot.task.par.MetaParameterIO;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
+import uk.ac.quadram.metapilot.task.par.MetaParameterIOHandler;
 import uk.ac.quadram.metapilot.task.par.MetaPep2TaxaPar;
 import uk.ac.quadram.metapilot.task.par.MetaSsdbCreatePar;
 
@@ -37,7 +37,7 @@ import uk.ac.quadram.metapilot.task.par.MetaSsdbCreatePar;
  * @author Kai Cheng
  *
  */
-public class MetaParaIOMQ extends MetaParameterIO {
+public class MetaParaIOMQ extends MetaParameterIOHandler {
 
 	public static final String version = "2.3.1";
 	public static final String versionFile = "_2_3_1.json";
@@ -79,7 +79,7 @@ public class MetaParaIOMQ extends MetaParameterIO {
 
 	public static MetaParameterMQ parse(JSONObject obj) {
 
-		MetaParameter metaPar = MetaParameterIO.parseMain(obj);
+		MetaBaseParameter metaPar = MetaParameterIOHandler.parseMain(obj);
 
 		MetaLabWorkflowType workflowType = metaPar.getWorkflowType();
 
@@ -545,27 +545,27 @@ public class MetaParaIOMQ extends MetaParameterIO {
 			boolean isMetaWorkflow = par.isMetaWorkflow();
 			jw.key("isMetaWorkflow").value(isMetaWorkflow);
 
-			MaxquantModification[] fixMods = par.getFixMods();
+			MaxquantModification[] fixMods = new MaxquantModification[] {};
 			jw.key("fixMods").array();
 			for (MaxquantModification fm : fixMods) {
 				jw.object().key("name").value(fm.getTitle()).endObject();
 			}
 			jw.endArray();
 
-			MaxquantModification[] variMods = par.getVariMods();
+			MaxquantModification[] variMods = new MaxquantModification[] {};
 			jw.key("variMods").array();
 			for (MaxquantModification vm : variMods) {
 				jw.object().key("name").value(vm.getTitle()).endObject();
 			}
 			jw.endArray();
 
-			Enzyme enzyme = par.getEnzyme();
+			Enzyme enzyme = Enzyme.Trypsin;
 			jw.key("enzyme").value(enzyme.getName());
 
 			int missCleavages = par.getMissCleavages();
 			jw.key("missCleavages").value(missCleavages);
 
-			int digestMode = par.getDigestMode();
+			int digestMode = 0;
 			jw.key("digestMode").value(digestMode);
 
 			String quantMode = par.getQuanMode();
