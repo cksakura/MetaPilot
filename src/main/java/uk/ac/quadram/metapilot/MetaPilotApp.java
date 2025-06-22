@@ -69,6 +69,102 @@ import uk.ac.quadram.metapilot.task.dia.gui.MetaPilotDiaNormalPanel;
 import uk.ac.quadram.metapilot.task.dia.gui.MetaPilotDiaTargetPanel;
 import uk.ac.quadram.metapilot.task.dia.gui.MetaPilotDiaRealTimePanel;
 
+/**
+ * MetaPilot Main Application - A Comprehensive Metaproteomics Analysis Platform
+ * 
+ * <h2>Overview</h2>
+ * MetaPilot is a sophisticated bioinformatics platform designed for metaproteomics
+ * data analysis, supporting multiple mass spectrometry search engines and 
+ * comprehensive taxonomic and functional annotation workflows.
+ * 
+ * <h2>Architecture</h2>
+ * The application follows a modular JavaFX-based architecture with:
+ * <ul>
+ *   <li><strong>Task-based Processing:</strong> All analysis workflows are implemented 
+ *       as background tasks extending {@link uk.ac.quadram.metapilot.task.MetaAbstractTask}</li>
+ *   <li><strong>Resource Management:</strong> Centralized tool and database path management 
+ *       through {@link uk.ac.quadram.metapilot.resources.MetaResourceParameters}</li>
+ *   <li><strong>Workflow Integration:</strong> Support for multiple search engines including 
+ *       MaxQuant, pFind, FragPipe, Sage, and DIA-NN</li>
+ *   <li><strong>Database Configuration:</strong> MAG (Metagenome-Assembled Genomes) 
+ *       database management for metagenomic analyses</li>
+ * </ul>
+ * 
+ * <h2>Supported Workflows</h2>
+ * <h3>Data-Dependent Acquisition (DDA) Workflows:</h3>
+ * <ul>
+ *   <li><strong>IGC (Integrated Gene Catalog) Workflows:</strong>
+ *       <ul>
+ *         <li>MaxQuant DDA IGC - Label-free quantification</li>
+ *         <li>pFind DDA IGC - Chinese-developed search engine</li>
+ *         <li>FragPipe DDA IGC - MSFragger-based pipeline</li>
+ *         <li>Sage DDA IGC - Fast Rust-based search engine</li>
+ *       </ul>
+ *   </li>
+ *   <li><strong>MAG (Metagenome-Assembled Genomes) Workflows:</strong>
+ *       <ul>
+ *         <li>pFind MAG - Targeted MAG database searches</li>
+ *         <li>FragPipe MAG - MAG-specific FragPipe analysis</li>
+ *         <li>Sage MAG - High-speed MAG proteome analysis</li>
+ *       </ul>
+ *   </li>
+ * </ul>
+ * 
+ * <h3>Data-Independent Acquisition (DIA) Workflows:</h3>
+ * <ul>
+ *   <li><strong>DIA Normal:</strong> Standard DIA analysis with spectral libraries</li>
+ *   <li><strong>DIA Target:</strong> Targeted DIA analysis for specific proteins</li>
+ *   <li><strong>DIA Real-time:</strong> Real-time DIA analysis and monitoring</li>
+ * </ul>
+ * 
+ * <h2>Core Features</h2>
+ * <ul>
+ *   <li><strong>Multi-engine Support:</strong> Integrates diverse search engines with 
+ *       unified parameter management</li>
+ *   <li><strong>Taxonomic Analysis:</strong> Comprehensive taxonomy assignment using 
+ *       NCBI taxonomy and custom databases</li>
+ *   <li><strong>Functional Annotation:</strong> Protein function prediction using 
+ *       COG, KEGG, and custom functional databases</li>
+ *   <li><strong>Quality Control:</strong> Built-in QC metrics and visualization</li>
+ *   <li><strong>Database Management:</strong> Automated download and management of 
+ *       reference databases</li>
+ *   <li><strong>Registration System:</strong> User registration and license management</li>
+ *   <li><strong>Update Management:</strong> Automatic software update checking</li>
+ * </ul>
+ * 
+ * <h2>User Interface</h2>
+ * The application provides a modern JavaFX interface with:
+ * <ul>
+ *   <li><strong>Main Workflow Panel:</strong> Easy access to all analysis workflows</li>
+ *   <li><strong>Resource Configuration:</strong> Tool path management and validation</li>
+ *   <li><strong>Database Configuration:</strong> MAG database setup and management</li>
+ *   <li><strong>Progress Tracking:</strong> Real-time analysis progress monitoring</li>
+ * </ul>
+ * 
+ * <h2>Technical Implementation</h2>
+ * <ul>
+ *   <li><strong>Threading:</strong> All CPU-intensive tasks run as background threads</li>
+ *   <li><strong>Progress Monitoring:</strong> JavaFX Task-based progress tracking</li>
+ *   <li><strong>Error Handling:</strong> Comprehensive exception handling with user feedback</li>
+ *   <li><strong>Configuration Persistence:</strong> User preferences saved across sessions</li>
+ * </ul>
+ * 
+ * <h2>Target Users</h2>
+ * <ul>
+ *   <li>Metaproteomics researchers analyzing microbiome samples</li>
+ *   <li>Computational biologists working with mass spectrometry data</li>
+ *   <li>Core facilities providing proteomics analysis services</li>
+ *   <li>Students learning metaproteomics data analysis</li>
+ * </ul>
+ * 
+ * @author Kai Cheng - Quadram Institute Bioscience
+ * @version 2.0
+ * @since 1.0
+ * 
+ * @see uk.ac.quadram.metapilot.task.MetaAbstractTask
+ * @see uk.ac.quadram.metapilot.resources.MetaResourceParameters
+ * @see uk.ac.quadram.metapilot.task.MetaLabWorkflowType
+ */
 public class MetaPilotApp extends Application {
     
     private MetaResourceParameters resourceParams;
