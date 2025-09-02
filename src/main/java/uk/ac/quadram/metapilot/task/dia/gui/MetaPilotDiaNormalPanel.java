@@ -191,7 +191,7 @@ public class MetaPilotDiaNormalPanel extends VBox {
     private VBox createDatabaseSection() {
         VBox section = new VBox(10);
         section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #f5f5f5; -fx-background-radius: 5;");
+        section.setStyle("-fx-background-color: #f8f8f8; -fx-border-color: #cccccc; -fx-border-radius: 5; -fx-border-width: 1;");
         
         // MAG Database ComboBox (not file browser)
         HBox magDBBox = new HBox(10);

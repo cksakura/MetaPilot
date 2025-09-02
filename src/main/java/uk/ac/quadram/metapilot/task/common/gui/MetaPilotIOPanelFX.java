@@ -26,7 +26,6 @@ public class MetaPilotIOPanelFX extends VBox {
     private final ObservableList<ExperimentRow> experimentData;
     private final TextField outputDirField;
     private final Button browseRawFilesButton;
-    private final Button addExperimentButton;
     private final Button removeExperimentButton;
     private final Button browseOutputDirButton;
     
@@ -43,6 +42,7 @@ public class MetaPilotIOPanelFX extends VBox {
     private boolean patternTableUpdate = false;
     private HashSet<String> fileSet;
 
+    @SuppressWarnings("unchecked")
     public MetaPilotIOPanelFX() {
         setSpacing(10);
         setPadding(new Insets(10));
@@ -107,13 +107,10 @@ public class MetaPilotIOPanelFX extends VBox {
         experimentTable.getColumns().setAll(fileCol, expCol);
 
         HBox expButtonBox = new HBox(10);
-        addExperimentButton = new Button("Add Experiment");
-        addExperimentButton.setOnAction(e -> addExperiment());
-        addExperimentButton.setTooltip(new Tooltip("Add an empty row to manually enter file path and experiment name"));
         removeExperimentButton = new Button("Remove Selected");
         removeExperimentButton.setOnAction(e -> removeSelectedExperiment());
         removeExperimentButton.setTooltip(new Tooltip("Remove the selected experiment row"));
-        expButtonBox.getChildren().addAll(addExperimentButton, removeExperimentButton);
+        expButtonBox.getChildren().addAll(removeExperimentButton);
 
         // Create left panel for Raw Files
         VBox leftPanel = new VBox(10);
@@ -132,6 +129,10 @@ public class MetaPilotIOPanelFX extends VBox {
         // Create horizontal layout for the two main panels
         HBox mainPanelsBox = new HBox(20);
         mainPanelsBox.getChildren().addAll(leftPanel, nameGenerationSection);
+        
+        // Make both panels grow equally to fill available space
+        HBox.setHgrow(leftPanel, javafx.scene.layout.Priority.ALWAYS);
+        HBox.setHgrow(nameGenerationSection, javafx.scene.layout.Priority.ALWAYS);
 
         // Output Directory Section
         Label outputDirLabel = new Label("Output Directory:");
@@ -152,6 +153,7 @@ public class MetaPilotIOPanelFX extends VBox {
         updatePatternTable(); // Initial call
     }
     
+    @SuppressWarnings("unchecked")
     private VBox createNameGenerationSection() {
         VBox section = new VBox(10);
         section.setPadding(new Insets(10));
@@ -433,15 +435,6 @@ public class MetaPilotIOPanelFX extends VBox {
             }
             updatePatternTable();
         }
-    }
-
-    private void addExperiment() {
-        experimentData.add(new ExperimentRow("", ""));
-        
-        // Select the newly added row for easy editing
-        int newIndex = experimentData.size() - 1;
-        experimentTable.getSelectionModel().select(newIndex);
-        experimentTable.scrollTo(newIndex);
     }
 
     private void removeSelectedExperiment() {
