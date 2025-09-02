@@ -183,6 +183,16 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 		LOGGER.info(getTaskName() + ": sample specific database generation: finished");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": sample specific database generation: finished");
 
+		File pfindSearchFile = new File(metaPar.getResult(), "pfind_search");
+		if (!pfindSearchFile.exists()) {
+			pfindSearchFile.mkdir();
+			LOGGER.info("  Created pFind search directory: " + pfindSearchFile.getAbsolutePath());
+		} else {
+			LOGGER.info("  pFind search directory already exists: " + pfindSearchFile.getAbsolutePath());
+		}
+
+		metaPar.setDbSearchResultFile(pfindSearchFile);
+		
 		boolean iden = iden(spTask.getMgfFiles(), spTask.getPf2Files());
 		if (!iden) {
 			LOGGER.error(getTaskName() + ": error in peptide and protein identification");

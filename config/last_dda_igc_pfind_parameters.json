@@ -64,7 +64,7 @@
     "missed_cleavages": 2,
     "digestion_mode": "Specific"
   },
-  "generated_at": "2025-09-02 13:16:10",
+  "generated_at": "2025-09-02 15:40:35",
   "additional_parameters": {
     "generate_sample_specific_db": true,
     "ms2_scan_mode": "HCD-FTMS",
@@ -86,8 +86,8 @@
   "version": "1.0",
   "modifications": {
     "variable": [
-      "Acetyl[Protein N-term]",
-      "Oxidation[M]"
+      "Oxidation[M]",
+      "Acetyl[ProteinN-term]"
     ],
     "fixed": ["Carbamidomethyl[C]"]
   }

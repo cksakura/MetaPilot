@@ -721,7 +721,9 @@ public class PFindConfig {
 
 		StringBuilder fixsb = new StringBuilder();
 		for (int i = 0; i < fixedMods.length; i++) {
-			fixsb.append(fixedMods[i].substring(0, fixedMods[i].indexOf(" "))).append(";");
+			if (fixedMods[i].indexOf(" ") > 0) {
+				fixsb.append(fixedMods[i].substring(0, fixedMods[i].indexOf(" "))).append(";");
+			}
 		}
 		if (tag == null) {
 			if (fixsb.length() > 0) {
@@ -750,7 +752,9 @@ public class PFindConfig {
 
 		StringBuilder varisb = new StringBuilder();
 		for (int i = 0; i < variMods.length; i++) {
-			varisb.append(variMods[i].substring(0, variMods[i].indexOf(" "))).append(";");
+			if (variMods[i].indexOf(" ") > 0) {
+				varisb.append(variMods[i].substring(0, variMods[i].indexOf(" "))).append(";");
+			}
 		}
 		if (varisb.length() > 0) {
 			varisb.deleteCharAt(varisb.length() - 1);
