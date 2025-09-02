@@ -28,9 +28,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-import javax.swing.JProgressBar;
-import javax.swing.SwingWorker;
-
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.math.NumberUtils;
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
@@ -41,7 +38,6 @@ import org.dom4j.DocumentException;
 
 import com.sun.management.OperatingSystemMXBean;
 
-import javafx.concurrent.Task;
 import uk.ac.quadram.metapilot.core.function.v2.EnzymeCommission;
 import uk.ac.quadram.metapilot.core.function.v2.GoObo;
 import uk.ac.quadram.metapilot.core.math.MathTool;
@@ -58,20 +54,16 @@ import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
 import uk.ac.quadram.metapilot.quant.flashLFQ.FlashLfqQuanPeptide;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
+import uk.ac.quadram.metapilot.task.MetaPythonReportTask;
 import uk.ac.quadram.metapilot.task.MetaReportCopyTask;
-import uk.ac.quadram.metapilot.task.MetaReportTask;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParaIoDia;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
-import uk.ac.quadram.metapilot.task.dia.par.MetaSourcesDia;
-import uk.ac.quadram.metapilot.task.dia.par.MetaSourcesIoDia;
 import uk.ac.quadram.metapilot.task.io.MetaTreeHandler;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
 import uk.ac.quadram.metapilot.task.io.pro.pfind.MetaProteinAnnoEggNog;
 import uk.ac.quadram.metapilot.task.io.pro.pfind.MetaProteinXMLReader2;
 import uk.ac.quadram.metapilot.task.mag.HMGenomeHtmlWriter;
-import uk.ac.quadram.metapilot.task.mag.MagDbConfigIO;
-import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.MagFuncSearcher;
 import uk.ac.quadram.metapilot.task.mag.MagHapPFindTask;
 import uk.ac.quadram.metapilot.task.mag.MetaProteinAnnoMag;
@@ -3360,7 +3352,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 			MetaTreeHandler.exportJS(taxRankMaps, taxIntensityMaps, cellularIntensity, expNames, jsOutput);
 		}
 
-		MetaReportTask task = new MetaReportTask(metaPar.getThreadCount());
+		MetaPythonReportTask task = new MetaPythonReportTask(metaPar.getThreadCount());
 
 		this.summaryMetaFile = new File(this.resultFolderFile, "metainfo.tsv");
 		try {
@@ -3378,9 +3370,9 @@ public class MetaDiaTask extends MagHapPFindTask {
 			File report_peptides_summary = new File(reportHtmlDir, "report_peptides_summary.html");
 			if (!report_peptides_summary.exists() || report_peptides_summary.length() == 0) {
 				if (summaryMetaFile.exists()) {
-					task.addTask(MetaReportTask.peptide, final_pep_txt, report_peptides_summary, summaryMetaFile);
+					task.addTask(MetaPythonReportTask.PEPTIDE, final_pep_txt, report_peptides_summary, summaryMetaFile);
 				} else {
-					task.addTask(MetaReportTask.peptide, final_pep_txt, report_peptides_summary);
+					task.addTask(MetaPythonReportTask.PEPTIDE, final_pep_txt, report_peptides_summary);
 				}
 			}
 		}
@@ -3391,9 +3383,9 @@ public class MetaDiaTask extends MagHapPFindTask {
 			File report_proteinGroups_summary = new File(reportHtmlDir, "report_proteinGroups_summary.html");
 			if (!report_proteinGroups_summary.exists() || report_proteinGroups_summary.length() == 0) {
 				if (summaryMetaFile.exists()) {
-					task.addTask(MetaReportTask.protein, final_pro_txt, report_proteinGroups_summary, summaryMetaFile);
+					task.addTask(MetaPythonReportTask.PROTEIN, final_pro_txt, report_proteinGroups_summary, summaryMetaFile);
 				} else {
-					task.addTask(MetaReportTask.protein, final_pro_txt, report_proteinGroups_summary);
+					task.addTask(MetaPythonReportTask.PROTEIN, final_pro_txt, report_proteinGroups_summary);
 				}
 			}
 		}
@@ -3405,9 +3397,9 @@ public class MetaDiaTask extends MagHapPFindTask {
 			if (!report_taxonomy_summary.exists() || report_taxonomy_summary.length() == 0) {
 
 				if (summaryMetaFile != null && summaryMetaFile.exists()) {
-					task.addTask(MetaReportTask.taxon, taxaReportFile, report_taxonomy_summary, summaryMetaFile);
+					task.addTask(MetaPythonReportTask.TAXONOMY, taxaReportFile, report_taxonomy_summary, summaryMetaFile);
 				} else {
-					task.addTask(MetaReportTask.taxon, taxaReportFile, report_taxonomy_summary);
+					task.addTask(MetaPythonReportTask.TAXONOMY, taxaReportFile, report_taxonomy_summary);
 				}
 			}
 		}
@@ -3419,9 +3411,9 @@ public class MetaDiaTask extends MagHapPFindTask {
 			if (!report_function_summary.exists() || report_function_summary.length() == 0) {
 
 				if (summaryMetaFile != null && summaryMetaFile.exists()) {
-					task.addTask(MetaReportTask.function, funReportTsv, report_function_summary, summaryMetaFile);
+					task.addTask(MetaPythonReportTask.FUNCTION, funReportTsv, report_function_summary, summaryMetaFile);
 				} else {
-					task.addTask(MetaReportTask.function, funReportTsv, report_function_summary);
+					task.addTask(MetaPythonReportTask.FUNCTION, funReportTsv, report_function_summary);
 				}
 			}
 		}
@@ -3472,7 +3464,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 			reportHtmlDir.mkdirs();
 		}
 
-		MetaReportTask task = new MetaReportTask(metaPar.getThreadCount());
+		MetaPythonReportTask task = new MetaPythonReportTask(metaPar.getThreadCount());
 		
 		this.summaryMetaFile = new File(metaPar.getResult(), "metainfo.tsv");
 		try {
@@ -3495,10 +3487,10 @@ public class MetaDiaTask extends MagHapPFindTask {
 			File report_peptides_summary = new File(reportHtmlDir, "report_peptides_summary.html");
 			if (!report_peptides_summary.exists() || report_peptides_summary.length() == 0) {
 				if (summaryMetaFile.exists()) {
-					pepReportOk = task.addTask(MetaReportTask.peptide, final_pep_txt, report_peptides_summary,
+					pepReportOk = task.addTask(MetaPythonReportTask.PEPTIDE, final_pep_txt, report_peptides_summary,
 							summaryMetaFile);
 				} else {
-					pepReportOk = task.addTask(MetaReportTask.peptide, final_pep_txt, report_peptides_summary);
+					pepReportOk = task.addTask(MetaPythonReportTask.PEPTIDE, final_pep_txt, report_peptides_summary);
 				}
 			} else {
 				pepReportOk = true;
@@ -3516,10 +3508,10 @@ public class MetaDiaTask extends MagHapPFindTask {
 			File report_proteinGroups_summary = new File(reportHtmlDir, "report_proteinGroups_summary.html");
 			if (!report_proteinGroups_summary.exists() || report_proteinGroups_summary.length() == 0) {
 				if (summaryMetaFile.exists()) {
-					proReportOk = task.addTask(MetaReportTask.protein, final_pro_txt, report_proteinGroups_summary,
+					proReportOk = task.addTask(MetaPythonReportTask.PROTEIN, final_pro_txt, report_proteinGroups_summary,
 							summaryMetaFile);
 				} else {
-					proReportOk = task.addTask(MetaReportTask.protein, final_pro_txt, report_proteinGroups_summary);
+					proReportOk = task.addTask(MetaPythonReportTask.PROTEIN, final_pro_txt, report_proteinGroups_summary);
 				}
 			} else {
 				proReportOk = true;
@@ -3560,7 +3552,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 		return false;
 	}
 	
-	protected boolean exportSummary(MetaReportTask task) {
+	protected boolean exportSummary(MetaPythonReportTask task) {
 
 		this.final_summary_txt = new File(metaPar.getResult(), "final_summary.tsv");
 		try {
@@ -3643,9 +3635,9 @@ public class MetaDiaTask extends MagHapPFindTask {
 			boolean finish = false;
 			File report_ID_summary = new File(reportHtmlDir, "report_ID_summary.html");
 			if (summaryMetaFile != null && summaryMetaFile.exists()) {
-				finish = task.addTask(MetaReportTask.summary, final_summary_txt, report_ID_summary, summaryMetaFile);
+				finish = task.addTask(MetaPythonReportTask.ID_SUMMARY, final_summary_txt, report_ID_summary, summaryMetaFile);
 			} else {
-				finish = task.addTask(MetaReportTask.summary, final_summary_txt, report_ID_summary);
+				finish = task.addTask(MetaPythonReportTask.ID_SUMMARY, final_summary_txt, report_ID_summary);
 			}
 
 			return finish;
@@ -3653,7 +3645,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 	}
 	
 
-	protected boolean exportTaxaFunc(MetaReportTask task) {
+	protected boolean exportTaxaFunc(MetaPythonReportTask task) {
 
 		LOGGER.info(getTaskName() + ": taxonomy analysis and functional annotation started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName()
@@ -3978,9 +3970,9 @@ public class MetaDiaTask extends MagHapPFindTask {
 		if (!report_function_summary.exists() || report_function_summary.length() == 0) {
 
 			if (summaryMetaFile != null && summaryMetaFile.exists()) {
-				task.addTask(MetaReportTask.function, funReportTsv, report_function_summary, summaryMetaFile);
+				task.addTask(MetaPythonReportTask.FUNCTION, funReportTsv, report_function_summary, summaryMetaFile);
 			} else {
-				task.addTask(MetaReportTask.function, funReportTsv, report_function_summary);
+				task.addTask(MetaPythonReportTask.FUNCTION, funReportTsv, report_function_summary);
 			}
 		}
 

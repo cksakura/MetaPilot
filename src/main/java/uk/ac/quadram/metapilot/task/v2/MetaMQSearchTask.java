@@ -40,8 +40,8 @@ import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.task.MetaAbstractTask;
-import uk.ac.quadram.metapilot.task.MetaReportCopyTask;
-import uk.ac.quadram.metapilot.task.MetaReportTask;
+import uk.ac.quadram.metapilot.task.MetaPythonReportCopyTask;
+import uk.ac.quadram.metapilot.task.MetaPythonReportTask;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
@@ -105,7 +105,21 @@ public class MetaMQSearchTask extends MetaAbstractTask {
 					reportDir.mkdirs();
 				}
 
-				MetaReportCopyTask.copy(reportDir, MetaParaIOMQ.version);
+				MetaPythonReportCopyTask reportCopyTask = new MetaPythonReportCopyTask(new File(metaPar.getResult()));
+				Thread reportCopyThread = new Thread(reportCopyTask);
+				reportCopyThread.start();
+				try {
+					reportCopyThread.join();
+					if (!reportCopyTask.get()) {
+						LOGGER.error(taskName + ": error in copying report template");
+						System.err.println(format.format(new Date()) + "\t" + taskName + ": error in copying report template");
+						return false;
+					}
+				} catch (Exception e) {
+					LOGGER.error(taskName + ": error in copying report template", e);
+					System.err.println(format.format(new Date()) + "\t" + taskName + ": error in copying report template: " + e.getMessage());
+					return false;
+				}
 
 				metaPar.setReportDir(reportDir);
 
@@ -115,12 +129,12 @@ public class MetaMQSearchTask extends MetaAbstractTask {
 					reportFolder.mkdirs();
 				}
 
-				MetaReportTask task = new MetaReportTask(metaPar.getThreadCount());
+				MetaPythonReportTask task = new MetaPythonReportTask(metaPar.getThreadCount());
 
 				File report_ID_summary = new File(reportFolder, "report_ID_summary.html");
 
 				if (!report_ID_summary.exists() || report_ID_summary.length() == 0) {
-					task.addTask(MetaReportTask.summary, summary, report_ID_summary);
+					task.addTask(MetaPythonReportTask.ID_SUMMARY, summary, report_ID_summary);
 				}
 
 				File summaryMetaFile = new File(combined, "metainfo.tsv");
@@ -146,9 +160,9 @@ public class MetaMQSearchTask extends MetaAbstractTask {
 					convertPep2Report(peptides, pepReport);
 
 					if (summaryMetaFile.exists()) {
-						task.addTask(MetaReportTask.peptide, pepReport, report_peptides_summary, summaryMetaFile);
+						task.addTask(MetaPythonReportTask.PEPTIDE, pepReport, report_peptides_summary, summaryMetaFile);
 					} else {
-						task.addTask(MetaReportTask.peptide, pepReport, report_peptides_summary);
+						task.addTask(MetaPythonReportTask.PEPTIDE, pepReport, report_peptides_summary);
 					}
 				}
 
@@ -160,10 +174,10 @@ public class MetaMQSearchTask extends MetaAbstractTask {
 					convertPro2Report(proteins, proReport);
 
 					if (summaryMetaFile.exists()) {
-						task.addTask(MetaReportTask.protein, proReport, report_proteinGroups_summary, summaryMetaFile);
+						task.addTask(MetaPythonReportTask.PROTEIN, proReport, report_proteinGroups_summary, summaryMetaFile);
 
 					} else {
-						task.addTask(MetaReportTask.protein, proReport, report_proteinGroups_summary);
+						task.addTask(MetaPythonReportTask.PROTEIN, proReport, report_proteinGroups_summary);
 					}
 				}
 

@@ -35,11 +35,7 @@ public abstract class MetaDbCreateTask extends MetaAbstractTask {
 		super(metaPar, mrp, progressBar);
 	}
 
-	@Override
-	protected void initial() {
-		// TODO Auto-generated method stub
 
-	}
 
 	@Override
 	protected Boolean call() throws Exception {
@@ -61,6 +57,10 @@ public abstract class MetaDbCreateTask extends MetaAbstractTask {
 			dbcFile.mkdir();
 		}
 
+		// Update progress after directory creation
+		updateProgress(5, 100);
+		updateMessage("Database directory created, checking existing files...");
+
 		this.ssdbFile = new File(dbcFile, "sample_specific_db.fasta");
 
 		if (this.ssdbFile.exists()) {
@@ -72,6 +72,8 @@ public abstract class MetaDbCreateTask extends MetaAbstractTask {
 				metaPar.setCurrentDb(ssdbFile.getAbsolutePath());
 
 				setProgress(35);
+				updateProgress(35, 100);
+				updateMessage("Sample-specific database found, proceeding to next step...");
 
 				return true;
 
@@ -80,6 +82,10 @@ public abstract class MetaDbCreateTask extends MetaAbstractTask {
 				FileUtils.deleteQuietly(ssdbFile);
 			}
 		}
+
+		// Update progress before database combination
+		updateProgress(10, 100);
+		updateMessage("Preparing protein databases...");
 
 		if (metaPar.isAppendHostDb()) {
 
@@ -120,20 +126,39 @@ public abstract class MetaDbCreateTask extends MetaAbstractTask {
 			originalFasta = metaPar.getMicroDb();
 		}
 
+		// Update progress after database preparation
+		updateProgress(15, 100);
+		updateMessage("Protein databases prepared, starting analysis...");
+
 		int proCount = 0;
 
 		if (metaPar.isSpectraCluster()) {
 
+			// Update progress before clustering
+			updateProgress(20, 100);
+			updateMessage("Starting spectra clustering...");
 			cluster();
 
+			// Update progress after clustering
+			updateProgress(25, 100);
+			updateMessage("Clustering completed, searching clustered spectra...");
 			clusterResults = clusterSearch();
 
+			// Update progress before database writing
+			updateProgress(30, 100);
+			updateMessage("Writing sample-specific database...");
 			proCount = writeDatabase(true);
 
 		} else {
 
+			// Update progress before MetaProIQ
+			updateProgress(20, 100);
+			updateMessage("Starting MetaProIQ analysis...");
 			clusterResults = metaProIQ();
 
+			// Update progress before database writing
+			updateProgress(30, 100);
+			updateMessage("Writing sample-specific database...");
 			proCount = writeDatabase(false);
 		}
 
@@ -153,6 +178,8 @@ public abstract class MetaDbCreateTask extends MetaAbstractTask {
 		}
 
 		setProgress(35);
+		updateProgress(35, 100);
+		updateMessage("Sample-specific database created successfully!");
 
 		LOGGER.info(taskName + ": finished");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": finished");

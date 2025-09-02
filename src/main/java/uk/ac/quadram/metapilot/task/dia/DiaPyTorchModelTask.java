@@ -114,12 +114,6 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 		this.threadCount = threadCount;
 	}
 
-	@Override
-	protected void initial() {
-		// TODO Auto-generated method stub
-		
-	}
-
 	public void forceStop() {
 		// Cancel this task
 		this.cancel();

@@ -4,7 +4,6 @@ import javafx.application.Platform;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.SimpleIntegerProperty;
 import javafx.beans.property.SimpleStringProperty;
-import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
@@ -17,15 +16,9 @@ import javafx.scene.text.FontWeight;
 
 import java.io.File;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
-import uk.ac.quadram.metapilot.core.MGYG.MGYGFtpTask;
 import uk.ac.quadram.metapilot.core.MGYG.MGYGFtpTaskJavaFX;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
-import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagVersion;
 
 /**
  * JavaFX implementation of the MagDbConfigPanel
@@ -551,7 +544,7 @@ public class MagDbConfigPanelJavaFX extends BorderPane {
         if (downloadButton != null && mgnifyComboBox != null) {
             MagDbItem item = mgnifyComboBox.getValue();
             if (item != null) {
-                downloadButton.setDisable(!item.updateAvailable());
+            	downloadButton.setDisable(false);
             } else {
                 downloadButton.setDisable(true);
             }

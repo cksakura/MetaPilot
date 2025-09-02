@@ -11,8 +11,13 @@ import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.control.cell.TextFieldTableCell;
+import javafx.util.converter.DefaultStringConverter;
 import javafx.beans.property.SimpleStringProperty;
 import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Reusable metadata configuration panel that can be used across different MetaPilot workflows.
@@ -112,7 +117,30 @@ public class MetadataConfigurationPanel extends VBox {
     private void createBasicMetadataTableColumns() {
         metadataTable.getColumns().clear();
         TableColumn<MetaPilotDdaIgcMaxQuantPanel.MetadataRow, String> sampleCol = new TableColumn<>("Sample");
-        sampleCol.setCellValueFactory(new PropertyValueFactory<>("sampleName"));
+        sampleCol.setCellValueFactory(cellData -> cellData.getValue().sampleNameProperty());
+        sampleCol.setCellFactory(column -> {
+            TextFieldTableCell<MetaPilotDdaIgcMaxQuantPanel.MetadataRow, String> cell = 
+                new TextFieldTableCell<MetaPilotDdaIgcMaxQuantPanel.MetadataRow, String>(new DefaultStringConverter()) {
+                @Override
+                public void startEdit() {
+                    super.startEdit();
+                    TextField textField = (TextField) getGraphic();
+                    if (textField != null) {
+                        // Commit edit when focus is lost (like Swing)
+                        textField.focusedProperty().addListener((obs, wasFocused, isNowFocused) -> {
+                            if (wasFocused && !isNowFocused && isEditing()) {
+                                commitEdit(textField.getText());
+                            }
+                        });
+                    }
+                }
+            };
+            return cell;
+        });
+        sampleCol.setOnEditCommit(e -> {
+            e.getRowValue().setSampleName(e.getNewValue());
+            notifyParameterUpdate();
+        });
         sampleCol.setMinWidth(120);
         sampleCol.setPrefWidth(150);
         metadataTable.getColumns().add(sampleCol);
@@ -122,35 +150,126 @@ public class MetadataConfigurationPanel extends VBox {
         this.parameterUpdateCallback = callback;
     }
     
-    public void updateMetadataFromIOPanel(ObservableList<MetaLabIOPanelFX.ExperimentRow> experiments) {
-        metadataTableData.clear();
-        for (MetaLabIOPanelFX.ExperimentRow exp : experiments) {
-            metadataTableData.add(new MetaPilotDdaIgcMaxQuantPanel.MetadataRow(exp.getExperimentName()));
+    public void updateMetadataFromIOPanel(ObservableList<MetaPilotIOPanelFX.ExperimentRow> experiments) {
+        // Check if experiment names have changed before clearing existing data
+        boolean experimentsChanged = false;
+        
+        // Check if the number of experiments changed
+        if (metadataTableData.size() != experiments.size()) {
+            experimentsChanged = true;
+        } else {
+            // Check if any experiment names changed
+            for (int i = 0; i < experiments.size(); i++) {
+                String expName = experiments.get(i).getExperimentName();
+                if (i >= metadataTableData.size() || !metadataTableData.get(i).getSampleName().equals(expName)) {
+                    experimentsChanged = true;
+                    break;
+                }
+            }
         }
+        
+        // Only recreate if experiments changed
+        if (experimentsChanged) {
+            // Save existing metadata before clearing
+            Map<String, MetaPilotDdaIgcMaxQuantPanel.MetadataRow> existingData = new HashMap<>();
+            for (MetaPilotDdaIgcMaxQuantPanel.MetadataRow row : metadataTableData) {
+                existingData.put(row.getSampleName(), row);
+            }
+            
+            metadataTableData.clear();
+            for (MetaPilotIOPanelFX.ExperimentRow exp : experiments) {
+                String expName = exp.getExperimentName();
+                MetaPilotDdaIgcMaxQuantPanel.MetadataRow metadataRow;
+                
+                // Try to restore existing data
+                if (existingData.containsKey(expName)) {
+                    metadataRow = existingData.get(expName);
+                } else {
+                    metadataRow = new MetaPilotDdaIgcMaxQuantPanel.MetadataRow(expName);
+                }
+                metadataTableData.add(metadataRow);
+            }
+        }
+        // If experiments haven't changed, preserve existing metadata
     }
     
     public void updateMetadataForQuantMode(String quantMode, boolean hasLabels, 
-                                          ObservableList<MetaLabIOPanelFX.ExperimentRow> fileRows,
+                                          ObservableList<MetaPilotIOPanelFX.ExperimentRow> fileRows,
                                           ObservableList<IsobaricLabelingPanel.IsobaricLabelRow> isobaricTableData) {
-        metadataTableData.clear();
         if (fileRows.isEmpty()) return;
         
-        createBasicMetadataTableColumns();
-        
+        // Calculate what the new structure should be
+        List<String> expectedSampleNames = new ArrayList<>();
         if (quantMode.contains("Isobaric") && hasLabels) {
-            for (MetaLabIOPanelFX.ExperimentRow row : fileRows) {
+            for (MetaPilotIOPanelFX.ExperimentRow row : fileRows) {
                 for (IsobaricLabelingPanel.IsobaricLabelRow isoLabel : isobaricTableData) {
-                    MetaPilotDdaIgcMaxQuantPanel.MetadataRow metadataRow = 
-                        new MetaPilotDdaIgcMaxQuantPanel.MetadataRow(row.getExperimentName());
-                    metadataRow.setLabelType("Isobaric - " + isoLabel.getLabelName());
-                    metadataTableData.add(metadataRow);
+                    String sampleName = row.getExperimentName() + "_" + isoLabel.getLabelName();
+                    expectedSampleNames.add(sampleName);
                 }
             }
         } else {
-            for (MetaLabIOPanelFX.ExperimentRow row : fileRows) {
-                metadataTableData.add(new MetaPilotDdaIgcMaxQuantPanel.MetadataRow(row.getExperimentName()));
+            for (MetaPilotIOPanelFX.ExperimentRow row : fileRows) {
+                expectedSampleNames.add(row.getExperimentName());
             }
         }
+        
+        // Check if the current structure matches the expected structure
+        boolean structureChanged = false;
+        if (metadataTableData.size() != expectedSampleNames.size()) {
+            structureChanged = true;
+        } else {
+            for (int i = 0; i < expectedSampleNames.size(); i++) {
+                if (!metadataTableData.get(i).getSampleName().equals(expectedSampleNames.get(i))) {
+                    structureChanged = true;
+                    break;
+                }
+            }
+        }
+        
+        // Only recreate if structure changed, otherwise preserve existing data
+        if (structureChanged) {
+            // Save existing metadata values before clearing
+            Map<String, MetaPilotDdaIgcMaxQuantPanel.MetadataRow> existingData = new HashMap<>();
+            for (MetaPilotDdaIgcMaxQuantPanel.MetadataRow row : metadataTableData) {
+                existingData.put(row.getSampleName(), row);
+            }
+            
+            metadataTableData.clear();
+            createBasicMetadataTableColumns();
+            
+            // Create new rows and restore data where possible
+            if (quantMode.contains("Isobaric") && hasLabels) {
+                for (MetaPilotIOPanelFX.ExperimentRow row : fileRows) {
+                    for (IsobaricLabelingPanel.IsobaricLabelRow isoLabel : isobaricTableData) {
+                        String sampleName = row.getExperimentName() + "_" + isoLabel.getLabelName();
+                        MetaPilotDdaIgcMaxQuantPanel.MetadataRow metadataRow;
+                        
+                        // Try to restore existing data
+                        if (existingData.containsKey(sampleName)) {
+                            metadataRow = existingData.get(sampleName);
+                        } else {
+                            metadataRow = new MetaPilotDdaIgcMaxQuantPanel.MetadataRow(sampleName);
+                            metadataRow.setLabelType("Isobaric - " + isoLabel.getLabelName());
+                        }
+                        metadataTableData.add(metadataRow);
+                    }
+                }
+            } else {
+                for (MetaPilotIOPanelFX.ExperimentRow row : fileRows) {
+                    String sampleName = row.getExperimentName();
+                    MetaPilotDdaIgcMaxQuantPanel.MetadataRow metadataRow;
+                    
+                    // Try to restore existing data
+                    if (existingData.containsKey(sampleName)) {
+                        metadataRow = existingData.get(sampleName);
+                    } else {
+                        metadataRow = new MetaPilotDdaIgcMaxQuantPanel.MetadataRow(sampleName);
+                    }
+                    metadataTableData.add(metadataRow);
+                }
+            }
+        }
+        // If structure hasn't changed, do nothing to preserve user edits
     }
     
     private void addMetadataColumn() {
@@ -168,20 +287,38 @@ public class MetadataConfigurationPanel extends VBox {
     
     private void addMetadataColumnWithProperty(String columnName, String propertyName) {
         TableColumn<MetaPilotDdaIgcMaxQuantPanel.MetadataRow, String> newCol = new TableColumn<>(columnName);
-        newCol.setCellValueFactory(data -> {
+        newCol.setCellValueFactory(cellData -> {
             switch (propertyName) {
-                case "age": return new SimpleStringProperty(data.getValue().getAge());
-                case "gender": return new SimpleStringProperty(data.getValue().getGender());
-                case "condition": return new SimpleStringProperty(data.getValue().getCondition());
-                case "treatment": return new SimpleStringProperty(data.getValue().getTreatment());
-                case "timePoint": return new SimpleStringProperty(data.getValue().getTimePoint());
-                case "customField1": return new SimpleStringProperty(data.getValue().getCustomField1());
-                case "customField2": return new SimpleStringProperty(data.getValue().getCustomField2());
-                case "customField3": return new SimpleStringProperty(data.getValue().getCustomField3());
+                case "age": return cellData.getValue().ageProperty();
+                case "gender": return cellData.getValue().genderProperty();
+                case "condition": return cellData.getValue().conditionProperty();
+                case "treatment": return cellData.getValue().treatmentProperty();
+                case "timePoint": return cellData.getValue().timePointProperty();
+                case "customField1": return cellData.getValue().customField1Property();
+                case "customField2": return cellData.getValue().customField2Property();
+                case "customField3": return cellData.getValue().customField3Property();
                 default: return new SimpleStringProperty("");
             }
         });
-        newCol.setCellFactory(TextFieldTableCell.forTableColumn());
+        newCol.setCellFactory(column -> {
+            TextFieldTableCell<MetaPilotDdaIgcMaxQuantPanel.MetadataRow, String> cell = 
+                new TextFieldTableCell<MetaPilotDdaIgcMaxQuantPanel.MetadataRow, String>(new DefaultStringConverter()) {
+                @Override
+                public void startEdit() {
+                    super.startEdit();
+                    TextField textField = (TextField) getGraphic();
+                    if (textField != null) {
+                        // Commit edit when focus is lost (like Swing)
+                        textField.focusedProperty().addListener((obs, wasFocused, isNowFocused) -> {
+                            if (wasFocused && !isNowFocused && isEditing()) {
+                                commitEdit(textField.getText());
+                            }
+                        });
+                    }
+                }
+            };
+            return cell;
+        });
         newCol.setOnEditCommit(e -> {
             switch (propertyName) {
                 case "age": e.getRowValue().setAge(e.getNewValue()); break;
@@ -236,5 +373,10 @@ public class MetadataConfigurationPanel extends VBox {
     
     public ObservableList<MetaPilotDdaIgcMaxQuantPanel.MetadataRow> getMetadataTableData() {
         return metadataTableData;
+    }
+    
+    public int getMetadataColumnCount() {
+        // Return number of metadata columns (excluding Sample and Label Type columns)
+        return Math.max(0, metadataTable.getColumns().size() - 1); // Subtract 1 for Sample column
     }
 } 

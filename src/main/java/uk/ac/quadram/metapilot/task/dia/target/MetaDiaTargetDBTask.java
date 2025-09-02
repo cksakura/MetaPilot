@@ -33,16 +33,14 @@ public class MetaDiaTargetDBTask extends MetaAbstractTask {
 	public MetaDiaTargetDBTask(MetaParameterDia metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar) {
 		super(metaPar, mrp, progressBar);
 		// TODO Auto-generated constructor stub
-	}
 
-	@Override
-	protected void initial() {
 		// TODO Auto-generated method stub
 		magDbDir = ((MetaParameterDia) this.metaPar).getMicroDb();
 //		String dbFile = magDbDir.replaceAll("\\\\", "/") + "/func2Pro.db";
 		this.eggnogDir = magDbDir + "\\eggNOG";
 		this.taxaFile = magDbDir + "\\genomes-all_metadata.tsv";
 //		this.DB_URL = "jdbc:sqlite:" + dbFile;
+	
 	}
 
 	@Override

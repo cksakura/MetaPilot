@@ -393,7 +393,7 @@ public class MetaLabParViewPanel extends JPanel {
 						}
 
 						if (workflowType == MetaLabWorkflowType.pFindMAG) {
-							MagDbItem magDbItem = ((MetaParameterMag) parV3).getUsedMagDbItem();
+							MagDbItem magDbItem = ((MetaParameterMag) par).getUsedMagDbItem();
 							if (magDbItem != null) {
 								DefaultMutableTreeNode magDbItemNode = new DefaultMutableTreeNode("MAG database");
 								magDbItemNode.add(new DefaultMutableTreeNode(magDbItem.getCatalogueID()));

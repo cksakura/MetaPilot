@@ -1,17 +1,17 @@
 # MetaPilot Resource Configuration
-# Generated on Sun Jun 22 16:06:37 EDT 2025
+# Generated on Tue Sep 02 09:23:22 BST 2025
 
-BASE_PATH=E:\Exported\Resources
+BASE_PATH=C:\Users\daz25hak\MetaProAI\Resources
 
 # Tool Paths
-MSCONVERT=E:\Exported\Resources\ProteoWizard\msconvert.exe
-FLASHLFQ=E:\Exported\Resources\FlashLFQ\CMD.exe
-SAGE=E:\Exported\Resources\sage\sage.exe
-PYTHON=E:\Exported\Resources\Python\python.exe
-PFIND=D:\DBReducer\pFind3\bin\pFind.exe
-MAXQUANT=E:\Exported\Resources\mq_bin\MaxQuantCmd.exe
-DBREDUCER=D:\DBReducer\DBReducer\DBReducer.exe
-DEEPDETECT=E:\Exported\Resources\DeepDetect\DeepDetect.exe
-FUNCDB=E:\Exported\Resources\function\func_def.db
-DIANN=C:\DIA-NN\2.0\diann.exe
-FRAGPIPE=E:\Exported\Resources\fragpipe\bin\fragpipe.bat
+PYTHON=C:\Users\daz25hak\MetaProAI\Resources\python-3.13.7-embed-amd64\python.exe
+DEEPDETECT=C:\Users\daz25hak\MetaProAI\Resources\DeepDetect\DeepDetect.exe
+DBREDUCER=C:\Users\daz25hak\MetaProAI\Resources\DBReducer\DBReducer\DBReducer.exe
+SAGE=C:\Users\daz25hak\MetaProAI\Resources\sage\sage.exe
+FLASHLFQ=C:\Users\daz25hak\MetaProAI\Resources\FlashLFQ\CMD.exe
+PFIND=C:\Users\daz25hak\MetaProAI\Resources\DBReducer\pFind3\bin\pFind.exe
+FRAGPIPE=C:\Users\daz25hak\MetaProAI\Resources\fragpipe\bin\fragpipe.bat
+DIANN=C:\Users\daz25hak\MetaProAI\Resources\DiaNN\diann.exe
+MSCONVERT=C:\Users\daz25hak\MetaProAI\Resources\ProteoWizard\msconvert.exe
+MAXQUANT=C:\Users\daz25hak\MetaProAI\Resources\mq_bin\MaxQuantCmd.exe
+FUNCDB=C:\Users\daz25hak\MetaProAI\Resources\function\func_def.db

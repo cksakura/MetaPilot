@@ -21,8 +21,8 @@ import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.BooleanProperty;
 import javafx.concurrent.Task;
 import javafx.scene.control.Alert.AlertType;
-import uk.ac.quadram.metapilot.task.common.gui.MetaLabIOPanelFX;
-import uk.ac.quadram.metapilot.task.common.gui.MetaLabIOPanelFX.ExperimentRow;
+import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
+import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX.ExperimentRow;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
@@ -53,7 +53,7 @@ import java.util.HashMap;
 
 public class MetaPilotDiaTargetPanel extends VBox {
     // UI Components - Database specific for MAG (like DIA workflows)
-    private MetaLabIOPanelFX ioPanel;
+    private MetaPilotIOPanelFX ioPanel;
     private ComboBox<MagDbItem> magDatabaseComboBox;
     private TextArea consoleOutput;
     private TextArea parameterView;
@@ -177,7 +177,7 @@ public class MetaPilotDiaTargetPanel extends VBox {
     private VBox createIOTab() {
         VBox tabContent = new VBox(10);
         tabContent.setPadding(new Insets(10));
-        ioPanel = new MetaLabIOPanelFX();
+        ioPanel = new MetaPilotIOPanelFX();
         VBox databaseSection = createDatabaseSection();
         tabContent.getChildren().addAll(
             createSectionTitle("Input/Output Settings"),
@@ -666,9 +666,9 @@ public class MetaPilotDiaTargetPanel extends VBox {
             return;
         }
         
-        ObservableList<MetaLabIOPanelFX.ExperimentRow> experiments = ioPanel.getExperimentData();
+        ObservableList<MetaPilotIOPanelFX.ExperimentRow> experiments = ioPanel.getExperimentData();
         metadataTableData.clear();
-        for (MetaLabIOPanelFX.ExperimentRow exp : experiments) {
+        for (MetaPilotIOPanelFX.ExperimentRow exp : experiments) {
             metadataTableData.add(new MetaPilotDdaIgcMaxQuantPanel.MetadataRow(exp.getExperimentName()));
         }
     }

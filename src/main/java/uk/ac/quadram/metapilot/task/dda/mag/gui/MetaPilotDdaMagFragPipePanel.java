@@ -1,6 +1,5 @@
 package uk.ac.quadram.metapilot.task.dda.mag.gui;
 
-import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
@@ -22,44 +21,24 @@ import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.SimpleDoubleProperty;
 import javafx.beans.property.DoubleProperty;
-import javafx.concurrent.Task;
-import javafx.scene.control.Alert.AlertType;
-import uk.ac.quadram.metapilot.task.common.gui.MetaLabIOPanelFX;
-import uk.ac.quadram.metapilot.task.common.gui.MetaLabIOPanelFX.ExperimentRow;
+import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
 import uk.ac.quadram.metapilot.task.common.gui.IsobaricLabelingPanel;
-import uk.ac.quadram.metapilot.task.par.MetaData;
-import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
-import uk.ac.quadram.metapilot.task.par.MetaConstants;
-import uk.ac.quadram.metapilot.task.MetaLabWorkflowType;
-import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.core.mod.IsobaricTag;
 import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.par.MetaParameterMag;
-import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
-import javafx.util.Duration;
-import java.lang.management.ManagementFactory;
-import java.lang.management.OperatingSystemMXBean;
-import java.lang.management.MemoryMXBean;
-import java.lang.management.MemoryUsage;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.io.File;
-import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
-import uk.ac.quadram.metapilot.task.v2.par.MaxQuantModIO;
-import java.util.HashMap;
 
 public class MetaPilotDdaMagFragPipePanel extends VBox {
     // UI Components - Database specific for MAG
-    private MetaLabIOPanelFX ioPanel;
+    private MetaPilotIOPanelFX ioPanel;
     private ComboBox<MagDbItem> magDatabaseComboBox;
     private TextField hostDBField;
     private CheckBox appendHostDBCheckBox;
@@ -118,12 +97,17 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
     // MAG database items
     private ObservableList<MagDbItem> availableMagDatabases = FXCollections.observableArrayList();
 
-    public MetaPilotDdaMagFragPipePanel() {
-        loadEnzymesFromIni();
-        loadIsobaricBaseTypes();
-        initializeModificationData();
-        initializeUI();
-    }
+	public MetaPilotDdaMagFragPipePanel(MagDbItem[] magDbItems) {
+		loadEnzymesFromIni();
+		loadIsobaricBaseTypes();
+		initializeModificationData();
+		if (magDbItems != null) {
+			for (MagDbItem item : magDbItems) {
+				availableMagDatabases.add(item);
+			}
+		}
+		initializeUI();
+	}
 
     public MetaPilotDdaMagFragPipePanel(MetaParameterMag metaParameterMag) {
         loadEnzymesFromIni();
@@ -196,7 +180,7 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
     private VBox createIOTab() {
         VBox tabContent = new VBox(10);
         tabContent.setPadding(new Insets(10));
-        ioPanel = new MetaLabIOPanelFX();
+        ioPanel = new MetaPilotIOPanelFX();
         VBox databaseSection = createDatabaseSection();
         tabContent.getChildren().addAll(
             createSectionTitle("Input/Output Settings"),
@@ -934,9 +918,9 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
             return;
         }
         
-        ObservableList<MetaLabIOPanelFX.ExperimentRow> experiments = ioPanel.getExperimentData();
+        ObservableList<MetaPilotIOPanelFX.ExperimentRow> experiments = ioPanel.getExperimentData();
         metadataTableData.clear();
-        for (MetaLabIOPanelFX.ExperimentRow exp : experiments) {
+        for (MetaPilotIOPanelFX.ExperimentRow exp : experiments) {
             metadataTableData.add(new MetaPilotDdaIgcMaxQuantPanel.MetadataRow(exp.getExperimentName()));
         }
     }
@@ -1131,7 +1115,7 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
         }
         
         metadataTableData.clear();
-        ObservableList<MetaLabIOPanelFX.ExperimentRow> fileRows = ioPanel.getExperimentData();
+        ObservableList<MetaPilotIOPanelFX.ExperimentRow> fileRows = ioPanel.getExperimentData();
         if (fileRows.isEmpty()) return;
 
         createMetadataTableColumns();
@@ -1142,7 +1126,7 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
             boolean hasLabels = !isobaricTableData.isEmpty();
 
             if (mode.contains("Isobaric") && hasLabels) {
-                for (MetaLabIOPanelFX.ExperimentRow row : fileRows) {
+                for (MetaPilotIOPanelFX.ExperimentRow row : fileRows) {
                     for (IsobaricLabelingPanel.IsobaricLabelRow isoLabel : isobaricTableData) {
                         MetaPilotDdaIgcMaxQuantPanel.MetadataRow metadataRow = 
                             new MetaPilotDdaIgcMaxQuantPanel.MetadataRow(row.getExperimentName());
@@ -1151,7 +1135,7 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
                     }
                 }
             } else {
-                for (MetaLabIOPanelFX.ExperimentRow row : fileRows) {
+                for (MetaPilotIOPanelFX.ExperimentRow row : fileRows) {
                     metadataTableData.add(new MetaPilotDdaIgcMaxQuantPanel.MetadataRow(row.getExperimentName()));
                 }
             }

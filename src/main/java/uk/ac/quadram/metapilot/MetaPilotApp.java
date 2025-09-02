@@ -2,7 +2,6 @@ package uk.ac.quadram.metapilot;
 
 import javafx.application.Application;
 import javafx.application.Platform;
-import javafx.embed.swing.SwingNode;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -13,47 +12,21 @@ import javafx.scene.control.MenuBar;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.layout.*;
-import javafx.stage.DirectoryChooser;
-import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
-import javafx.scene.paint.Color;
-import javafx.scene.shape.Circle;
-import javafx.scene.Node;
 import java.io.File;
-import java.io.IOException;
-import java.net.URISyntaxException;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.ArrayList;
 import java.util.prefs.Preferences;
-import javax.swing.SwingUtilities;
-import javax.swing.JPanel;
-import javafx.collections.FXCollections;
-import javafx.collections.ObservableList;
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import javafx.concurrent.Task;
 
-import uk.ac.quadram.metapilot.task.pfind.gui.MetaPilotPFindMainFrame;
-import uk.ac.quadram.metapilot.task.mag.gui.MetaPilotMainFrameMag;
-import uk.ac.quadram.metapilot.task.dia.gui.MetaPilotMainFrameDia;
-import uk.ac.quadram.metapilot.task.dia.target.gui.MetaPilotMainFrameDiaTg;
-import uk.ac.quadram.metapilot.task.dia.monitor.gui.MetaPilotMainFrameDiaRT;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
+import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagVersion;
 import uk.ac.quadram.metapilot.task.mag.MagDbConfigIO;
-import uk.ac.quadram.metapilot.task.mag.gui.MagDbConfigPanel;
 import uk.ac.quadram.metapilot.task.mag.gui.MagDbConfigPanelJavaFX;
-import uk.ac.quadram.metapilot.core.MGYG.MGYGFtpTask;
-import javafx.scene.control.cell.TextFieldTableCell;
-
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceIO;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.ui.ResourceConfigPanel;
-import uk.ac.quadram.metapilot.workflows.ResourceConfigWorkflow;
 import uk.ac.quadram.metapilot.registration.RegistrationManager;
 import uk.ac.quadram.metapilot.registration.UserRegistration;
 import uk.ac.quadram.metapilot.ui.RegistrationDialog;
@@ -169,7 +142,7 @@ public class MetaPilotApp extends Application {
     
     private MetaResourceParameters resourceParams;
     private MetaResourceIO resourceIO;
-    
+        
     // The MAG database items
     private MagDbItem[][] magDbItems;
     
@@ -199,7 +172,7 @@ public class MetaPilotApp extends Application {
         // Initialize the resource parameters
         resourceIO = new MetaResourceIO();
         resourceParams = resourceIO.loadParameters();
-        
+
         // Load MAG database configuration
         try {
             // Try to load from the version file in the current directory
@@ -600,6 +573,27 @@ public class MetaPilotApp extends Application {
             return;
         }
         
+        ArrayList<MagDbItem> list = new ArrayList<MagDbItem>();
+		if (magDbItems != null && magDbItems.length > 0) {
+			for (int i = 0; i < magDbItems.length; i++) {
+				for (int j = 0; j < magDbItems[i].length; j++) {
+					boolean use = false;
+					ArrayList<MagVersion> verlist = magDbItems[i][j].getVersionList();
+					for (int k = 0; k < verlist.size(); k++) {
+						if (verlist.get(k).isLocalAvailable()) {
+							use = true;
+							break;
+						}
+					}
+
+					if (use) {
+						list.add(magDbItems[i][j]);
+					}
+				}
+			}
+		}
+		MagDbItem[] items = list.toArray(new MagDbItem[list.size()]);
+        
         try {
             switch (type) {
                 case DDA_IGC_MAXQUANT:
@@ -710,7 +704,7 @@ public class MetaPilotApp extends Application {
                     pFindMagStage.setTitle("DDA MAG pFind Workflow");
 
                     // Create the pFind panel
-                    MetaPilotDdaMagPfindPanel pFindMagPanel = new MetaPilotDdaMagPfindPanel();
+                    MetaPilotDdaMagPfindPanel pFindMagPanel = new MetaPilotDdaMagPfindPanel(items);
 
                     // Create a scene with the panel
                     Scene pFindMagScene = new Scene(pFindMagPanel);
@@ -735,7 +729,7 @@ public class MetaPilotApp extends Application {
                     fragPipeMagStage.setTitle("DDA MAG FragPipe Workflow");
 
                     // Create the MAG FragPipe panel
-                    MetaPilotDdaMagFragPipePanel fragPipeMagPanel = new MetaPilotDdaMagFragPipePanel();
+                    MetaPilotDdaMagFragPipePanel fragPipeMagPanel = new MetaPilotDdaMagFragPipePanel(items);
 
                     // Create a scene with the panel
                     Scene fragPipeMagScene = new Scene(fragPipeMagPanel);
@@ -974,6 +968,15 @@ public class MetaPilotApp extends Application {
     }
     
     public static void main(String[] args) {
-        launch(args);
+        // Check if running in CLI mode
+        if (args.length > 0 && args[0].equals("--cli")) {
+            // Remove --cli from args and pass to CLI class
+            String[] cliArgs = new String[args.length - 1];
+            System.arraycopy(args, 1, cliArgs, 0, cliArgs.length);
+            MetaPilotCLI.main(cliArgs);
+        } else {
+            launch(args);
+        }
     }
+
 } 

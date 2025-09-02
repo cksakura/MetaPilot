@@ -5,7 +5,6 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
-import javafx.stage.DirectoryChooser;
 import javafx.stage.FileChooser;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -17,22 +16,17 @@ import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.util.converter.DefaultStringConverter;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
-import javafx.concurrent.Task;
 import javafx.scene.control.Alert.AlertType;
-import uk.ac.quadram.metapilot.task.common.gui.MetaLabIOPanelFX;
-import uk.ac.quadram.metapilot.task.common.gui.MetaLabIOPanelFX.ExperimentRow;
+import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
+import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX.ExperimentRow;
+import uk.ac.quadram.metapilot.task.common.gui.TaxonomicAnalysisPanel;
 import uk.ac.quadram.metapilot.task.par.MetaData;
-import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
-import uk.ac.quadram.metapilot.task.MetaLabWorkflowType;
-import uk.ac.quadram.metapilot.task.v2.par.MetaParameterMQ;
-import uk.ac.quadram.metapilot.task.v2.par.MetaMaxQuantPar;
-import uk.ac.quadram.metapilot.task.v2.par.MetaOpenPar;
-import uk.ac.quadram.metapilot.task.par.MetaPep2TaxaPar;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
-import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantModification;
 import uk.ac.quadram.metapilot.core.mod.IsobaricTag;
 import uk.ac.quadram.metapilot.task.dda.igc.DDAIgcMaxQuantTask;
+import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcMaxQuantParameters;
+import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcMaxQuantParameterIO;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.util.Duration;
@@ -48,19 +42,17 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
-import org.w3c.dom.NodeList;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
+    private static final Logger LOGGER = LogManager.getLogger(MetaPilotDdaIgcMaxQuantPanel.class);
+    
     // UI Components
-    private MetaLabIOPanelFX ioPanel;
+    private MetaPilotIOPanelFX ioPanel;
     private TextField microbiomeDBField;
     private TextField hostDBField;
     private CheckBox appendHostDBCheckBox;
@@ -124,16 +116,8 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
     private TableView<IsobaricLabelRow> isobaricTable;
     private ObservableList<IsobaricLabelRow> isobaricTableData = FXCollections.observableArrayList();
     
-    // Taxonomic analysis components
-    private CheckBox eukaryotaCheckBox;
-    private CheckBox bacteriaCheckBox;
-    private CheckBox archaeaCheckBox;
-    private CheckBox virusesCheckBox;
-    private CheckBox viroidsCheckBox;
-    private CheckBox unclassifiedCheckBox;
-    private CheckBox otherCheckBox;
-    private ComboBox<String> ignoreRankComboBox;
-    private CheckBox environmentalSamplesCheckBox;
+    // Taxonomic analysis panel
+    private TaxonomicAnalysisPanel taxonomicAnalysisPanel;
     
     // Metadata configuration components
     private TableView<MetadataRow> metadataTable;
@@ -151,6 +135,13 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
     
     public MetaPilotDdaIgcMaxQuantPanel() {
         initializeUI();
+        
+        // Note: Parameters are only saved when starting analysis or explicitly requested
+        
+        // Load parameters after UI is fully initialized
+        Platform.runLater(() -> {
+            loadLastUsedParameters();
+        });
     }
     
     private void initializeUI() {
@@ -181,9 +172,22 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
         tabPane.getTabs().addAll(ioTab, paramTab, consoleTab);
         
         // Add tab change listener to update metadata when Parameters tab is selected
+        // and save parameters when Console tab is selected
         tabPane.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, newTab) -> {
             if (newTab == paramTab) {
                 updateMetadataTableFromIOPanel();
+            } else if (newTab == consoleTab) {
+                // Save current parameters when Console tab is selected
+                try {
+                    DDAIgcMaxQuantParameters currentParams = collectParametersFromUI();
+                    if (currentParams != null) {
+                        DDAIgcMaxQuantParameterIO.saveLastUsedParameters(currentParams);
+                        DDAIgcMaxQuantParameterIO.savePreferences(currentParams);
+                        LOGGER.info("Saved current parameters when Console tab was selected");
+                    }
+                } catch (Exception e) {
+                    LOGGER.warn("Failed to save parameters when Console tab was selected: " + e.getMessage());
+                }
             }
         });
         
@@ -236,7 +240,11 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
         tabContent.setPadding(new Insets(10));
         
         // Add IO Panel
-        ioPanel = new MetaLabIOPanelFX();
+        ioPanel = new MetaPilotIOPanelFX();
+        
+        // Add listener to IO panel to save parameters when experiment data changes
+        // Note: We'll need to check if the IO panel has observable properties
+        // For now, we'll rely on the individual field listeners
         
         // Add Database Panel
         VBox databaseSection = createDatabaseSection();
@@ -261,6 +269,9 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
         microbiomeDBField = new TextField();
         microbiomeDBField.setPromptText("Select microbiome database file");
         microbiomeDBField.setPrefWidth(400);
+        microbiomeDBField.textProperty().addListener((obs, oldVal, newVal) -> {
+            updateParameterView();
+        });
         browseMicrobiomeDBButton = new Button("Browse");
         browseMicrobiomeDBButton.setOnAction(e -> browseMicrobiomeDatabase());
         microbiomeDBBox.getChildren().addAll(new Label("Microbiome Database:"), microbiomeDBField, browseMicrobiomeDBButton);
@@ -268,7 +279,10 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
         // Append Host Database
         HBox appendHostBox = new HBox(10);
         appendHostDBCheckBox = new CheckBox("Append Host Database");
-        appendHostDBCheckBox.setOnAction(e -> updateHostDBVisibility());
+        appendHostDBCheckBox.setOnAction(e -> {
+            updateHostDBVisibility();
+            updateParameterView();
+        });
         appendHostBox.getChildren().add(appendHostDBCheckBox);
         
         // Host Database
@@ -277,6 +291,9 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
         hostDBField.setPromptText("Select host database file");
         hostDBField.setPrefWidth(400);
         hostDBField.setDisable(true);
+        hostDBField.textProperty().addListener((obs, oldVal, newVal) -> {
+            updateParameterView();
+        });
         browseHostDBButton = new Button("Browse");
         browseHostDBButton.setDisable(true);
         browseHostDBButton.setOnAction(e -> browseHostDatabase());
@@ -334,6 +351,9 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
         // Load enzymes and modifications from XML
         loadEnzymesAndModifications();
         
+        // Initialize taxonomic analysis panel
+        taxonomicAnalysisPanel = new TaxonomicAnalysisPanel(this::updateParameterView);
+        
         // Create main grid layout for parameters with 2-column responsive sizing
         GridPane mainGrid = new GridPane();
         mainGrid.setHgap(15);
@@ -365,9 +385,8 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
         leftColumn.setMinWidth(430);
         VBox enzymeSection = createEnzymeSection();
         VBox additionalParamsSection = createAdditionalParametersSection();
-        VBox taxonomicSection = createTaxonomicAnalysisSection();
         VBox modificationsSection = createModificationsSection();
-        leftColumn.getChildren().addAll(enzymeSection, additionalParamsSection, taxonomicSection, modificationsSection);
+        leftColumn.getChildren().addAll(enzymeSection, additionalParamsSection, taxonomicAnalysisPanel, modificationsSection);
         GridPane.setVgrow(leftColumn, Priority.ALWAYS);
         
         // Right column: Quantitative Mode and Metadata Configuration (stacked)
@@ -790,59 +809,7 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
         return panel;
     }
     
-    private VBox createTaxonomicAnalysisSection() {
-        VBox section = new VBox(8);
-        section.setPadding(new Insets(8));
-        section.setStyle("-fx-background-color: #f0fff0; -fx-background-radius: 5;");
-        
-        Label titleLabel = createSectionTitle("Taxonomic Analysis");
-        
-        // Taxa selection (horizontal compact grid - more columns, fewer rows)
-        Label taxaLabel = new Label("Taxa from which top nodes showed in result:");
-        taxaLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 11px;");
-        
-        GridPane taxaGrid = new GridPane();
-        taxaGrid.setHgap(8);
-        taxaGrid.setVgap(5);
-        
-        eukaryotaCheckBox = new CheckBox("Eukaryota");
-        bacteriaCheckBox = new CheckBox("Bacteria");
-        archaeaCheckBox = new CheckBox("Archaea");
-        virusesCheckBox = new CheckBox("Viruses");
-        viroidsCheckBox = new CheckBox("Viroids");
-        unclassifiedCheckBox = new CheckBox("Unclassified");
-        otherCheckBox = new CheckBox("Other");
-        
-        // Arrange in 4 columns, 2 rows for better width utilization
-        taxaGrid.add(eukaryotaCheckBox, 0, 0);
-        taxaGrid.add(bacteriaCheckBox, 1, 0);
-        taxaGrid.add(archaeaCheckBox, 2, 0);
-        taxaGrid.add(virusesCheckBox, 3, 0);
-        taxaGrid.add(viroidsCheckBox, 0, 1);
-        taxaGrid.add(unclassifiedCheckBox, 1, 1);
-        taxaGrid.add(otherCheckBox, 2, 1);
-        
-        // Ignore rank - compact horizontal layout
-        HBox rankBox = new HBox(8);
-        rankBox.setAlignment(Pos.CENTER_LEFT);
-        Label rankLabel = new Label("Ignore blanks below rank:");
-        rankLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 11px;");
-        ignoreRankComboBox = new ComboBox<>(FXCollections.observableArrayList(
-            "Superkingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species"));
-        ignoreRankComboBox.setValue("Species");
-        ignoreRankComboBox.setMinWidth(80);
-        ignoreRankComboBox.setPrefWidth(100);
-        ignoreRankComboBox.setMaxWidth(Double.MAX_VALUE);
-        ignoreRankComboBox.setOnAction(e -> updateParameterView());
-        rankBox.getChildren().addAll(rankLabel, ignoreRankComboBox);
-        
-        environmentalSamplesCheckBox = new CheckBox("Ignore environmental samples");
-        environmentalSamplesCheckBox.setOnAction(e -> updateParameterView());
-        
-        section.getChildren().addAll(titleLabel, taxaLabel, taxaGrid, rankBox, environmentalSamplesCheckBox);
-        
-        return section;
-    }
+
     
     private VBox createMetadataConfigurationSection() {
         VBox section = new VBox(10);
@@ -934,6 +901,11 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
         // Sample/Experiment column
         TableColumn<MetadataRow, String> sampleCol = new TableColumn<>("Sample");
         sampleCol.setCellValueFactory(new PropertyValueFactory<>("sampleName"));
+        sampleCol.setCellFactory(TextFieldTableCell.forTableColumn(new DefaultStringConverter()));
+        sampleCol.setOnEditCommit(e -> {
+            e.getRowValue().setSampleName(e.getNewValue());
+            updateParameterView();
+        });
         sampleCol.setMinWidth(100);
         sampleCol.setPrefWidth(120);
         
@@ -996,7 +968,9 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
             } else if (mode.contains("Isobaric") && hasLabels) {
                 for (String expName : experimentNames) {
                     for (IsobaricLabelRow isoLabel : isobaricTableData) {
-                        MetadataRow row = new MetadataRow(expName);
+                        // Create sample name combining experiment name and label name
+                        String sampleName = expName + "_" + isoLabel.getLabelName();
+                        MetadataRow row = new MetadataRow(sampleName);
                         row.setLabelType("Isobaric - " + isoLabel.getLabelName());
                         metadataTableData.add(row);
                     }
@@ -1040,6 +1014,7 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
                 case "customField2": row.setCustomField2(newValue); break;
                 case "customField3": row.setCustomField3(newValue); break;
             }
+            updateParameterView();
         });
         column.setMinWidth(80);
         column.setPrefWidth(100);
@@ -1310,17 +1285,17 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
     
     private void loadEnzymesAndModifications() {
         try {
-            // Load enzymes from XML using proper resource loading
+            // Load enzymes from XML using dom4j
             InputStream enzymesStream = getClass().getClassLoader().getResourceAsStream("enzymes.xml");
             if (enzymesStream != null) {
-                DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-                DocumentBuilder builder = factory.newDocumentBuilder();
-                Document doc = builder.parse(enzymesStream);
+                org.dom4j.io.SAXReader reader = new org.dom4j.io.SAXReader();
+                org.dom4j.Document doc = reader.read(enzymesStream);
                 
-                NodeList enzymeNodes = doc.getElementsByTagName("enzyme");
-                for (int i = 0; i < enzymeNodes.getLength(); i++) {
-                    Element enzyme = (Element) enzymeNodes.item(i);
-                    String title = enzyme.getAttribute("title");
+                // Use element() method instead of XPath to avoid Jaxen dependency
+                org.dom4j.Element root = doc.getRootElement();
+                java.util.List<org.dom4j.Element> enzymeElements = root.elements("enzyme");
+                for (org.dom4j.Element enzyme : enzymeElements) {
+                    String title = enzyme.attributeValue("title");
                     if (title != null && !title.isEmpty()) {
                         enzymes.add(title);
                     }
@@ -1332,24 +1307,24 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
                 System.err.println("ERROR: enzymes.xml not found in classpath");
             }
             
-            // Load modifications from XML using proper resource loading
+            // Load modifications from XML using dom4j
             InputStream modificationsStream = getClass().getClassLoader().getResourceAsStream("modifications.xml");
             if (modificationsStream != null) {
-                DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-                DocumentBuilder builder = factory.newDocumentBuilder();
-                Document doc = builder.parse(modificationsStream);
+                org.dom4j.io.SAXReader reader = new org.dom4j.io.SAXReader();
+                org.dom4j.Document doc = reader.read(modificationsStream);
                 
-                NodeList modNodes = doc.getElementsByTagName("modification");
-                for (int i = 0; i < modNodes.getLength(); i++) {
-                    Element mod = (Element) modNodes.item(i);
-                    String title = mod.getAttribute("title");
+                // Use element() method instead of XPath to avoid Jaxen dependency
+                org.dom4j.Element root = doc.getRootElement();
+                java.util.List<org.dom4j.Element> modElements = root.elements("modification");
+                for (org.dom4j.Element mod : modElements) {
+                    String title = mod.attributeValue("title");
                     if (title != null && !title.isEmpty()) {
                         modifications.add(title);
                     }
                     // Add label modifications
-                    NodeList typeNodes = mod.getElementsByTagName("type");
-                    if (typeNodes.getLength() > 0) {
-                        String type = typeNodes.item(0).getTextContent();
+                    org.dom4j.Element typeElement = mod.element("type");
+                    if (typeElement != null) {
+                        String type = typeElement.getTextTrim();
                         if ("Label".equalsIgnoreCase(type)) {
                             if (title != null && !title.isEmpty() && !labelModifications.contains(title)) {
                                 labelModifications.add(title);
@@ -1469,16 +1444,7 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
         }
         
         // Taxonomic analysis
-        sb.append("\n=== TAXONOMIC ANALYSIS ===\n");
-        sb.append("Eukaryota: ").append(eukaryotaCheckBox.isSelected() ? "Yes" : "No").append("\n");
-        sb.append("Bacteria: ").append(bacteriaCheckBox.isSelected() ? "Yes" : "No").append("\n");
-        sb.append("Archaea: ").append(archaeaCheckBox.isSelected() ? "Yes" : "No").append("\n");
-        sb.append("Viruses: ").append(virusesCheckBox.isSelected() ? "Yes" : "No").append("\n");
-        sb.append("Viroids: ").append(viroidsCheckBox.isSelected() ? "Yes" : "No").append("\n");
-        sb.append("Unclassified: ").append(unclassifiedCheckBox.isSelected() ? "Yes" : "No").append("\n");
-        sb.append("Other: ").append(otherCheckBox.isSelected() ? "Yes" : "No").append("\n");
-        sb.append("Ignore Rank: ").append(ignoreRankComboBox.getValue()).append("\n");
-        sb.append("Ignore Environmental Samples: ").append(environmentalSamplesCheckBox.isSelected() ? "Yes" : "No").append("\n");
+        sb.append("\n").append(taxonomicAnalysisPanel.getTaxonomicSummary());
         
         parameterView.setText(sb.toString());
     }
@@ -1509,115 +1475,74 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
     
     private void startAnalysis() {
         try {
-            // Collect parameters from UI
-            ObservableList<ExperimentRow> fileRows = ioPanel.getExperimentData();
-            if (fileRows.isEmpty()) {
-                showAlert("Error", "No files selected for analysis.");
+            // Validate inputs first
+            if (!validateInputs()) {
                 return;
             }
-            String[] rawFiles = new String[fileRows.size()];
-            String[] expNames = new String[fileRows.size()];
-            int[] fractions = new int[fileRows.size()];
-            int[] replicates = new int[fileRows.size()];
-            for (int i = 0; i < fileRows.size(); i++) {
-                ExperimentRow row = fileRows.get(i);
-                rawFiles[i] = row.getFilePath();
-                expNames[i] = row.getExperimentName();
-                fractions[i] = 0; // Default fraction
-                replicates[i] = 1; // Default replicate
-            }
-            MetaData metadata = new MetaData(rawFiles, expNames, fractions, replicates);
-            String resultDir = ioPanel.getOutputDirectory();
-            if (resultDir == null || resultDir.trim().isEmpty()) {
-                showAlert("Error", "Please select a result directory.");
-                return;
-            }
-            String microDb = microbiomeDBField.getText();
-            if (microDb == null || microDb.trim().isEmpty()) {
-                showAlert("Error", "Please select a database file.");
-                return;
-            }
-            boolean appendHostDb = appendHostDBCheckBox.isSelected();
-            String hostDB = appendHostDb ? hostDBField.getText() : "";
-            String selectedEnzymeStr = enzymeComboBox.getValue();
-            if (selectedEnzymeStr == null) {
-                selectedEnzymeStr = "Trypsin"; // Default
-            }
-            int missCleavages = missedCleavagesSpinner.getValue();
-            String digestMode = digestionModeComboBox.getValue();
-            // 1. Create MetaBaseParameter
-            String workflowType = MetaLabWorkflowType.MaxQuantWorkflow.name();
-            String ms2ScanMode = MetaConstants.HCD_FTMS; // Default
-            int coreCount = Runtime.getRuntime().availableProcessors();
-            int threadCount = Math.max(1, coreCount - 1); // Leave one core free
-            boolean isMetaWorkflow = true;
-            MetaBaseParameter metaBasePar = new MetaBaseParameter(workflowType, metadata, resultDir, microDb, 
-                    appendHostDb, hostDB, ms2ScanMode, coreCount, threadCount, isMetaWorkflow);
-            // 2. Set modifications (String[])
-            metaBasePar.setFixMods(fixedModifications.toArray(new String[0]));
-            metaBasePar.setVariMods(variableModifications.toArray(new String[0]));
-            // 3. Set enzyme and digestion mode (String)
-            metaBasePar.setEnzyme(selectedEnzymeStr);
-            metaBasePar.setDigestMode(digestMode);
-            metaBasePar.setMissCleavages(missCleavages);
-            // 4. Set isotopic labels (String[][])
-            String[][] labels = new String[3][];
-            labels[0] = lightLabels.toArray(new String[0]);
-            labels[1] = mediumLabels.toArray(new String[0]);
-            labels[2] = heavyLabels.toArray(new String[0]);
-            metaBasePar.setIsotopicLabels(labels);
-            // 5. Set isobaric tag (IsobaricTag) from ComboBox using getName()
-            String isobaricType = isobaricTypeComboBox.getValue();
-            if (isobaricType != null && !isobaricType.isEmpty()) {
-                for (IsobaricTag tag : IsobaricTag.values()) {
-                    if (tag.getName().equals(isobaricType)) {
-                        metaBasePar.setIsobaricTag(tag);
-                        break;
-                    }
+            
+            // Collect ALL parameters from UI into a single object
+            DDAIgcMaxQuantParameters analysisParams = collectParametersFromUI();
+            
+            // Save parameters for this analysis and as last used
+            String outputDir = analysisParams.getResult();
+            if (outputDir != null && !outputDir.trim().isEmpty()) {
+                // Save analysis-specific parameters
+                boolean analysisParamsSaved = DDAIgcMaxQuantParameterIO.saveAnalysisParameters(outputDir, analysisParams);
+                if (!analysisParamsSaved) {
+                    LOGGER.warn("Failed to save analysis parameters to {}/analysis_parameters.json", outputDir);
+                    showAlert("Warning", "Failed to save analysis parameters to result directory. Analysis will continue but parameters may not be preserved.");
+                } else {
+                    LOGGER.info("Saved analysis parameters to {}/analysis_parameters.json", outputDir);
                 }
-            } else {
-                metaBasePar.setIsobaricTag(null);
-            }
-            // 6. Set isobaric correction factors (double[][])
-            if (!isobaricTableData.isEmpty()) {
-                double[][] isoCorFactor = new double[isobaricTableData.size()][4];
-                for (int i = 0; i < isobaricTableData.size(); i++) {
-                    IsobaricLabelRow row = isobaricTableData.get(i);
-                    try {
-                        isoCorFactor[i][0] = Double.parseDouble(row.getMinus2());
-                        isoCorFactor[i][1] = Double.parseDouble(row.getMinus1());
-                        isoCorFactor[i][2] = Double.parseDouble(row.getPlus1());
-                        isoCorFactor[i][3] = Double.parseDouble(row.getPlus2());
-                    } catch (NumberFormatException e) {
-                        isoCorFactor[i][0] = 0.0;
-                        isoCorFactor[i][1] = 0.0;
-                        isoCorFactor[i][2] = 0.0;
-                        isoCorFactor[i][3] = 0.0;
-                    }
+                
+                // Save as last used parameters
+                boolean lastParamsSaved = DDAIgcMaxQuantParameterIO.saveLastUsedParameters(analysisParams);
+                if (!lastParamsSaved) {
+                    LOGGER.warn("Failed to save last used parameters");
                 }
-                metaBasePar.setIsobaricRefTable(isoCorFactor);
+                
+                // Also save to preferences for quick defaults
+                DDAIgcMaxQuantParameterIO.savePreferences(analysisParams);
             }
-            // 7. Create MetaResourceParameters
-            MetaResourceParameters mrp = new MetaResourceParameters();
-            // 8. Create JavaFXProgressBar for overall and current task
+            
+            // Create MetaResourceParameters by loading from config file
+            uk.ac.quadram.metapilot.resources.MetaResourceIO resourceIO = new uk.ac.quadram.metapilot.resources.MetaResourceIO();
+            MetaResourceParameters mrp = resourceIO.loadParameters();
+            
+            // Create JavaFXProgressBar for overall and current task
             uk.ac.quadram.metapilot.gui.JavaFXProgressBar overallBar = new uk.ac.quadram.metapilot.gui.JavaFXProgressBar(0, 100, 0);
             uk.ac.quadram.metapilot.gui.JavaFXProgressBar currentBar = new uk.ac.quadram.metapilot.gui.JavaFXProgressBar(0, 100, 0);
-            // 9. Bind progress bars to UI
+            
+            // Bind progress bars to UI
             overallProgressBar.progressProperty().bind(overallBar.getProgressBar().progressProperty());
             currentTaskProgressBar.progressProperty().bind(currentBar.getProgressBar().progressProperty());
-            // 10. Create and run DDAIgcMaxQuantTask
-            DDAIgcMaxQuantTask task = new DDAIgcMaxQuantTask(metaBasePar, mrp, overallBar, currentBar);
-            // 11. Bind task message to currentTaskLabel
+            
+            // Create and run DDAIgcMaxQuantTask with the single parameters object
+            DDAIgcMaxQuantTask task = new DDAIgcMaxQuantTask(analysisParams, mrp, overallBar, currentBar);
+            
+            // Bind task message to currentTaskLabel
             task.messageProperty().addListener((obs, oldMsg, newMsg) -> {
                 Platform.runLater(() -> currentTaskLabel.setText("Current Task: " + newMsg));
             });
-            // 12. Handle task completion
+            
+            // Handle task completion
             task.setOnSucceeded(e -> {
                 Platform.runLater(() -> {
                     startButton.setDisable(false);
                     stopButton.setDisable(true);
                     if (statusTimeline != null) statusTimeline.stop();
-                    showAlert("Success", "Analysis completed successfully.");
+                    
+                    // Check if the task actually succeeded by examining the result
+                    try {
+                        Boolean result = task.get();
+                        if (result != null && result) {
+                            showAlert("Success", "Analysis completed successfully.");
+                        } else {
+                            showAlert("Warning", "Analysis completed but may not have been fully successful.");
+                        }
+                    } catch (Exception ex) {
+                        showAlert("Error", "Analysis failed: " + ex.getMessage());
+                    }
                 });
             });
             task.setOnFailed(e -> {
@@ -1628,14 +1553,17 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
                     showAlert("Error", "Analysis failed: " + task.getException());
                 });
             });
-            // 13. Start the task in a new thread
+            
+            // Start the task in a new thread
             Thread t = new Thread(task);
             t.setDaemon(true);
             t.start();
-            // 14. Update UI buttons
+            
+            // Update UI buttons
             startButton.setDisable(true);
             stopButton.setDisable(false);
-            // 15. Start status panel timer
+            
+            // Start status panel timer
             taskStartTimeMillis = System.currentTimeMillis();
             if (statusTimeline != null) statusTimeline.stop();
             statusTimeline = new Timeline(new KeyFrame(Duration.seconds(1), ev -> updateStatusPanel()));
@@ -1922,5 +1850,317 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
             statusCpuLabel.setText(cpuStr);
             statusMemLabel.setText(memStr);
         });
+    }
+    
+    /**
+     * Collect all parameters from the UI into a parameters object
+     */
+    private DDAIgcMaxQuantParameters collectParametersFromUI() {
+        // Collect experiment data from ioPanel
+        ObservableList<ExperimentRow> fileRows = ioPanel.getExperimentData();
+        String[] rawFiles = new String[fileRows.size()];
+        String[] expNames = new String[fileRows.size()];
+        int[] fractions = new int[fileRows.size()];
+        int[] replicates = new int[fileRows.size()];
+        for (int i = 0; i < fileRows.size(); i++) {
+            ExperimentRow row = fileRows.get(i);
+            rawFiles[i] = row.getFilePath();
+            expNames[i] = row.getExperimentName();
+            fractions[i] = 0; // Default fraction
+            replicates[i] = 1; // Default replicate
+        }
+        MetaData metadata = new MetaData(rawFiles, expNames, fractions, replicates);
+        
+        // Collect basic parameters with null checks
+        String resultDir = ioPanel.getOutputDirectory();
+        String microDb = microbiomeDBField.getText();
+        boolean appendHostDb = appendHostDBCheckBox.isSelected();
+        String hostDB = appendHostDb ? hostDBField.getText() : "";
+        String selectedEnzymeStr = enzymeComboBox.getValue();
+        if (selectedEnzymeStr == null) {
+            selectedEnzymeStr = "Trypsin"; // Default
+        }
+        int missCleavages = missedCleavagesSpinner.getValue();
+        String digestMode = digestionModeComboBox.getValue();
+        if (digestMode == null) {
+            digestMode = "Specific"; // Default digestion mode
+        }
+        String ms2ScanMode = ms2ScanModeComboBox.getValue();
+        if (ms2ScanMode == null) {
+            ms2ScanMode = MetaConstants.HCD_FTMS; // Default
+        }
+        int threadCount = threadsSpinner.getValue();
+        boolean spectraCluster = spectraClusteringCheckBox.isSelected();
+        
+        // Create DDAIgcMaxQuantParameters using parameterized constructor
+		DDAIgcMaxQuantParameters params = new DDAIgcMaxQuantParameters("DDA_IGC_MAXQUANT", // analysisType
+				metadata, // MetaData object
+				resultDir, // output directory (result)
+				microDb, // microbiome database (microDb)
+				appendHostDb, // append host DB
+				hostDB, // host database path (may be empty)
+				ms2ScanMode, // ms2ScanMode
+				threadCount // thread count
+		);
+        
+        // Set additional parameters not covered by constructor
+        params.setEnzyme(selectedEnzymeStr); // Set enzyme
+		params.setMissCleavages(missCleavages);
+        params.setDigestMode(digestMode); // Set digestion mode
+        params.setSpectraCluster(spectraCluster);
+
+        // Additional parameters
+        params.setReduceDb(generateSampleSpecificDBCheckBox.isSelected());
+        
+        // Modifications
+        params.setFixedModifications(new ArrayList<>(fixedModifications));
+        params.setVariableModifications(new ArrayList<>(variableModifications));
+        
+        // Quantitative mode
+        if (quantModeGroup.getSelectedToggle() != null) {
+            RadioButton selected = (RadioButton) quantModeGroup.getSelectedToggle();
+            params.setQuantitativeMode(selected.getText());
+        }
+        
+        // Isotopic labeling
+        params.setLightLabels(new ArrayList<>(lightLabels));
+        params.setMediumLabels(new ArrayList<>(mediumLabels));
+        params.setHeavyLabels(new ArrayList<>(heavyLabels));
+        
+        // Set isotopic labels (String[][])
+        String[][] labels = new String[3][];
+        labels[0] = lightLabels.toArray(new String[0]);
+        labels[1] = mediumLabels.toArray(new String[0]);
+        labels[2] = heavyLabels.toArray(new String[0]);
+        params.setIsotopicLabels(labels);
+        
+        // Isobaric labeling
+        if (isobaricTypeComboBox.getValue() != null) {
+            params.setIsobaricType(isobaricTypeComboBox.getValue());
+            
+            // Set isobaric tag (IsobaricTag) from ComboBox using getName()
+            String isobaricType = isobaricTypeComboBox.getValue();
+            if (isobaricType != null && !isobaricType.isEmpty()) {
+                for (IsobaricTag tag : IsobaricTag.values()) {
+                    if (tag.getName().equals(isobaricType)) {
+                        params.setIsobaricTag(tag);
+                        break;
+                    }
+                }
+            } else {
+                params.setIsobaricTag(null);
+            }
+        }
+        params.setIsobaricTableData(new ArrayList<>(isobaricTableData));
+        
+        // Set isobaric correction factors (double[][])
+        if (!isobaricTableData.isEmpty()) {
+            double[][] isoCorFactor = new double[isobaricTableData.size()][4];
+            for (int i = 0; i < isobaricTableData.size(); i++) {
+                IsobaricLabelRow row = isobaricTableData.get(i);
+                try {
+                    isoCorFactor[i][0] = Double.parseDouble(row.getMinus2());
+                    isoCorFactor[i][1] = Double.parseDouble(row.getMinus1());
+                    isoCorFactor[i][2] = Double.parseDouble(row.getPlus1());
+                    isoCorFactor[i][3] = Double.parseDouble(row.getPlus2());
+                } catch (NumberFormatException e) {
+                    isoCorFactor[i][0] = 0.0;
+                    isoCorFactor[i][1] = 0.0;
+                    isoCorFactor[i][2] = 0.0;
+                    isoCorFactor[i][3] = 0.0;
+                }
+            }
+            params.setIsobaricRefTable(isoCorFactor);
+        }
+        
+        // Taxonomic analysis
+        params.setEukaryota(taxonomicAnalysisPanel.isEukaryota());
+        params.setBacteria(taxonomicAnalysisPanel.isBacteria());
+        params.setArchaea(taxonomicAnalysisPanel.isArchaea());
+        params.setViruses(taxonomicAnalysisPanel.isViruses());
+        params.setViroids(taxonomicAnalysisPanel.isViroids());
+        params.setUnclassified(taxonomicAnalysisPanel.isUnclassified());
+        params.setOther(taxonomicAnalysisPanel.isOther());
+        params.setIgnoreRank(taxonomicAnalysisPanel.getIgnoreRank());
+        params.setIgnoreEnvironmentalSamples(taxonomicAnalysisPanel.isIgnoreEnvironmentalSamples());
+        
+        // Metadata
+        params.setMetadataTableData(new ArrayList<>(metadataTableData));
+        
+        return params;
+    }
+    
+    /**
+     * Load last used parameters and apply them to the UI
+     */
+    private void loadLastUsedParameters() {
+        try {
+            DDAIgcMaxQuantParameters params = DDAIgcMaxQuantParameterIO.loadLastUsedParameters();
+            applyParametersToUI(params);
+            LOGGER.info("Loaded last used parameters for DDA IGC MaxQuant workflow");
+        } catch (Exception e) {
+            LOGGER.warn("Failed to load last used parameters: " + e.getMessage());
+            // Continue with default UI state
+        }
+    }
+    
+    /**
+     * Apply parameters to the UI components
+     */
+    private void applyParametersToUI(DDAIgcMaxQuantParameters params) {
+        if (params == null) return;
+        
+        // Apply Input/Output settings
+        if (params.getResult() != null && ioPanel != null) {
+            ioPanel.setOutputDirectory(params.getResult());
+        }
+        
+        // Set the result directory for logging (this is used by MetaPilotTask.configLog)
+        if (params.getResult() != null && !params.getResult().trim().isEmpty()) {
+            params.setResult(params.getResult());
+        }
+        
+        // Apply database settings
+        if (params.getMicroDb() != null && microbiomeDBField != null) {
+            microbiomeDBField.setText(params.getMicroDb());
+        }
+        if (appendHostDBCheckBox != null) {
+            appendHostDBCheckBox.setSelected(params.isAppendHostDb());
+            updateHostDBVisibility(); // Update the visibility of host DB fields
+        }
+        if (params.getHostDB() != null && hostDBField != null) {
+            hostDBField.setText(params.getHostDB());
+        }
+        
+        // Apply experiment data to IO panel
+        if (params.getMetadata() != null && ioPanel != null) {
+            MetaData metadata = params.getMetadata();
+            String[] rawFiles = metadata.getRawFiles();
+            String[] expNames = metadata.getExpNames();
+            
+            if (rawFiles != null && rawFiles.length > 0) {
+                List<MetaPilotIOPanelFX.ExperimentRow> experimentData = new ArrayList<>();
+                for (int i = 0; i < rawFiles.length; i++) {
+                    String rawFile = rawFiles[i];
+                    String expName = (expNames != null && i < expNames.length) ? expNames[i] : "";
+                    
+                    // Only add rows that have meaningful data (not blank rows)
+                    if (rawFile != null && !rawFile.trim().isEmpty()) {
+                        experimentData.add(new MetaPilotIOPanelFX.ExperimentRow(rawFile, expName));
+                    }
+                }
+                ioPanel.setExperimentData(experimentData);
+            }
+        }
+        
+        // Apply basic settings that don't depend on file paths
+        if (params.getEnzyme() != null && enzymeComboBox != null) {
+            enzymeComboBox.setValue(params.getEnzyme());
+        }
+        if (missedCleavagesSpinner != null) {
+            missedCleavagesSpinner.getValueFactory().setValue(params.getMissCleavages());
+        }
+        if (params.getDigestModeString() != null && digestionModeComboBox != null) {
+            digestionModeComboBox.setValue(params.getDigestModeString());
+        }
+        if (threadsSpinner != null) {
+            threadsSpinner.getValueFactory().setValue(params.getThreadCount());
+        }
+        if (params.getMs2ScanMode() != null && ms2ScanModeComboBox != null) {
+            ms2ScanModeComboBox.setValue(params.getMs2ScanMode());
+        }
+        if (generateSampleSpecificDBCheckBox != null) {
+            generateSampleSpecificDBCheckBox.setSelected(params.isReduceDb());
+        }
+        if (spectraClusteringCheckBox != null) {
+            spectraClusteringCheckBox.setSelected(params.isSpectraCluster());
+        }
+        
+        // Apply modifications (clear existing and add from params)
+        if (fixedModifications != null && params.getFixedModifications() != null) {
+            fixedModifications.clear();
+            fixedModifications.addAll(params.getFixedModifications());
+        }
+        if (variableModifications != null && params.getVariableModifications() != null) {
+            variableModifications.clear();
+            variableModifications.addAll(params.getVariableModifications());
+        }
+        
+        // Apply quantitative mode settings
+        if (params.getQuantitativeMode() != null && quantModeGroup != null) {
+            String mode = params.getQuantitativeMode();
+            for (Toggle toggle : quantModeGroup.getToggles()) {
+                RadioButton radioButton = (RadioButton) toggle;
+                if (radioButton.getText().equals(mode)) {
+                    radioButton.setSelected(true);
+                    break;
+                }
+            }
+        }
+        
+        // Apply isotopic labeling settings
+        if (params.getLightLabels() != null && lightLabels != null) {
+            lightLabels.clear();
+            lightLabels.addAll(params.getLightLabels());
+        }
+        if (params.getMediumLabels() != null && mediumLabels != null) {
+            mediumLabels.clear();
+            mediumLabels.addAll(params.getMediumLabels());
+        }
+        if (params.getHeavyLabels() != null && heavyLabels != null) {
+            heavyLabels.clear();
+            heavyLabels.addAll(params.getHeavyLabels());
+        }
+        
+        // Apply isobaric labeling settings
+        if (params.getIsobaricType() != null && isobaricTypeComboBox != null) {
+            isobaricTypeComboBox.setValue(params.getIsobaricType());
+        }
+        if (params.getIsobaricTableData() != null && isobaricTableData != null) {
+            isobaricTableData.clear();
+            isobaricTableData.addAll(params.getIsobaricTableData());
+        }
+        
+        // Apply taxonomic settings
+        if (taxonomicAnalysisPanel != null) {
+            taxonomicAnalysisPanel.setEukaryota(params.isEukaryota());
+            taxonomicAnalysisPanel.setBacteria(params.isBacteria());
+            taxonomicAnalysisPanel.setArchaea(params.isArchaea());
+            taxonomicAnalysisPanel.setViruses(params.isViruses());
+            taxonomicAnalysisPanel.setViroids(params.isViroids());
+            taxonomicAnalysisPanel.setUnclassified(params.isUnclassified());
+            taxonomicAnalysisPanel.setOther(params.isOther());
+            if (params.getIgnoreRank() != null) {
+                taxonomicAnalysisPanel.setIgnoreRank(params.getIgnoreRank());
+            }
+            taxonomicAnalysisPanel.setIgnoreEnvironmentalSamples(params.isIgnoreEnvironmentalSamples());
+        }
+        
+        // Apply metadata table data
+        if (params.getMetadataTableData() != null && metadataTableData != null) {
+            metadataTableData.clear();
+            metadataTableData.addAll(params.getMetadataTableData());
+        }
+        
+        // Update parameter view and metadata table after applying parameters
+        Platform.runLater(() -> {
+            updateParameterView();
+            updateMetadataTable();
+        });
+    }
+    
+    /**
+     * Load parameters from a specific analysis result directory
+     */
+    public void loadAnalysisParameters(String resultDirectory) {
+        try {
+            DDAIgcMaxQuantParameters params = DDAIgcMaxQuantParameterIO.loadAnalysisParameters(resultDirectory);
+            applyParametersToUI(params);
+            showAlert("Success", "Loaded analysis parameters from " + resultDirectory);
+            LOGGER.info("Loaded analysis parameters from {}", resultDirectory);
+        } catch (Exception e) {
+            showAlert("Error", "Failed to load analysis parameters: " + e.getMessage());
+            LOGGER.error("Failed to load analysis parameters from " + resultDirectory, e);
+        }
     }
 } 

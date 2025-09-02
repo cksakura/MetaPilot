@@ -15,20 +15,19 @@ public class ResourceLoader {
 		}
 
 		if (inputStream == null) {
-			throw new IOException("Unable to load resource: " + fileName);
-		}
-/*
-		// check if running from a JAR file
-		if (isRunningFromJar()) {
-			inputStream = ResourceLoader.class.getResourceAsStream(RESOURCE_PREFIX + fileName);
-		} else {
-			inputStream = ResourceLoader.class.getClassLoader().getResourceAsStream(fileName);
+			// Try alternative resource paths
+			inputStream = ResourceLoader.class.getResourceAsStream("/" + fileName);
 		}
 
 		if (inputStream == null) {
+			// Log the attempted paths for debugging
+			System.err.println("ResourceLoader: Attempted to load resource '" + fileName + "' from:");
+			System.err.println("  - ClassLoader: " + ResourceLoader.class.getClassLoader());
+			System.err.println("  - Class: " + ResourceLoader.class);
+			System.err.println("  - Resource prefix: " + RESOURCE_PREFIX);
 			throw new IOException("Unable to load resource: " + fileName);
 		}
-*/
+
 		return inputStream;
 	}
 

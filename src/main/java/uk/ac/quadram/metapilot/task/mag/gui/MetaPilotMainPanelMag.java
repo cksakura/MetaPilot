@@ -329,7 +329,10 @@ public class MetaPilotMainPanelMag extends MetaPilotPFindMainPanel {
 		rdbtnCombine.setSelected(false);
 		rdbtnNotCombine.setSelected(true);
 
-		metaLabIsobaricQuanPanel = new MetaLabIsobaricQuanPanel(magPar);
+		// Create a MetaParameterPFind-compatible object for the isobaric panel
+		// Since MetaParameterMag now extends MetaBaseParameter directly, we need to use
+		// the default constructor instead
+		metaLabIsobaricQuanPanel = new MetaLabIsobaricQuanPanel();
 
 		TableModelListener[] listeners = metaLabIsobaricQuanPanel.getIsobaricModel1().getTableModelListeners();
 		if (listeners.length == 2) {

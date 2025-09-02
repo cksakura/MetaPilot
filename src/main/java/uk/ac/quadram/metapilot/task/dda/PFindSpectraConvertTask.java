@@ -37,12 +37,6 @@ public class PFindSpectraConvertTask extends MetaAbstractTask {
 	}
 
 	@Override
-	protected void initial() {
-		// TODO Auto-generated method stub
-
-	}
-
-	@Override
 	protected String getTaskName() {
 		// TODO Auto-generated method stub
 		return taskName;
@@ -62,6 +56,17 @@ public class PFindSpectraConvertTask extends MetaAbstractTask {
 
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": extracting spectra started");
 		LOGGER.info(getTaskName() + ": extracting spectra started");
+		
+		// Log detailed information about the task
+		LOGGER.info("PFindSpectraConvertTask parameters:");
+		LOGGER.info("  Spectra directory: " + metaPar.getSpectraFile());
+		LOGGER.info("  MS2 scan mode: " + metaPar.getMs2ScanMode());
+		LOGGER.info("  Thread count: " + metaPar.getThreadCount());
+		if (metaPar.getMetadata() != null) {
+			String[] rawFiles = metaPar.getMetadata().getRawFiles();
+			LOGGER.info("  Raw files count: " + (rawFiles != null ? rawFiles.length : 0));
+		}
+		LOGGER.info("  pFind path: " + mrp.getToolPath(MetaResourceParameters.ToolType.PFIND));
 
 		String ms2Type = this.metaPar.getMs2ScanMode();
 		String suffix = "";
@@ -87,6 +92,7 @@ public class PFindSpectraConvertTask extends MetaAbstractTask {
 		this.pf2Files = new String[rawFiles.length];
 
 		ArrayList<String> extractRawList = new ArrayList<String>();
+		LOGGER.info("Checking existing spectra files...");
 		for (int i = 0; i < rawFiles.length; i++) {
 			File rawi = new File(rawFiles[i]);
 			String rawName = rawi.getName();
@@ -98,24 +104,46 @@ public class PFindSpectraConvertTask extends MetaAbstractTask {
 
 			ms2FileNames[i] = ms2.getAbsolutePath();
 
+			LOGGER.info("  Raw file " + (i+1) + ": " + rawName);
+			LOGGER.info("    Expected pf2 file: " + pf2.getAbsolutePath());
+			LOGGER.info("    Expected ms2 file: " + ms2.getAbsolutePath());
+			LOGGER.info("    pf2 exists: " + pf2.exists() + " (size: " + (pf2.exists() ? pf2.length() : 0) + ")");
+			LOGGER.info("    ms2 exists: " + ms2.exists() + " (size: " + (ms2.exists() ? ms2.length() : 0) + ")");
+
 			if (!pf2.exists() || pf2.length() == 0) {
 				extractRawList.add(rawFiles[i]);
+				LOGGER.info("    -> Will extract spectra for this file");
+			} else {
+				LOGGER.info("    -> Spectra already exist, skipping extraction");
 			}
 			
 			pf2Files[i] = pf2.getAbsolutePath();
 		}
 
-		File pFindBin = (new File(mrp.getToolPath(ToolType.PFIND))).getParentFile();
-		PFindTask pFindTask = new PFindTask(pFindBin, metaPar.getThreadCount());
+		LOGGER.info("Files to extract: " + extractRawList.size());
 		if (extractRawList.size() > 0) {
+			LOGGER.info("Starting spectra extraction for " + extractRawList.size() + " files...");
+			for (int i = 0; i < extractRawList.size(); i++) {
+				LOGGER.info("  Extract file " + (i+1) + ": " + extractRawList.get(i));
+			}
+			
+			File pFindBin = (new File(mrp.getToolPath(ToolType.PFIND))).getParentFile();
+			LOGGER.info("pFind binary directory: " + pFindBin.getAbsolutePath());
+			LOGGER.info("pFind binary exists: " + pFindBin.exists());
+			
+			PFindTask pFindTask = new PFindTask(pFindBin, metaPar.getThreadCount());
 			String[] extractRaws = extractRawList.toArray(new String[extractRawList.size()]);
+			LOGGER.info("Calling pFindTask.extract() with spectra directory: " + spectraDirFile.getAbsolutePath());
 			pFindTask.extract(spectraDirFile.getAbsolutePath(), extractRaws);
+			LOGGER.info("Calling pFindTask.run() with " + extractRaws.length + " files");
 			pFindTask.run(extractRaws.length);
+			LOGGER.info("pFindTask.run() completed");
 		} else {
 			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": spectra files have been found in "
 					+ spectraDirFile);
 			LOGGER.info(getTaskName() + ": spectra files have been found in " + spectraDirFile);
-			return false;
+			LOGGER.info("All required spectra files already exist, returning success");
+			return true;
 		}
 
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": extracting spectra finished");

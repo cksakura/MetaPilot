@@ -29,8 +29,8 @@ import uk.ac.quadram.metapilot.task.v2.par.MaxQuantModIO;
 public class MetaParaIOMag {
 
 	public static final String[] oldVersionFiles = new String[] { "_MAG_1_0.json" };
-	public static final String version = "MAG 1.1";
-	public static final String versionFile = "_MAG_1_1.json";
+	public static final String version = "MAG 1.0";
+	public static final String versionFile = "_MAG_1_0.json";
 	private static Logger LOGGER = LogManager.getLogger(MetaParaIOMag.class);
 
 	public static MetaParameterMag parse(String json) {

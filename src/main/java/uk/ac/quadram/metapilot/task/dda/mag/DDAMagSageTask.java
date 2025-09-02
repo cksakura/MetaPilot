@@ -22,12 +22,6 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 	}
 
 	@Override
-	protected void initial() {
-		// TODO Auto-generated method stub
-		
-	}
-
-	@Override
 	protected String getTaskName() {
 		// TODO Auto-generated method stub
 		return null;
