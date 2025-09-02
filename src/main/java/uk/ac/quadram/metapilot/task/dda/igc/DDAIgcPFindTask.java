@@ -42,9 +42,10 @@ import uk.ac.quadram.metapilot.quant.flashLFQ.FlashLfqTask;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.task.MetaPilotTask;
-import uk.ac.quadram.metapilot.task.MetaReportCopyTask;
-import uk.ac.quadram.metapilot.task.MetaReportTask;
+import uk.ac.quadram.metapilot.task.MetaPythonReportCopyTask;
+import uk.ac.quadram.metapilot.task.MetaPythonReportTask;
 import uk.ac.quadram.metapilot.task.dda.PFindSpectraConvertTask;
+import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcPFindParameters;
 import uk.ac.quadram.metapilot.task.io.MetaAlgorithm;
 import uk.ac.quadram.metapilot.task.io.MetaBiomJsonHandler;
 import uk.ac.quadram.metapilot.task.io.MetaTreeHandler;
@@ -52,12 +53,12 @@ import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPeptideXMLReader;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPeptideXMLWriter;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
-import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.par.MetaPep2TaxaPar;
 import uk.ac.quadram.metapilot.task.pfind.MetaDbReducerTask;
-import uk.ac.quadram.metapilot.task.pfind.par.MetaParameterPFind;
+
 import uk.ac.quadram.metapilot.task.v2.par.MetaOpenPar;
+import uk.ac.quadram.metapilot.task.par.MetaData;
 
 public class DDAIgcPFindTask extends MetaPilotTask {
 
@@ -71,19 +72,34 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 	protected PFindResultReader pFindResultReader;
 	protected HashMap<String, PostTransModification> ptmMap;
 
-	public DDAIgcPFindTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
+	public DDAIgcPFindTask(DDAIgcPFindParameters metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
 			JavaFXProgressBar secondBar) {
 		super(metaPar, mrp, progressBar, secondBar);
+		
+		// Debug logging for metadata
+		LOGGER.info("{}: Constructor called with parameters", taskName);
+		if (metaPar != null) {
+			LOGGER.info("{}: Parameters object is not null", taskName);
+			if (metaPar.getMetadata() != null) {
+				MetaData metadata = metaPar.getMetadata();
+				String[] rawFiles = metadata.getRawFiles();
+				String[] expNames = metadata.getExpNames();
+				LOGGER.info("{}: Metadata contains {} raw files", taskName, rawFiles != null ? rawFiles.length : 0);
+				if (rawFiles != null) {
+					for (int i = 0; i < rawFiles.length; i++) {
+						LOGGER.info("{}: Raw file {}: {} -> {}", taskName, i, rawFiles[i], expNames != null && i < expNames.length ? expNames[i] : "N/A");
+					}
+				}
+			} else {
+				LOGGER.warn("{}: Metadata is null in parameters", taskName);
+			}
+		} else {
+			LOGGER.error("{}: Parameters object is null!", taskName);
+		}
 	}
 
 	@Override
 	public void forceStop() {
-		// TODO Auto-generated method stub
-
-	}
-
-	@Override
-	protected void initial() {
 		// TODO Auto-generated method stub
 
 	}
@@ -102,33 +118,70 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 
 	@Override
 	protected Boolean call() throws Exception {
-		// TODO Auto-generated method stub
+		// Update progress at start
+		updateProgress(0, 100);
+		updateMessage("Starting DDA IGC pFind workflow...");
 
 		progressBar.setString(getTaskName());
-		setProgress(0);
 
 		LOGGER.info(getTaskName() + ": start");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": start");
 
-		PFindSpectraConvertTask spTask = new PFindSpectraConvertTask(metaPar, mrp, secondBar);
+		// Update progress before spectra conversion
+		updateProgress(5, 100);
+		updateMessage("Starting spectra conversion...");
+
+		PFindSpectraConvertTask spTask = new PFindSpectraConvertTask(metaPar, mrp, progressBar);
+		LOGGER.info("{}: PFindSpectraConvertTask created, executing...", taskName);
 		spTask.execute();
-		boolean convert = spTask.getValue();
-		if (!convert) {
-			LOGGER.error(getTaskName() + ": error in spectra format conversion");
-			System.err
-					.println(format.format(new Date()) + "\t" + getTaskName() + ": error in spectra format conversion");
+		try {
+			boolean spectraConverted = spTask.get(); // Wait for completion and get result
+			if (!spectraConverted) {
+				LOGGER.error(getTaskName() + ": error in pFind spectrum convert workflow");
+				System.err.println(format.format(new Date()) + "\t" + getTaskName()
+						+ ": error in pFind spectrum convert workflow");
+				return false;
+			}
+		} catch (InterruptedException | ExecutionException e) {
+			LOGGER.error(getTaskName() + ": error in pFind spectrum convert workflow", e);
+			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in pFind spectrum convert workflow: " + e.getMessage());
 			return false;
 		}
 
-		MetaDbReducerTask dbrTask = new MetaDbReducerTask((MetaParameterPFind) metaPar, mrp, secondBar);
+		// Update progress after spectra conversion
+		updateProgress(20, 100);
+		updateMessage("Spectra conversion completed, starting database reduction...");
+
+		LOGGER.info(getTaskName() + ": pFind spectrum convert workflow: finished");
+		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": pFind spectrum convert workflow: finished");
+
+		// Update progress before database reduction
+		updateProgress(25, 100);
+		updateMessage("Creating sample-specific database...");
+
+		MetaDbReducerTask dbrTask = new MetaDbReducerTask(metaPar, mrp, secondBar);
+		LOGGER.info("{}: MetaDbReducerTask created, executing...", taskName);
 		dbrTask.execute();
-		boolean dbReduced = dbrTask.getValue();
-		if (!dbReduced) {
-			LOGGER.error(getTaskName() + ": error in sample-specific database generation");
-			System.err.println(format.format(new Date()) + "\t" + getTaskName()
-					+ ": error in sample-specific database generation");
+		try {
+			boolean dbReduced = dbrTask.get(); // Wait for completion and get result
+			if (!dbReduced) {
+				LOGGER.error(getTaskName() + ": error in sample-specific database generation");
+				System.err.println(format.format(new Date()) + "\t" + getTaskName()
+						+ ": error in sample-specific database generation");
+				return false;
+			}
+		} catch (InterruptedException | ExecutionException e) {
+			LOGGER.error(getTaskName() + ": error in sample-specific database generation", e);
+			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in sample-specific database generation: " + e.getMessage());
 			return false;
 		}
+
+		// Update progress after database reduction
+		updateProgress(40, 100);
+		updateMessage("Database reduction completed, starting identification...");
+
+		LOGGER.info(getTaskName() + ": sample specific database generation: finished");
+		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": sample specific database generation: finished");
 
 		boolean iden = iden(spTask.getMgfFiles(), spTask.getPf2Files());
 		if (!iden) {
@@ -138,9 +191,13 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 			return false;
 		}
 
+		// Update progress after identification
+		updateProgress(60, 100);
+		updateMessage("Identification completed, starting quantification...");
+
 		setProgress(70);
 
-		String quanMode = ((MetaParameterPFind) metaPar).getQuanMode();
+		String quanMode = metaPar.getQuantitativeMode();
 		boolean quant = false;
 		if (quanMode.equals(MetaConstants.labelFree)) {
 			quant = lfQuant();
@@ -170,9 +227,17 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 			}
 		}
 
+		// Update progress before report generation
+		updateProgress(80, 100);
+		updateMessage("Quantification completed, generating reports...");
+
 		setProgress(80);
 
 		exportReport();
+
+		// Update progress to completion
+		updateProgress(100, 100);
+		updateMessage("Workflow completed successfully!");
 
 		setProgress(100);
 
@@ -187,17 +252,21 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 		System.out.println(
 				format.format(new Date()) + "\t" + getTaskName() + ": peptide and protein identification started");
 
+		// Update progress at start of identification
+		updateProgress(45, 100);
+		updateMessage("Starting peptide and protein identification...");
+
 		File pFindBin = (new File(mrp.getToolPath(ToolType.PFIND))).getParentFile();
 		PFindTask pFindTask = new PFindTask(pFindBin, metaPar.getThreadCount());
 		HashMap<String, PostTransModification> ptmMap = pFindTask.getPtmMap();
-		MetaOpenPar mosp = ((MetaParameterPFind) metaPar).getMop();
+		MetaOpenPar mosp = ((DDAIgcPFindParameters) metaPar).getMop();
 
-		String ms2Type = ((MetaParameterPFind) metaPar).getMs2ScanMode();
+		String ms2Type = ((DDAIgcPFindParameters) metaPar).getMs2ScanMode();
 		boolean useDBReducer = false;
 		File dbReducerExe = new File(mrp.getToolPath(ToolType.DBREDUCER));
 		DBReducerTask dbReducerTask = null;
 		if (dbReducerExe.exists() && ms2Type.equals(MetaConstants.HCD_FTMS)
-				&& ((MetaParameterPFind) metaPar).getQuanMode().equals(MetaConstants.labelFree)) {
+				&& ((DDAIgcPFindParameters) metaPar).getQuanMode().equals(MetaConstants.labelFree)) {
 			useDBReducer = true;
 			dbReducerTask = new DBReducerTask(dbReducerExe);
 		}
@@ -212,7 +281,14 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 			System.out.println(format.format(new Date()) + "\t" + getTaskName()
 					+ ": peptide and protein identification results have been found in "
 					+ metaPar.getDbSearchResultFile() + ", go to next step");
+			
+			// Update progress if results already exist
+			updateProgress(55, 100);
+			updateMessage("Identification results found, proceeding...");
 		} else {
+			// Update progress before database search
+			updateProgress(50, 100);
+			updateMessage("Performing database search...");
 			String db = metaPar.getCurrentDb();
 			if (useDBReducer && dbReducerTask != null) {
 				dbReducerTask.setTotalThread(metaPar.getThreadCount());
@@ -220,8 +296,8 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 				dbReducerFolder.mkdir();
 
 				dbReducerTask.searchMgf(mgfFiles, dbReducerFolder.getAbsolutePath(), db, ms2Type, mosp.getOpenPsmFDR(),
-						((MetaParameterPFind) this.metaPar).getFixMods(),
-						((MetaParameterPFind) this.metaPar).getVariMods());
+						((DDAIgcPFindParameters) this.metaPar).getFixMods(),
+						((DDAIgcPFindParameters) this.metaPar).getVariMods());
 
 				dbReducerTask.run(1, mgfFiles.length * 48);
 
@@ -243,12 +319,12 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 			pFindTask.setTotalThread(metaPar.getThreadCount());
 
 			pFindTask.searchPF2(pf2Files, metaPar.getDbSearchResultFile().getAbsolutePath(), db, ms2Type,
-					((MetaParameterPFind) metaPar).isOpenSearch(), true, mosp.getOpenPsmFDR(),
-					((MetaParameterPFind) this.metaPar).getFixMods(), ((MetaParameterPFind) this.metaPar).getVariMods(),
-					((MetaParameterPFind) this.metaPar).getEnzyme(),
-					((MetaParameterPFind) this.metaPar).getMissCleavages(),
-					((MetaParameterPFind) this.metaPar).getDigestMode(),
-					((MetaParameterPFind) this.metaPar).getIsobaricTag());
+					((DDAIgcPFindParameters) metaPar).isOpenSearch(), true, mosp.getOpenPsmFDR(),
+					((DDAIgcPFindParameters) this.metaPar).getFixMods(), ((DDAIgcPFindParameters) this.metaPar).getVariMods(),
+					((DDAIgcPFindParameters) this.metaPar).getEnzyme(),
+					((DDAIgcPFindParameters) this.metaPar).getMissCleavages(),
+					((DDAIgcPFindParameters) this.metaPar).getDigestMode(),
+					((DDAIgcPFindParameters) this.metaPar).getIsobaricTag());
 
 			pFindTask.run(1, pf2Files.length * 48);
 
@@ -261,6 +337,10 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 			return false;
 		}
 
+		// Update progress before reading results
+		updateProgress(55, 100);
+		updateMessage("Reading identification results...");
+
 		PFindTask.cleanPFindResultFolder(metaPar.getDbSearchResultFile(), true);
 
 		try {
@@ -272,6 +352,10 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 					+ ": error in reading the database search result files");
 			return false;
 		}
+
+		// Update progress after identification completion
+		updateProgress(60, 100);
+		updateMessage("Identification completed successfully!");
 
 		LOGGER.info(getTaskName() + ": peptide and protein identification finished");
 		System.out.println(
@@ -286,6 +370,10 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 		LOGGER.info(getTaskName() + ": peptide and protein label-free quantification started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName()
 				+ ": peptide and protein label-free quantification started");
+
+		// Update progress at start of label-free quantification
+		updateProgress(65, 100);
+		updateMessage("Starting label-free quantification...");
 
 		String flashLFQ = mrp.getToolPath(ToolType.FLASHLFQ);
 		FlashLfqTask flashLfqTask = new FlashLfqTask(flashLFQ, metaPar.getThreadCount());
@@ -306,6 +394,10 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 		this.quan_pep_file = pfindLFTask.getQuan_pep_file();
 		this.quan_pro_file = pfindLFTask.getQuan_pro_file_razor();
 
+		// Update progress after label-free quantification completion
+		updateProgress(70, 100);
+		updateMessage("Label-free quantification completed!");
+
 		LOGGER.info(getTaskName() + ": peptide and protein quantification label-free finished");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName()
 				+ ": peptide and protein label-free quantification finished");
@@ -320,16 +412,20 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 		System.out.println(format.format(new Date()) + "\t" + getTaskName()
 				+ ": peptide and protein isobaric quantification started");
 
+		// Update progress at start of isobaric quantification
+		updateProgress(75, 100);
+		updateMessage("Starting isobaric quantification...");
+
 		File pFindBin = (new File(mrp.getToolPath(ToolType.PFIND))).getParentFile();
 		PFindTask pFindTask = new PFindTask(pFindBin, metaPar.getThreadCount());
 
 		PFindResultReader reader = new PFindResultReader(metaPar.getDbSearchResultFile(), metaPar.getSpectraFile(),
 				pFindTask.getPtmMap());
 		PFindIsobaricTask pfindIsobaricTask = new PFindIsobaricTask(reader, this.metaPar.getSpectraFile(),
-				metaPar.getDbSearchResultFile(), ((MetaParameterPFind) this.metaPar).getIsobaricTag(),
-				((MetaParameterPFind) this.metaPar).getIsobaric(),
-				((MetaParameterPFind) this.metaPar).getIsoCorFactor(),
-				((MetaParameterPFind) this.metaPar).isCombineLabel(), metaPar.getMetadata());
+				metaPar.getDbSearchResultFile(), ((DDAIgcPFindParameters) this.metaPar).getIsobaricTag(),
+				((DDAIgcPFindParameters) this.metaPar).getIsobaric(),
+				((DDAIgcPFindParameters) this.metaPar).getIsoCorFactor(),
+				((DDAIgcPFindParameters) this.metaPar).isCombineLabel(), metaPar.getMetadata());
 
 		try {
 			pfindIsobaricTask.run();
@@ -346,6 +442,11 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 			LOGGER.info(getTaskName() + ": quantification results have been fount in " + this.metaPar.getSpectraFile());
 			System.out.println(format.format(new Date()) + "\t" + getTaskName()
 					+ ": quantification results have been fount in " + this.metaPar.getSpectraFile());
+			
+			// Update progress after isobaric quantification completion
+			updateProgress(80, 100);
+			updateMessage("Isobaric quantification completed!");
+			
 			return true;
 		}
 
@@ -376,7 +477,23 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 			reportDir.mkdirs();
 		}
 
-		MetaReportCopyTask.copy(reportDir, getVersion());
+		MetaPythonReportCopyTask reportCopyTask = new MetaPythonReportCopyTask(new File(metaPar.getResult()));
+		Thread reportCopyThread = new Thread(reportCopyTask);
+		reportCopyThread.start();
+		try {
+			reportCopyThread.join();
+			if (!reportCopyTask.get()) {
+				LOGGER.error(getTaskName() + ": error in copying report template");
+				System.err.println(
+						format.format(new Date()) + "\t" + getTaskName() + ": error in copying report template");
+				return false;
+			}
+		} catch (InterruptedException | ExecutionException e) {
+			LOGGER.error(getTaskName() + ": error in copying report template", e);
+			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in copying report template: "
+					+ e.getMessage());
+			return false;
+		}
 
 		metaPar.setReportDir(reportDir);
 
@@ -394,7 +511,7 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 			e.printStackTrace();
 		}
 
-		MetaReportTask task = new MetaReportTask(metaPar.getThreadCount());
+		MetaPythonReportTask task = new MetaPythonReportTask(metaPar.getThreadCount());
 
 		boolean summayrFinished = this.exportSummary(task);
 
@@ -651,10 +768,10 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 			if (!report_peptides_summary.exists() || report_peptides_summary.length() == 0) {
 
 				if (summaryMetaFile.exists()) {
-					pepReportOk = task.addTask(MetaReportTask.peptide, final_pep_txt, report_peptides_summary,
+					pepReportOk = task.addTask(MetaPythonReportTask.PEPTIDE, final_pep_txt, report_peptides_summary,
 							summaryMetaFile);
 				} else {
-					pepReportOk = task.addTask(MetaReportTask.peptide, final_pep_txt, report_peptides_summary);
+					pepReportOk = task.addTask(MetaPythonReportTask.PEPTIDE, final_pep_txt, report_peptides_summary);
 				}
 			}
 		}
@@ -697,7 +814,7 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 
 				int[] fileIds = new int[expNames.length];
 
-				if (((MetaParameterPFind) this.metaPar).getQuanMode().equals(MetaConstants.labelFree)) {
+				if (((DDAIgcPFindParameters) this.metaPar).getQuanMode().equals(MetaConstants.labelFree)) {
 
 					for (int i = 0; i < expNames.length; i++) {
 						for (int j = 0; j < title.length; j++) {
@@ -716,7 +833,7 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 						}
 					}
 
-				} else if (((MetaParameterPFind) this.metaPar).getQuanMode().equals(MetaConstants.isobaricLabel)) {
+				} else if (((DDAIgcPFindParameters) this.metaPar).getQuanMode().equals(MetaConstants.isobaricLabel)) {
 
 					for (int i = 0; i < expNames.length; i++) {
 						for (int j = 0; j < title.length; j++) {
@@ -908,10 +1025,10 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 			File report_proteinGroups_summary = new File(reportHtmlDir, "report_proteinGroups_summary.html");
 			if (!report_proteinGroups_summary.exists() || report_proteinGroups_summary.length() == 0) {
 				if (summaryMetaFile.exists()) {
-					proReportOk = task.addTask(MetaReportTask.protein, final_pro_txt, report_proteinGroups_summary,
+					proReportOk = task.addTask(MetaPythonReportTask.PROTEIN, final_pro_txt, report_proteinGroups_summary,
 							summaryMetaFile);
 				} else {
-					proReportOk = task.addTask(MetaReportTask.protein, final_pro_txt, report_proteinGroups_summary);
+					proReportOk = task.addTask(MetaPythonReportTask.PROTEIN, final_pro_txt, report_proteinGroups_summary);
 				}
 			}
 		}
@@ -946,7 +1063,7 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 
 			expNames = list.toArray(new String[list.size()]);
 
-			if (((MetaParameterPFind) this.metaPar).getQuanMode().equals(MetaConstants.labelFree)) {
+			if (((DDAIgcPFindParameters) this.metaPar).getQuanMode().equals(MetaConstants.labelFree)) {
 				Arrays.sort(expNames);
 			}
 
@@ -977,7 +1094,7 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 		}
 
 		boolean executeUnipept = false;
-		MetaPep2TaxaPar mptp = ((MetaParameterPFind) metaPar).getPtp();
+		MetaPep2TaxaPar mptp = ((DDAIgcPFindParameters) metaPar).getPtp();
 		File taxResultFile = new File(taxFile, MetaAlgorithm.Unipept.getName() + ".taxonomy.xml");
 		if (!taxResultFile.exists() || taxResultFile.length() == 0) {
 			executeUnipept = true;
@@ -1021,11 +1138,11 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 			File report_taxonomy_summary = new File(reportHtmlDir, "report_taxonomy_summary.html");
 			if (!report_taxonomy_summary.exists() || report_taxonomy_summary.length() == 0) {
 				if (report_taxonomy_summary.exists()) {
-					finish = task.addTask(MetaReportTask.taxon, refinedTaxon, report_taxonomy_summary,
+					finish = task.addTask(MetaPythonReportTask.TAXONOMY, refinedTaxon, report_taxonomy_summary,
 							report_taxonomy_summary);
 
 				} else {
-					finish = task.addTask(MetaReportTask.taxon, refinedTaxon, report_taxonomy_summary);
+					finish = task.addTask(MetaPythonReportTask.TAXONOMY, refinedTaxon, report_taxonomy_summary);
 				}
 			}
 		}
@@ -1175,11 +1292,11 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 				File report_taxonomy_summary = new File(reportHtmlDir, "report_taxonomy_summary.html");
 				if (!report_taxonomy_summary.exists() || report_taxonomy_summary.length() == 0) {
 					if (summaryMetaFile.exists()) {
-						finish = task.addTask(MetaReportTask.taxon, refinedTaxon, report_taxonomy_summary,
+						finish = task.addTask(MetaPythonReportTask.TAXONOMY, refinedTaxon, report_taxonomy_summary,
 								summaryMetaFile);
 
 					} else {
-						finish = task.addTask(MetaReportTask.taxon, refinedTaxon, report_taxonomy_summary);
+						finish = task.addTask(MetaPythonReportTask.TAXONOMY, refinedTaxon, report_taxonomy_summary);
 					}
 				}
 			}
@@ -1293,9 +1410,9 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 		File report_function_summary = new File(reportHtmlDir, "report_function_summary.html");
 		if (!report_function_summary.exists() || report_function_summary.length() == 0) {
 			if (summaryMetaFile.exists()) {
-				finish = task.addTask(MetaReportTask.function, funReportTsv, report_function_summary, summaryMetaFile);
+				finish = task.addTask(MetaPythonReportTask.FUNCTION, funReportTsv, report_function_summary, summaryMetaFile);
 			} else {
-				finish = task.addTask(MetaReportTask.function, funReportTsv, report_function_summary);
+				finish = task.addTask(MetaPythonReportTask.FUNCTION, funReportTsv, report_function_summary);
 			}
 		}
 
@@ -1331,7 +1448,7 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 		return false;
 	}
 
-	protected boolean exportSummary(MetaReportTask task) {
+	protected boolean exportSummary(MetaPythonReportTask task) {
 
 		File final_summary_txt = new File(this.metaPar.getResult(), "final_summary.tsv");
 		try {
@@ -1449,9 +1566,9 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 			boolean finish = false;
 			File report_ID_summary = new File(metaPar.getReportDir(), "report_ID_summary.html");
 			if (summaryMetaFile != null && summaryMetaFile.exists()) {
-				finish = task.addTask(MetaReportTask.summary, final_summary_txt, report_ID_summary, summaryMetaFile);
+				finish = task.addTask(MetaPythonReportTask.ID_SUMMARY, final_summary_txt, report_ID_summary, summaryMetaFile);
 			} else {
-				finish = task.addTask(MetaReportTask.summary, final_summary_txt, report_ID_summary);
+				finish = task.addTask(MetaPythonReportTask.ID_SUMMARY, final_summary_txt, report_ID_summary);
 			}
 
 			return finish;

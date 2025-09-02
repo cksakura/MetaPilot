@@ -19,58 +19,78 @@ import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 /**
  * Abstract Base Class for MetaPilot Background Tasks
  * 
- * <h2>Purpose</h2>
- * This abstract class serves as the foundation for all computational tasks in MetaPilot,
- * providing a unified framework for background processing, progress tracking, and 
- * lifecycle management while maintaining compatibility with the original SwingWorker design.
+ * <h2>Purpose</h2> This abstract class serves as the foundation for all
+ * computational tasks in MetaPilot, providing a unified framework for
+ * background processing, progress tracking, and lifecycle management while
+ * maintaining compatibility with the original SwingWorker design.
  * 
  * <h2>Architecture</h2>
  * <ul>
- *   <li><strong>JavaFX Task Integration:</strong> Extends JavaFX Task&lt;Boolean&gt; for 
- *       modern asynchronous processing</li>
- *   <li><strong>Progress Tracking:</strong> Built-in progress monitoring with UI updates</li>
- *   <li><strong>Lifecycle Management:</strong> Standardized task initialization, execution, 
- *       and completion handling</li>
- *   <li><strong>Error Handling:</strong> Comprehensive exception management with logging</li>
- *   <li><strong>Chain Execution:</strong> Support for sequential task execution</li>
+ * <li><strong>JavaFX Task Integration:</strong> Extends JavaFX
+ * Task&lt;Boolean&gt; for modern asynchronous processing</li>
+ * <li><strong>Progress Tracking:</strong> Built-in progress monitoring with UI
+ * updates</li>
+ * <li><strong>Lifecycle Management:</strong> Standardized task initialization,
+ * execution, and completion handling</li>
+ * <li><strong>Error Handling:</strong> Comprehensive exception management with
+ * logging</li>
+ * <li><strong>Chain Execution:</strong> Support for sequential task
+ * execution</li>
  * </ul>
  * 
  * <h2>Task Categories</h2>
- * <p>This base class supports various task types in MetaPilot:</p>
+ * <p>
+ * This base class supports various task types in MetaPilot:
+ * </p>
  * <ul>
- *   <li><strong>Database Search Tasks:</strong> Mass spectrometry database searches</li>
- *   <li><strong>Analysis Tasks:</strong> Protein identification and quantification</li>
- *   <li><strong>Annotation Tasks:</strong> Taxonomic and functional annotation</li>
- *   <li><strong>Data Processing Tasks:</strong> File conversion and preprocessing</li>
- *   <li><strong>Database Management Tasks:</strong> Reference database operations</li>
+ * <li><strong>Database Search Tasks:</strong> Mass spectrometry database
+ * searches</li>
+ * <li><strong>Analysis Tasks:</strong> Protein identification and
+ * quantification</li>
+ * <li><strong>Annotation Tasks:</strong> Taxonomic and functional
+ * annotation</li>
+ * <li><strong>Data Processing Tasks:</strong> File conversion and
+ * preprocessing</li>
+ * <li><strong>Database Management Tasks:</strong> Reference database
+ * operations</li>
  * </ul>
  * 
  * <h2>Implementation Pattern</h2>
- * <p>Subclasses must implement:</p>
+ * <p>
+ * Subclasses must implement:
+ * </p>
  * <ul>
- *   <li>{@link #initial()} - Task-specific initialization</li>
- *   <li>{@link #call()} - Main task execution logic</li>
- *   <li>{@link #getTaskName()} - Descriptive task name for logging</li>
- *   <li>{@link #getLogger()} - Task-specific logger instance</li>
+ * <li>{@link #initial()} - Task-specific initialization</li>
+ * <li>{@link #call()} - Main task execution logic</li>
+ * <li>{@link #getTaskName()} - Descriptive task name for logging</li>
+ * <li>{@link #getLogger()} - Task-specific logger instance</li>
  * </ul>
  * 
  * <h2>Progress Reporting</h2>
- * <p>Tasks can report progress through:</p>
+ * <p>
+ * Tasks can report progress through:
+ * </p>
  * <ul>
- *   <li>{@link #updateProgress(double, double)} - JavaFX progress updates</li>
- *   <li>{@link #setProgress(int)} - Legacy 0-100 scale progress</li>
- *   <li>{@link #updateMessage(String)} - Status message updates</li>
+ * <li>{@link #updateProgress(double, double)} - JavaFX progress updates</li>
+ * <li>{@link #setProgress(int)} - Legacy 0-100 scale progress</li>
+ * <li>{@link #updateMessage(String)} - Status message updates</li>
  * </ul>
  * 
  * <h2>Threading Model</h2>
  * <ul>
- *   <li><strong>Background Execution:</strong> All tasks run in daemon threads</li>
- *   <li><strong>UI Thread Safety:</strong> Progress updates are marshaled to JavaFX Application Thread</li>
- *   <li><strong>Resource Management:</strong> Automatic cleanup on task completion</li>
+ * <li><strong>Background Execution:</strong> All tasks run in daemon
+ * threads</li>
+ * <li><strong>UI Thread Safety:</strong> Progress updates are marshaled to
+ * JavaFX Application Thread</li>
+ * <li><strong>Resource Management:</strong> Automatic cleanup on task
+ * completion</li>
  * </ul>
  * 
  * <h2>Task Chaining</h2>
- * <p>Tasks can be chained for sequential execution:</p>
+ * <p>
+ * Tasks can be chained for sequential execution:
+ * </p>
+ * 
  * <pre>{@code
  *   MetaAbstractTask searchTask = new DatabaseSearchTask(...);
  *   MetaAbstractTask annotationTask = new AnnotationTask(...);
@@ -79,11 +99,16 @@ import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
  * }</pre>
  * 
  * <h2>Configuration</h2>
- * <p>Tasks are configured with:</p>
+ * <p>
+ * Tasks are configured with:
+ * </p>
  * <ul>
- *   <li><strong>metaPar:</strong> Analysis parameters specific to the workflow</li>
- *   <li><strong>mrp:</strong> Resource paths for external tools and databases</li>
- *   <li><strong>progressBar:</strong> UI component for progress visualization</li>
+ * <li><strong>metaPar:</strong> Analysis parameters specific to the
+ * workflow</li>
+ * <li><strong>mrp:</strong> Resource paths for external tools and
+ * databases</li>
+ * <li><strong>progressBar:</strong> UI component for progress
+ * visualization</li>
  * </ul>
  * 
  * @author Kai Cheng - Quadram Institute Bioscience
@@ -133,8 +158,6 @@ public abstract class MetaAbstractTask extends Task<Boolean> {
 			LOGGER.info(taskName + ": cancelled");
 			System.out.println(format.format(new Date()) + "\t" + taskName + ": task cancelled");
 		});
-
-		initial();
 	}
 
 	/**
@@ -169,14 +192,7 @@ public abstract class MetaAbstractTask extends Task<Boolean> {
 			LOGGER.info(taskName + ": cancelled");
 			System.out.println(format.format(new Date()) + "\t" + taskName + ": task cancelled");
 		});
-
-		initial();
 	}
-
-	/**
-	 * Initialize the task
-	 */
-	protected abstract void initial();
 
 	/**
 	 * Set the log builder

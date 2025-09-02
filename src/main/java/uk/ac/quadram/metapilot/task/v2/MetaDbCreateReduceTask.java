@@ -36,11 +36,6 @@ public class MetaDbCreateReduceTask extends MetaDbCreateTask {
 	public MetaDbCreateReduceTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar) {
 		super(metaPar, mrp, progressBar);
 		// TODO Auto-generated constructor stub
-	}
-
-	@Override
-	protected void initial() {
-		// TODO Auto-generated method stub
 		this.dbReducerExe = new File(mrp.getToolPath(ToolType.DBREDUCER));
 	}
 
@@ -86,7 +81,7 @@ public class MetaDbCreateReduceTask extends MetaDbCreateTask {
 					+ clusterMgf + " started");
 
 			ClusterTask clusterTask = new ClusterTask(metaPar.getThreadCount(), true,
-					((MetaParameterMQ) metaPar).getIsobaricTag(), MetaLabWorkflowType.pFindWorkflow.name());
+					((MetaParameterMQ) metaPar).getIsobaricTag());
 
 			clusterTask.runCli(fileNames, clusterDir, clusterMgf);
 

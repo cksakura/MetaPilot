@@ -27,7 +27,6 @@ import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.spectra.cluster.ClusterTask;
 import uk.ac.quadram.metapilot.task.MetaDbCreateTask;
-import uk.ac.quadram.metapilot.task.MetaLabWorkflowType;
 import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 
@@ -48,19 +47,70 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 
 	public MetaDbReducerTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar) {
 		super(metaPar, mrp, progressBar);
+		
+		LOGGER.info("{}: MetaDbReducerTask constructor called", taskName);
+		
+		// Log metadata information
+		if (metaPar.getMetadata() != null) {
+			String[] rawFiles = metaPar.getMetadata().getRawFiles();
+			LOGGER.info("{}: Constructor - Found {} raw files in metadata", taskName, rawFiles != null ? rawFiles.length : 0);
+			
+			if (rawFiles != null) {
+				for (int i = 0; i < rawFiles.length; i++) {
+					File rawFile = new File(rawFiles[i]);
+					LOGGER.debug("{}: Constructor - Raw file {}: {} (exists: {}, size: {} bytes)", 
+						taskName, i, rawFiles[i], rawFile.exists(), rawFile.length());
+				}
+			}
+		} else {
+			LOGGER.error("{}: Constructor - Metadata is null in MetaBaseParameter", taskName);
+		}
+		
+		// Log tool paths
 		this.dbReducerExe = new File(mrp.getToolPath(ToolType.DBREDUCER));
 		this.pFindExe = new File(mrp.getToolPath(ToolType.PFIND));
+		
+		LOGGER.info("{}: DBReducer executable: {} (exists: {})", taskName, dbReducerExe.getAbsolutePath(), dbReducerExe.exists());
+		LOGGER.info("{}: pFind executable: {} (exists: {})", taskName, pFindExe.getAbsolutePath(), pFindExe.exists());
+		
 		if (dbReducerExe.getName().equals("DBReducer.exe") && dbReducerExe.exists()
 				&& metaPar.getMs2ScanMode().equals(MetaConstants.HCD_FTMS)) {
 			useDBReducer = true;
+			LOGGER.info("{}: Using DBReducer for database reduction", taskName);
+		} else {
+			LOGGER.info("{}: Using pFind for database reduction (DBReducer conditions not met)", taskName);
+			LOGGER.debug("{}: DBReducer conditions - name: {}, exists: {}, ms2Mode: {}", 
+				taskName, dbReducerExe.getName(), dbReducerExe.exists(), metaPar.getMs2ScanMode());
 		}
-	}
-
-	@Override
-	protected void initial() {
-		// TODO Auto-generated method stub
-		String[] rawFiles = metaPar.getMetadata().getRawFiles();
+		
+		// Initialize file arrays directly in constructor
+		LOGGER.info("{}: Initializing file arrays in constructor", taskName);
+		
+		// Log MS2 scan mode
 		String ms2Type = this.metaPar.getMs2ScanMode();
+		LOGGER.info("{}: MS2 scan mode: {}", taskName, ms2Type);
+		
+		// Log spectra file directory
+		File spectraDirFile = metaPar.getSpectraFile();
+		LOGGER.info("{}: Spectra directory: {} (exists: {}, isDirectory: {})", 
+			taskName, spectraDirFile.getAbsolutePath(), spectraDirFile.exists(), spectraDirFile.isDirectory());
+		
+		// Initialize file arrays with safety checks
+		if (metaPar.getMetadata() == null) {
+			LOGGER.error("{}: Cannot initialize file arrays - metadata is null", taskName);
+			this.mgfFiles = new String[0];
+			this.pf2Files = new String[0];
+			return;
+		}
+		
+		String[] rawFiles = metaPar.getMetadata().getRawFiles();
+		if (rawFiles == null || rawFiles.length == 0) {
+			LOGGER.error("{}: Cannot initialize file arrays - raw files array is null or empty", taskName);
+			this.mgfFiles = new String[0];
+			this.pf2Files = new String[0];
+			return;
+		}
+		
 		String suffix = "";
 		if (ms2Type.equals(MetaConstants.HCD_FTMS)) {
 			suffix = "_HCDFT";
@@ -71,18 +121,32 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 		} else if (ms2Type.equals(MetaConstants.CID_ITMS)) {
 			suffix = "_CIDIT";
 		}
+		
+		LOGGER.info("{}: Using suffix: '{}' for MS2 type: {}", taskName, suffix, ms2Type);
+		
 		this.mgfFiles = new String[rawFiles.length];
 		this.pf2Files = new String[rawFiles.length];
-		File spectraDirFile = metaPar.getSpectraFile();
+		
+		LOGGER.info("{}: Initializing {} MGF and PF2 files", taskName, rawFiles.length);
+		
 		for (int i = 0; i < rawFiles.length; i++) {
 			File rawi = new File(rawFiles[i]);
 			String rawName = rawi.getName();
 			rawName = rawName.substring(0, rawName.length() - ".raw".length());
+			
 			File mgfFile = new File(spectraDirFile, rawName + suffix + ".mgf");
 			File pf2 = new File(spectraDirFile, rawName + suffix + ".pf2");
+			
 			mgfFiles[i] = mgfFile.getAbsolutePath();
 			pf2Files[i] = pf2.getAbsolutePath();
+			
+			LOGGER.info("{}: File {} - Raw: {}, MGF: {} (exists: {}, size: {} bytes), PF2: {} (exists: {}, size: {} bytes)", 
+				taskName, i, rawName, mgfFile.getName(), mgfFile.exists(), mgfFile.length(), 
+				pf2.getName(), pf2.exists(), pf2.length());
 		}
+		
+		LOGGER.info("{}: Constructor completed. MGF files: {}, PF2 files: {}", 
+			taskName, mgfFiles.length, pf2Files.length);
 	}
 
 	/**
@@ -96,10 +160,50 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 
 		LOGGER.info(taskName + ": spectra cluster started");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": spectra cluster started");
+		
+		// Update progress at start of clustering
+		updateProgress(20, 100);
+		updateMessage("Starting spectra clustering...");
+		
+		// Test CDF resource loading to ensure the resource issue is resolved
+		try {
+			LOGGER.info("{}: Testing CDF resource loading...", taskName);
+			uk.ac.ebi.pride.spectracluster.cdf.CumulativeDistributionFunction cdf = 
+				uk.ac.ebi.pride.spectracluster.cdf.CumulativeDistributionFunctionFactory
+					.getDefaultCumlativeDistributionFunctionForSimilarityMetric(
+						uk.ac.ebi.pride.spectracluster.similarity.CombinedFisherIntensityTest.class);
+			LOGGER.info("{}: CDF loaded successfully: {}", taskName, cdf);
+		} catch (Exception e) {
+			LOGGER.warn("{}: CDF loading test failed, but continuing with clustering: {}", taskName, e.getMessage());
+		}
+
+		// Log the MGF files that will be used for clustering
+		LOGGER.info("{}: Clustering {} MGF files", taskName, mgfFiles != null ? mgfFiles.length : 0);
+		if (mgfFiles == null || mgfFiles.length == 0) {
+			LOGGER.error("{}: No MGF files available for clustering! Check if raw files were properly loaded.", taskName);
+			LOGGER.error("{}: This usually means the MetaData object was not properly set on the parameters.", taskName);
+			return;
+		}
+		
+		for (int i = 0; i < mgfFiles.length; i++) {
+			File mgfFile = new File(mgfFiles[i]);
+			LOGGER.info("{}: MGF file {}: {} (exists: {}, size: {} bytes)", 
+				taskName, i, mgfFiles[i], mgfFile.exists(), mgfFile.length());
+		}
+
+		// Update progress before creating cluster directory
+		updateProgress(22, 100);
+		updateMessage("Preparing clustering directory...");
 
 		File clusterDir = new File(dbcFile, "clustered_spectra");
 		File clusterMgf = new File(clusterDir, "cluster.mgf");
-		clusterDir.mkdir();
+		
+		LOGGER.info("{}: Cluster directory: {} (exists: {})", taskName, clusterDir.getAbsolutePath(), clusterDir.exists());
+		LOGGER.info("{}: Target cluster MGF: {} (exists: {}, size: {} bytes)", 
+			taskName, clusterMgf.getAbsolutePath(), clusterMgf.exists(), clusterMgf.length());
+		
+		boolean created = clusterDir.mkdir();
+		LOGGER.info("{}: Created cluster directory: {}", taskName, created);
 
 		if (clusterMgf.exists()) {
 			LOGGER.info(taskName + ": clustered MS/MS spectra file already existed in " + clusterMgf);
@@ -107,19 +211,30 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 					+ ": clustered MS/MS spectra file already existed in " + clusterMgf);
 		} else {
 
+			// Update progress before starting clustering
+			updateProgress(25, 100);
+			updateMessage("Clustering MS/MS spectra...");
+
 			LOGGER.info(taskName + ": clustering MS/MS spectra to " + clusterMgf + " started");
 			System.out.println(format.format(new Date()) + "\t" + taskName + ": clustering MS/MS spectra to "
 					+ clusterMgf + " started");
 
-			ClusterTask clusterTask = new ClusterTask(metaPar.getThreadCount(), true, metaPar.getIsobaricTag(),
-					MetaLabWorkflowType.pFindWorkflow.name());
+			LOGGER.info("{}: Creating ClusterTask with threadCount={}, fastMode=true, isobaricTag={}", 
+				taskName, metaPar.getThreadCount(), metaPar.getIsobaricTag());
+			
+			ClusterTask clusterTask = new ClusterTask(metaPar.getThreadCount(), true, metaPar.getIsobaricTag());
 
+			LOGGER.info("{}: Starting clustering with ClusterTask.runCli()", taskName);
 			clusterTask.runCli(mgfFiles, clusterDir, clusterMgf);
 
 			LOGGER.info(taskName + ": clustering MS/MS spectra to " + clusterMgf + " finished");
 			System.out.println(format.format(new Date()) + "\t" + taskName + ": clustering MS/MS spectra to "
 					+ clusterMgf + " finished");
 		}
+
+		// Update progress after clustering completion
+		updateProgress(30, 100);
+		updateMessage("Spectra clustering completed!");
 
 		LOGGER.info(taskName + ": spectra cluster finished");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": spectra cluster finished");
@@ -140,6 +255,10 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 		System.out.println(format.format(new Date()) + "\t" + taskName
 				+ ": searching clustered spectra in original database started");
 
+		// Update progress at start of search
+		updateProgress(32, 100);
+		updateMessage("Searching clustered spectra against database...");
+
 		File clusterDir = new File(dbcFile, "clustered_spectra");
 
 		File[] mgfs = clusterDir.listFiles(new FileFilter() {
@@ -153,6 +272,17 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 				return false;
 			}
 		});
+		
+		// Safety check: if no MGF files were found, return empty array
+		if (mgfs == null || mgfs.length == 0) {
+			LOGGER.warn("{}: No MGF files found in cluster directory: {}", taskName, clusterDir.getAbsolutePath());
+			LOGGER.warn("{}: This may indicate that clustering failed or no spectra were generated.", taskName);
+			return new File[0];
+		}
+
+		// Update progress before starting search
+		updateProgress(34, 100);
+		updateMessage("Found " + mgfs.length + " MGF files, starting database search...");
 
 		if (useDBReducer) {
 			File reducedDbFile = new File(dbcFile, "DBReducer.fasta");
@@ -178,6 +308,8 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 					mgfFilePaths[i] = mgfs[i].getAbsolutePath();
 				}
 
+				LOGGER.info("{}: Starting DBReducer search with {} MGF files", taskName, mgfFilePaths.length);
+				
 				DBReducerTask task = new DBReducerTask(dbReducerExe);
 				task.setTotalThread(metaPar.getThreadCount());
 
@@ -224,6 +356,8 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 					mgfFilePaths[i] = mgfs[i].getAbsolutePath();
 				}
 
+				LOGGER.info("{}: Starting pFind search with {} MGF files", taskName, mgfFilePaths.length);
+				
 				File pFindBin = pFindExe.getParentFile();
 
 				PFindTask task = new PFindTask(pFindBin);
@@ -257,6 +391,13 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 
 		LOGGER.info(taskName + ": MetaProIQ started");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": MetaProIQ started");
+
+		// Safety check: ensure we have MGF files to work with
+		if (this.mgfFiles == null || this.mgfFiles.length == 0) {
+			LOGGER.error("{}: No MGF files available for MetaProIQ workflow! Check if raw files were properly loaded.", taskName);
+			LOGGER.error("{}: This usually means the MetaData object was not properly set on the parameters.", taskName);
+			return new File[0];
+		}
 
 		String ms2Type = metaPar.getMs2ScanMode();
 
@@ -923,4 +1064,5 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 
 		return count;
 	}
+
 }

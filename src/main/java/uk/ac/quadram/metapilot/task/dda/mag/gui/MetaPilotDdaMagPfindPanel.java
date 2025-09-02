@@ -1,6 +1,5 @@
 package uk.ac.quadram.metapilot.task.dda.mag.gui;
 
-import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
@@ -11,53 +10,36 @@ import javafx.collections.ObservableList;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.scene.paint.Color;
-import javafx.scene.control.cell.PropertyValueFactory;
-import javafx.scene.control.cell.TextFieldTableCell;
-import javafx.util.converter.DefaultStringConverter;
-import javafx.beans.property.SimpleStringProperty;
-import javafx.beans.property.StringProperty;
-import javafx.concurrent.Task;
-import javafx.scene.control.Alert.AlertType;
-import uk.ac.quadram.metapilot.task.common.gui.MetaLabIOPanelFX;
-import uk.ac.quadram.metapilot.task.common.gui.MetaLabIOPanelFX.ExperimentRow;
+import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
 import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
 import uk.ac.quadram.metapilot.task.common.gui.MetadataConfigurationPanel;
 import uk.ac.quadram.metapilot.task.common.gui.IsobaricLabelingPanel;
 import uk.ac.quadram.metapilot.task.common.gui.ModificationsPanel;
-import uk.ac.quadram.metapilot.task.par.MetaData;
-import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
-import uk.ac.quadram.metapilot.task.par.MetaConstants;
-import uk.ac.quadram.metapilot.task.MetaLabWorkflowType;
-import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
-import uk.ac.quadram.metapilot.core.mod.IsobaricTag;
-import uk.ac.quadram.metapilot.task.dda.mag.DDAMagPfindTask;
-import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.par.MetaParameterMag;
-import javafx.animation.KeyFrame;
-import javafx.animation.Timeline;
-import javafx.util.Duration;
-import java.lang.management.ManagementFactory;
-import java.lang.management.OperatingSystemMXBean;
-import java.lang.management.MemoryMXBean;
-import java.lang.management.MemoryUsage;
+import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel;
+import uk.ac.quadram.metapilot.task.dda.mag.DDAMagPfindTask;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
+import uk.ac.quadram.metapilot.task.par.MetaData;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
+import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
+import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX.ExperimentRow;
+import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantModification;
+import javafx.application.Platform;
+import javafx.concurrent.Task;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.io.File;
-import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
-import uk.ac.quadram.metapilot.task.v2.par.MaxQuantModIO;
-import java.util.HashMap;
 
 public class MetaPilotDdaMagPfindPanel extends VBox {
     // UI Components - Database specific
-    private MetaLabIOPanelFX ioPanel;
+    private MetaPilotIOPanelFX ioPanel;
     private ComboBox<MagDbItem> magDatabaseComboBox;
     private TextField hostDBField;
     private CheckBox appendHostDBCheckBox;
@@ -87,15 +69,17 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
     // MAG database items
     private ObservableList<MagDbItem> availableMagDatabases = FXCollections.observableArrayList();
 
-    public MetaPilotDdaMagPfindPanel() {
+    public MetaPilotDdaMagPfindPanel(MagDbItem[] magDbItems) {
         System.out.println("DEBUG: MetaPilotDdaMagPfindPanel() constructor started");
         try {
-            System.out.println("DEBUG: Loading enzymes from INI...");
             loadEnzymesFromIni();
-            System.out.println("DEBUG: Starting UI initialization...");
+            // Initialize MAG databases from parameter
+            System.out.println("DEBUG: Loading MAG databases...");
+            System.out.println("DEBUG: Found " + (magDbItems != null ? magDbItems.length : 0) + " MAG database items");
             initializeUI();
-            System.out.println("DEBUG: UI initialization completed");
-            System.out.println("DEBUG: MetaPilotDdaMagPfindPanel() constructor completed successfully");
+            // Now set MAG databases after UI is initialized
+            setAvailableMagDatabases(magDbItems);
+            System.out.println("DEBUG: MetaPilotDdaMagPfindPanel(MetaParameterMag) constructor completed successfully");
         } catch (Exception e) {
             System.err.println("ERROR: Exception in MetaPilotDdaMagPfindPanel constructor: " + e.getMessage());
             e.printStackTrace();
@@ -169,7 +153,10 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
             
             // Set up callbacks for parameter updates
             metadataPanel.setParameterUpdateCallback(this::updateParameterView);
-            isobaricPanel.setParameterUpdateCallback(this::updateParameterView);
+            isobaricPanel.setParameterUpdateCallback(() -> {
+                updateParameterView();
+                updateMetadataTable(); // Also update metadata when isobaric settings change
+            });
             modificationsPanel.setParameterUpdateCallback(this::updateParameterView);
             consolePanel.setStartCallback(this::startAnalysis);
             consolePanel.setStopCallback(this::stopAnalysis);
@@ -224,7 +211,7 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
             VBox tabContent = new VBox(10);
             tabContent.setPadding(new Insets(10));
             System.out.println("DEBUG: Creating MetaLabIOPanelFX...");
-            ioPanel = new MetaLabIOPanelFX();
+            ioPanel = new MetaPilotIOPanelFX();
             System.out.println("DEBUG: Creating database section...");
             VBox databaseSection = createDatabaseSection();
             System.out.println("DEBUG: Adding components to IO tab...");
@@ -536,25 +523,171 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
         
         paramGrid.add(threadsBox, 0, 0);
         paramGrid.add(ms2Box, 1, 0);
-        
-        VBox checkBoxContainer = new VBox(8);
-        generateSampleSpecificDBCheckBox = new CheckBox("Generate sample specific database");
-        generateSampleSpecificDBCheckBox.setSelected(true);
-        generateSampleSpecificDBCheckBox.setOnAction(e -> updateParameterView());
-        
-        spectraClusteringCheckBox = new CheckBox("Spectra clustering in first search");
-        spectraClusteringCheckBox.setSelected(false);
-        spectraClusteringCheckBox.setOnAction(e -> updateParameterView());
-        
-        checkBoxContainer.getChildren().addAll(generateSampleSpecificDBCheckBox, spectraClusteringCheckBox);
-        
-        section.getChildren().addAll(titleLabel, paramGrid, checkBoxContainer);
+
+        section.getChildren().addAll(titleLabel, paramGrid);
         return section;
     }
     
     private void startAnalysis() {
-        consolePanel.appendConsoleText("Starting MAG pFind analysis...\n");
-        System.out.println("DEBUG: startAnalysis called - MAG pFind workflow");
+        try {
+            consolePanel.appendConsoleText("Starting MAG pFind analysis...\n");
+            System.out.println("DEBUG: startAnalysis called - MAG pFind workflow");
+            
+            // 1. Validate inputs
+            ObservableList<ExperimentRow> fileRows = ioPanel.getExperimentData();
+            if (fileRows.isEmpty()) {
+                consolePanel.appendConsoleText("ERROR: No files selected for analysis.\n");
+                return;
+            }
+            
+            MagDbItem selectedMagDb = magDatabaseComboBox.getValue();
+            if (selectedMagDb == null) {
+                consolePanel.appendConsoleText("ERROR: No MAG database selected.\n");
+                return;
+            }
+            
+            String outputDir = ioPanel.getOutputDirectory();
+            if (outputDir == null || outputDir.isEmpty()) {
+                consolePanel.appendConsoleText("ERROR: No output directory specified.\n");
+                return;
+            }
+            
+            // 2. Collect file and experiment information
+            String[] rawFiles = new String[fileRows.size()];
+            String[] expNames = new String[fileRows.size()];
+            int[] fractions = new int[fileRows.size()];
+            int[] replicates = new int[fileRows.size()];
+            
+            for (int i = 0; i < fileRows.size(); i++) {
+                ExperimentRow row = fileRows.get(i);
+                rawFiles[i] = row.getFilePath();
+                expNames[i] = row.getExperimentName();
+                fractions[i] = 1; // Default fraction
+                replicates[i] = 1; // Default replicate
+            }
+            
+            // 3. Collect isobaric labeling information
+            String[] labelTitles = new String[0];
+            if (quantModeGroup.getSelectedToggle() != null) {
+                RadioButton selected = (RadioButton) quantModeGroup.getSelectedToggle();
+                if (selected.getText().contains("Isobaric") && isobaricPanel.hasLabels()) {
+                    ObservableList<IsobaricLabelingPanel.IsobaricLabelRow> isoLabels = isobaricPanel.getIsobaricTableData();
+                    labelTitles = new String[isoLabels.size()];
+                    for (int i = 0; i < isoLabels.size(); i++) {
+                        labelTitles[i] = isoLabels.get(i).getLabelName();
+                    }
+                }
+            }
+            
+            // 4. Collect metadata information
+            ObservableList<MetaPilotDdaIgcMaxQuantPanel.MetadataRow> metadataRows = metadataPanel.getMetadataTableData();
+            int metaTypeCount = metadataPanel.getMetadataColumnCount();
+            String[][] metaInfo = new String[metadataRows.size()][Math.max(3, metaTypeCount)]; // At least 3 columns
+            for (int i = 0; i < metadataRows.size(); i++) {
+                MetaPilotDdaIgcMaxQuantPanel.MetadataRow row = metadataRows.get(i);
+                metaInfo[i][0] = row.getAge() != null ? row.getAge() : "";
+                metaInfo[i][1] = row.getGender() != null ? row.getGender() : "";
+                metaInfo[i][2] = row.getCondition() != null ? row.getCondition() : "";
+                // Add more metadata fields as needed
+            }
+            
+            // 5. Create MetaData object
+            MetaData metaData = new MetaData(rawFiles, expNames, fractions, replicates, 
+                                           new String[0]); // Empty label titles initially
+            metaData.setLabelTitle(labelTitles);
+            metaData.setMetaInfo(metaInfo);
+            
+            // 6. Collect parameters for MetaBaseParameter constructor
+            String workflowType = "MAG pFind";
+            String microDb = selectedMagDb.getCatalogueID();
+            boolean appendHostDb = appendHostDBCheckBox.isSelected();
+            String hostDB = appendHostDb ? hostDBField.getText() : "";
+            String result = outputDir;
+            int coreCount = threadsSpinner.getValue() != null ? threadsSpinner.getValue() : 4;
+            boolean isMetaWorkflow = true;
+            
+            // 7. Create MetaBaseParameter with required constructor parameters
+            MetaBaseParameter metaBasePar = new MetaBaseParameter(workflowType, metaData, result, 
+                                                                  microDb, appendHostDb, hostDB, 
+                                                                  "", coreCount, coreCount, isMetaWorkflow);
+            
+            // 8. Collect parameters for MetaParameterMag constructor
+            String[] fixMods = new String[0];  // TODO: Get from modifications panel
+            String[] variMods = new String[0]; // TODO: Get from modifications panel
+            String enzyme = enzymeComboBox.getValue() != null ? enzymeComboBox.getValue() : "Trypsin";
+            int missCleavages = missedCleavagesSpinner.getValue() != null ? missedCleavagesSpinner.getValue() : 2;
+            int digestMode = 1; // Default digest mode
+            String quanMode = "Label-Free";
+            if (quantModeGroup.getSelectedToggle() != null) {
+                RadioButton selected = (RadioButton) quantModeGroup.getSelectedToggle();
+                quanMode = selected.getText();
+            }
+            
+            // 9. Create MetaParameterMag with proper constructor
+            String magDbVersion = "";
+            if (selectedMagDb.getVersionList() != null && !selectedMagDb.getVersionList().isEmpty()) {
+                // Get the latest version from the version list
+                magDbVersion = selectedMagDb.getVersionList().get(0).getCatalogueVersion();
+            }
+            MetaParameterMag metaParameterMag = new MetaParameterMag(metaBasePar, fixMods, variMods, enzyme,
+                    missCleavages, digestMode, quanMode, new MaxquantModification[0], null, false, 
+                    new double[0][0], selectedMagDb.getCatalogueID(), magDbVersion);
+            
+            // 10. Create MetaResourceParameters (may need to be loaded from config)
+            MetaResourceParameters mrp = new MetaResourceParameters();
+            // TODO: Load MRP from configuration if needed
+            
+            // 11. Create progress bars
+            JavaFXProgressBar overallBar = new JavaFXProgressBar(0, 100, 0);
+            JavaFXProgressBar currentBar = new JavaFXProgressBar(0, 100, 0);
+            
+            // 12. Create and run DDAMagPfindTask
+            DDAMagPfindTask task = new DDAMagPfindTask(metaBasePar, mrp, overallBar, currentBar);
+            
+            // 13. Set up task callbacks
+            task.messageProperty().addListener((obs, oldMsg, newMsg) -> {
+                Platform.runLater(() -> {
+                    if (newMsg != null) {
+                        consolePanel.appendConsoleText("Current Task: " + newMsg + "\n");
+                    }
+                });
+            });
+            
+            task.setOnSucceeded(e -> {
+                Platform.runLater(() -> {
+                    // Check if the task actually succeeded by examining the result
+                    try {
+                        Boolean taskResult = task.get();
+                        if (taskResult != null && taskResult) {
+                            consolePanel.appendConsoleText("Analysis completed successfully!\n");
+                        } else {
+                            consolePanel.appendConsoleText("Analysis completed but may not have been fully successful.\n");
+                        }
+                    } catch (Exception ex) {
+                        consolePanel.appendConsoleText("Analysis failed: " + ex.getMessage() + "\n");
+                    }
+                });
+            });
+            
+            task.setOnFailed(e -> {
+                Platform.runLater(() -> {
+                    Throwable exception = task.getException();
+                    consolePanel.appendConsoleText("Analysis failed: " + 
+                        (exception != null ? exception.getMessage() : "Unknown error") + "\n");
+                });
+            });
+            
+            // 14. Run task in background thread
+            Thread taskThread = new Thread(task);
+            taskThread.setDaemon(true);
+            taskThread.start();
+            
+            consolePanel.appendConsoleText("Analysis task started successfully.\n");
+            
+        } catch (Exception e) {
+            consolePanel.appendConsoleText("ERROR: Failed to start analysis: " + e.getMessage() + "\n");
+            e.printStackTrace();
+        }
     }
 
     private void stopAnalysis() {
@@ -568,7 +701,7 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
             return;
         }
         
-        ObservableList<MetaLabIOPanelFX.ExperimentRow> experiments = ioPanel.getExperimentData();
+        ObservableList<MetaPilotIOPanelFX.ExperimentRow> experiments = ioPanel.getExperimentData();
         metadataPanel.updateMetadataFromIOPanel(experiments);
     }
 
@@ -578,7 +711,7 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
             return;
         }
         
-        ObservableList<MetaLabIOPanelFX.ExperimentRow> fileRows = ioPanel.getExperimentData();
+        ObservableList<MetaPilotIOPanelFX.ExperimentRow> fileRows = ioPanel.getExperimentData();
         if (fileRows.isEmpty()) return;
         
         if (quantModeGroup != null && quantModeGroup.getSelectedToggle() != null) {

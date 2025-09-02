@@ -21,6 +21,7 @@ import org.apache.logging.log4j.Logger;
 
 import uk.ac.quadram.metapilot.core.math.MathTool;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
+import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcMaxQuantParameters;
 import uk.ac.quadram.metapilot.task.io.pep.AbstractMetaPeptideReader;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.par.MetaData;
@@ -72,7 +73,7 @@ public class MaxquantPepReader extends AbstractMetaPeptideReader {
 			// TODO Auto-generated catch block
 			LOGGER.error("Error in reading MaxQuant search result file " + in, e);
 		}
-		this.parseTitle(parameter);
+//		this.parseTitle(parameter);
 	}
 
 	public MaxquantPepReader(String in, MetaParameterMQ parameter) {
@@ -80,6 +81,21 @@ public class MaxquantPepReader extends AbstractMetaPeptideReader {
 	}
 
 	public MaxquantPepReader(File in, MetaParameterMQ parameter) {
+		super(in);
+		try {
+			this.reader = new BufferedReader(new FileReader(in));
+		} catch (FileNotFoundException e) {
+			// TODO Auto-generated catch block
+			LOGGER.error("Error in reading MaxQuant search result file " + in, e);
+		}
+		this.parseTitle(parameter);
+	}
+	
+	public MaxquantPepReader(String in, DDAIgcMaxQuantParameters parameter) {
+		this(new File(in), parameter);
+	}
+
+	public MaxquantPepReader(File in, DDAIgcMaxQuantParameters parameter) {
 		super(in);
 		try {
 			this.reader = new BufferedReader(new FileReader(in));
@@ -116,12 +132,12 @@ public class MaxquantPepReader extends AbstractMetaPeptideReader {
 		this.parseTitle();
 	}
 
-	private void parseTitle(MetaParameterV1 parameter) {
-		String[] paraExps = parameter.getRawFiles()[1];
-		String[][] isotopeLabels = parameter.getLabels();
-		int isobaricLabelCount = parameter.getIsobaricLabelCount();
-		int quanResultType = parameter.getQuanResultType();
-		this.quanMode = parameter.getQuanMode();
+	private void parseTitle(DDAIgcMaxQuantParameters parameter) {
+		String[] paraExps = parameter.getMetadata().getRawFiles();
+		String[][] isotopeLabels = parameter.getIsotopicLabels();
+		int isobaricLabelCount = parameter.getIsobaricTableData().size();
+		int quanResultType = MetaParameterV1.quanResultSeparate;
+		this.quanMode = parameter.getQuantitativeMode();
 
 		ArrayList<String> intensityTitleList = new ArrayList<String>();
 
@@ -749,7 +765,7 @@ public class MaxquantPepReader extends AbstractMetaPeptideReader {
 	}
 
 	@SuppressWarnings("unused")
-	private static void convertPep2Report(File peptides, File peptideReport, MetaParameterMQ metaPar)
+	private static void convertPep2Report(File peptides, File peptideReport, DDAIgcMaxQuantParameters metaPar)
 			throws IOException {
 		MaxquantPepReader pepReader = new MaxquantPepReader(peptides, metaPar);
 		PrintWriter writer = new PrintWriter(peptideReport);

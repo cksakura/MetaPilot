@@ -24,8 +24,8 @@ import javafx.beans.property.SimpleDoubleProperty;
 import javafx.beans.property.DoubleProperty;
 import javafx.concurrent.Task;
 import javafx.scene.control.Alert.AlertType;
-import uk.ac.quadram.metapilot.task.common.gui.MetaLabIOPanelFX;
-import uk.ac.quadram.metapilot.task.common.gui.MetaLabIOPanelFX.ExperimentRow;
+import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
+import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX.ExperimentRow;
 import uk.ac.quadram.metapilot.task.common.gui.IsobaricLabelingPanel;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
@@ -57,7 +57,7 @@ import java.util.HashMap;
 
 public class MetaPilotDdaIgcSagePanel extends VBox {
     // UI Components (similar to pFind panel)
-    private MetaLabIOPanelFX ioPanel;
+    private MetaPilotIOPanelFX ioPanel;
     private TextField microbiomeDBField;
     private TextField hostDBField;
     private CheckBox appendHostDBCheckBox;
@@ -174,7 +174,7 @@ public class MetaPilotDdaIgcSagePanel extends VBox {
     private VBox createIOTab() {
         VBox tabContent = new VBox(10);
         tabContent.setPadding(new Insets(10));
-        ioPanel = new MetaLabIOPanelFX();
+        ioPanel = new MetaPilotIOPanelFX();
         VBox databaseSection = createDatabaseSection();
         tabContent.getChildren().addAll(
             createSectionTitle("Input/Output Settings"),
@@ -976,9 +976,9 @@ public class MetaPilotDdaIgcSagePanel extends VBox {
             return;
         }
         
-        ObservableList<MetaLabIOPanelFX.ExperimentRow> experiments = ioPanel.getExperimentData();
+        ObservableList<MetaPilotIOPanelFX.ExperimentRow> experiments = ioPanel.getExperimentData();
         metadataTableData.clear();
-        for (MetaLabIOPanelFX.ExperimentRow exp : experiments) {
+        for (MetaPilotIOPanelFX.ExperimentRow exp : experiments) {
             metadataTableData.add(new MetaPilotDdaIgcMaxQuantPanel.MetadataRow(exp.getExperimentName()));
         }
     }
@@ -1191,7 +1191,7 @@ public class MetaPilotDdaIgcSagePanel extends VBox {
         }
         
         metadataTableData.clear();
-        ObservableList<MetaLabIOPanelFX.ExperimentRow> fileRows = ioPanel.getExperimentData();
+        ObservableList<MetaPilotIOPanelFX.ExperimentRow> fileRows = ioPanel.getExperimentData();
         if (fileRows.isEmpty()) return;
 
         createMetadataTableColumns();
@@ -1202,7 +1202,7 @@ public class MetaPilotDdaIgcSagePanel extends VBox {
             boolean hasLabels = !isobaricTableData.isEmpty();
 
             if (mode.contains("Isobaric") && hasLabels) {
-                for (MetaLabIOPanelFX.ExperimentRow row : fileRows) {
+                for (MetaPilotIOPanelFX.ExperimentRow row : fileRows) {
                     for (IsobaricLabelingPanel.IsobaricLabelRow isoLabel : isobaricTableData) {
                         MetaPilotDdaIgcMaxQuantPanel.MetadataRow metadataRow = 
                             new MetaPilotDdaIgcMaxQuantPanel.MetadataRow(row.getExperimentName());
@@ -1211,7 +1211,7 @@ public class MetaPilotDdaIgcSagePanel extends VBox {
                     }
                 }
             } else {
-                for (MetaLabIOPanelFX.ExperimentRow row : fileRows) {
+                for (MetaPilotIOPanelFX.ExperimentRow row : fileRows) {
                     metadataTableData.add(new MetaPilotDdaIgcMaxQuantPanel.MetadataRow(row.getExperimentName()));
                 }
             }

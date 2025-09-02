@@ -40,6 +40,8 @@ import uk.ac.quadram.metapilot.task.mag.par.MetaParameterMag;
 import uk.ac.quadram.metapilot.task.mag.par.MetaSourcesMag;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 
+import uk.ac.quadram.metapilot.task.MetaPythonReportTask;
+
 public class MetaLabMagAlphapeptTask extends MagHapPFindTask {
 
 	private String alphapept;
@@ -907,7 +909,7 @@ public class MetaLabMagAlphapeptTask extends MagHapPFindTask {
 		return true;
 	}
 
-	protected boolean exportSummary(MetaReportTask task) {
+	protected boolean exportSummary(MetaPythonReportTask task) {
 
 		this.final_summary_txt = new File(metaPar.getResult(), "final_summary.tsv");
 		try {
@@ -1005,16 +1007,16 @@ public class MetaLabMagAlphapeptTask extends MagHapPFindTask {
 			boolean finish = false;
 			File report_ID_summary = new File(reportHtmlDir, "report_ID_summary.html");
 			if (summaryMetaFile != null && summaryMetaFile.exists()) {
-				finish = task.addTask(MetaReportTask.summary, final_summary_txt, report_ID_summary, summaryMetaFile);
+				finish = task.addTask(MetaPythonReportTask.ID_SUMMARY, final_summary_txt, report_ID_summary, summaryMetaFile);
 			} else {
-				finish = task.addTask(MetaReportTask.summary, final_summary_txt, report_ID_summary);
+				finish = task.addTask(MetaPythonReportTask.ID_SUMMARY, final_summary_txt, report_ID_summary);
 			}
 
 			return finish;
 		}
 	}
 
-	protected boolean exportTaxaFunc(MetaReportTask task) {
+	protected boolean exportTaxaFunc(MetaPythonReportTask task) {
 
 		LOGGER.info(getTaskName() + ": taxonomy analysis and functional annotation started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName()
@@ -1121,9 +1123,9 @@ public class MetaLabMagAlphapeptTask extends MagHapPFindTask {
 		if (!report_function_summary.exists() || report_function_summary.length() == 0) {
 
 			if (summaryMetaFile != null && summaryMetaFile.exists()) {
-				task.addTask(MetaReportTask.function, funReportTsv, report_function_summary, summaryMetaFile);
+				task.addTask(MetaPythonReportTask.FUNCTION, funReportTsv, report_function_summary, summaryMetaFile);
 			} else {
-				task.addTask(MetaReportTask.function, funReportTsv, report_function_summary);
+				task.addTask(MetaPythonReportTask.FUNCTION, funReportTsv, report_function_summary);
 			}
 		}
 

@@ -72,12 +72,6 @@ public class DiaLibCreateTask extends MetaAbstractTask {
 	}
 
 	@Override
-	protected void initial() {
-		// TODO Auto-generated method stub
-
-	}
-
-	@Override
 	protected Boolean call() throws Exception {
 
 		File libFolder = new File(magDbItem.getCurrentFile(), "libraries");

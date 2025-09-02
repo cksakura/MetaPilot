@@ -18,7 +18,6 @@ import java.net.URLConnection;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Enumeration;
-import java.util.concurrent.ExecutionException;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
@@ -334,9 +333,18 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 		// set the pattern layout and pattern
 		LayoutComponentBuilder layoutBuilder = builder.newLayout("PatternLayout").addAttribute("pattern", pattern);
 
+		// Ensure log directory exists
+		if (!logDir.exists()) {
+			boolean created = logDir.mkdirs();
+			if (!created) {
+				System.err.println("Warning: Could not create log directory: " + logDir.getAbsolutePath());
+			}
+		}
+
 		// create a file appender
+		File logFile = new File(logDir, "logging.log");
 		AppenderComponentBuilder appenderBuilder = builder.newAppender("LogToFile", "File")
-				.addAttribute("fileName", logDir + "\\logging.log").add(layoutBuilder);
+				.addAttribute("fileName", logFile.getAbsolutePath()).add(layoutBuilder);
 
 		builder.add(appenderBuilder);
 
@@ -344,7 +352,12 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 		rootLogger.add(builder.newAppenderRef("LogToFile"));
 		builder.add(rootLogger);
 
-		Configurator.reconfigure(builder.build());
+		try {
+			Configurator.reconfigure(builder.build());
+		} catch (Exception e) {
+			System.err.println("Warning: Could not configure logging to file: " + e.getMessage());
+			// Continue without file logging - console logging will still work
+		}
 	}
 
 	private static void run(String[] args) {

@@ -19,10 +19,7 @@ import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
-import org.apache.commons.lang3.math.NumberUtils;
 import org.apache.commons.math3.stat.inference.TTest;
-import org.apache.logging.log4j.Logger;
-import org.dom4j.DocumentException;
 
 import uk.ac.quadram.metapilot.core.function.v2.EnzymeCommission;
 import uk.ac.quadram.metapilot.core.function.v2.GoObo;
@@ -35,13 +32,11 @@ import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.task.MetaPilotTask;
-import uk.ac.quadram.metapilot.task.MetaReportCopyTask;
-import uk.ac.quadram.metapilot.task.MetaReportTask;
+import uk.ac.quadram.metapilot.task.MetaPythonReportCopyTask;
+import uk.ac.quadram.metapilot.task.MetaPythonReportTask;
 import uk.ac.quadram.metapilot.task.io.MetaTreeHandler;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
-import uk.ac.quadram.metapilot.task.io.pro.pfind.MetaProteinAnnoEggNog;
-import uk.ac.quadram.metapilot.task.io.pro.pfind.MetaProteinXMLReader2;
 import uk.ac.quadram.metapilot.task.io.pro.pfind.MetaProteinXMLWriter2;
 import uk.ac.quadram.metapilot.task.mag.par.MetaParameterMag;
 import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
@@ -49,30 +44,25 @@ import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 
 public abstract class MetaPilotMagTask extends MetaPilotTask {
-	
+
 	protected String[] rawFiles;
 	protected String[] quanExpNames;
 	protected MagDbItem magDb;
 	protected File[] separateResultFolders;
 	protected int threadCount;
 	protected double psmCoverThreshold = 0.95;
-	
+
 	protected File rawDir;
 	protected File quan_pep_file;
 	protected File quan_pro_file;
 	protected HashMap<String, String> expNameMap;
 	protected File summaryMetaFile;
 	private String ms2CountFile;
-	
+
 	public MetaPilotMagTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
 			JavaFXProgressBar secondBar) {
 		super(metaPar, mrp, progressBar, secondBar);
-		// TODO Auto-generated constructor stub
-	}
 
-	@Override
-	protected void initial() {
-		// TODO Auto-generated method stub
 		MetaData metadata = this.metaPar.getMetadata();
 		if (metadata != null) {
 			this.rawFiles = metadata.getRawFiles();
@@ -101,7 +91,21 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			reportDir.mkdirs();
 		}
 
-		MetaReportCopyTask.copy(reportDir, getVersion());
+		MetaPythonReportCopyTask reportCopyTask = new MetaPythonReportCopyTask(new File(metaPar.getResult()));
+		Thread reportCopyThread = new Thread(reportCopyTask);
+		reportCopyThread.start();
+		try {
+			reportCopyThread.join();
+			if (!reportCopyTask.get()) {
+				LOGGER.error(getTaskName() + ": error in copying report template");
+				System.err.println(
+						format.format(new Date()) + "\t" + getTaskName() + ": error in copying report template");
+			}
+		} catch (Exception e) {
+			LOGGER.error(getTaskName() + ": error in copying report template", e);
+			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in copying report template: "
+					+ e.getMessage());
+		}
 		metaPar.setReportDir(new File(reportDir + "\\reports\\rmd_html"));
 	}
 
@@ -215,7 +219,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 	protected HashMap<String, Double> refineGenomes(MetaPeptide[] quanPeps) {
 		return refineGenomes(quanPeps, PFindResultReader.REV);
 	}
-	
+
 	/**
 	 * Reverser proteins are also included to calculate the FDR of genomes
 	 * 
@@ -550,10 +554,11 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 
 		return razorProteins;
 	}
-	
+
 	protected boolean exportGenome(HashMap<String, double[]> genomeIntensityMap, HashMap<String, Integer> psmCountMap,
 			HashMap<String, HashSet<String>> pepCountMap, HashMap<String, HashSet<String>> uniquePepCountMap,
-			HashMap<String, ArrayList<Double>> genomeQvalueMap, File taxFile, String[] expNames, MetaReportTask task) {
+			HashMap<String, ArrayList<Double>> genomeQvalueMap, File taxFile, String[] expNames,
+			MetaPythonReportTask task) {
 
 		MagFuncSearcher searcher = null;
 		try {
@@ -865,14 +870,15 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 		}
 
 		boolean finished = false;
-		
+
 		File report_taxonomy_summary = new File(metaPar.getReportDir(), "report_taxonomy_summary.html");
 		if (!report_taxonomy_summary.exists() || report_taxonomy_summary.length() == 0) {
 
 			if (summaryMetaFile != null && summaryMetaFile.exists()) {
-				finished = task.addTask(MetaReportTask.taxon, taxaReportFile, report_taxonomy_summary, summaryMetaFile);
+				finished = task.addTask(MetaPythonReportTask.TAXONOMY, taxaReportFile, report_taxonomy_summary,
+						summaryMetaFile);
 			} else {
-				finished = task.addTask(MetaReportTask.taxon, taxaReportFile, report_taxonomy_summary);
+				finished = task.addTask(MetaPythonReportTask.TAXONOMY, taxaReportFile, report_taxonomy_summary);
 			}
 		} else {
 			finished = true;
@@ -885,7 +891,6 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 
 		return finished;
 	}
-	
 
 	protected MetaProteinAnnoMag[] funcAnnoSqlite(MetaProtein[] pros, String[] fileNames) {
 		HashMap<String, ArrayList<MetaProtein>> genomeProMap = new HashMap<String, ArrayList<MetaProtein>>();
@@ -956,7 +961,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 				usedGoMap.putAll(searcher.getUsedGoMap());
 			}
 		}
-		
+
 		File funcFile = new File(metaPar.getResult(), "functional_annotation");
 		if (!funcFile.exists()) {
 			funcFile.mkdir();
@@ -964,7 +969,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 		File final_pro_xml_file = new File(funcFile, "functions.xml");
 
 		MetaProteinAnnoMag[] metapros = list.toArray(new MetaProteinAnnoMag[list.size()]);
-		
+
 		MetaProteinXMLWriter2 writer = new MetaProteinXMLWriter2(final_pro_xml_file.getAbsolutePath(),
 				MetaConstants.pFindMag, ((MetaParameterMag) this.metaPar).getQuanMode(), fileNames);
 
@@ -985,7 +990,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 
 		return metapros;
 	}
-	
+
 	protected boolean exportReport() {
 
 		progressBar.setString(getTaskName() + ": exporting report");
@@ -998,7 +1003,21 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			reportDir.mkdirs();
 		}
 
-		MetaReportCopyTask.copy(reportDir, getVersion());
+		MetaPythonReportCopyTask reportCopyTask = new MetaPythonReportCopyTask(new File(metaPar.getResult()));
+		Thread reportCopyThread = new Thread(reportCopyTask);
+		reportCopyThread.start();
+		try {
+			reportCopyThread.join();
+			if (!reportCopyTask.get()) {
+				LOGGER.error(getTaskName() + ": error in copying report template");
+				System.err.println(
+						format.format(new Date()) + "\t" + getTaskName() + ": error in copying report template");
+			}
+		} catch (Exception e) {
+			LOGGER.error(getTaskName() + ": error in copying report template", e);
+			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in copying report template: "
+					+ e.getMessage());
+		}
 
 		metaPar.setReportDir(reportDir);
 
@@ -1016,7 +1035,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			e.printStackTrace();
 		}
 
-		MetaReportTask task = new MetaReportTask(metaPar.getThreadCount());
+		MetaPythonReportTask task = new MetaPythonReportTask(metaPar.getThreadCount());
 
 		boolean summayrFinished = this.exportSummary(task);
 
@@ -1036,10 +1055,10 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			if (!report_peptides_summary.exists() || report_peptides_summary.length() == 0) {
 
 				if (summaryMetaFile.exists()) {
-					pepReportOk = task.addTask(MetaReportTask.peptide, final_pep_txt, report_peptides_summary,
+					pepReportOk = task.addTask(MetaPythonReportTask.PEPTIDE, final_pep_txt, report_peptides_summary,
 							summaryMetaFile);
 				} else {
-					pepReportOk = task.addTask(MetaReportTask.peptide, final_pep_txt, report_peptides_summary);
+					pepReportOk = task.addTask(MetaPythonReportTask.PEPTIDE, final_pep_txt, report_peptides_summary);
 				}
 			}
 		}
@@ -1059,10 +1078,11 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			File report_proteinGroups_summary = new File(reportHtmlDir, "report_proteinGroups_summary.html");
 			if (!report_proteinGroups_summary.exists() || report_proteinGroups_summary.length() == 0) {
 				if (summaryMetaFile.exists()) {
-					proReportOk = task.addTask(MetaReportTask.protein, final_pro_txt, report_proteinGroups_summary,
-							summaryMetaFile);
+					proReportOk = task.addTask(MetaPythonReportTask.PROTEIN, final_pro_txt,
+							report_proteinGroups_summary, summaryMetaFile);
 				} else {
-					proReportOk = task.addTask(MetaReportTask.protein, final_pro_txt, report_proteinGroups_summary);
+					proReportOk = task.addTask(MetaPythonReportTask.PROTEIN, final_pro_txt,
+							report_proteinGroups_summary);
 				}
 			}
 		}
@@ -1106,7 +1126,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 		return false;
 	}
 
-	protected boolean exportSummary(MetaReportTask task) {
+	protected boolean exportSummary(MetaPythonReportTask task) {
 
 		File final_summary_txt = new File(this.metaPar.getResult(), "final_summary.tsv");
 		try {
@@ -1126,7 +1146,8 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			int totalpsmCount = 0;
 			int totalUnipepCount = 0;
 
-			BufferedReader idReader = new BufferedReader(new FileReader(new File(metaPar.getDbSearchResultFile(), "id.tsv")));
+			BufferedReader idReader = new BufferedReader(
+					new FileReader(new File(metaPar.getDbSearchResultFile(), "id.tsv")));
 			HashMap<String, int[]> idMap = new HashMap<String, int[]>();
 			String line = idReader.readLine();
 			while ((line = idReader.readLine()) != null) {
@@ -1212,9 +1233,10 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			boolean finish = false;
 			File report_ID_summary = new File(metaPar.getReportDir(), "report_ID_summary.html");
 			if (summaryMetaFile != null && summaryMetaFile.exists()) {
-				finish = task.addTask(MetaReportTask.summary, final_summary_txt, report_ID_summary, summaryMetaFile);
+				finish = task.addTask(MetaPythonReportTask.ID_SUMMARY, final_summary_txt, report_ID_summary,
+						summaryMetaFile);
 			} else {
-				finish = task.addTask(MetaReportTask.summary, final_summary_txt, report_ID_summary);
+				finish = task.addTask(MetaPythonReportTask.ID_SUMMARY, final_summary_txt, report_ID_summary);
 			}
 
 			return finish;

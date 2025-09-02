@@ -48,6 +48,8 @@ public class MetaBaseParameter {
 	private boolean reduceDb;
 	private boolean spectraCluster;
 
+	// Quantitative mode
+    private String quantitativeMode = MetaConstants.labelFree;
 	private IsobaricTag isobaricTag;
 	private double[][] isobaricRefTable;
 	private String[][] isotopicLabels;
@@ -161,6 +163,14 @@ public class MetaBaseParameter {
 
 	public void setDigestMode(String digestMode) {
 		this.digestMode = digestMode;
+	}
+
+	public String getQuantitativeMode() {
+		return quantitativeMode;
+	}
+
+	public void setQuantitativeMode(String quantitativeMode) {
+		this.quantitativeMode = quantitativeMode;
 	}
 
 	public IsobaricTag getIsobaricTag() {

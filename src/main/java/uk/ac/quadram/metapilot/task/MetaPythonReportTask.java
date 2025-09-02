@@ -11,6 +11,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
+
 /**
  * Python-based report generation task that replaces the R-based MetaReportTask.
  * 
@@ -80,14 +82,15 @@ public class MetaPythonReportTask extends Task<Boolean> {
     public static final String TAXONOMY = "taxonomy";
     public static final String FUNCTION = "function";
 
-    // Python configuration
-    private static final String PYTHON_EXECUTABLE = "python";
+    // Python configuration - will be resolved from MetaResourceParameters
+    private String pythonExecutable;
 
     // Task management
     private final ExecutorService executor;
     private final List<ReportTaskInfo> reportTasks;
     private final List<File> outputFiles;
     private final int threadCount;
+    private final MetaResourceParameters resourceParameters;
 
     /**
      * Creates a new Python report generation task with specified thread count.
@@ -95,13 +98,27 @@ public class MetaPythonReportTask extends Task<Boolean> {
      * @param threadCount Number of threads to use for parallel report generation
      */
     public MetaPythonReportTask(int threadCount) {
+        this(threadCount, new MetaResourceParameters());
+    }
+    
+    /**
+     * Creates a new Python report generation task with specified thread count and resource parameters.
+     * 
+     * @param threadCount Number of threads to use for parallel report generation
+     * @param resourceParameters Resource parameters containing Python executable path
+     */
+    public MetaPythonReportTask(int threadCount, MetaResourceParameters resourceParameters) {
         this.threadCount = threadCount;
+        this.resourceParameters = resourceParameters;
         this.executor = Executors.newFixedThreadPool(threadCount);
         this.reportTasks = new ArrayList<>();
         this.outputFiles = new ArrayList<>();
         
-        LOGGER.info("{}: Initialized with {} threads", TASK_NAME, threadCount);
-        System.out.println(FORMAT.format(new Date()) + "\t" + TASK_NAME + ": Initialized with " + threadCount + " threads");
+        // Resolve Python executable path from resource parameters
+        this.pythonExecutable = resolvePythonExecutable();
+        
+        LOGGER.info("{}: Initialized with {} threads, Python: {}", TASK_NAME, threadCount, pythonExecutable);
+        System.out.println(FORMAT.format(new Date()) + "\t" + TASK_NAME + ": Initialized with " + threadCount + " threads, Python: " + pythonExecutable);
     }
 
     /**
@@ -174,8 +191,16 @@ public class MetaPythonReportTask extends Task<Boolean> {
             updateMessage("Starting Python report generation...");
             updateProgress(0, 100);
 
-            LOGGER.info("{}: Starting report generation for {} tasks", TASK_NAME, reportTasks.size());
-            System.out.println(FORMAT.format(new Date()) + "\t" + TASK_NAME + ": Starting report generation");
+            // Validate Python environment
+            if (!isPythonAvailable()) {
+                String errorMsg = "Python environment not available. Please check resource configuration.";
+                LOGGER.error("{}: {}", TASK_NAME, errorMsg);
+                updateMessage(errorMsg);
+                return false;
+            }
+
+            LOGGER.info("{}: Starting report generation for {} tasks using Python: {}", TASK_NAME, reportTasks.size(), pythonExecutable);
+            System.out.println(FORMAT.format(new Date()) + "\t" + TASK_NAME + ": Starting report generation using Python: " + pythonExecutable);
 
             // Shutdown executor and wait for completion
             executor.shutdown();
@@ -268,7 +293,7 @@ public class MetaPythonReportTask extends Task<Boolean> {
     private List<String> buildPythonCommand(ReportTaskInfo taskInfo) {
         List<String> command = new ArrayList<>();
         
-        command.add(PYTHON_EXECUTABLE);
+        command.add(pythonExecutable);
         command.add("-c");
         
         // Python script to execute
@@ -360,5 +385,53 @@ public class MetaPythonReportTask extends Task<Boolean> {
      */
     public Logger getLogger() {
         return LOGGER;
+    }
+    
+    /**
+     * Resolves the Python executable path from resource parameters.
+     * 
+     * @return Full path to Python executable, or "python" as fallback
+     */
+    private String resolvePythonExecutable() {
+        try {
+            // Get Python path from resource parameters
+            String pythonPath = resourceParameters.getToolPath(MetaResourceParameters.ToolType.PYTHON);
+            
+            if (pythonPath != null && !pythonPath.trim().isEmpty()) {
+                File pythonFile = new File(pythonPath);
+                if (pythonFile.exists()) {
+                    LOGGER.info("{}: Using bundled Python executable: {}", TASK_NAME, pythonPath);
+                    return pythonPath;
+                } else {
+                    LOGGER.warn("{}: Bundled Python executable not found at: {}, falling back to system python", TASK_NAME, pythonPath);
+                }
+            } else {
+                LOGGER.warn("{}: No Python path configured in resource parameters, falling back to system python", TASK_NAME);
+            }
+        } catch (Exception e) {
+            LOGGER.warn("{}: Error resolving Python executable from resource parameters: {}, falling back to system python", TASK_NAME, e.getMessage());
+        }
+        
+        // Fallback to system python
+        LOGGER.info("{}: Using system Python executable as fallback", TASK_NAME);
+        return "python";
+    }
+    
+    /**
+     * Checks if the Python environment is properly configured.
+     * 
+     * @return true if Python is available, false otherwise
+     */
+    public boolean isPythonAvailable() {
+        return resourceParameters.isToolAvailable(MetaResourceParameters.ToolType.PYTHON);
+    }
+    
+    /**
+     * Gets the Python executable path being used.
+     * 
+     * @return Python executable path
+     */
+    public String getPythonExecutable() {
+        return pythonExecutable;
     }
 } 

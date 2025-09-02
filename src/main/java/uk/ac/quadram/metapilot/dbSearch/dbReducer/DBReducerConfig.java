@@ -26,12 +26,26 @@ public class DBReducerConfig extends PFindConfig {
 
 		StringBuilder fixsb = new StringBuilder();
 		for (int i = 0; i < fixedMods.length; i++) {
-			fixsb.append(fixedMods[i].substring(0, fixedMods[i].indexOf(" "))).append(";");
+			String mod = fixedMods[i];
+			int spaceIndex = mod.indexOf(" ");
+			if (spaceIndex > 0) {
+				fixsb.append(mod.substring(0, spaceIndex)).append(";");
+			} else {
+				// If no space found, use the entire string
+				fixsb.append(mod).append(";");
+			}
 		}
 
 		StringBuilder varisb = new StringBuilder();
 		for (int i = 0; i < variMods.length; i++) {
-			varisb.append(variMods[i].substring(0, variMods[i].indexOf(" "))).append(";");
+			String mod = variMods[i];
+			int spaceIndex = mod.indexOf(" ");
+			if (spaceIndex > 0) {
+				varisb.append(mod.substring(0, spaceIndex)).append(";");
+			} else {
+				// If no space found, use the entire string
+				varisb.append(mod).append(";");
+			}
 		}
 		if (varisb.length() > 0) {
 			varisb.deleteCharAt(varisb.length() - 1);
@@ -61,7 +75,7 @@ public class DBReducerConfig extends PFindConfig {
 			this.pFindCfg = new File(result, "DBReducer.cfg");
 			this.export(pFindCfg, findMap);
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
+			// TODO Auto-generated method stub
 			e.printStackTrace();
 		}
 

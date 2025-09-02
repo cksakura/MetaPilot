@@ -13,10 +13,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import javafx.concurrent.Task;
-import javafx.application.Platform;
 
-import java.io.FileOutputStream;
-import java.io.OutputStream;
 import java.text.SimpleDateFormat;
 
 import org.apache.commons.net.ftp.FTPClient;
@@ -24,7 +21,6 @@ import org.apache.commons.net.ftp.FTPFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import uk.ac.quadram.metapilot.core.MGYG.HapExtractor;
 import uk.ac.quadram.metapilot.core.tools.ResumableDownloadTaskJavaFX;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 

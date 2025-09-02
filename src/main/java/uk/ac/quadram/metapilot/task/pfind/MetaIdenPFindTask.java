@@ -13,7 +13,6 @@ import java.nio.file.StandardWatchEventKinds;
 import java.nio.file.WatchEvent;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
-import java.sql.SQLException;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.text.ParseException;
@@ -28,31 +27,16 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-import javax.swing.JProgressBar;
-import javax.swing.SwingWorker;
-
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.dom4j.DocumentException;
 
 import com.sun.management.OperatingSystemMXBean;
 
-import javafx.concurrent.Task;
-import uk.ac.quadram.metapilot.core.function.COGFinder;
-import uk.ac.quadram.metapilot.core.function.CategoryFinder;
-import uk.ac.quadram.metapilot.core.function.GOBPFinder;
-import uk.ac.quadram.metapilot.core.function.GOCCFinder;
-import uk.ac.quadram.metapilot.core.function.GOMFFinder;
-import uk.ac.quadram.metapilot.core.function.KEGGFinder;
-import uk.ac.quadram.metapilot.core.function.KOFinder;
-import uk.ac.quadram.metapilot.core.function.NOGFinder;
-import uk.ac.quadram.metapilot.core.function.sql.IGCFuncSqliteSearcher;
 import uk.ac.quadram.metapilot.core.mod.PostTransModification;
 import uk.ac.quadram.metapilot.core.prodb.FastaManager;
-import uk.ac.quadram.metapilot.core.taxonomy.RootType;
 import uk.ac.quadram.metapilot.core.taxonomy.Taxon;
 import uk.ac.quadram.metapilot.core.taxonomy.TaxonomyDatabase;
-import uk.ac.quadram.metapilot.core.taxonomy.TaxonomyRanks;
 import uk.ac.quadram.metapilot.core.tools.FormatTool;
 import uk.ac.quadram.metapilot.dbSearch.dbReducer.DBReducerTask;
 import uk.ac.quadram.metapilot.dbSearch.pfind.PFindIsobaricTask;
@@ -63,7 +47,6 @@ import uk.ac.quadram.metapilot.dbSearch.pfind.PFindResultReader;
 import uk.ac.quadram.metapilot.dbSearch.pfind.PFindResultReader.PeptideResult;
 import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
 import uk.ac.quadram.metapilot.dbSearch.pfind.PFindTask;
-import uk.ac.quadram.metapilot.mdb.pep.Pep2TaxaDatabase;
 import uk.ac.quadram.metapilot.mdb.unipept.UnipLCAResult;
 import uk.ac.quadram.metapilot.mdb.unipept.UnipeptRequester;
 import uk.ac.quadram.metapilot.quant.flashLFQ.FlashLfqTask;
@@ -73,8 +56,8 @@ import uk.ac.quadram.metapilot.spectra.Spectrum;
 import uk.ac.quadram.metapilot.spectra.io.MSConvertor;
 import uk.ac.quadram.metapilot.spectra.io.MgfReader;
 import uk.ac.quadram.metapilot.task.MetaAbstractTask;
+import uk.ac.quadram.metapilot.task.MetaPythonReportTask;
 import uk.ac.quadram.metapilot.task.MetaReportCopyTask;
-import uk.ac.quadram.metapilot.task.MetaReportTask;
 import uk.ac.quadram.metapilot.task.io.MetaAlgorithm;
 import uk.ac.quadram.metapilot.task.io.MetaBiomJsonHandler;
 import uk.ac.quadram.metapilot.task.io.MetaTreeHandler;
@@ -82,12 +65,6 @@ import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPeptideXMLReader;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPeptideXMLWriter;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
-import uk.ac.quadram.metapilot.task.io.pro.MetaProteinAnno1;
-import uk.ac.quadram.metapilot.task.io.pro.MetaProteinXMLReader;
-import uk.ac.quadram.metapilot.task.io.pro.MetaProteinXMLWriter;
-import uk.ac.quadram.metapilot.task.io.pro.pfind.MetaProteinAnnoEggNog;
-import uk.ac.quadram.metapilot.task.io.pro.pfind.MetaProteinXMLReader2;
-import uk.ac.quadram.metapilot.task.io.pro.pfind.MetaProteinXMLWriter2;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
@@ -96,7 +73,6 @@ import uk.ac.quadram.metapilot.task.par.MetaSsdbCreatePar;
 import uk.ac.quadram.metapilot.task.pfind.par.MetaParameterPFind;
 import uk.ac.quadram.metapilot.task.v2.par.MetaOpenPar;
 import uk.ac.quadram.metapilot.task.v2.par.MetaParaIOMQ;
-import uk.ac.quadram.metapilot.task.v2.par.MetaSourcesV2;
 
 /**
  * Peptide/protein identification and quantification in pFind workflow
@@ -158,7 +134,7 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 	private static final Logger LOGGER = LogManager.getLogger(MetaIdenPFindTask.class);
 	private static final String taskName = "pFind workflow";
 
-	public MetaIdenPFindTask(MetaParameterPFind metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
+	public MetaIdenPFindTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
 			JavaFXProgressBar secondBar) {
 		super(metaPar, mrp, progressBar);
 		this.secondBar = secondBar;
@@ -1163,7 +1139,7 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 			e.printStackTrace();
 		}
 
-		MetaReportTask task = new MetaReportTask(metaPar.getThreadCount());
+		MetaPythonReportTask task = new MetaPythonReportTask(metaPar.getThreadCount());
 
 		boolean summayrFinished = this.exportSummary(task);
 
@@ -1183,10 +1159,10 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 			if (!report_peptides_summary.exists() || report_peptides_summary.length() == 0) {
 
 				if (summaryMetaFile.exists()) {
-					pepReportOk = task.addTask(MetaReportTask.peptide, final_pep_txt, report_peptides_summary,
+					pepReportOk = task.addTask(MetaPythonReportTask.PEPTIDE, final_pep_txt, report_peptides_summary,
 							summaryMetaFile);
 				} else {
-					pepReportOk = task.addTask(MetaReportTask.peptide, final_pep_txt, report_peptides_summary);
+					pepReportOk = task.addTask(MetaPythonReportTask.PEPTIDE, final_pep_txt, report_peptides_summary);
 				}
 			}
 		}
@@ -1206,10 +1182,10 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 			File report_proteinGroups_summary = new File(reportHtmlDir, "report_proteinGroups_summary.html");
 			if (!report_proteinGroups_summary.exists() || report_proteinGroups_summary.length() == 0) {
 				if (summaryMetaFile.exists()) {
-					proReportOk = task.addTask(MetaReportTask.protein, final_pro_txt, report_proteinGroups_summary,
+					proReportOk = task.addTask(MetaPythonReportTask.PROTEIN, final_pro_txt, report_proteinGroups_summary,
 							summaryMetaFile);
 				} else {
-					proReportOk = task.addTask(MetaReportTask.protein, final_pro_txt, report_proteinGroups_summary);
+					proReportOk = task.addTask(MetaPythonReportTask.PROTEIN, final_pro_txt, report_proteinGroups_summary);
 				}
 			}
 		}
@@ -1253,7 +1229,7 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 		return false;
 	}
 
-	protected boolean exportSummary(MetaReportTask task) {
+	protected boolean exportSummary(MetaPythonReportTask task) {
 
 		this.final_summary_txt = new File(this.metaPar.getResult(), "final_summary.tsv");
 		try {
@@ -1359,16 +1335,16 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 			boolean finish = false;
 			File report_ID_summary = new File(reportHtmlDir, "report_ID_summary.html");
 			if (summaryMetaFile != null && summaryMetaFile.exists()) {
-				finish = task.addTask(MetaReportTask.summary, final_summary_txt, report_ID_summary, summaryMetaFile);
+				finish = task.addTask(MetaPythonReportTask.ID_SUMMARY, final_summary_txt, report_ID_summary, summaryMetaFile);
 			} else {
-				finish = task.addTask(MetaReportTask.summary, final_summary_txt, report_ID_summary);
+				finish = task.addTask(MetaPythonReportTask.ID_SUMMARY, final_summary_txt, report_ID_summary);
 			}
 
 			return finish;
 		}
 	}
 
-	protected boolean exportTaxaFunc(MetaReportTask task) {
+	protected boolean exportTaxaFunc(MetaPythonReportTask task) {
 		boolean taxonomy = this.exportOpenPeptideTaxa(task);
 		if (!taxonomy) {
 			return false;
@@ -1886,7 +1862,7 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 				+ final_pro_txt.getName());
 	}
 
-	private boolean exportOpenPeptideTaxa(MetaReportTask task) {
+	private boolean exportOpenPeptideTaxa(MetaPythonReportTask task) {
 
 		LOGGER.info(getTaskName() + ": taxonomy analysis started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": taxonomy analysis started");
@@ -1993,9 +1969,9 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 				if (!report_taxonomy_summary.exists() || report_taxonomy_summary.length() == 0) {
 
 					if (summaryMetaFile.exists()) {
-						task.addTask(MetaReportTask.taxon, refinedTaxon, report_taxonomy_summary, summaryMetaFile);
+						task.addTask(MetaPythonReportTask.TAXONOMY, refinedTaxon, report_taxonomy_summary, summaryMetaFile);
 					} else {
-						task.addTask(MetaReportTask.taxon, refinedTaxon, report_taxonomy_summary);
+						task.addTask(MetaPythonReportTask.TAXONOMY, refinedTaxon, report_taxonomy_summary);
 					}
 				}
 
@@ -2048,11 +2024,11 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 				File report_taxonomy_summary = new File(this.reportHtmlDir, "report_taxonomy_summary.html");
 				if (!report_taxonomy_summary.exists() || report_taxonomy_summary.length() == 0) {
 					if (report_taxonomy_summary.exists()) {
-						finish = task.addTask(MetaReportTask.taxon, refinedTaxon, report_taxonomy_summary,
+						finish = task.addTask(MetaPythonReportTask.TAXONOMY, refinedTaxon, report_taxonomy_summary,
 								report_taxonomy_summary);
 
 					} else {
-						finish = task.addTask(MetaReportTask.taxon, refinedTaxon, report_taxonomy_summary);
+						finish = task.addTask(MetaPythonReportTask.TAXONOMY, refinedTaxon, report_taxonomy_summary);
 					}
 				}
 			}
@@ -2209,11 +2185,11 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 				File report_taxonomy_summary = new File(this.reportHtmlDir, "report_taxonomy_summary.html");
 				if (!report_taxonomy_summary.exists() || report_taxonomy_summary.length() == 0) {
 					if (summaryMetaFile.exists()) {
-						finish = task.addTask(MetaReportTask.taxon, refinedTaxon, report_taxonomy_summary,
+						finish = task.addTask(MetaPythonReportTask.TAXONOMY, refinedTaxon, report_taxonomy_summary,
 								summaryMetaFile);
 
 					} else {
-						finish = task.addTask(MetaReportTask.taxon, refinedTaxon, report_taxonomy_summary);
+						finish = task.addTask(MetaPythonReportTask.TAXONOMY, refinedTaxon, report_taxonomy_summary);
 					}
 				}
 			}
@@ -2232,7 +2208,7 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 		}
 	}
 
-	protected boolean exportProteinFunction(MetaReportTask task) throws DocumentException, IOException {
+	protected boolean exportProteinFunction(MetaPythonReportTask task) throws DocumentException, IOException {
 
 		LOGGER.info(getTaskName() + ": functional annotation started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": functional annotation started");
@@ -2340,9 +2316,9 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 		File report_function_summary = new File(this.reportHtmlDir, "report_function_summary.html");
 		if (!report_function_summary.exists() || report_function_summary.length() == 0) {
 			if (summaryMetaFile.exists()) {
-				finish = task.addTask(MetaReportTask.function, funReportTsv, report_function_summary, summaryMetaFile);
+				finish = task.addTask(MetaPythonReportTask.FUNCTION, funReportTsv, report_function_summary, summaryMetaFile);
 			} else {
-				finish = task.addTask(MetaReportTask.function, funReportTsv, report_function_summary);
+				finish = task.addTask(MetaPythonReportTask.FUNCTION, funReportTsv, report_function_summary);
 			}
 		}
 
