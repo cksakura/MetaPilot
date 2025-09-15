@@ -7,7 +7,6 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
-import java.util.prefs.Preferences;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -18,6 +17,7 @@ import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel;
 import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel.MetadataRow;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel.IsobaricLabelRow;
+import uk.ac.quadram.metapilot.task.par.BaseParameterIO;
 
 /**
  * Parameter IO Handler for DDA IGC MaxQuant Workflow
@@ -26,66 +26,47 @@ import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel.Iso
  * user convenience. Supports both result-specific and application-level
  * parameter persistence.
  */
-public class DDAIgcMaxQuantParameterIO {
+public class DDAIgcMaxQuantParameterIO extends BaseParameterIO {
 
 	private static final Logger LOGGER = LogManager.getLogger(DDAIgcMaxQuantParameterIO.class);
-	private static final String PREFERENCES_NODE = "uk/ac/quadram/metapilot/dda/igc/maxquant";
+	
+	// Workflow-specific file names
 	private static final String PARAMETER_FILENAME = "analysis_parameters.json";
-	private static final String LAST_PARAMETERS_FILENAME = "config/last_dda_igc_maxquant_parameters.json";
+	private static final String LAST_PARAMETERS_FILENAME = "last_dda_igc_maxquant_parameters.json";
+	private static final String PREFERENCES_FILENAME = "maxquant_preferences.json";
 
-	/**
-	 * Save parameters to analysis result directory for reproducibility
-	 */
-	public static boolean saveAnalysisParameters(String resultDirectory, DDAIgcMaxQuantParameters parameters) {
-		File paramFile = new File(resultDirectory, PARAMETER_FILENAME);
-		return saveParametersToFile(paramFile, parameters, "Analysis-specific parameters");
+	@Override
+	protected String getAnalysisParameterFileName() {
+		return PARAMETER_FILENAME;
 	}
 
-	/**
-	 * Save parameters as last used settings for user convenience
-	 */
-	public static boolean saveLastUsedParameters(DDAIgcMaxQuantParameters parameters) {
-		File paramFile = new File(LAST_PARAMETERS_FILENAME);
-		// Create config directory if it doesn't exist
-		paramFile.getParentFile().mkdirs();
-		return saveParametersToFile(paramFile, parameters, "Last used parameters");
+	@Override
+	protected String getLastUsedParametersFileName() {
+		return LAST_PARAMETERS_FILENAME;
 	}
 
-	/**
-	 * Load last used parameters for UI initialization
-	 */
-	public static DDAIgcMaxQuantParameters loadLastUsedParameters() {
-		File paramFile = new File(LAST_PARAMETERS_FILENAME);
-		if (!paramFile.exists()) {
-			LOGGER.info("No last used parameters found, using defaults");
-			return createDefaultParameters();
+	@Override
+	protected String getPreferencesFileName() {
+		return PREFERENCES_FILENAME;
+	}
+
+	@Override
+	protected String getWorkflowType() {
+		return uk.ac.quadram.metapilot.MetaPilotApp.WorkflowType.DDA_IGC_MAXQUANT.getAnalysisType();
+	}
+
+	@Override
+	protected boolean saveParametersToFile(Object parameters, File outputFile, String description) {
+		if (!(parameters instanceof DDAIgcMaxQuantParameters)) {
+			LOGGER.error("Invalid parameter type: expected DDAIgcMaxQuantParameters");
+			return false;
 		}
-
-		try {
-			return loadParametersFromFile(paramFile);
-		} catch (Exception e) {
-			LOGGER.warn("Failed to load last used parameters, using defaults: " + e.getMessage());
-			return createDefaultParameters();
-		}
-	}
-
-	/**
-	 * Load parameters from analysis result directory
-	 */
-	public static DDAIgcMaxQuantParameters loadAnalysisParameters(String resultDirectory) {
-		File paramFile = new File(resultDirectory, PARAMETER_FILENAME);
-		if (!paramFile.exists()) {
-			throw new IllegalArgumentException("Parameter file not found: " + paramFile.getAbsolutePath());
-		}
-
-		return loadParametersFromFile(paramFile);
-	}
-
-	private static boolean saveParametersToFile(File paramFile, DDAIgcMaxQuantParameters parameters,
-			String description) {
+		
+		DDAIgcMaxQuantParameters params = (DDAIgcMaxQuantParameters) parameters;
+		
 		try {
 			// Ensure parent directories exist before writing the file
-			File parentDir = paramFile.getParentFile();
+			File parentDir = outputFile.getParentFile();
 			if (parentDir != null && !parentDir.exists()) {
 				boolean created = parentDir.mkdirs();
 				if (!created) {
@@ -94,138 +75,127 @@ public class DDAIgcMaxQuantParameterIO {
 				}
 			}
 
-			try (FileWriter writer = new FileWriter(paramFile)) {
-				JSONObject json = new JSONObject();
+			JSONObject json = createJsonHeader(description);
 
-				// Header information
-				json.put("workflow", "DDA_IGC_MAXQUANT");
-				json.put("version", "1.0");
-				json.put("generated_at", new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()));
-				json.put("description", description);
+			// Input/Output settings
+			JSONObject ioSettings = new JSONObject();
+			ioSettings.put("output_directory", params.getResult());
+			ioSettings.put("microbiome_database", params.getMicroDb());
+			ioSettings.put("append_host_db", params.isAppendHostDb());
+			ioSettings.put("host_database", params.getHostDB());
 
-				// Input/Output settings
-				JSONObject ioSettings = new JSONObject();
-				ioSettings.put("output_directory", parameters.getResult());
-				ioSettings.put("microbiome_database", parameters.getMicroDb());
-				ioSettings.put("append_host_db", parameters.isAppendHostDb());
-				ioSettings.put("host_database", parameters.getHostDB());
-
-				// Raw files and experiments
-				JSONArray experiments = new JSONArray();
-				MetaData metaData = parameters.getMetadata();
-				if (metaData != null) {
-					String[] rawFiles = metaData.getRawFiles();
-					String[] expNames = metaData.getExpNames();
-					if (rawFiles != null) {
-						for (int i = 0; i < rawFiles.length; i++) {
-							JSONObject exp = new JSONObject();
-							exp.put("file_path", rawFiles[i]);
-							exp.put("experiment_name", (expNames != null && i < expNames.length) ? expNames[i] : "");
-							experiments.put(exp);
-						}
+			// Raw files and experiments
+			JSONArray experiments = new JSONArray();
+			MetaData metaData = params.getMetadata();
+			if (metaData != null) {
+				String[] rawFiles = metaData.getRawFiles();
+				String[] expNames = metaData.getExpNames();
+				if (rawFiles != null) {
+					for (int i = 0; i < rawFiles.length; i++) {
+						JSONObject exp = new JSONObject();
+						exp.put("file_path", rawFiles[i]);
+						exp.put("experiment_name", (expNames != null && i < expNames.length) ? expNames[i] : "");
+						experiments.put(exp);
 					}
 				}
-				ioSettings.put("experiments", experiments);
-
-				json.put("input_output", ioSettings);
-
-				// Enzyme settings
-				JSONObject enzymeSettings = new JSONObject();
-				enzymeSettings.put("enzyme", parameters.getEnzyme());
-				enzymeSettings.put("missed_cleavages", parameters.getMissCleavages());
-				enzymeSettings.put("digestion_mode", parameters.getDigestModeString());
-				json.put("enzyme_settings", enzymeSettings);
-
-				// Additional parameters
-				JSONObject additionalParams = new JSONObject();
-				additionalParams.put("threads", parameters.getThreadCount());
-				additionalParams.put("ms2_scan_mode", parameters.getMs2ScanMode());
-				additionalParams.put("generate_sample_specific_db", parameters.isReduceDb());
-				additionalParams.put("spectra_clustering", parameters.isSpectraCluster());
-				json.put("additional_parameters", additionalParams);
-
-				// Modifications
-				JSONObject modifications = new JSONObject();
-				modifications.put("fixed_modifications", new JSONArray(parameters.getFixedModifications()));
-				modifications.put("variable_modifications", new JSONArray(parameters.getVariableModifications()));
-				json.put("modifications", modifications);
-
-				// Quantitative mode
-				JSONObject quantMode = new JSONObject();
-				quantMode.put("mode", parameters.getQuantitativeMode());
-
-				if ("Isotopic".equals(parameters.getQuantitativeMode())) {
-					quantMode.put("light_labels", new JSONArray(parameters.getLightLabels()));
-					quantMode.put("medium_labels", new JSONArray(parameters.getMediumLabels()));
-					quantMode.put("heavy_labels", new JSONArray(parameters.getHeavyLabels()));
-				} else if ("Isobaric".equals(parameters.getQuantitativeMode())) {
-					quantMode.put("isobaric_type", parameters.getIsobaricType());
-
-					JSONArray isobaricLabels = new JSONArray();
-					for (IsobaricLabelRow row : parameters.getIsobaricTableData()) {
-						JSONObject label = new JSONObject();
-						label.put("label_name", row.getLabelName());
-						label.put("minus_2", row.getMinus2());
-						label.put("minus_1", row.getMinus1());
-						label.put("plus_1", row.getPlus1());
-						label.put("plus_2", row.getPlus2());
-						isobaricLabels.put(label);
-					}
-					quantMode.put("isobaric_labels", isobaricLabels);
-				}
-
-				json.put("quantitative_mode", quantMode);
-
-				// Taxonomic analysis
-				JSONObject taxonomic = new JSONObject();
-				taxonomic.put("eukaryota", parameters.isEukaryota());
-				taxonomic.put("bacteria", parameters.isBacteria());
-				taxonomic.put("archaea", parameters.isArchaea());
-				taxonomic.put("viruses", parameters.isViruses());
-				taxonomic.put("viroids", parameters.isViroids());
-				taxonomic.put("unclassified", parameters.isUnclassified());
-				taxonomic.put("other", parameters.isOther());
-				taxonomic.put("ignore_rank", parameters.getIgnoreRank());
-				taxonomic.put("ignore_environmental_samples", parameters.isIgnoreEnvironmentalSamples());
-				json.put("taxonomic_analysis", taxonomic);
-
-				// Metadata
-				JSONArray metadata = new JSONArray();
-				for (MetadataRow row : parameters.getMetadataTableData()) {
-					JSONObject meta = new JSONObject();
-					meta.put("sample_name", row.getSampleName());
-					meta.put("label_type", row.getLabelType());
-					meta.put("age", row.getAge());
-					meta.put("gender", row.getGender());
-					meta.put("condition", row.getCondition());
-					meta.put("treatment", row.getTreatment());
-					meta.put("time_point", row.getTimePoint());
-					meta.put("custom_field_1", row.getCustomField1());
-					meta.put("custom_field_2", row.getCustomField2());
-					meta.put("custom_field_3", row.getCustomField3());
-					metadata.put(meta);
-				}
-				json.put("metadata", metadata);
-
-				// Write formatted JSON
-				writer.write(json.toString(2));
-
-				LOGGER.info("Successfully saved {} to {}", description, paramFile.getAbsolutePath());
-				return true;
 			}
-		} catch (IOException e) {
-			LOGGER.error("Failed to save parameters to " + paramFile.getAbsolutePath(), e);
+			ioSettings.put("experiments", experiments);
+
+			json.put("input_output", ioSettings);
+
+			// Enzyme settings
+			JSONObject enzymeSettings = new JSONObject();
+			enzymeSettings.put("enzyme", params.getEnzyme());
+			enzymeSettings.put("missed_cleavages", params.getMissCleavages());
+			enzymeSettings.put("digestion_mode", params.getDigestModeString());
+			json.put("enzyme_settings", enzymeSettings);
+
+			// Additional parameters
+			JSONObject additionalParams = new JSONObject();
+			additionalParams.put("threads", params.getThreadCount());
+			additionalParams.put("ms2_scan_mode", params.getMs2ScanMode());
+			additionalParams.put("generate_sample_specific_db", params.isReduceDb());
+			additionalParams.put("spectra_clustering", params.isSpectraCluster());
+			json.put("additional_parameters", additionalParams);
+
+			// Modifications
+			JSONObject modifications = new JSONObject();
+			modifications.put("fixed_modifications", new JSONArray(params.getFixedModifications()));
+			modifications.put("variable_modifications", new JSONArray(params.getVariableModifications()));
+			json.put("modifications", modifications);
+
+			// Quantitative mode
+			JSONObject quantMode = new JSONObject();
+			quantMode.put("mode", params.getQuantitativeMode());
+
+			if ("Isotopic".equals(params.getQuantitativeMode())) {
+				quantMode.put("light_labels", new JSONArray(params.getLightLabels()));
+				quantMode.put("medium_labels", new JSONArray(params.getMediumLabels()));
+				quantMode.put("heavy_labels", new JSONArray(params.getHeavyLabels()));
+			} else if ("Isobaric".equals(params.getQuantitativeMode())) {
+				quantMode.put("isobaric_type", params.getIsobaricType());
+
+				JSONArray isobaricLabels = new JSONArray();
+				for (IsobaricLabelRow row : params.getIsobaricTableData()) {
+					JSONObject label = new JSONObject();
+					label.put("label_name", row.getLabelName());
+					label.put("minus_2", row.getMinus2());
+					label.put("minus_1", row.getMinus1());
+					label.put("plus_1", row.getPlus1());
+					label.put("plus_2", row.getPlus2());
+					isobaricLabels.put(label);
+				}
+				quantMode.put("isobaric_labels", isobaricLabels);
+			}
+
+			json.put("quantitative_mode", quantMode);
+
+			// Taxonomic analysis
+			JSONObject taxonomic = new JSONObject();
+			taxonomic.put("eukaryota", params.isEukaryota());
+			taxonomic.put("bacteria", params.isBacteria());
+			taxonomic.put("archaea", params.isArchaea());
+			taxonomic.put("viruses", params.isViruses());
+			taxonomic.put("viroids", params.isViroids());
+			taxonomic.put("unclassified", params.isUnclassified());
+			taxonomic.put("other", params.isOther());
+			taxonomic.put("ignore_rank", params.getIgnoreRank());
+			taxonomic.put("ignore_environmental_samples", params.isIgnoreEnvironmentalSamples());
+			json.put("taxonomic_analysis", taxonomic);
+
+			// Metadata
+			JSONArray metadata = new JSONArray();
+			for (MetadataRow row : params.getMetadataTableData()) {
+				JSONObject meta = new JSONObject();
+				meta.put("sample_name", row.getSampleName());
+				meta.put("label_type", row.getLabelType());
+				meta.put("age", row.getAge());
+				meta.put("gender", row.getGender());
+				meta.put("condition", row.getCondition());
+				meta.put("treatment", row.getTreatment());
+				meta.put("time_point", row.getTimePoint());
+				meta.put("custom_field_1", row.getCustomField1());
+				meta.put("custom_field_2", row.getCustomField2());
+				meta.put("custom_field_3", row.getCustomField3());
+				metadata.put(meta);
+			}
+			json.put("metadata", metadata);
+
+			// Write formatted JSON
+			return writeJsonToFile(json, outputFile);
+			
+		} catch (Exception e) {
+			LOGGER.error("Failed to save parameters to " + outputFile.getAbsolutePath(), e);
 			return false;
 		}
 	}
 
-	private static DDAIgcMaxQuantParameters loadParametersFromFile(File paramFile) {
+	@Override
+	protected Object loadParametersFromFile(File paramFile) {
 		LOGGER.info("Loading parameters from {}", paramFile.getAbsolutePath());
 
 		try {
-			// Read the JSON file
-			String jsonContent = new String(java.nio.file.Files.readAllBytes(paramFile.toPath()));
-			JSONObject json = new JSONObject(jsonContent);
+			JSONObject json = readJsonFromFile(paramFile);
 
 			DDAIgcMaxQuantParameters parameters = new DDAIgcMaxQuantParameters();
 
@@ -388,58 +358,8 @@ public class DDAIgcMaxQuantParameterIO {
 		}
 	}
 
-	private static DDAIgcMaxQuantParameters createDefaultParameters() {
+	@Override
+	protected Object createDefaultParameters() {
 		return new DDAIgcMaxQuantParameters();
-	}
-
-	/**
-	 * Save basic preferences (non-file specific settings) to Java preferences
-	 */
-	public static void savePreferences(DDAIgcMaxQuantParameters parameters) {
-		try {
-			Preferences prefs = Preferences.userRoot().node(PREFERENCES_NODE);
-
-			// Save commonly reused settings with null checks
-			String enzyme = parameters.getEnzyme();
-			prefs.put("default_enzyme", enzyme != null ? enzyme : "Trypsin");
-			
-			prefs.putInt("default_missed_cleavages", parameters.getMissCleavages());
-			
-			String digestMode = parameters.getDigestModeString();
-			prefs.put("default_digestion_mode", digestMode != null ? digestMode : "Specific");
-			
-			prefs.putInt("default_threads", parameters.getThreadCount());
-			
-			String ms2ScanMode = parameters.getMs2ScanMode();
-			prefs.put("default_ms2_scan_mode", ms2ScanMode != null ? ms2ScanMode : "FTMS");
-			
-			prefs.putBoolean("default_generate_sample_specific_db", parameters.isReduceDb());
-			prefs.putBoolean("default_spectra_clustering", parameters.isSpectraCluster());
-
-			LOGGER.info("Saved user preferences for DDA IGC MaxQuant workflow");
-		} catch (Exception e) {
-			LOGGER.warn("Failed to save user preferences: " + e.getMessage());
-			// Don't throw the exception - preferences saving is not critical
-		}
-	}
-
-	/**
-	 * Load basic preferences from Java preferences
-	 */
-	public static DDAIgcMaxQuantParameters loadPreferences() {
-		Preferences prefs = Preferences.userRoot().node(PREFERENCES_NODE);
-		DDAIgcMaxQuantParameters parameters = new DDAIgcMaxQuantParameters();
-
-		// Load commonly reused settings with defaults
-		parameters.setEnzyme(prefs.get("default_enzyme", "Trypsin"));
-		parameters.setMissCleavages(prefs.getInt("default_missed_cleavages", 2));
-		parameters.setDigestMode(prefs.get("default_digestion_mode", "Specific"));
-		parameters.setThreadCount(prefs.getInt("default_threads", Runtime.getRuntime().availableProcessors()));
-		parameters.setMs2ScanMode(prefs.get("default_ms2_scan_mode", "FTMS"));
-		parameters.setReduceDb(prefs.getBoolean("default_generate_sample_specific_db", true));
-		parameters.setSpectraCluster(prefs.getBoolean("default_spectra_clustering", true));
-
-		LOGGER.info("Loaded user preferences for DDA IGC MaxQuant workflow");
-		return parameters;
 	}
 }

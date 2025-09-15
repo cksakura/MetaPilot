@@ -9,6 +9,8 @@ import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableCellRenderer;
 
+import javafx.scene.control.ProgressBar;
+
 import javax.swing.JTable;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
@@ -44,7 +46,7 @@ public class MagDbModelPanel extends JPanel {
 	private String lastUsedFolder;
 	private MagModelTableModel tableModel;
 	private JButton createModelButton;
-	private JavaFXProgressBar progressBar;
+	private ProgressBar progressBar;
 
 	private HashMap<String, MagModel> modelMap;
 	private MagDbItem magDbItem;
@@ -156,7 +158,7 @@ public class MagDbModelPanel extends JPanel {
 		createModelButton = new JButton("Start");
 		createModelPanel.add(createModelButton, "cell 0 3,alignx left");
 
-		progressBar = new JavaFXProgressBar();
+		progressBar = new ProgressBar();
 //		createModelPanel.add(progressBar, "cell 1 3 2 1,growx");
 	}
 
@@ -172,7 +174,7 @@ public class MagDbModelPanel extends JPanel {
 		return createModelButton;
 	}
 
-	public JavaFXProgressBar getProgressBar() {
+	public ProgressBar getProgressBar() {
 		return progressBar;
 	}
 

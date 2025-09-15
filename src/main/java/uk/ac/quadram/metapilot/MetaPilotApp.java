@@ -341,7 +341,7 @@ public class MetaPilotApp extends Application {
         titleLabel.setStyle("-fx-font-size: 32px; -fx-font-weight: bold;");
         
         // Add a subtitle
-        Label subtitleLabel = new Label("Comprehensive Workflow Manager for Metaproteomics");
+        Label subtitleLabel = new Label("Next-generation Metaproteomics Analysis Platform");
         subtitleLabel.setStyle("-fx-font-size: 18px;");
         
         // Create a container for the title and subtitle
@@ -507,22 +507,32 @@ public class MetaPilotApp extends Application {
         return box;
     }
     
-    private enum WorkflowType {
+    public enum WorkflowType {
         // DDA IGC Workflows
-        DDA_IGC_MAXQUANT,
-        DDA_IGC_PFIND,
-        DDA_IGC_FRAGPIPE,
-        DDA_IGC_SAGE,
+        DDA_IGC_MAXQUANT("DDA_IGC_MAXQUANT"),
+        DDA_IGC_PFIND("DDA_IGC_PFIND"),
+        DDA_IGC_FRAGPIPE("DDA_IGC_FRAGPIPE"),
+        DDA_IGC_SAGE("DDA_IGC_SAGE"),
         
         // DDA MAG Workflows
-        DDA_MAG_PFIND,
-        DDA_MAG_FRAGPIPE,
-        DDA_MAG_SAGE,
+        DDA_MAG_PFIND("DDA_MAG_PFIND"),
+        DDA_MAG_FRAGPIPE("DDA_MAG_FRAGPIPE"),
+        DDA_MAG_SAGE("DDA_MAG_SAGE"),
         
         // DIA Workflows
-        DIA_NORMAL,
-        DIA_TARGET,
-        DIA_REALTIME
+        DIA_NORMAL("DIA_NORMAL"),
+        DIA_TARGET("DIA_TARGET"),
+        DIA_REALTIME("DIA_REALTIME");
+        
+        private final String analysisType;
+        
+        WorkflowType(String analysisType) {
+            this.analysisType = analysisType;
+        }
+        
+        public String getAnalysisType() {
+            return analysisType;
+        }
     }
     
     private boolean checkRequiredResources(WorkflowType type) {
@@ -618,6 +628,7 @@ public class MetaPilotApp extends Application {
                     maxQuantStage.setMinHeight(600);
                     
                     // Show the stage
+                    maxQuantStage.setMaximized(true);
                     maxQuantStage.show();
                     break;
                     
@@ -643,6 +654,7 @@ public class MetaPilotApp extends Application {
                     pFindStage.setMinHeight(600);
 
                     // Show the stage
+                    pFindStage.setMaximized(true);
                     pFindStage.show();
                     break;
                     
@@ -668,6 +680,7 @@ public class MetaPilotApp extends Application {
                     fragPipeStage.setMinHeight(600);
 
                     // Show the stage
+                    fragPipeStage.setMaximized(true);
                     fragPipeStage.show();
                     break;
                     
@@ -693,6 +706,7 @@ public class MetaPilotApp extends Application {
                     sageStage.setMinHeight(600);
 
                     // Show the stage
+                    sageStage.setMaximized(true);
                     sageStage.show();
                     break;
                     
@@ -720,6 +734,7 @@ public class MetaPilotApp extends Application {
                     pFindMagStage.setMinHeight(600);
 
                     // Show the stage
+                    pFindMagStage.setMaximized(true);
                     pFindMagStage.show();
                     break;
                     
@@ -729,7 +744,7 @@ public class MetaPilotApp extends Application {
                     fragPipeMagStage.setTitle("DDA MAG FragPipe Workflow");
 
                     // Create the MAG FragPipe panel
-                    MetaPilotDdaMagFragPipePanel fragPipeMagPanel = new MetaPilotDdaMagFragPipePanel(items);
+                    MetaPilotDdaMagFragPipePanel fragPipeMagPanel = new MetaPilotDdaMagFragPipePanel(items, resourceParams);
 
                     // Create a scene with the panel
                     Scene fragPipeMagScene = new Scene(fragPipeMagPanel);
@@ -745,13 +760,14 @@ public class MetaPilotApp extends Application {
                     fragPipeMagStage.setMinHeight(600);
 
                     // Show the stage
+                    fragPipeMagStage.setMaximized(true);
                     fragPipeMagStage.show();
                     break;
                     
                 case DDA_MAG_SAGE:
                     Stage magSageStage = new Stage();
                     magSageStage.setTitle("DDA MAG Sage Workflow");
-                    MetaPilotDdaMagSagePanel magSagePanel = new MetaPilotDdaMagSagePanel();
+                    MetaPilotDdaMagSagePanel magSagePanel = new MetaPilotDdaMagSagePanel(items);
                     Scene magSageScene = new Scene(magSagePanel, 1600, 900);
                     try {
                         magSageScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
@@ -761,13 +777,14 @@ public class MetaPilotApp extends Application {
                     magSageStage.setScene(magSageScene);
                     magSageStage.setMinWidth(800);
                     magSageStage.setMinHeight(600);
+                    magSageStage.setMaximized(true);
                     magSageStage.show();
                     break;
                     
                 case DIA_NORMAL:
                     Stage diaNormalStage = new Stage();
                     diaNormalStage.setTitle("DIA Normal Workflow");
-                    MetaPilotDiaNormalPanel diaNormalPanel = new MetaPilotDiaNormalPanel();
+                    MetaPilotDiaNormalPanel diaNormalPanel = new MetaPilotDiaNormalPanel(items, resourceParams);
                     Scene diaNormalScene = new Scene(diaNormalPanel, 1600, 900);
                     try {
                         diaNormalScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
@@ -777,15 +794,22 @@ public class MetaPilotApp extends Application {
                     diaNormalStage.setScene(diaNormalScene);
                     diaNormalStage.setMinWidth(800);
                     diaNormalStage.setMinHeight(600);
+                    diaNormalStage.setMaximized(true);
+                    
+                    // Add close handler to save parameters when window closes
+                    diaNormalStage.setOnCloseRequest(e -> {
+                        System.out.println("DEBUG: DIA Normal window closing - saving parameters");
+                        diaNormalPanel.saveCurrentParameters();
+                    });
+                    
                     diaNormalStage.show();
                     break;
                     
                 case DIA_TARGET:
                     // Launch the DIA Target main frame
-                    // Note: Using default constructor if parameters are not supported
                     Stage diaTargetStage = new Stage();
                     diaTargetStage.setTitle("DIA Target Workflow");
-                    MetaPilotDiaTargetPanel diaTargetPanel = new MetaPilotDiaTargetPanel();
+                    MetaPilotDiaTargetPanel diaTargetPanel = new MetaPilotDiaTargetPanel(items, resourceParams);
                     Scene diaTargetScene = new Scene(diaTargetPanel, 1600, 900);
                     try {
                         diaTargetScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
@@ -795,15 +819,25 @@ public class MetaPilotApp extends Application {
                     diaTargetStage.setScene(diaTargetScene);
                     diaTargetStage.setMinWidth(800);
                     diaTargetStage.setMinHeight(600);
+                    diaTargetStage.setMaximized(true);
+                    
+                    // Add close handler to save parameters
+                    diaTargetStage.setOnCloseRequest(event -> {
+                        try {
+                            diaTargetPanel.saveCurrentParameters();
+                        } catch (Exception e) {
+                            System.err.println("Error saving DIA Target parameters on close: " + e.getMessage());
+                        }
+                    });
+                    
                     diaTargetStage.show();
                     break;
                     
                 case DIA_REALTIME:
                     // Launch the DIA Real-time main frame
-                    // Note: Using default constructor if parameters are not supported
                     Stage diaRealTimeStage = new Stage();
                     diaRealTimeStage.setTitle("DIA Real-time Workflow");
-                    MetaPilotDiaRealTimePanel diaRealTimePanel = new MetaPilotDiaRealTimePanel();
+                    MetaPilotDiaRealTimePanel diaRealTimePanel = new MetaPilotDiaRealTimePanel(items, resourceParams);
                     Scene diaRealTimeScene = new Scene(diaRealTimePanel, 1600, 900);
                     try {
                         diaRealTimeScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
@@ -813,6 +847,14 @@ public class MetaPilotApp extends Application {
                     diaRealTimeStage.setScene(diaRealTimeScene);
                     diaRealTimeStage.setMinWidth(800);
                     diaRealTimeStage.setMinHeight(600);
+                    diaRealTimeStage.setMaximized(true);
+                    
+                    // Add close handler to save parameters when window closes
+                    diaRealTimeStage.setOnCloseRequest(e -> {
+                        System.out.println("DEBUG: DIA Real-time window closing - saving parameters");
+                        diaRealTimePanel.saveCurrentParameters();
+                    });
+                    
                     diaRealTimeStage.show();
                     break;
             }

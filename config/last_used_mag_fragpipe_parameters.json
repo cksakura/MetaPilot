@@ -1,0 +1,34 @@
+{
+  "workflow": "DDA_MAG_FRAGPIPE",
+  "input_output": {
+    "host_database": "C:\\Users\\daz25hak\\MetaProAI\\database\\uniprotkb_Human_AND_reviewed_true_AND_m_2025_09_01.fasta",
+    "mag_database": "human-gut",
+    "output_directory": "U:\\datasets\\CAMPI2\\MetaPilot_mag_fragpipe",
+    "append_host_db": true,
+    "experiments": [
+      {
+        "file_path": "U:\\datasets\\CAMPI2\\20230815_CAMPI2_CEA_F_M1_R1_QE3_2ug_1D_DirectLoad_RP180grad.raw",
+        "experiment_name": "M1"
+      },
+      {
+        "file_path": "U:\\datasets\\CAMPI2\\20230815_CAMPI2_CEA_F_M2_R1_QE3_2ug_1D_DirectLoad_RP180grad.raw",
+        "experiment_name": "M2"
+      }
+    ]
+  },
+  "enzyme_settings": {
+    "enzyme": "Trypsin",
+    "missed_cleavages": 2,
+    "digestion_mode": "Specific"
+  },
+  "generated_at": "2025-09-11 16:13:05",
+  "fragpipe_workflow_configured": true,
+  "additional_parameters": {
+    "generate_sample_specific_db": true,
+    "ms2_scan_mode": "HCD-FTMS",
+    "spectra_clustering": false,
+    "threads": 12
+  },
+  "description": "Last used parameters",
+  "version": "1.0"
+}

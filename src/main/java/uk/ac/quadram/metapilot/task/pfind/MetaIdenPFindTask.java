@@ -45,7 +45,7 @@ import uk.ac.quadram.metapilot.dbSearch.pfind.PFindPeptide;
 import uk.ac.quadram.metapilot.dbSearch.pfind.PFindProtein;
 import uk.ac.quadram.metapilot.dbSearch.pfind.PFindResultReader;
 import uk.ac.quadram.metapilot.dbSearch.pfind.PFindResultReader.PeptideResult;
-import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
+import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.dbSearch.pfind.PFindTask;
 import uk.ac.quadram.metapilot.mdb.unipept.UnipLCAResult;
 import uk.ac.quadram.metapilot.mdb.unipept.UnipeptRequester;
@@ -129,13 +129,13 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 
 	protected HashMap<String, String> expNameMap;
 	protected File final_pro_xml_file;
-	protected JavaFXProgressBar secondBar;
+	protected ProgressBar secondBar;
 	
 	private static final Logger LOGGER = LogManager.getLogger(MetaIdenPFindTask.class);
 	private static final String taskName = "pFind workflow";
 
-	public MetaIdenPFindTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
-			JavaFXProgressBar secondBar) {
+	public MetaIdenPFindTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
+			ProgressBar secondBar) {
 		super(metaPar, mrp, progressBar);
 		this.secondBar = secondBar;
 	}
@@ -233,8 +233,8 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 	protected Boolean call() throws Exception {
 		// TODO Auto-generated method stub
 
-		progressBar.setString(getTaskName());
-		setProgress(0);
+		updateMessage(getTaskName());
+		updateProgress(0, 100);
 
 		LOGGER.info(getTaskName() + ": start");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": start");
@@ -247,7 +247,7 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 			return false;
 		}
 
-		setProgress(10);
+		updateProgress(10, 100);
 
 		boolean createSSDB = createSSDB();
 
@@ -258,7 +258,7 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 			return false;
 		}
 
-		setProgress(50);
+		updateProgress(50, 100);
 
 		boolean iden = iden();
 		if (!iden) {
@@ -268,7 +268,7 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 			return false;
 		}
 
-		setProgress(70);
+		updateProgress(70, 100);
 
 		boolean quant = false;
 		if (this.quanMode.equals(MetaConstants.labelFree)) {
@@ -290,7 +290,7 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 				return false;
 			}
 
-			setProgress(75);
+			updateProgress(75, 100);
 
 			quant = isobaricQuant();
 			if (!quant) {
@@ -301,11 +301,11 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 			}
 		}
 
-		setProgress(80);
+		updateProgress(80, 100);
 
 		exportReport();
 
-		setProgress(100);
+		updateProgress(100, 100);
 
 		return true;
 	}
@@ -503,7 +503,7 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 
 	protected String[] msconvert(String[] raws) throws NumberFormatException, IOException {
 
-		progressBar.setString(getTaskName() + ": extracting spectra");
+		updateMessage(getTaskName() + ": extracting spectra");
 
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": extracting spectra started");
 		LOGGER.info(getTaskName() + ": extracting spectra started");
@@ -635,7 +635,7 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 
 	protected String[] extract(String[] raws) throws NumberFormatException, IOException {
 
-		progressBar.setString(getTaskName() + ": extracting spectra");
+		updateMessage(getTaskName() + ": extracting spectra");
 
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": extracting spectra started");
 		LOGGER.info(getTaskName() + ": extracting spectra started");
@@ -913,7 +913,7 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 
 	protected boolean iden() {
 
-		progressBar.setString(getTaskName() + ": peptide and protein identification");
+		updateMessage(getTaskName() + ": peptide and protein identification");
 
 		LOGGER.info(getTaskName() + ": peptide and protein identification started");
 		System.out.println(
@@ -1022,7 +1022,7 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 			return true;
 		}
 
-		progressBar.setString(getTaskName() + ": peptide and protein quantification");
+		updateMessage(getTaskName() + ": peptide and protein quantification");
 
 		LOGGER.info(getTaskName() + ": peptide and protein label-free quantification started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName()
@@ -1060,7 +1060,7 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 			return true;
 		}
 
-		progressBar.setString(getTaskName() + ": peptide and protein quantification");
+		updateMessage(getTaskName() + ": peptide and protein quantification");
 
 		LOGGER.info(getTaskName() + ": peptide and protein isobaric quantification started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName()
@@ -1111,7 +1111,7 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 
 	protected boolean exportReport() {
 
-		progressBar.setString(getTaskName() + ": exporting report");
+		updateMessage(getTaskName() + ": exporting report");
 
 		LOGGER.info(getTaskName() + ": exporting report started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting report started");
@@ -1143,7 +1143,7 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 
 		boolean summayrFinished = this.exportSummary(task);
 
-		setProgress(82);
+		updateProgress(82, 100);
 
 		this.final_pep_txt = new File(this.resultFolderFile, "final_peptides.tsv");
 
@@ -1167,7 +1167,7 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 			}
 		}
 
-		setProgress(84);
+		updateProgress(84, 100);
 
 		this.final_pro_txt = new File(this.resultFolderFile, "final_proteins.tsv");
 
@@ -1190,7 +1190,7 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 			}
 		}
 
-		setProgress(86);
+		updateProgress(86, 100);
 
 		boolean taxFuncReportOk = false;
 		if (metaPar.isMetaWorkflow()) {
@@ -1200,7 +1200,7 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 		}
 
 		if (!summayrFinished || !pepReportOk || !proReportOk || !taxFuncReportOk) {
-			setProgress(99);
+			updateProgress(99, 100);
 
 			LOGGER.info(getTaskName() + ": error in generating the reports");
 			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": error in generating the reports");
@@ -1217,7 +1217,7 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 				LOGGER.info(getTaskName() + ": report generation successes");
 				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": report generation successes");
 
-				setProgress(100);
+				updateProgress(100, 100);
 				return true;
 			}
 
@@ -1350,7 +1350,7 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 			return false;
 		}
 
-		setProgress(92);
+		updateProgress(92, 100);
 
 		boolean function = false;
 		try {
@@ -1361,7 +1361,7 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 					+ ": error in output functional annotation result");
 		}
 
-		setProgress(98);
+		updateProgress(98, 100);
 
 		if (!function) {
 			return false;
@@ -2034,7 +2034,7 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 			}
 		}
 
-		setProgress(88);
+		updateProgress(88, 100);
 
 		HashMap<String, ArrayList<PeptideResult>> baseSeqMap = this.pFindResultReader.getBasePeptideMap();
 		TaxonomyDatabase td = new TaxonomyDatabase(mrp.getToolPath(ToolType.FUNCDB));
@@ -2045,7 +2045,7 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 
 		}
 
-		setProgress(90);
+		updateProgress(90, 100);
 
 		if (mptp.isUnipept() && executeUnipept) {
 
@@ -2298,7 +2298,7 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 						+ ": error in reading quantified proteins from " + this.quan_pro_file);
 			}
 
-			setProgress(94);
+			updateProgress(94, 100);
 		}
 
 		LOGGER.info(getTaskName() + ": proteins with functional annotations have been exported to "
@@ -2306,7 +2306,7 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 		System.out.println(format.format(new Date()) + "\t" + getTaskName()
 				+ ": proteins with functional annotations have been exported to " + final_pro_xml_file.getName());
 
-		setProgress(96);
+		updateProgress(96, 100);
 
 		File funcResultFile = final_pro_xml_file.getParentFile();
 		File funTsv = new File(funcResultFile, "functions.tsv");
@@ -2369,7 +2369,7 @@ public class MetaIdenPFindTask extends MetaAbstractTask {
 							int percentage = (int) ((double) currentCount / (double) totalCount
 									* (double) (barEnd - barStart));
 
-							MetaIdenPFindTask.this.setProgress(barStart + percentage);
+							MetaIdenPFindTask.this.updateProgress(barStart + percentage, 100);
 
 							System.out.println(format.format(new Date()) + "\t" + getTaskName()
 									+ ": WatchService find one finished task at " + fileName.toFile());

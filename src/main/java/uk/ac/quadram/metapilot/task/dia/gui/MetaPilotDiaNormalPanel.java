@@ -1,73 +1,59 @@
 package uk.ac.quadram.metapilot.task.dia.gui;
 
-import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
-import javafx.stage.FileChooser;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.scene.paint.Color;
-import javafx.scene.control.cell.PropertyValueFactory;
-import javafx.scene.control.cell.TextFieldTableCell;
-import javafx.scene.control.cell.CheckBoxTableCell;
-import javafx.util.converter.DefaultStringConverter;
-import javafx.util.converter.DoubleStringConverter;
-import javafx.util.converter.IntegerStringConverter;
-import javafx.beans.property.SimpleStringProperty;
-import javafx.beans.property.StringProperty;
-import javafx.beans.property.SimpleBooleanProperty;
-import javafx.beans.property.BooleanProperty;
-import javafx.beans.property.SimpleDoubleProperty;
-import javafx.beans.property.DoubleProperty;
-import javafx.beans.property.SimpleIntegerProperty;
-import javafx.beans.property.IntegerProperty;
-import javafx.concurrent.Task;
-import javafx.scene.control.Alert.AlertType;
+import javafx.application.Platform;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
-import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX.ExperimentRow;
-import uk.ac.quadram.metapilot.task.par.MetaData;
-import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
-import uk.ac.quadram.metapilot.task.par.MetaConstants;
-import uk.ac.quadram.metapilot.task.MetaLabWorkflowType;
+import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
+import uk.ac.quadram.metapilot.task.common.gui.MagDatabaseSettingsPanel;
+import uk.ac.quadram.metapilot.task.common.gui.MetadataConfigurationPanel;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
+import uk.ac.quadram.metapilot.resources.MetaResourceIO;
 import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
+import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagVersion;
 import uk.ac.quadram.metapilot.task.mag.par.MetaParameterMag;
-import javafx.animation.KeyFrame;
-import javafx.animation.Timeline;
-import javafx.util.Duration;
-import java.lang.management.ManagementFactory;
-import java.lang.management.OperatingSystemMXBean;
-import java.lang.management.MemoryMXBean;
-import java.lang.management.MemoryUsage;
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
+import uk.ac.quadram.metapilot.task.par.MetaData;
+import uk.ac.quadram.metapilot.task.dia.par.DiaParameterIO;
+import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
+import uk.ac.quadram.metapilot.task.dia.MetaDiaTask;
+import uk.ac.quadram.metapilot.dbSearch.deepDetect.DeepDetectTask;
+import uk.ac.quadram.metapilot.dbSearch.deepDetect.DeepDetectParameter;
 import java.io.File;
-import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
-import java.util.HashMap;
+import java.time.LocalDateTime;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class MetaPilotDiaNormalPanel extends VBox {
     // UI Components - Database specific for MAG (like DIA workflows)
     private MetaPilotIOPanelFX ioPanel;
-    private ComboBox<MagDbItem> magDatabaseComboBox;
-    private TextArea consoleOutput;
-    private TextArea parameterView;
-    private ProgressBar overallProgressBar;
-    private ProgressBar currentTaskProgressBar;
-    private Label currentTaskLabel;
-    private Button startButton;
-    private Button stopButton;
+    private MagDatabaseSettingsPanel magDatabasePanel;
+    private VBox magDbStatusPanel;
+    private TextArea predictionConsole;
+    private ProgressBar predictionProgressBar;
+    private Button predictButton;
+    private TextField timeTextField;
+    private Button updateButton;
+    
+    // DeepDetect task related fields
+    private DeepDetectTask deepDetectTask;
+    private ExecutorService taskExecutor;
+    private MetaResourceParameters resourceParams;
+    
+    // MetaDiaTask for DIA analysis
+    private MetaDiaTask metaDiaTask;
+    private MetaParameterDia currentAnalysisParameters;
+    
+    // Reusable UI Components
+    private ConsolePanel consolePanel;
 
     // DIA-specific mode selection
     private ComboBox<String> modeSelectionComboBox;
@@ -76,53 +62,61 @@ public class MetaPilotDiaNormalPanel extends VBox {
     // Separate panels for library and model generation
     private DiaLibraryGenerationPanel libraryGenerationPanel;
     private DiaModelGenerationPanel modelGenerationPanel;
+    
+    // UI references for dynamic panel replacement
+    private VBox leftColumn;
+    private VBox libraryPlaceholder;
 
     // Metadata configuration components
-    private TableView<MetaPilotDdaIgcMaxQuantPanel.MetadataRow> metadataTable;
-    private ObservableList<MetaPilotDdaIgcMaxQuantPanel.MetadataRow> metadataTableData = FXCollections.observableArrayList();
-    private ComboBox<String> metadataColumnComboBox;
-    private Button addMetadataColumnButton;
-    private Button removeMetadataColumnButton;
+    private MetadataConfigurationPanel metadataConfigurationPanel;
 
-    // Status panel fields
-    private Label statusTimeLabel;
-    private Label statusCpuLabel;
-    private Label statusMemLabel;
-    private Timeline statusTimeline;
-    private long taskStartTimeMillis;
 
-    // MAG database items
-    private ObservableList<MagDbItem> availableMagDatabases = FXCollections.observableArrayList();
+    // MAG database items (now handled by MagDatabaseSettingsPanel)
+    
+    // Add parameter IO instance
+    private DiaParameterIO parameterIO;
 
-    public MetaPilotDiaNormalPanel() {
+    public MetaPilotDiaNormalPanel(MagDbItem[] magDbItems, MetaResourceParameters resourceParams) {
+        // Initialize parameter IO instance
+        parameterIO = new DiaParameterIO();
+        this.resourceParams = resourceParams;
         initializeUI();
+        // Set MAG databases after UI is initialized
+        setAvailableMagDatabases(magDbItems);
+        // Load last used parameters after UI and databases are initialized
+        loadLastUsedParameters();
     }
 
     public MetaPilotDiaNormalPanel(MetaParameterMag metaParameterMag) {
-        // Initialize MAG databases from parameter
+        // Initialize parameter IO instance
+        parameterIO = new DiaParameterIO();
+        initializeUI();
+        // Initialize MAG databases from parameter after UI is initialized
         if (metaParameterMag != null) {
             MagDbItem[] magDbItems = metaParameterMag.getAvailableMagDbItem();
             if (magDbItems != null) {
-                for (MagDbItem item : magDbItems) {
-                    availableMagDatabases.add(item);
-                }
+                setAvailableMagDatabases(magDbItems);
             }
         }
-        initializeUI();
+        // Load last used parameters after UI and databases are initialized
+        loadLastUsedParameters();
     }
 
     // Load available MAG databases
     public void setAvailableMagDatabases(MagDbItem[] magDbItems) {
-        availableMagDatabases.clear();
-        if (magDbItems != null) {
-            for (MagDbItem item : magDbItems) {
-                availableMagDatabases.add(item);
-            }
-        }
-        if (magDatabaseComboBox != null && !availableMagDatabases.isEmpty()) {
-            magDatabaseComboBox.setValue(availableMagDatabases.get(0));
+        if (magDatabasePanel != null) {
+            magDatabasePanel.setAvailableMagDatabases(magDbItems);
             // Update the panels with the selected MAG database
-            updatePanelsWithMagDb(availableMagDatabases.get(0));
+            if (magDbItems != null && magDbItems.length > 0) {
+                updatePanelsWithMagDb(magDbItems[0]);
+            }
+            // Now that database panel is initialized, check the status
+            updateMagDbStatus();
+            
+            // Create library generation panel now that MAG database is available
+            createLibraryGenerationPanel();
+        } else {
+            System.out.println("DEBUG: magDatabasePanel is null - UI not initialized yet");
         }
     }
 
@@ -134,20 +128,113 @@ public class MetaPilotDiaNormalPanel extends VBox {
             modelGenerationPanel.setMagDbItem(magDbItem);
         }
     }
+    
+    /**
+     * Create the library generation panel after MAG database is available
+     */
+    private void createLibraryGenerationPanel() {
+        if (libraryGenerationPanel != null) {
+            // Already created, just update it
+            return;
+        }
+        
+        System.out.println("DEBUG: Creating library generation panel with MAG database available");
+        
+        // Try to load last used parameters first, then create with minimal parameters for library generation
+        MetaParameterDia initialMetaParameter = loadLastUsedParameters();
+        if (initialMetaParameter == null) {
+            // Use minimal validation for library generation (doesn't require raw files)
+            initialMetaParameter = generateMetaParameterDiaForLibraryGeneration();
+        }
+        
+        if (initialMetaParameter != null) {
+            libraryGenerationPanel = new DiaLibraryGenerationPanel(initialMetaParameter, resourceParams, new File("MAGDB_1_0.json"));
+            libraryGenerationPanel.setParameterUpdateCallback(() -> updateParameterView());
+            libraryGenerationPanel.setParentPanel(this); // Set reference to this panel
+            
+            // Add the panel to the left column in the parameters tab
+            // We need to find the left column and add the panel
+            addLibraryPanelToUI();
+            
+            System.out.println("DEBUG: Library generation panel created successfully");
+        } else {
+            System.err.println("ERROR: Failed to create library generation panel - no valid parameters");
+        }
+    }
+    
+    /**
+     * Ensure the library generation panel is created when switching to Parameters tab
+     */
+    private void ensureLibraryGenerationPanelCreated() {
+        System.out.println("DEBUG: ensureLibraryGenerationPanelCreated() called");
+        
+        // Check if library generation panel already exists
+        if (libraryGenerationPanel != null) {
+            System.out.println("DEBUG: Library generation panel already exists");
+            return;
+        }
+        
+        // Check if MAG database is available
+        if (magDatabasePanel == null || magDatabasePanel.getSelectedMagDatabase() == null) {
+            System.out.println("DEBUG: No MAG database selected yet, cannot create library generation panel");
+            return;
+        }
+        
+        System.out.println("DEBUG: Creating library generation panel on tab switch");
+        createLibraryGenerationPanel();
+    }
+    
+    /**
+     * Add the library generation panel to the UI after it's created
+     */
+    private void addLibraryPanelToUI() {
+        if (libraryGenerationPanel == null || leftColumn == null || libraryPlaceholder == null) {
+            return;
+        }
+        
+        System.out.println("DEBUG: Replacing library placeholder with actual library generation panel");
+        
+        // Replace the placeholder with the actual library generation panel
+        int placeholderIndex = leftColumn.getChildren().indexOf(libraryPlaceholder);
+        if (placeholderIndex >= 0) {
+            leftColumn.getChildren().set(placeholderIndex, libraryGenerationPanel);
+            System.out.println("DEBUG: Successfully replaced library placeholder with actual panel");
+        } else {
+            System.err.println("ERROR: Could not find library placeholder in left column");
+        }
+    }
 
     private void initializeUI() {
         setSpacing(10);
         setPadding(new Insets(10));
         setMinWidth(1200);
-        setMinHeight(800);
+        setMinHeight(900);
         setPrefWidth(1600);
-        setPrefHeight(900);
+        setPrefHeight(1000);
+        setMaxHeight(Double.MAX_VALUE);
+
+        // Initialize reusable components
+        consolePanel = new ConsolePanel();
+        magDatabasePanel = new MagDatabaseSettingsPanel();
+        magDatabasePanel.setParameterUpdateCallback(() -> {
+            updateParameterView();
+            // Update status when database or version selection changes
+            updateMagDbStatus();
+        });
+        
+        // Set up console panel callbacks
+        consolePanel.setStartCallback(this::startAnalysis);
+        consolePanel.setStopCallback(this::stopAnalysis);
+        consolePanel.setViewReportCallback(this::viewReport);
+        
+        // Initialize database status panel
+        magDbStatusPanel = createMagDbStatusPanel();
 
         // Create tab pane with responsive sizing
         TabPane tabPane = new TabPane();
         tabPane.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
-        tabPane.setMinWidth(980);
-        tabPane.setMinHeight(780);
+        tabPane.setMinWidth(1080);
+        tabPane.setMinHeight(900);
         VBox.setVgrow(tabPane, Priority.ALWAYS);
 
         // Create tabs
@@ -158,19 +245,53 @@ public class MetaPilotDiaNormalPanel extends VBox {
         paramTab.setContent(createParametersTab());
 
         Tab consoleTab = new Tab("Console");
-        consoleTab.setContent(createConsoleTab());
+        consoleTab.setContent(consolePanel);
 
         tabPane.getTabs().addAll(ioTab, paramTab, consoleTab);
 
         // Add tab change listener to update metadata when Parameters tab is selected
+        // and save parameters when Console tab is selected
         tabPane.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, newTab) -> {
             if (newTab == paramTab) {
                 updateMetadataTableFromIOPanel();
+                // Ensure library generation panel is created when switching to Parameters tab
+                ensureLibraryGenerationPanelCreated();
+                // Update parameter view when switching to Parameters tab
+                updateParameterView();
+            } else if (newTab == consoleTab) {
+                // Update parameter view when switching to Console tab
+                updateParameterView();
+                
+                // Save current parameters when Console tab is selected
+                try {
+                    consolePanel.appendConsoleText("Auto-saving parameters when switching to Console tab...\n");
+                    MetaParameterDia currentParams = collectParametersFromUI();
+                    if (currentParams == null) {
+                        // If full validation fails (e.g., no raw files), use minimal validation for library generation
+                        currentParams = generateMetaParameterDiaForLibraryGeneration();
+                    }
+                    if (currentParams != null) {
+                        boolean saved = parameterIO.saveLastUsedParameters(currentParams);
+                        if (saved) {
+                            consolePanel.appendConsoleText("✓ Parameters auto-saved to config folder\n");
+                        } else {
+                            consolePanel.appendConsoleText("WARNING: Failed to auto-save parameters to config folder\n");
+                        }
+                    } else {
+                        consolePanel.appendConsoleText("WARNING: No parameters to auto-save\n");
+                    }
+                } catch (Exception e) {
+                    String errorMsg = "ERROR: Failed to auto-save parameters: " + e.getMessage();
+                    consolePanel.appendConsoleText(errorMsg + "\n");
+                }
             }
         });
 
         // Add tab pane to main panel
         getChildren().add(tabPane);
+        
+        // Initialize parameter view
+        updateParameterView();
     }
 
     // Create IO tab (same as MAG workflows)
@@ -178,38 +299,102 @@ public class MetaPilotDiaNormalPanel extends VBox {
         VBox tabContent = new VBox(10);
         tabContent.setPadding(new Insets(10));
         ioPanel = new MetaPilotIOPanelFX();
-        VBox databaseSection = createDatabaseSection();
         tabContent.getChildren().addAll(
             createSectionTitle("Input/Output Settings"),
             ioPanel,
             createSectionTitle("Database Settings"),
-            databaseSection
+            magDatabasePanel,
+            createSectionTitle("MAG Library Status"),
+            magDbStatusPanel
         );
         return tabContent;
     }
 
-    private VBox createDatabaseSection() {
-        VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #f8f8f8; -fx-border-color: #cccccc; -fx-border-radius: 5; -fx-border-width: 1;");
+    // Create MAG Database Status Panel (Simplified for peptide prediction)
+    private VBox createMagDbStatusPanel() {
+        VBox statusPanel = new VBox(10);
+        statusPanel.setPadding(new Insets(10));
+        statusPanel.setStyle("-fx-background-color: #f8f8f8; -fx-border-color: #cccccc; -fx-border-radius: 5; -fx-border-width: 1;");
+        statusPanel.setMinHeight(200);
+        statusPanel.setPrefHeight(300);
         
-        // MAG Database ComboBox (not file browser)
-        HBox magDBBox = new HBox(10);
-        magDatabaseComboBox = new ComboBox<>(availableMagDatabases);
-        magDatabaseComboBox.setPromptText("Select MAG database");
-        magDatabaseComboBox.setPrefWidth(400);
-        magDatabaseComboBox.setOnAction(e -> updateParameterView());
-        magDBBox.getChildren().addAll(new Label("MAG Database:"), magDatabaseComboBox);
         
-        section.getChildren().addAll(magDBBox);
-        return section;
+        // Console output panel for prediction process
+        VBox consolePanel = new VBox(5);
+        consolePanel.setPadding(new Insets(5));
+        consolePanel.setStyle("-fx-background-color: #f0f0f0; -fx-background-radius: 3; -fx-border-color: #cccccc; -fx-border-radius: 3; -fx-border-width: 1;");
+        
+        Label consoleTitle = new Label("MAG Database Status Console");
+        consoleTitle.setStyle("-fx-font-weight: bold; -fx-font-size: 12px;");
+        
+        predictionConsole = new TextArea();
+        predictionConsole.setEditable(false);
+        predictionConsole.setWrapText(true);
+        predictionConsole.setMinHeight(150);
+        predictionConsole.setPrefHeight(180);
+        predictionConsole.setMaxHeight(200);
+        predictionConsole.setStyle("-fx-font-family: 'Courier New', monospace; -fx-font-size: 11px;");
+        predictionConsole.setPromptText("Database status information will appear here...");
+        predictionConsole.setId("predictionConsole");
+        
+        consolePanel.getChildren().addAll(consoleTitle, predictionConsole);
+        
+        // Prediction controls panel
+        VBox predictionPanel = new VBox(5);
+        predictionPanel.setPadding(new Insets(5));
+        predictionPanel.setStyle("-fx-background-color: #f0f8ff; -fx-background-radius: 3; -fx-border-color: #b0d4f1; -fx-border-radius: 3; -fx-border-width: 1;");
+        
+        Label predictionLabel = new Label("Peptide Prediction Controls");
+        predictionLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 12px;");
+        
+        HBox predictionControls = new HBox(10);
+        predictionControls.setAlignment(Pos.CENTER_LEFT);
+        
+        predictButton = new Button("Start Prediction");
+        predictButton.setMinWidth(100);
+        predictButton.setPrefWidth(120);
+        predictButton.setMaxWidth(140);
+        predictButton.setDisable(true); // Initially disabled until database is selected
+        predictButton.setOnAction(e -> startPrediction());
+        
+        predictionProgressBar = new ProgressBar(0);
+        predictionProgressBar.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(predictionProgressBar, Priority.ALWAYS);
+        
+        timeTextField = new TextField();
+        timeTextField.setEditable(false);
+        timeTextField.setMinWidth(100);
+        timeTextField.setPrefWidth(120);
+        timeTextField.setPromptText("Status");
+        
+        predictionControls.getChildren().addAll(predictButton, predictionProgressBar, timeTextField);
+        
+        // Update button
+        updateButton = new Button("Check Status");
+        updateButton.setMinWidth(80);
+        updateButton.setPrefWidth(100);
+        updateButton.setMaxWidth(120);
+        updateButton.setOnAction(e -> updateMagDbStatus());
+        
+        HBox buttonPanel = new HBox(10);
+        buttonPanel.setAlignment(Pos.CENTER_RIGHT);
+        buttonPanel.getChildren().add(updateButton);
+        
+        predictionPanel.getChildren().addAll(predictionControls);
+        
+        statusPanel.getChildren().addAll(consolePanel, predictionPanel);
+        
+        // Initial status check will be done after database panel is initialized
+        // This will be called from setAvailableMagDatabases() method
+        
+        return statusPanel;
     }
 
     private VBox createParametersTab() {
         VBox tabContent = new VBox(10);
         tabContent.setPadding(new Insets(10));
         tabContent.setMinWidth(960);
-        tabContent.setMinHeight(760);
+        tabContent.setMinHeight(840);
 
         // Create main grid layout for parameters with 2-column responsive sizing
         GridPane mainGrid = new GridPane();
@@ -238,15 +423,20 @@ public class MetaPilotDiaNormalPanel extends VBox {
         mainGrid.getRowConstraints().add(row1);
 
         // Left column: DIA Mode Selection, Thread Settings, Library Panel
-        VBox leftColumn = new VBox(15);
+        leftColumn = new VBox(15);
         leftColumn.setMinWidth(430);
         VBox diaSettingsSection = createDiaSettingsSection();
         
-        // Use the new reusable library generation panel
-        libraryGenerationPanel = new DiaLibraryGenerationPanel();
-        libraryGenerationPanel.setParameterUpdateCallback(() -> updateParameterView());
+        // Create library generation panel placeholder - will be initialized after MAG database is set
+        libraryPlaceholder = new VBox();
+        libraryPlaceholder.setMinHeight(200);
+        libraryPlaceholder.setStyle("-fx-background-color: #f0f0f0; -fx-border-color: #cccccc; -fx-border-radius: 5; -fx-border-width: 1;");
+        Label placeholderLabel = new Label("Library Generation Panel\n(Will be available after MAG database is selected)");
+        placeholderLabel.setStyle("-fx-text-alignment: center; -fx-font-style: italic; -fx-text-fill: #666666;");
+        libraryPlaceholder.getChildren().add(placeholderLabel);
+        libraryPlaceholder.setAlignment(Pos.CENTER);
         
-        leftColumn.getChildren().addAll(diaSettingsSection, libraryGenerationPanel);
+        leftColumn.getChildren().addAll(diaSettingsSection, libraryPlaceholder);
         GridPane.setVgrow(leftColumn, Priority.ALWAYS);
 
         // Right column: Model Panel and Metadata Configuration
@@ -256,9 +446,24 @@ public class MetaPilotDiaNormalPanel extends VBox {
         // Use the new reusable model generation panel
         modelGenerationPanel = new DiaModelGenerationPanel();
         modelGenerationPanel.setParameterUpdateCallback(() -> updateParameterView());
+        modelGenerationPanel.setParentPanel(this); // Set reference to this panel
+        // Ensure model panel has required resources and config file
+        if (this.resourceParams == null) {
+            try {
+                MetaResourceIO resourceIO = new MetaResourceIO();
+                this.resourceParams = resourceIO.loadParameters();
+            } catch (Exception ignore) {
+                // leave as null; panel will show an error if missing at run time
+            }
+        }
+        modelGenerationPanel.setResourceParameters(this.resourceParams);
+        modelGenerationPanel.setConfigFile(new File("MAGDB_1_0.json"));
         
-        VBox metadataSection = createMetadataConfigurationSection();
-        rightColumn.getChildren().addAll(modelGenerationPanel, metadataSection);
+        // Use the reusable metadata configuration panel
+        metadataConfigurationPanel = new MetadataConfigurationPanel();
+        metadataConfigurationPanel.setParameterUpdateCallback(() -> updateParameterView());
+        
+        rightColumn.getChildren().addAll(modelGenerationPanel, metadataConfigurationPanel);
         GridPane.setVgrow(rightColumn, Priority.ALWAYS);
 
         // Add columns to grid
@@ -334,190 +539,44 @@ public class MetaPilotDiaNormalPanel extends VBox {
         return label;
     }
 
-    // Add remaining missing methods
-    private VBox createConsoleTab() {
-        VBox tabContent = new VBox(10);
-        tabContent.setPadding(new Insets(10));
-
-        // Parameter View
-        VBox paramViewBox = new VBox(5);
-        paramViewBox.getChildren().add(new Label("Parameter View:"));
-        parameterView = new TextArea();
-        parameterView.setEditable(false);
-        parameterView.setPrefHeight(200);
-        parameterView.setStyle("-fx-font-family: monospace;");
-        VBox.setVgrow(parameterView, Priority.ALWAYS);
-        paramViewBox.getChildren().add(parameterView);
-        VBox.setVgrow(paramViewBox, Priority.ALWAYS);
-
-        // Progress Bars
-        VBox progressBox = new VBox(5);
-        currentTaskLabel = new Label("Current Task: None");
-        overallProgressBar = new ProgressBar(0);
-        overallProgressBar.setMaxWidth(Double.MAX_VALUE);
-        currentTaskProgressBar = new ProgressBar(0);
-        currentTaskProgressBar.setMaxWidth(Double.MAX_VALUE);
-        progressBox.getChildren().addAll(
-            currentTaskLabel,
-            new Label("Overall Progress:"),
-            overallProgressBar,
-            new Label("Current Task Progress:"),
-            currentTaskProgressBar
-        );
-
-        // Console Output
-        VBox consoleBox = new VBox(5);
-        consoleBox.getChildren().add(new Label("Console Output:"));
-        consoleOutput = new TextArea();
-        consoleOutput.setEditable(false);
-        consoleOutput.setPrefHeight(250);
-        consoleOutput.setStyle("-fx-font-family: monospace;");
-        VBox.setVgrow(consoleOutput, Priority.ALWAYS);
-        consoleBox.getChildren().add(consoleOutput);
-        VBox.setVgrow(consoleBox, Priority.ALWAYS);
-
-        // Control Buttons
-        HBox controlBox = new HBox(10);
-        startButton = new Button("Start Analysis");
-        stopButton = new Button("Stop");
-        stopButton.setDisable(true);
-        startButton.setOnAction(e -> startAnalysis());
-        stopButton.setOnAction(e -> stopAnalysis());
-        controlBox.getChildren().addAll(startButton, stopButton);
-
-        // Status Panel
-        HBox statusPanel = new HBox(20);
-        statusPanel.setPadding(new Insets(5, 0, 0, 0));
-        statusPanel.setAlignment(Pos.CENTER_LEFT);
-        statusTimeLabel = new Label("Time: 00:00:00");
-        statusCpuLabel = new Label("CPU: 0.0%");
-        statusMemLabel = new Label("Memory: 0 / 0 MB");
-        statusPanel.getChildren().addAll(statusTimeLabel, statusCpuLabel, statusMemLabel);
-
-        tabContent.getChildren().addAll(
-            paramViewBox,
-            progressBox,
-            consoleBox,
-            controlBox,
-            statusPanel
-        );
-        VBox.setVgrow(paramViewBox, Priority.ALWAYS);
-        VBox.setVgrow(consoleBox, Priority.ALWAYS);
-        VBox.setVgrow(tabContent, Priority.ALWAYS);
-
-        return tabContent;
-    }
 
     private void updateMetadataTableFromIOPanel() {
-        if (ioPanel == null || metadataTable == null) {
+        if (ioPanel == null || metadataConfigurationPanel == null) {
             return;
         }
         
         ObservableList<MetaPilotIOPanelFX.ExperimentRow> experiments = ioPanel.getExperimentData();
-        metadataTableData.clear();
-        for (MetaPilotIOPanelFX.ExperimentRow exp : experiments) {
-            metadataTableData.add(new MetaPilotDdaIgcMaxQuantPanel.MetadataRow(exp.getExperimentName()));
-        }
+        metadataConfigurationPanel.updateMetadataFromIOPanel(experiments);
     }
 
-    private VBox createMetadataConfigurationSection() {
-        VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #fff8f0; -fx-background-radius: 5;");
-        section.setMinHeight(150);
-        VBox.setVgrow(section, Priority.ALWAYS);
 
-        Label titleLabel = createSectionTitle("Metadata Configuration");
-        Label infoLabel = new Label("Configure metadata for DIA analysis samples");
-        infoLabel.setStyle("-fx-font-style: italic; -fx-text-fill: #666666;");
-
-        metadataTable = new TableView<>(metadataTableData);
-        metadataTable.setMinHeight(100);
-        metadataTable.setPrefHeight(120);
-        metadataTable.setMaxHeight(Double.MAX_VALUE);
-        metadataTable.setEditable(true);
-        metadataTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
-        VBox.setVgrow(metadataTable, Priority.ALWAYS);
-
-        createMetadataTableColumns();
-
-        HBox controlBox = new HBox(8);
-        controlBox.setAlignment(Pos.CENTER_LEFT);
-
-        metadataColumnComboBox = new ComboBox<>(FXCollections.observableArrayList(
-            "Age", "Gender", "Condition", "Treatment", "Time Point", "BMI", "Custom"));
-        metadataColumnComboBox.setMinWidth(100);
-        metadataColumnComboBox.setPrefWidth(120);
-        metadataColumnComboBox.setPromptText("Add column");
-
-        TextField customColumnTextField = new TextField();
-        customColumnTextField.setPromptText("Enter custom column name");
-        customColumnTextField.setMinWidth(120);
-        customColumnTextField.setVisible(false);
-        customColumnTextField.setManaged(false);
-
-        metadataColumnComboBox.setOnAction(e -> {
-            String selected = metadataColumnComboBox.getValue();
-            boolean isCustom = "Custom".equals(selected);
-            customColumnTextField.setVisible(isCustom);
-            customColumnTextField.setManaged(isCustom);
-            if (isCustom) {
-                customColumnTextField.requestFocus();
-            }
-        });
-
-        addMetadataColumnButton = new Button("Add Column");
-        addMetadataColumnButton.setMinWidth(120);
-        addMetadataColumnButton.setPrefWidth(150);
-        addMetadataColumnButton.setOnAction(e -> {
-            String columnName = metadataColumnComboBox.getValue();
-            if ("Custom".equals(columnName)) {
-                String customName = customColumnTextField.getText();
-                if (customName != null && !customName.trim().isEmpty()) {
-                    addMetadataColumnWithProperty(customName.trim(), getPropertyNameForColumn(customName.trim()));
-                    customColumnTextField.clear();
-                }
-            } else if (columnName != null && !columnName.isEmpty()) {
-                addMetadataColumnWithProperty(columnName, getPropertyNameForColumn(columnName));
-            }
-        });
-
-        removeMetadataColumnButton = new Button("Remove Column");
-        removeMetadataColumnButton.setMinWidth(120);
-        removeMetadataColumnButton.setPrefWidth(150);
-        removeMetadataColumnButton.setOnAction(e -> removeMetadataColumn());
-
-        controlBox.getChildren().addAll(
-            metadataColumnComboBox, 
-            customColumnTextField, 
-            addMetadataColumnButton, 
-            removeMetadataColumnButton
-        );
-
-        section.getChildren().addAll(titleLabel, infoLabel, metadataTable, controlBox);
-        return section;
-    }
-
-    private void createMetadataTableColumns() {
-        metadataTable.getColumns().clear();
-        TableColumn<MetaPilotDdaIgcMaxQuantPanel.MetadataRow, String> sampleCol = new TableColumn<>("Sample");
-        sampleCol.setCellValueFactory(new PropertyValueFactory<>("sampleName"));
-        sampleCol.setMinWidth(120);
-        sampleCol.setPrefWidth(150);
-        metadataTable.getColumns().add(sampleCol);
-    }
 
     private void updateParameterView() {
-        if (parameterView == null) {
+        if (consolePanel == null) {
             return;
         }
+        
+        System.out.println("DEBUG: updateParameterView() called");
         
         StringBuilder sb = new StringBuilder();
         sb.append("=== DIA Analysis Parameters ===\n\n");
 
         // Database settings
         sb.append("Database Settings:\n");
-        sb.append("  MAG Database: ").append(magDatabaseComboBox != null ? magDatabaseComboBox.getValue() != null ? magDatabaseComboBox.getValue().getCatalogueID() : "" : "").append("\n");
+        if (magDatabasePanel != null) {
+            MagDbItem selectedDb = magDatabasePanel.getSelectedMagDatabase();
+            if (selectedDb != null) {
+                sb.append("  MAG Database: ").append(selectedDb.getCatalogueID()).append("\n");
+            }
+            MagVersion selectedVersion = magDatabasePanel.getSelectedMagVersion();
+            if (selectedVersion != null) {
+                sb.append("  MAG Version: ").append(selectedVersion.getCatalogueVersion()).append("\n");
+            }
+            sb.append("  Append Host DB: ").append(magDatabasePanel.isAppendHostDb()).append("\n");
+            if (magDatabasePanel.isAppendHostDb() && magDatabasePanel.getHostDatabase() != null && !magDatabasePanel.getHostDatabase().isEmpty()) {
+                sb.append("  Host Database: ").append(magDatabasePanel.getHostDatabase()).append("\n");
+            }
+        }
         sb.append("\n");
 
         // DIA settings
@@ -533,7 +592,9 @@ public class MetaPilotDiaNormalPanel extends VBox {
         // Library configuration
         sb.append("Spectral Libraries:\n");
         if (libraryGenerationPanel != null) {
+            System.out.println("DEBUG: updateParameterView - libraryGenerationPanel is not null");
             String[] selectedLibs = libraryGenerationPanel.getSelectedLibraryNames();
+            System.out.println("DEBUG: updateParameterView - selectedLibs.length = " + selectedLibs.length);
             if (selectedLibs.length > 0) {
                 for (String libName : selectedLibs) {
                     sb.append("  ").append(libName).append("\n");
@@ -541,6 +602,9 @@ public class MetaPilotDiaNormalPanel extends VBox {
             } else {
                 sb.append("  No libraries selected\n");
             }
+        } else {
+            System.out.println("DEBUG: updateParameterView - libraryGenerationPanel is null");
+            sb.append("  Library panel not available\n");
         }
         sb.append("\n");
 
@@ -548,86 +612,918 @@ public class MetaPilotDiaNormalPanel extends VBox {
         sb.append("ML Models:\n");
         if (modelGenerationPanel != null) {
             String[] selectedModels = modelGenerationPanel.getSelectedModelNames();
+            System.out.println("DEBUG: updateParameterView - selectedModels.length = " + selectedModels.length);
             if (selectedModels.length > 0) {
                 for (String modelName : selectedModels) {
                     sb.append("  ").append(modelName).append("\n");
+                    System.out.println("DEBUG: updateParameterView - selected model: " + modelName);
                 }
             } else {
                 sb.append("  No models selected (models are optional)\n");
+                System.out.println("DEBUG: updateParameterView - no models selected");
             }
+        } else {
+            System.out.println("DEBUG: updateParameterView - modelGenerationPanel is null");
         }
         sb.append("\n");
 
-        parameterView.setText(sb.toString());
-    }
-
-    private String getPropertyNameForColumn(String columnName) {
-        switch (columnName) {
-            case "Age": return "age";
-            case "Gender": return "gender";
-            case "Condition": return "condition";
-            case "Treatment": return "treatment";
-            case "Time Point": return "timePoint";
-            case "BMI": return "customField1";
-            default: return "customField1";
+        if (consolePanel != null) {
+            consolePanel.setParameterText(sb.toString());
         }
-    }
-
-    private void addMetadataColumnWithProperty(String columnName, String propertyName) {
-        TableColumn<MetaPilotDdaIgcMaxQuantPanel.MetadataRow, String> newCol = new TableColumn<>(columnName);
-        newCol.setCellValueFactory(data -> {
-            switch (propertyName) {
-                case "age": return new SimpleStringProperty(data.getValue().getAge());
-                case "gender": return new SimpleStringProperty(data.getValue().getGender());
-                case "condition": return new SimpleStringProperty(data.getValue().getCondition());
-                case "treatment": return new SimpleStringProperty(data.getValue().getTreatment());
-                case "timePoint": return new SimpleStringProperty(data.getValue().getTimePoint());
-                case "customField1": return new SimpleStringProperty(data.getValue().getCustomField1());
-                case "customField2": return new SimpleStringProperty(data.getValue().getCustomField2());
-                case "customField3": return new SimpleStringProperty(data.getValue().getCustomField3());
-                default: return new SimpleStringProperty("");
-            }
-        });
-        newCol.setCellFactory(TextFieldTableCell.forTableColumn());
-        newCol.setOnEditCommit(e -> {
-            switch (propertyName) {
-                case "age": e.getRowValue().setAge(e.getNewValue()); break;
-                case "gender": e.getRowValue().setGender(e.getNewValue()); break;
-                case "condition": e.getRowValue().setCondition(e.getNewValue()); break;
-                case "treatment": e.getRowValue().setTreatment(e.getNewValue()); break;
-                case "timePoint": e.getRowValue().setTimePoint(e.getNewValue()); break;
-                case "customField1": e.getRowValue().setCustomField1(e.getNewValue()); break;
-                case "customField2": e.getRowValue().setCustomField2(e.getNewValue()); break;
-                case "customField3": e.getRowValue().setCustomField3(e.getNewValue()); break;
-            }
-        });
-        newCol.setMinWidth(100);
-        newCol.setPrefWidth(120);
-        metadataTable.getColumns().add(newCol);
-    }
-
-    private void removeMetadataColumn() {
-        TableColumn<MetaPilotDdaIgcMaxQuantPanel.MetadataRow, ?> selectedColumn = 
-            metadataTable.getSelectionModel().getSelectedCells().isEmpty() ? null :
-            metadataTable.getColumns().get(metadataTable.getSelectionModel().getSelectedCells().get(0).getColumn());
         
-        if (selectedColumn != null && !selectedColumn.getText().equals("Sample")) {
-            metadataTable.getColumns().remove(selectedColumn);
+        // Update the library generation panel with the current parameters
+        if (libraryGenerationPanel != null) {
+            // Try full validation first, fall back to minimal validation for library generation
+            MetaParameterDia currentMetaParameter = collectParametersFromUI();
+            if (currentMetaParameter == null) {
+                // If full validation fails (e.g., no raw files), use minimal validation for library generation
+                currentMetaParameter = generateMetaParameterDiaForLibraryGeneration();
+            }
+            if (currentMetaParameter != null) {
+                libraryGenerationPanel.updateMetaParameter(currentMetaParameter);
+            }
+        } else {
+            // Library generation panel not created yet, try to create it if MAG database is available
+            ensureLibraryGenerationPanelCreated();
+        }
+        
+        // Update the model generation panel with the current parameters
+        if (modelGenerationPanel != null) {
+            // Try full validation first, fall back to minimal validation for model generation
+            MetaParameterDia currentMetaParameter = collectParametersFromUI();
+            if (currentMetaParameter == null) {
+                // If full validation fails (e.g., no raw files), use minimal validation for model generation
+                currentMetaParameter = generateMetaParameterDiaForLibraryGeneration();
+            }
+            if (currentMetaParameter != null) {
+                modelGenerationPanel.updateMetaParameter(currentMetaParameter);
+            }
         }
     }
+
 
     private void startAnalysis() {
-        startButton.setDisable(true);
-        stopButton.setDisable(false);
-        consoleOutput.clear();
-        consoleOutput.appendText("Starting DIA analysis...\n");
         System.out.println("DEBUG: startAnalysis called - DIA Normal workflow");
+        
+        // Validate inputs before starting analysis
+        if (!validateInputs()) {
+            showError("Validation Error", "Please check all required inputs before starting analysis.");
+            return;
+        }
+        
+        // Generate MetaParameterDia from current UI state
+        MetaParameterDia metaParameterDia = collectParametersFromUI();
+        if (metaParameterDia == null) {
+            showError("Parameter Error", "Failed to generate analysis parameters. Please check your settings.");
+            return;
+        }
+        
+        // Store the parameters for later use (e.g., in viewReport)
+        currentAnalysisParameters = metaParameterDia;
+        
+        // Load resource parameters from config file (same as DDA panel)
+        consolePanel.appendConsoleText("Loading resource parameters from config...\n");
+        MetaResourceIO resourceIO = new MetaResourceIO();
+        MetaResourceParameters mrp = resourceIO.loadParameters();
+        if (mrp == null) {
+            showError("Configuration Error", "Failed to load resource parameters from config file.");
+            return;
+        }
+        consolePanel.appendConsoleText("✓ Resource parameters loaded from config file\n");
+        
+        // Clear console and start analysis
+        consolePanel.clearConsole();
+        consolePanel.appendConsoleText("Starting DIA analysis...\n");
+        consolePanel.appendConsoleText("Parameters validated successfully.\n");
+        consolePanel.appendConsoleText("Result directory: " + metaParameterDia.getResult() + "\n");
+        
+        // Create and configure MetaDiaTask
+        metaDiaTask = new MetaDiaTask(
+            metaParameterDia,
+            mrp,
+            consolePanel.getOverallProgressBar(),
+            consolePanel.getCurrentTaskProgressBar()
+        );
+        
+        // Set up task event handlers
+        metaDiaTask.setOnRunning(e -> {
+            Platform.runLater(() -> {
+                consolePanel.appendConsoleText("DIA analysis task started.\n");
+            });
+        });
+        
+        metaDiaTask.setOnSucceeded(e -> {
+            Platform.runLater(() -> {
+                Boolean result = metaDiaTask.getValue();
+                if (result != null && result) {
+                    // Task completed successfully
+                    consolePanel.appendConsoleText("✓ Analysis completed successfully!\n");
+                    consolePanel.appendConsoleText("Results saved to: " + currentAnalysisParameters.getResult() + "\n");
+                    consolePanel.enableViewReportButton();
+                    consolePanel.setButtonsEnabled(true, false, true);
+                } else {
+                    // Task completed but returned false (failed)
+                    consolePanel.appendConsoleText("✗ Analysis failed. Check console output for details.\n");
+                    consolePanel.setButtonsEnabled(true, false, false);
+                }
+            });
+        });
+        
+        metaDiaTask.setOnFailed(e -> {
+            Platform.runLater(() -> {
+                Throwable exception = metaDiaTask.getException();
+                String errorMessage = exception != null ? exception.getMessage() : "Unknown error occurred";
+                consolePanel.appendConsoleText("✗ Analysis failed: " + errorMessage + "\n");
+                consolePanel.setButtonsEnabled(true, false, false);
+                showError("Analysis Failed", "DIA analysis failed: " + errorMessage);
+            });
+        });
+        
+        metaDiaTask.setOnCancelled(e -> {
+            Platform.runLater(() -> {
+                consolePanel.appendConsoleText("DIA analysis was cancelled.\n");
+                consolePanel.setButtonsEnabled(true, false, false);
+            });
+        });
+        
+        // Set up progress monitoring
+        metaDiaTask.messageProperty().addListener((obs, oldMsg, newMsg) -> {
+            if (newMsg != null && !newMsg.isEmpty()) {
+                Platform.runLater(() -> {
+                    consolePanel.appendConsoleText("Progress: " + newMsg + "\n");
+                });
+            }
+        });
+        
+        // Start the task in a background thread
+        if (taskExecutor == null) {
+            taskExecutor = Executors.newSingleThreadExecutor();
+        }
+        taskExecutor.submit(metaDiaTask);
+        
+        consolePanel.appendConsoleText("MetaDiaTask submitted to executor.\n");
     }
 
     private void stopAnalysis() {
-        startButton.setDisable(false);
-        stopButton.setDisable(true);
-        consoleOutput.appendText("Stopping DIA analysis...\n");
         System.out.println("DEBUG: stopAnalysis called");
+        
+        if (metaDiaTask != null && metaDiaTask.isRunning()) {
+            consolePanel.appendConsoleText("Stopping DIA analysis...\n");
+            metaDiaTask.forceStop();
+            consolePanel.appendConsoleText("DIA analysis stop requested.\n");
+        } else {
+            consolePanel.appendConsoleText("No running DIA analysis to stop.\n");
+        }
+    }
+    
+    private void viewReport() {
+        try {
+            consolePanel.appendConsoleText("Opening report in default browser...\n");
+            
+            // Use the stored parameters from the last analysis
+            if (currentAnalysisParameters == null || currentAnalysisParameters.getResult() == null) {
+                consolePanel.appendConsoleText("ERROR: No analysis parameters available. Please run analysis first.\n");
+                return;
+            }
+            
+            File resultDir = currentAnalysisParameters.getDbSearchResultFile();
+            consolePanel.appendConsoleText("DEBUG: Result path from stored analysis parameters: " + resultDir + "\n");
+            
+            // Look for the main index.html file in the report directory
+            // For DIA analysis, reports are in the analysis-specific subdirectory
+            File reportDir = new File(resultDir, "report");
+            File indexFile = new File(reportDir, "index.html");
+            
+            consolePanel.appendConsoleText("DEBUG: Looking for report in: " + reportDir.getAbsolutePath() + "\n");
+            
+            if (!indexFile.exists()) {
+                consolePanel.appendConsoleText("ERROR: Main report index.html not found in " + reportDir.getAbsolutePath() + "\n");
+                consolePanel.appendConsoleText("Please ensure the analysis has completed successfully.\n");
+                
+                // Try alternative locations
+                File altIndexFile = new File(resultDir, "index.html");
+                if (altIndexFile.exists()) {
+                    consolePanel.appendConsoleText("Found alternative report location: " + altIndexFile.getAbsolutePath() + "\n");
+                    indexFile = altIndexFile;
+                } else {
+                    consolePanel.appendConsoleText("No report found in result directory either.\n");
+                    return;
+                }
+            }
+            
+            consolePanel.appendConsoleText("Opening main report: " + indexFile.getName() + "\n");
+            
+            // Open the file in the default browser
+            if (java.awt.Desktop.isDesktopSupported()) {
+                java.awt.Desktop.getDesktop().browse(indexFile.toURI());
+                consolePanel.appendConsoleText("✓ Report opened in default browser\n");
+            } else {
+                consolePanel.appendConsoleText("ERROR: Desktop not supported. Please open manually: " + indexFile.getAbsolutePath() + "\n");
+            }
+            
+        } catch (Exception e) {
+            String errorMsg = "ERROR: Failed to open report: " + e.getMessage();
+            consolePanel.appendConsoleText(errorMsg + "\n");
+            System.err.println("Failed to open report: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+    
+    /**
+     * Update the MAG database status - check predicted peptide files and display in console
+     */
+    private void updateMagDbStatus() {
+        if (predictionConsole == null) {
+            return;
+        }
+        
+        // Clear console and add timestamp
+        predictionConsole.clear();
+        predictionConsole.appendText("=== MAG Database Status Check ===\n");
+        predictionConsole.appendText("Timestamp: " + LocalDateTime.now().toString() + "\n\n");
+        
+        if (magDatabasePanel == null) {
+            predictionConsole.appendText("ERROR: Database panel not initialized\n");
+            predictionConsole.appendText("Please restart the application.\n");
+            updateButtonStates(false);
+            return;
+        }
+        
+        MagDbItem magDbItem = magDatabasePanel.getSelectedMagDatabase();
+        if (magDbItem == null) {
+            predictionConsole.appendText("INFO: No database selected\n");
+            predictionConsole.appendText("Please select a MAG database from the dropdown above.\n");
+            predictionConsole.appendText("If databases are available, they should appear in the dropdown.\n");
+            updateButtonStates(false);
+            return;
+        }
+        
+        MagVersion usedVersion = magDatabasePanel.getSelectedMagVersion();
+        if (usedVersion == null) {
+            predictionConsole.appendText("INFO: No version selected for database: " + magDbItem.getCatalogueID() + "\n");
+            predictionConsole.appendText("Please select a version from the version dropdown.\n");
+            updateButtonStates(false);
+            return;
+        }
+        
+        // Display database information
+        predictionConsole.appendText("Database Information:\n");
+        predictionConsole.appendText("  Catalogue ID: " + magDbItem.getCatalogueID() + "\n");
+        predictionConsole.appendText("  Version: " + usedVersion.getCatalogueVersion() + "\n");
+        predictionConsole.appendText("  Species Count: " + usedVersion.getSpeciesCount() + "\n");
+        predictionConsole.appendText("  Repository Path: " + (magDbItem.getRepositoryFile() != null ? magDbItem.getRepositoryFile().getAbsolutePath() : "Not set") + "\n\n");
+        
+        int speciesCount = usedVersion.getSpeciesCount();
+        File predictedPepFile = magDbItem.getPredictedPepFile();
+        
+        // Check if predicted folder exists
+        if (predictedPepFile == null || !predictedPepFile.exists()) {
+            predictionConsole.appendText("STATUS: Predicted peptides folder does not exist\n");
+            predictionConsole.appendText("Expected path: " + (predictedPepFile != null ? predictedPepFile.getAbsolutePath() : "null") + "\n");
+            predictionConsole.appendText("ACTION: Click 'Start Prediction' to generate predicted peptides\n");
+            updateButtonStates(false);
+            return;
+        }
+        
+        // Check if predicted folder contains the correct number of files
+        File[] files = predictedPepFile.listFiles();
+        if (files == null) {
+            predictionConsole.appendText("ERROR: Cannot read predicted peptides folder\n");
+            predictionConsole.appendText("Path: " + predictedPepFile.getAbsolutePath() + "\n");
+            predictionConsole.appendText("ACTION: Check folder permissions\n");
+            updateButtonStates(false);
+            return;
+        }
+        
+        int fileCount = files.length;
+        predictionConsole.appendText("Predicted Peptides Status:\n");
+        predictionConsole.appendText("  Expected files: " + speciesCount + "\n");
+        predictionConsole.appendText("  Found files: " + fileCount + "\n");
+        predictionConsole.appendText("  Completion: " + String.format("%.1f%%", (fileCount * 100.0 / speciesCount)) + "\n\n");
+        
+        if (fileCount == speciesCount) {
+            predictionConsole.appendText("STATUS: ✓ All predicted peptides are available\n");
+            predictionConsole.appendText("ACTION: Ready for analysis\n");
+            updateButtonStates(true);
+        } else if (fileCount > 0) {
+            predictionConsole.appendText("STATUS: ⚠ Prediction incomplete (" + fileCount + "/" + speciesCount + " files)\n");
+            predictionConsole.appendText("ACTION: Click 'Start Prediction' to continue\n");
+            updateButtonStates(false);
+        } else {
+            predictionConsole.appendText("STATUS: ⚠ No predicted peptide files found\n");
+            predictionConsole.appendText("ACTION: Click 'Start Prediction' to start prediction\n");
+            updateButtonStates(false);
+        }
+    }
+    
+    /**
+     * Update button states based on prediction status
+     */
+    private void updateButtonStates(boolean isComplete) {
+        if (isComplete) {
+            predictionProgressBar.setProgress(1.0);
+            timeTextField.setText("Complete");
+            predictButton.setDisable(true);
+        } else {
+            predictionProgressBar.setProgress(0);
+            timeTextField.setText("Not Ready");
+            predictButton.setDisable(false);
+        }
+    }
+    
+    // Getters for external access to status panel components
+    public ProgressBar getPredictionProgressBar() {
+        return predictionProgressBar;
+    }
+    
+    public Button getPredictButton() {
+        return predictButton;
+    }
+    
+    public TextField getTimeTextField() {
+        return timeTextField;
+    }
+    
+    public Button getUpdateButton() {
+        return updateButton;
+    }
+    
+    public TextArea getPredictionConsole() {
+        return predictionConsole;
+    }
+    
+    /**
+     * Start the peptide prediction process using DeepDetectTask
+     */
+    private void startPrediction() {
+        if (magDatabasePanel == null || resourceParams == null) {
+            predictionConsole.appendText("ERROR: Cannot start prediction - missing database or resource parameters\n");
+            return;
+        }
+        
+        MagDbItem magDbItem = magDatabasePanel.getSelectedMagDatabase();
+        if (magDbItem == null) {
+            predictionConsole.appendText("ERROR: No database selected for prediction\n");
+            return;
+        }
+
+        // Check if prediction is already complete
+        File predictedPepFile = magDbItem.getPredictedPepFile();
+        if (predictedPepFile != null && predictedPepFile.exists()) {
+            File[] files = predictedPepFile.listFiles();
+            if (files != null && files.length == magDbItem.getUsedVersion().getSpeciesCount()) {
+                predictionConsole.appendText("INFO: Prediction already complete. All files exist.\n");
+                return;
+            }
+        }
+        
+        // Disable the predict button and update UI
+        predictButton.setDisable(true);
+        predictionProgressBar.setProgress(0);
+        timeTextField.setText("Starting...");
+        
+        // Clear console and add prediction start message
+        predictionConsole.clear();
+        predictionConsole.appendText("=== Starting Peptide Prediction ===\n");
+        predictionConsole.appendText("Timestamp: " + LocalDateTime.now().toString() + "\n");
+        predictionConsole.appendText("Database: " + magDbItem.getCatalogueID() + " " + magDbItem.getUsedVersion().getCatalogueVersion() + "\n");
+        predictionConsole.appendText("Species Count: " + magDbItem.getUsedVersion().getSpeciesCount() + "\n\n");
+        
+        MetaBaseParameter metaBaseParameter = new MetaBaseParameter();
+        DeepDetectParameter deepDetectParam = new DeepDetectParameter();
+        
+        // Calculate thread count as 90% of available processors
+        int availableProcessors = Runtime.getRuntime().availableProcessors();
+        int threadCount = Math.max(1, (int) (availableProcessors * 0.6));
+        
+        predictionConsole.appendText("Thread Configuration:\n");
+        predictionConsole.appendText("  Available Processors: " + availableProcessors + "\n");
+        predictionConsole.appendText("  Using Threads: " + threadCount + " (60% of available)\n\n");
+        
+        // Create and configure DeepDetectTask with all required parameters
+        deepDetectTask = new DeepDetectTask(
+            metaBaseParameter,
+            resourceParams,
+            predictionProgressBar,
+            deepDetectParam,
+            magDbItem,
+            threadCount, // Use 60% of available threads
+            timeTextField // JavaFX TextField for time display
+        );
+        
+        // Set up task completion callback
+        deepDetectTask.setOnSucceeded(e -> {
+            predictionConsole.appendText("\n=== Prediction Completed ===\n");
+            predictionConsole.appendText("Timestamp: " + LocalDateTime.now().toString() + "\n");
+            if (deepDetectTask.getValue()) {
+                predictionConsole.appendText("STATUS: ✓ All predictions completed successfully\n");
+                predictionConsole.appendText("ACTION: Ready for analysis\n");
+                updateButtonStates(true);
+            } else {
+                predictionConsole.appendText("STATUS: ⚠ Prediction completed with some issues\n");
+                predictionConsole.appendText("ACTION: Check individual files or restart prediction\n");
+                updateButtonStates(false);
+            }
+            predictButton.setDisable(false);
+        });
+        
+        deepDetectTask.setOnFailed(e -> {
+            predictionConsole.appendText("\n=== Prediction Failed ===\n");
+            predictionConsole.appendText("Timestamp: " + LocalDateTime.now().toString() + "\n");
+            predictionConsole.appendText("ERROR: " + deepDetectTask.getException().getMessage() + "\n");
+            predictionConsole.appendText("ACTION: Check error details and try again\n");
+            updateButtonStates(false);
+            predictButton.setDisable(false);
+        });
+        
+        // Set up progress monitoring
+        deepDetectTask.messageProperty().addListener((obs, oldMsg, newMsg) -> {
+            if (newMsg != null && !newMsg.isEmpty()) {
+                predictionConsole.appendText("Progress: " + newMsg + "\n");
+            }
+        });
+        
+        // Start the task in a background thread
+        taskExecutor = Executors.newSingleThreadExecutor();
+        taskExecutor.submit(deepDetectTask);
+        
+        predictionConsole.appendText("DeepDetect task started...\n");
+        predictionConsole.appendText("Monitoring progress...\n\n");
+    }
+    
+    /**
+     * Generate MetaParameterDia for library generation (minimal validation)
+     * This method creates a MetaParameterDia with only the essential parameters needed for library generation
+     * 
+     * @return MetaParameterDia object with minimal parameters, or null if essential validation fails
+     */
+    public MetaParameterDia generateMetaParameterDiaForLibraryGeneration() {
+        System.out.println("DEBUG: generateMetaParameterDiaForLibraryGeneration() called");
+        try {
+            // Validate only essential inputs for library generation
+            System.out.println("DEBUG: Starting minimal input validation for library generation...");
+            if (!validateInputsForLibraryGeneration()) {
+                System.err.println("Minimal input validation failed - cannot generate MetaParameterDia for library generation");
+                return null;
+            }
+            System.out.println("DEBUG: Minimal input validation passed");
+            
+            // Create minimal MetaData (empty experiments for library generation)
+            MetaData metaData = new MetaData(new String[0], new String[0], new int[0], new int[0]);
+            
+            // Get result directory (can be empty for library generation)
+            String result = ioPanel != null ? ioPanel.getOutputDirectory() : "";
+            
+            // Get MAG database information
+            MagDbItem selectedMagDb = magDatabasePanel.getSelectedMagDatabase();
+            if (selectedMagDb == null) {
+                System.err.println("No MAG database selected");
+                return null;
+            }
+            
+            MagVersion selectedVersion = magDatabasePanel.getSelectedMagVersion();
+            if (selectedVersion == null) {
+                System.err.println("No MAG database version selected");
+                return null;
+            }
+            
+            // Set the version on the MagDbItem - this is critical!
+            selectedMagDb.setUsedVersion(selectedVersion);
+            System.out.println("DEBUG: Set version " + selectedVersion.getCatalogueVersion() + " on MagDbItem " + selectedMagDb.getCatalogueID());
+            
+            // Get host database settings
+            boolean appendHostDb = magDatabasePanel.isAppendHostDb();
+            String hostDB = magDatabasePanel.getHostDatabase();
+            
+            // Get thread count
+            int threadCount = threadsComboBox != null ? threadsComboBox.getValue() : 4;
+            
+            // Create MetaBaseParameter with minimal data
+            MetaBaseParameter metaBasePar = new MetaBaseParameter(
+                uk.ac.quadram.metapilot.task.MetaLabWorkflowType.DiaNNMAG.name(), // Workflow type
+                metaData,
+                result,
+                selectedMagDb.getCurrentFile() != null ? selectedMagDb.getCurrentFile().getAbsolutePath() : "", // MicroDb path
+                appendHostDb,
+                hostDB,
+                "DDA", // MS2 scan mode (default for DIA)
+                1, // Core count
+                threadCount,
+                true // Meta workflow
+            );
+            
+            // Create MetaParameterDia with minimal parameters for library generation
+            MetaParameterDia metaParameterDia = new MetaParameterDia(
+                metaBasePar,
+                selectedMagDb,
+                false, // librarySearch - will be set when libraries are actually selected
+                false, // selfModelSearch - will be set when models are actually selected
+                new String[0], // library - empty initially
+                false, // useModel - will be set when models are actually selected
+                new String[0] // models - empty initially
+            );
+            
+            System.out.println("MetaParameterDia for library generation created successfully:");
+            System.out.println("  - MAG Database: " + selectedMagDb.getCatalogueID());
+            System.out.println("  - Threads: " + threadCount);
+            
+            return metaParameterDia;
+            
+        } catch (Exception e) {
+            System.err.println("Error generating MetaParameterDia for library generation: " + e.getMessage());
+            e.printStackTrace();
+            return null;
+        }
+    }
+    
+    /**
+     * Generate MetaParameterDia from the current UI parameters
+     * This method collects all parameters from the UI and creates a MetaParameterDia object
+     * 
+     * @return MetaParameterDia object with all current UI parameters, or null if validation fails
+     */
+    public MetaParameterDia collectParametersFromUI() {
+        System.out.println("DEBUG: generateMetaParameterDia() called");
+        try {
+            // Validate inputs first
+            System.out.println("DEBUG: Starting input validation...");
+            if (!validateInputs()) {
+                System.err.println("Input validation failed - cannot generate MetaParameterDia");
+                return null;
+            }
+            System.out.println("DEBUG: Input validation passed");
+            
+            // Collect experiment data from ioPanel
+            ObservableList<MetaPilotIOPanelFX.ExperimentRow> fileRows = ioPanel.getExperimentData();
+            if (fileRows.isEmpty()) {
+                System.err.println("No experiment data found in IO panel");
+                return null;
+            }
+            
+            String[] rawFiles = new String[fileRows.size()];
+            String[] expNames = new String[fileRows.size()];
+            int[] fractions = new int[fileRows.size()];
+            int[] replicates = new int[fileRows.size()];
+            
+            for (int i = 0; i < fileRows.size(); i++) {
+                MetaPilotIOPanelFX.ExperimentRow row = fileRows.get(i);
+                rawFiles[i] = row.getFilePath();
+                expNames[i] = row.getExperimentName();
+                fractions[i] = 1; // Default fraction
+                replicates[i] = 1; // Default replicate
+            }
+            
+            // Create MetaData object
+            MetaData metaData = new MetaData(rawFiles, expNames, fractions, replicates);
+            
+        // Collect metadata information from the reusable panel
+        String[][] metaInfo = new String[metadataConfigurationPanel.getMetadataTableData().size()][3];
+        for (int i = 0; i < metadataConfigurationPanel.getMetadataTableData().size(); i++) {
+            MetaPilotDdaIgcMaxQuantPanel.MetadataRow row = metadataConfigurationPanel.getMetadataTableData().get(i);
+            metaInfo[i][0] = row.getAge() != null ? row.getAge() : "";
+            metaInfo[i][1] = row.getGender() != null ? row.getGender() : "";
+            metaInfo[i][2] = row.getCondition() != null ? row.getCondition() : "";
+        }
+        metaData.setMetaInfo(metaInfo);
+            
+            // Get result directory
+            String result = ioPanel.getOutputDirectory();
+            if (result == null || result.trim().isEmpty()) {
+                System.err.println("Result directory not set");
+                return null;
+            }
+            
+            // Get MAG database information
+            MagDbItem selectedMagDb = magDatabasePanel.getSelectedMagDatabase();
+            if (selectedMagDb == null) {
+                System.err.println("No MAG database selected");
+                return null;
+            }
+            
+            MagVersion selectedVersion = magDatabasePanel.getSelectedMagVersion();
+            if (selectedVersion == null) {
+                System.err.println("No MAG database version selected");
+                return null;
+            }
+            
+            // Set the version on the MagDbItem - this is critical!
+            selectedMagDb.setUsedVersion(selectedVersion);
+            System.out.println("DEBUG: Set version " + selectedVersion.getCatalogueVersion() + " on MagDbItem " + selectedMagDb.getCatalogueID());
+            
+            // Get host database settings
+            boolean appendHostDb = magDatabasePanel.isAppendHostDb();
+            String hostDB = magDatabasePanel.getHostDatabase();
+            
+            // Get thread count
+            int threadCount = threadsComboBox != null ? threadsComboBox.getValue() : 4;
+            
+            // Create MetaBaseParameter
+			MetaBaseParameter metaBasePar = new MetaBaseParameter(
+					"DiaNNMAG", // Workflow type - using the correct DIA MAG workflow type
+					metaData, result, selectedMagDb.getCurrentFile().getAbsolutePath(), // MicroDb path
+					appendHostDb, hostDB, "DIA", // MS2 scan mode (default for DIA)
+					1, // Core count
+					threadCount, true // Meta workflow
+			);
+            
+            // Get library information
+            String[] library = new String[0];
+            if (libraryGenerationPanel != null) {
+                System.out.println("DEBUG: generateMetaParameterDia - libraryGenerationPanel is not null");
+                String[] selectedLibs = libraryGenerationPanel.getSelectedLibraryNames();
+                System.out.println("DEBUG: generateMetaParameterDia - selectedLibs.length = " + (selectedLibs != null ? selectedLibs.length : "null"));
+                if (selectedLibs != null && selectedLibs.length > 0) {
+                    library = selectedLibs;
+                    System.out.println("DEBUG: generateMetaParameterDia - using " + library.length + " selected libraries");
+                } else {
+                    System.out.println("DEBUG: generateMetaParameterDia - no libraries selected");
+                }
+            } else {
+                System.out.println("DEBUG: generateMetaParameterDia - libraryGenerationPanel is null");
+            }
+            
+            // Get model information
+            String[] models = new String[0];
+            if (modelGenerationPanel != null) {
+                String[] selectedModels = modelGenerationPanel.getSelectedModelNames();
+                if (selectedModels != null && selectedModels.length > 0) {
+                    models = selectedModels;
+                }
+            }
+            
+            // Determine analysis mode
+            // librarySearch is true when the first item ("Directly identification (no iterative search)") is selected
+            boolean librarySearch = modeSelectionComboBox.getSelectionModel().getSelectedIndex() == 0;
+            boolean selfModelSearch = modeSelectionComboBox.getSelectionModel().getSelectedIndex() == 2;
+            boolean useModel = models.length > 0;
+            
+            // Create MetaParameterDia
+            MetaParameterDia metaParameterDia = new MetaParameterDia(
+                metaBasePar,
+                selectedMagDb,
+                librarySearch,
+                selfModelSearch,
+                library,
+                useModel,
+                models
+            );
+            
+            System.out.println("MetaParameterDia generated successfully:");
+            System.out.println("  - Raw files: " + rawFiles.length);
+            System.out.println("  - Libraries: " + library.length);
+            System.out.println("  - Models: " + models.length);
+            System.out.println("  - MAG Database: " + selectedMagDb.getCatalogueID());
+            System.out.println("  - Threads: " + threadCount);
+            
+            return metaParameterDia;
+            
+        } catch (Exception e) {
+            System.err.println("Error generating MetaParameterDia: " + e.getMessage());
+            e.printStackTrace();
+            return null;
+        }
+    }
+    
+    /**
+     * Validate inputs for library generation (minimal validation)
+     * Only validates essential parameters needed for library generation, not full analysis
+     * 
+     * @return true if essential inputs are valid, false otherwise
+     */
+    private boolean validateInputsForLibraryGeneration() {
+        System.out.println("DEBUG: validateInputsForLibraryGeneration() called");
+        
+        // Check if MAG database is selected
+        if (magDatabasePanel == null) {
+            System.err.println("DEBUG: magDatabasePanel is null");
+            return false;
+        }
+        if (magDatabasePanel.getSelectedMagDatabase() == null) {
+            System.err.println("DEBUG: No MAG database selected");
+            return false;
+        }
+        System.out.println("DEBUG: MAG database selected: " + magDatabasePanel.getSelectedMagDatabase().getCatalogueID());
+        
+        // Check if MAG database version is selected
+        if (magDatabasePanel.getSelectedMagVersion() == null) {
+            System.err.println("DEBUG: No MAG database version selected");
+            return false;
+        }
+        System.out.println("DEBUG: MAG database version selected: " + magDatabasePanel.getSelectedMagVersion().getCatalogueVersion());
+        
+        System.out.println("DEBUG: All minimal validations passed for library generation");
+        return true;
+    }
+    
+    /**
+     * Validate inputs before generating parameters
+     * 
+     * @return true if all required inputs are valid, false otherwise
+     */
+    private boolean validateInputs() {
+        System.out.println("DEBUG: validateInputs() called");
+        
+        // Check if IO panel has experiment data
+        if (ioPanel == null) {
+            System.err.println("DEBUG: ioPanel is null");
+            return false;
+        }
+        if (ioPanel.getExperimentData().isEmpty()) {
+            System.err.println("DEBUG: No experiment data found in IO panel");
+            return false;
+        }
+        System.out.println("DEBUG: IO panel has " + ioPanel.getExperimentData().size() + " experiments");
+        
+        // Check if result directory is set
+        String outputDir = ioPanel.getOutputDirectory();
+        if (outputDir == null || outputDir.trim().isEmpty()) {
+            System.err.println("DEBUG: Result directory not set (value: " + outputDir + ")");
+            return false;
+        }
+        System.out.println("DEBUG: Output directory is set: " + outputDir);
+        
+        // Check if MAG database is selected
+        if (magDatabasePanel == null) {
+            System.err.println("DEBUG: magDatabasePanel is null");
+            return false;
+        }
+        if (magDatabasePanel.getSelectedMagDatabase() == null) {
+            System.err.println("DEBUG: No MAG database selected");
+            return false;
+        }
+        System.out.println("DEBUG: MAG database selected: " + magDatabasePanel.getSelectedMagDatabase().getCatalogueID());
+        
+        // Check if MAG database version is selected
+        if (magDatabasePanel.getSelectedMagVersion() == null) {
+            System.err.println("DEBUG: No MAG database version selected");
+            return false;
+        }
+        System.out.println("DEBUG: MAG database version selected: " + magDatabasePanel.getSelectedMagVersion().getCatalogueVersion());
+        
+        System.out.println("DEBUG: All validations passed");
+        return true;
+    }
+    
+    /**
+     * Load last used parameters and apply them to the UI
+     */
+    private MetaParameterDia loadLastUsedParameters() {
+        System.out.println("DEBUG: loadLastUsedParameters() called");
+        try {
+            MetaParameterDia params = (MetaParameterDia) parameterIO.loadLastUsedParameters();
+            if (params != null) {
+                System.out.println("DEBUG: Successfully loaded parameters from file");
+                System.out.println("DEBUG: Parameters contain:");
+                System.out.println("  - Output directory: " + (params.getResult() != null ? params.getResult() : "null"));
+                System.out.println("  - Raw files count: " + (params.getMetadata() != null && params.getMetadata().getRawFiles() != null ? params.getMetadata().getRawFiles().length : 0));
+                System.out.println("  - MAG database: " + (params.getMagDbItem() != null ? params.getMagDbItem().getCatalogueID() : "null"));
+                System.out.println("  - Thread count: " + params.getThreadCount());
+                
+                applyParametersToUI(params);
+                System.out.println("DEBUG: Applied parameters to UI successfully");
+                return params;
+            } else {
+                System.out.println("DEBUG: No parameters loaded from file, using defaults");
+            }
+        } catch (Exception e) {
+            System.err.println("WARNING: Failed to load last used DIA parameters: " + e.getMessage());
+            e.printStackTrace();
+            // Continue with default UI state
+        }
+        return null;
+    }
+    
+    /**
+     * Apply parameters to the UI components
+     */
+    private void applyParametersToUI(MetaParameterDia params) {
+        if (params == null) {
+            System.out.println("DEBUG: applyParametersToUI called with null params");
+            return;
+        }
+        
+        System.out.println("DEBUG: applyParametersToUI called with valid params");
+        
+        // Apply metadata to IO panel if available
+        if (params.getMetadata() != null) {
+            MetaData metadata = params.getMetadata();
+            String[] rawFiles = metadata.getRawFiles();
+            String[] expNames = metadata.getExpNames();
+            
+            System.out.println("DEBUG: Metadata found - rawFiles: " + (rawFiles != null ? rawFiles.length : "null") + 
+                             ", expNames: " + (expNames != null ? expNames.length : "null"));
+            
+            if (rawFiles != null && expNames != null && rawFiles.length > 0) {
+                ObservableList<MetaPilotIOPanelFX.ExperimentRow> experimentRows = FXCollections.observableArrayList();
+                for (int i = 0; i < rawFiles.length; i++) {
+                    if (rawFiles[i] != null && !rawFiles[i].trim().isEmpty()) {
+                        experimentRows.add(new MetaPilotIOPanelFX.ExperimentRow(rawFiles[i], expNames[i]));
+                        System.out.println("DEBUG: Added experiment row: " + rawFiles[i] + " -> " + expNames[i]);
+                    }
+                }
+                if (ioPanel != null) {
+                    ioPanel.setExperimentData(experimentRows);
+                    System.out.println("DEBUG: Applied metadata with " + rawFiles.length + " raw files to IO panel");
+                    
+                    // Update the metadata configuration panel with the experiment data
+                    if (metadataConfigurationPanel != null) {
+                        metadataConfigurationPanel.updateMetadataFromIOPanel(experimentRows);
+                    }
+                } else {
+                    System.err.println("ERROR: ioPanel is null, cannot apply experiment data");
+                }
+            } else {
+                System.out.println("DEBUG: No valid raw files found in metadata");
+            }
+        } else {
+            System.out.println("DEBUG: No metadata found in parameters");
+        }
+        
+        // Apply output directory if available
+        if (params.getResult() != null && !params.getResult().trim().isEmpty()) {
+            if (ioPanel != null) {
+                ioPanel.setOutputDirectory(params.getResult());
+                System.out.println("DEBUG: Applied output directory: " + params.getResult());
+            } else {
+                System.err.println("ERROR: ioPanel is null, cannot apply output directory");
+            }
+        } else {
+            System.out.println("DEBUG: No output directory found in parameters");
+        }
+        
+        // Apply thread count
+        if (threadsComboBox != null) {
+            threadsComboBox.setValue(params.getThreadCount());
+        }
+        
+        // Apply MAG database settings
+        if (params.getMagDbItem() != null && magDatabasePanel != null) {
+            MagDbItem magDbItem = params.getMagDbItem();
+            // Find and select the matching MAG database
+            for (MagDbItem item : magDatabasePanel.getAvailableMagDatabases()) {
+                if (item.getCatalogueID().equals(magDbItem.getCatalogueID()) && 
+                    item.getIdentifier().equals(magDbItem.getIdentifier())) {
+                    magDatabasePanel.setSelectedMagDatabase(item);
+                    
+                    // Also apply version selection if available
+                    if (magDbItem.getUsedVersion() != null) {
+                        for (MagVersion version : item.getVersionList()) {
+                            if (version.getCatalogueVersion().equals(magDbItem.getUsedVersion().getCatalogueVersion())) {
+                                magDatabasePanel.setSelectedMagVersion(version);
+                                System.out.println("DEBUG: Applied version selection: " + version.getCatalogueVersion());
+                                break;
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
+            magDatabasePanel.setAppendHostDb(params.isAppendHostDb());
+            if (params.getHostDB() != null) {
+                magDatabasePanel.setHostDatabase(params.getHostDB());
+            }
+        }
+        
+        // Update parameter view after applying parameters
+        Platform.runLater(() -> updateParameterView());
+    }
+    
+    /**
+     * Show error dialog
+     */
+    private void showError(String title, String content) {
+        Alert alert = new Alert(Alert.AlertType.ERROR);
+        alert.setTitle(title);
+        alert.setHeaderText(null);
+        alert.setContentText(content);
+        alert.showAndWait();
+    }
+    
+    /**
+     * Save current parameters to file
+     */
+    public void saveCurrentParameters() {
+        try {
+            // Try full validation first, fall back to minimal validation for library generation
+            MetaParameterDia currentParams = collectParametersFromUI();
+            if (currentParams == null) {
+                // If full validation fails (e.g., no raw files), use minimal validation for library generation
+                currentParams = generateMetaParameterDiaForLibraryGeneration();
+            }
+            
+            if (currentParams != null) {
+                boolean saved = parameterIO.saveLastUsedParameters(currentParams);
+                if (saved) {
+                    System.out.println("DEBUG: Successfully saved current parameters to last_used_dia_parameters.json");
+                } else {
+                    System.err.println("WARNING: Failed to save current parameters");
+                }
+            } else {
+                System.err.println("WARNING: No parameters to save - both full and minimal validation failed");
+            }
+        } catch (Exception e) {
+            System.err.println("ERROR: Failed to save current parameters: " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 } 

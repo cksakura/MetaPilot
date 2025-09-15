@@ -31,7 +31,7 @@ import uk.ac.quadram.metapilot.core.function.KOFinder;
 import uk.ac.quadram.metapilot.core.function.NOGFinder;
 import uk.ac.quadram.metapilot.core.function.sql.IGCFuncSqliteSearcher;
 import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantProReader;
-import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
+import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.MetaAbstractTask;
 import uk.ac.quadram.metapilot.task.MetaReportTask;
@@ -57,14 +57,11 @@ public class MetaFuncTaskV2 extends MetaAbstractTask {
 	private String searchType;
 	private String quanType;
 
-	public MetaFuncTaskV2(MetaBaseParameter metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar) {
+	public MetaFuncTaskV2(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar) {
 		super(metaPar, mrp, progressBar);
 	}
 
-	@Override
-	protected void initial() {
-		// TODO Auto-generated method stub
-	}
+
 	
 	@Override
 	protected Boolean call() throws Exception {
@@ -72,7 +69,7 @@ public class MetaFuncTaskV2 extends MetaAbstractTask {
 
 		boolean finished = false;
 
-		progressBar.setString(taskName);
+		updateMessage(taskName);
 
 		LOGGER.info(taskName + ": start");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": start");
@@ -122,7 +119,7 @@ public class MetaFuncTaskV2 extends MetaAbstractTask {
 			System.out.println(format.format(new Date()) + "\t" + taskName + ": functional annotation result file "
 					+ funcResultXml + " was found");
 
-			setProgress(95);
+			updateProgress(95, 100);
 
 			File funTsv = new File(funcResultFile, "functions.tsv");
 			File html = new File(funcResultFile, "functions.html");
@@ -158,7 +155,7 @@ public class MetaFuncTaskV2 extends MetaAbstractTask {
 							format.format(new Date()) + "\t" + taskName + ": result file " + funTsv + " already exist");
 				}
 
-				setProgress(96);
+				updateProgress(96, 100);
 
 				if (!html.exists() || html.length() == 0) {
 					LOGGER.info(taskName + ": writing results to " + html);
@@ -185,7 +182,7 @@ public class MetaFuncTaskV2 extends MetaAbstractTask {
 				}
 			}
 
-			setProgress(97);
+			updateProgress(97, 100);
 
 			if (funTsv.exists() && html.exists()) {
 				finished = true;
@@ -236,7 +233,7 @@ public class MetaFuncTaskV2 extends MetaAbstractTask {
 			finished = task.get();
 
 			if (finished) {
-				setProgress(100);
+				updateProgress(100, 100);
 			}
 
 			return finished;
@@ -323,11 +320,11 @@ public class MetaFuncTaskV2 extends MetaAbstractTask {
 						+ ": error in reading function result file " + funcResultXml);
 
 				return false;
-			}
+					}
 
-			setProgress(100);
+		updateProgress(100, 100);
 
-			return finished;
+		return finished;
 		}
 
 		default:
@@ -344,7 +341,7 @@ public class MetaFuncTaskV2 extends MetaAbstractTask {
 			return false;
 		}
 
-		setProgress(86);
+		updateProgress(86, 100);
 
 		File funTsv = new File(funcResultFile, "functions.tsv");
 
@@ -397,7 +394,7 @@ public class MetaFuncTaskV2 extends MetaAbstractTask {
 		finished = task.get();
 
 		if (finished) {
-			setProgress(100);
+			updateProgress(100, 100);
 		}
 
 		return finished;

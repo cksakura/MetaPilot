@@ -1,0 +1,32 @@
+{
+  "mag_database": {
+    "catalogue_version": "v2.0.2",
+    "identifier": "MGYG",
+    "catalogue_id": "human-gut"
+  },
+  "metadata": [],
+  "workflow": "DiaNNMAG",
+  "input_output": {
+    "micro_db": "C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-gut\\v2.0.2",
+    "host_database": "",
+    "output_directory": "Z:\\PRIDE_dataset\\PXD050781\\MetaPilot_DIA_S48",
+    "append_host_db": false,
+    "experiments": []
+  },
+  "generated_at": "2025-09-11 16:13:36",
+  "description": "Last used parameters",
+  "basic_parameters": {
+    "ms2_scan_mode": "DDA",
+    "threads": 20,
+    "meta_workflow": true,
+    "core_count": 1
+  },
+  "dia_settings": {
+    "library_search": false,
+    "self_model_search": false,
+    "models": [],
+    "use_model": false,
+    "libraries": []
+  },
+  "version": "1.0"
+}

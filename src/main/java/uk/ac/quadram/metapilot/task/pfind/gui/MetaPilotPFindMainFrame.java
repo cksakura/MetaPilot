@@ -88,6 +88,7 @@ public class MetaPilotPFindMainFrame extends JFrame {
 		setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 		setBounds(100, 20, 1440, 1024);
 		setMinimumSize(new Dimension(1280, 1024));
+		setExtendedState(JFrame.MAXIMIZED_BOTH);
 		initial();
 	}
 

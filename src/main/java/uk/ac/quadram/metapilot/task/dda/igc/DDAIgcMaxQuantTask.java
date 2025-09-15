@@ -33,7 +33,7 @@ import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantParaHandler;
 import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantPep4Meta;
 import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantPepReader;
 import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantProReader;
-import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
+import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.task.MetaPilotTask;
@@ -53,35 +53,30 @@ public class DDAIgcMaxQuantTask extends MetaPilotTask {
 	private static final Logger LOGGER = LogManager.getLogger(DDAIgcMaxQuantTask.class);
 	private static final String taskName = "DDA IGC database searching by MaxQuant workflow";
 
-	public DDAIgcMaxQuantTask(DDAIgcMaxQuantParameters metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
-			JavaFXProgressBar secondBar) {
+	public DDAIgcMaxQuantTask(DDAIgcMaxQuantParameters metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
+			ProgressBar secondBar) {
 		super(metaPar, mrp, progressBar, secondBar);
-		// TODO Auto-generated constructor stub
 	}
 
 	@Override
 	public void forceStop() {
-		// TODO Auto-generated method stub
 
 	}
 
 	@Override
 	protected String getTaskName() {
-		// TODO Auto-generated method stub
 		return taskName;
 	}
 
 	@Override
 	protected Logger getLogger() {
-		// TODO Auto-generated method stub
 		return LOGGER;
 	}
 
 	@Override
 	protected Boolean call() throws Exception {
-		// TODO Auto-generated method stub
 
-		progressBar.setString(taskName);
+		updateMessage(taskName);
 
 		LOGGER.info(taskName + ": started");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": started");
@@ -113,7 +108,7 @@ public class DDAIgcMaxQuantTask extends MetaPilotTask {
 			
 			// Step 1: Spectra Conversion
 			LOGGER.info("Step 1: Starting spectra format conversion...");
-			PFindSpectraConvertTask spTask = new PFindSpectraConvertTask(metaPar, mrp, secondBar);
+			PFindSpectraConvertTask spTask = new PFindSpectraConvertTask(metaPar, mrp, progressBar);
 			spTask.execute();
 			try {
 				boolean convert = spTask.get(); // Wait for completion and get result
@@ -266,7 +261,7 @@ public class DDAIgcMaxQuantTask extends MetaPilotTask {
 
 				task.run();
 
-				setProgress(60);
+				updateProgress(60, 100);
 
 				// Generate final TSV files from the report files
 				File finalPeptidesFile = new File(metaPar.getResult(), "final_peptides.tsv");

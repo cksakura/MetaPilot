@@ -7,12 +7,12 @@ import java.util.concurrent.ExecutionException;
 import javafx.application.Platform;
 import javafx.concurrent.Task;
 import javafx.concurrent.Worker;
+import javafx.scene.control.ProgressBar;
 
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.core.config.builder.api.ConfigurationBuilder;
 import org.apache.logging.log4j.core.config.builder.impl.BuiltConfiguration;
 
-import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 
@@ -124,7 +124,7 @@ public abstract class MetaAbstractTask extends Task<Boolean> {
 
 	protected MetaBaseParameter metaPar;
 	protected MetaResourceParameters mrp;
-	protected JavaFXProgressBar progressBar;
+	protected ProgressBar progressBar;
 	protected Task<Boolean> nextWork;
 	protected SimpleDateFormat format = new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss");
 	protected ConfigurationBuilder<BuiltConfiguration> builder;
@@ -138,14 +138,14 @@ public abstract class MetaAbstractTask extends Task<Boolean> {
 	 * @param progressBar2 The secondary progress bar
 	 * @param nextWork     The next task to execute after this one completes
 	 */
-	public MetaAbstractTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar) {
+	public MetaAbstractTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar) {
 		this.metaPar = metaPar;
 		this.mrp = mrp;
 		this.progressBar = progressBar;
 		// Set up progress property listeners
 		this.progressProperty().addListener((observable, oldValue, newValue) -> {
 			if (this.progressBar != null) {
-				this.progressBar.setValue(newValue.intValue() * 100);
+				this.progressBar.setProgress(newValue.doubleValue());
 			}
 		});
 
@@ -169,7 +169,7 @@ public abstract class MetaAbstractTask extends Task<Boolean> {
 	 * @param progressBar2 The secondary progress bar
 	 * @param nextWork     The next task to execute after this one completes
 	 */
-	public MetaAbstractTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
+	public MetaAbstractTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
 			Task<Boolean> nextWork) {
 		this.metaPar = metaPar;
 		this.mrp = mrp;
@@ -179,7 +179,7 @@ public abstract class MetaAbstractTask extends Task<Boolean> {
 		// Set up progress property listeners
 		this.progressProperty().addListener((observable, oldValue, newValue) -> {
 			if (this.progressBar != null) {
-				this.progressBar.setValue(newValue.intValue() * 100);
+				this.progressBar.setProgress(newValue.doubleValue());
 			}
 		});
 
@@ -268,15 +268,6 @@ public abstract class MetaAbstractTask extends Task<Boolean> {
 	public boolean isDone() {
 		return this.getState() == Worker.State.SUCCEEDED || this.getState() == Worker.State.FAILED
 				|| this.getState() == Worker.State.CANCELLED;
-	}
-
-	/**
-	 * Set progress using the old 0-100 scale for compatibility with SwingWorker
-	 * 
-	 * @param progress value from 0 to 100
-	 */
-	protected void setProgress(int progress) {
-		updateProgress(progress / 100.0, 1.0);
 	}
 
 	/**

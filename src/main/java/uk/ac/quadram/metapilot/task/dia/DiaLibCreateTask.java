@@ -23,7 +23,7 @@ import uk.ac.quadram.metapilot.dbSearch.deepDetect.DeepDetectTask;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNParquetReader;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNTask;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiannParameter;
-import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
+import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.task.MetaAbstractTask;
@@ -53,10 +53,10 @@ public class DiaLibCreateTask extends MetaAbstractTask {
 	public static final int fromProtein = 1;
 	public static final int fromPeptide = 2;
 
-	public DiaLibCreateTask(MetaParameterDia metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
+	public DiaLibCreateTask(MetaParameterDia metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
 			String filePath, ArrayList<String> pathList, int buildType) {
 		super(metaPar, mrp, progressBar, null);
-		this.magDbItem = metaPar.getUsedMagDbItem();
+		this.magDbItem = metaPar.getMagDbItem();
 		this.filePath = filePath;
 		this.enzyme = pathList.get(0);
 		this.libName = pathList.get(1);

@@ -13,6 +13,8 @@ import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
 import uk.ac.quadram.metapilot.core.mod.IsobaricTag;
 
+import java.util.List;
+
 /**
  * Reusable isobaric labeling panel that can be used across different MetaPilot workflows.
  * Handles isobaric type selection and correction factor configuration.
@@ -176,6 +178,23 @@ public class IsobaricLabelingPanel extends VBox {
     
     public boolean hasLabels() {
         return !isobaricTableData.isEmpty();
+    }
+    
+    // Setters for parameter loading
+    public void setSelectedIsobaricType(String isobaricType) {
+        if (isobaricType != null && isobaricBaseTypes.contains(isobaricType)) {
+            isobaricTypeComboBox.setValue(isobaricType);
+            updateIsobaricTable();
+            notifyParameterUpdate();
+        }
+    }
+    
+    public void setIsobaricTableData(List<IsobaricLabelRow> data) {
+        isobaricTableData.clear();
+        if (data != null) {
+            isobaricTableData.addAll(data);
+        }
+        notifyParameterUpdate();
     }
     
     /**

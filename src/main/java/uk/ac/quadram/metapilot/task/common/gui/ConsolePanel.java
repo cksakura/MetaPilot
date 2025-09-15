@@ -24,6 +24,7 @@ public class ConsolePanel extends VBox {
     private Label currentTaskLabel;
     private Button startButton;
     private Button stopButton;
+    private Button viewReportButton;
     
     // Status panel components
     private Label statusTimeLabel;
@@ -35,6 +36,7 @@ public class ConsolePanel extends VBox {
     // Callbacks for start/stop actions
     private Runnable startCallback;
     private Runnable stopCallback;
+    private Runnable viewReportCallback;
     
     public ConsolePanel() {
         initializeUI();
@@ -85,10 +87,13 @@ public class ConsolePanel extends VBox {
         HBox controlBox = new HBox(10);
         startButton = new Button("Start Analysis");
         stopButton = new Button("Stop");
+        viewReportButton = new Button("View Report");
         stopButton.setDisable(true);
+        viewReportButton.setDisable(true); // Initially disabled until analysis completes
         startButton.setOnAction(e -> handleStart());
         stopButton.setOnAction(e -> handleStop());
-        controlBox.getChildren().addAll(startButton, stopButton);
+        viewReportButton.setOnAction(e -> handleViewReport());
+        controlBox.getChildren().addAll(startButton, stopButton, viewReportButton);
         
         // Status Panel (bottom)
         HBox statusPanel = new HBox(20);
@@ -119,6 +124,10 @@ public class ConsolePanel extends VBox {
     
     public void setStopCallback(Runnable callback) {
         this.stopCallback = callback;
+    }
+    
+    public void setViewReportCallback(Runnable callback) {
+        this.viewReportCallback = callback;
     }
     
     public void setParameterText(String text) {
@@ -172,6 +181,18 @@ public class ConsolePanel extends VBox {
         if (stopButton != null) stopButton.setDisable(!stopEnabled);
     }
     
+    public void setButtonsEnabled(boolean startEnabled, boolean stopEnabled, boolean viewReportEnabled) {
+        if (startButton != null) startButton.setDisable(!startEnabled);
+        if (stopButton != null) stopButton.setDisable(!stopEnabled);
+        if (viewReportButton != null) viewReportButton.setDisable(!viewReportEnabled);
+    }
+    
+    public void enableViewReportButton() {
+        if (viewReportButton != null) {
+            viewReportButton.setDisable(false);
+        }
+    }
+    
     private void handleStart() {
         if (startCallback != null) {
             setButtonsEnabled(false, true);
@@ -189,6 +210,12 @@ public class ConsolePanel extends VBox {
         }
     }
     
+    private void handleViewReport() {
+        if (viewReportCallback != null) {
+            viewReportCallback.run();
+        }
+    }
+    
     private void updateStatusPanel() {
         if (statusTimeLabel != null && taskStartTimeMillis > 0) {
             long elapsed = System.currentTimeMillis() - taskStartTimeMillis;
@@ -199,8 +226,27 @@ public class ConsolePanel extends VBox {
         }
         
         if (statusCpuLabel != null) {
-            // Simplified CPU usage display
-            statusCpuLabel.setText("CPU: N/A");
+            // Get CPU usage from system
+            try {
+                com.sun.management.OperatingSystemMXBean osBean = 
+                    (com.sun.management.OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean();
+                double cpuUsage = osBean.getProcessCpuLoad() * 100;
+                if (cpuUsage >= 0) {
+                    statusCpuLabel.setText(String.format("CPU: %.1f%%", cpuUsage));
+                } else {
+                    // Fallback to system CPU load if process CPU load is not available
+                    @SuppressWarnings("deprecation")
+                    double systemCpuUsage = osBean.getSystemCpuLoad() * 100;
+                    if (systemCpuUsage >= 0) {
+                        statusCpuLabel.setText(String.format("CPU: %.1f%% (system)", systemCpuUsage));
+                    } else {
+                        statusCpuLabel.setText("CPU: N/A");
+                    }
+                }
+            } catch (Exception e) {
+                // Fallback if CPU monitoring is not available
+                statusCpuLabel.setText("CPU: N/A");
+            }
         }
         
         if (statusMemLabel != null) {

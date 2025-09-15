@@ -28,7 +28,8 @@ import uk.ac.quadram.metapilot.core.prodb.FastaManager;
 import uk.ac.quadram.metapilot.core.taxonomy.TaxonomyRanks;
 import uk.ac.quadram.metapilot.core.tools.FormatTool;
 import uk.ac.quadram.metapilot.dbSearch.pfind.PFindResultReader;
-import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
+// JavaFXProgressBar import removed - using javafx.scene.control.ProgressBar directly
+import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.task.MetaPilotTask;
@@ -38,15 +39,14 @@ import uk.ac.quadram.metapilot.task.io.MetaTreeHandler;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
 import uk.ac.quadram.metapilot.task.io.pro.pfind.MetaProteinXMLWriter2;
-import uk.ac.quadram.metapilot.task.mag.par.MetaParameterMag;
 import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
-import uk.ac.quadram.metapilot.task.par.MetaData;
 
 public abstract class MetaPilotMagTask extends MetaPilotTask {
 
 	protected String[] rawFiles;
 	protected String[] quanExpNames;
+	protected File spectraDirFile;
 	protected MagDbItem magDb;
 	protected File[] separateResultFolders;
 	protected int threadCount;
@@ -57,56 +57,14 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 	protected File quan_pro_file;
 	protected HashMap<String, String> expNameMap;
 	protected File summaryMetaFile;
-	private String ms2CountFile;
 
-	public MetaPilotMagTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
-			JavaFXProgressBar secondBar) {
+	public MetaPilotMagTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
+			ProgressBar secondBar) {
 		super(metaPar, mrp, progressBar, secondBar);
 
-		MetaData metadata = this.metaPar.getMetadata();
-		if (metadata != null) {
-			this.rawFiles = metadata.getRawFiles();
-			if (rawFiles != null && rawFiles.length > 0) {
-				this.separateResultFolders = new File[rawFiles.length];
-				this.quanExpNames = new String[rawFiles.length];
-				for (int i = 0; i < rawFiles.length; i++) {
-					this.quanExpNames[i] = rawFiles[i].substring(rawFiles[i].lastIndexOf("\\") + 1,
-							rawFiles[i].lastIndexOf("."));
-					this.separateResultFolders[i] = new File(metaPar.getDbSearchResultFile(), quanExpNames[i]);
-					if (!this.separateResultFolders[i].exists()) {
-						this.separateResultFolders[i].mkdir();
-					}
-				}
-			}
-			this.summaryMetaFile = new File(this.metaPar.getResult(), "metainfo.tsv");
-			try {
-				metadata.exportMetadata(summaryMetaFile);
-			} catch (FileNotFoundException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-		}
-		File reportDir = new File(this.metaPar.getResult(), "report");
-		if (!reportDir.exists()) {
-			reportDir.mkdirs();
-		}
-
-		MetaPythonReportCopyTask reportCopyTask = new MetaPythonReportCopyTask(new File(metaPar.getResult()));
-		Thread reportCopyThread = new Thread(reportCopyTask);
-		reportCopyThread.start();
-		try {
-			reportCopyThread.join();
-			if (!reportCopyTask.get()) {
-				LOGGER.error(getTaskName() + ": error in copying report template");
-				System.err.println(
-						format.format(new Date()) + "\t" + getTaskName() + ": error in copying report template");
-			}
-		} catch (Exception e) {
-			LOGGER.error(getTaskName() + ": error in copying report template", e);
-			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in copying report template: "
-					+ e.getMessage());
-		}
-		metaPar.setReportDir(new File(reportDir + "\\reports\\rmd_html"));
+		// Report templates will be copied in background during call() method
+		// This prevents UI freeze during task construction
+		LOGGER.info(getTaskName() + ": Constructor completed, report templates will be copied during execution");
 	}
 
 	protected HashSet<String> refineGenomes(HashMap<String, HashSet<String>> genomePepMap, int totalPepCount,
@@ -640,7 +598,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 
 		genomeWriter.println(genomeTitlesb);
 
-		setProgress(94);
+		updateProgress(94, 100);
 
 		double[] cellularIntensity = new double[expNames.length];
 		HashMap<String, String[]>[] taxRankMaps = new HashMap[mainRanks.length];
@@ -887,7 +845,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 		LOGGER.info(getTaskName() + ": taxonomy analysis started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": taxonomy analysis started");
 
-		setProgress(96);
+		updateProgress(96, 100);
 
 		return finished;
 	}
@@ -962,7 +920,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			}
 		}
 
-		File funcFile = new File(metaPar.getResult(), "functional_annotation");
+		File funcFile = new File(metaPar.getDbSearchResultFile(), "functional_annotation");
 		if (!funcFile.exists()) {
 			funcFile.mkdir();
 		}
@@ -971,7 +929,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 		MetaProteinAnnoMag[] metapros = list.toArray(new MetaProteinAnnoMag[list.size()]);
 
 		MetaProteinXMLWriter2 writer = new MetaProteinXMLWriter2(final_pro_xml_file.getAbsolutePath(),
-				MetaConstants.pFindMag, ((MetaParameterMag) this.metaPar).getQuanMode(), fileNames);
+				MetaConstants.pFindMag, metaPar.getQuantitativeMode(), fileNames);
 
 		writer.addProteins(metapros, usedCogMap, usedNogMap, usedKeggMap, usedGoMap, usedEcMap);
 
@@ -993,7 +951,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 
 	protected boolean exportReport() {
 
-		progressBar.setString(getTaskName() + ": exporting report");
+		updateMessage(getTaskName() + ": exporting report");
 
 		LOGGER.info(getTaskName() + ": exporting report started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting report started");
@@ -1035,11 +993,11 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			e.printStackTrace();
 		}
 
-		MetaPythonReportTask task = new MetaPythonReportTask(metaPar.getThreadCount());
+		MetaPythonReportTask task = new MetaPythonReportTask(metaPar.getThreadCount(), mrp);
 
 		boolean summayrFinished = this.exportSummary(task);
 
-		setProgress(82);
+		updateProgress(82, 100);
 
 		File final_pep_txt = new File(metaPar.getResult(), "final_peptides.tsv");
 
@@ -1063,7 +1021,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			}
 		}
 
-		setProgress(84);
+		updateProgress(84, 100);
 
 		File final_pro_txt = new File(metaPar.getResult(), "final_proteins.tsv");
 
@@ -1087,7 +1045,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			}
 		}
 
-		setProgress(86);
+		updateProgress(86, 100);
 
 		boolean taxFuncReportOk = false;
 		if (metaPar.isMetaWorkflow()) {
@@ -1097,7 +1055,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 		}
 
 		if (!summayrFinished || !pepReportOk || !proReportOk || !taxFuncReportOk) {
-			setProgress(99);
+			updateProgress(99, 100);
 
 			LOGGER.info(getTaskName() + ": error in generating the reports");
 			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": error in generating the reports");
@@ -1114,7 +1072,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 				LOGGER.info(getTaskName() + ": report generation successes");
 				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": report generation successes");
 
-				setProgress(100);
+				updateProgress(100, 100);
 				return true;
 			}
 
@@ -1128,7 +1086,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 
 	protected boolean exportSummary(MetaPythonReportTask task) {
 
-		File final_summary_txt = new File(this.metaPar.getResult(), "final_summary.tsv");
+		File final_summary_txt = new File(this.metaPar.getDbSearchResultFile(), "final_summary.tsv");
 		try {
 
 			PrintWriter countWriter = new PrintWriter(final_summary_txt);
@@ -1156,7 +1114,8 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			}
 			idReader.close();
 
-			BufferedReader ms2CountReader = new BufferedReader(new FileReader(this.ms2CountFile));
+			File ms2CountFile = new File(spectraDirFile, "ms2Count.txt");
+			BufferedReader ms2CountReader = new BufferedReader(new FileReader(ms2CountFile));
 			line = ms2CountReader.readLine();
 
 			while ((line = ms2CountReader.readLine()) != null) {

@@ -31,6 +31,7 @@ import org.dom4j.DocumentException;
 import com.sun.management.OperatingSystemMXBean;
 
 import javafx.concurrent.Task;
+import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.core.mod.IsobaricTag;
 import uk.ac.quadram.metapilot.core.prodb.FastaManager;
 import uk.ac.quadram.metapilot.core.taxonomy.TaxonomyRanks;
@@ -40,7 +41,6 @@ import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragpipePepReader;
 import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragpipePeptide;
 import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragpipeProReader;
 import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragpipeWorkflow;
-import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.task.MetaPythonReportTask;
@@ -69,8 +69,8 @@ public class MetaLabMagFragpipeTask extends MagHapPFindTask {
 	protected static final Logger LOGGER = LogManager.getLogger(MetaLabMagFragpipeTask.class);
 	protected static final String taskName = "FragPipe HAP workflow";
 
-	public MetaLabMagFragpipeTask(MetaParameterMag metaPar, MetaResourceParameters mrp, JavaFXProgressBar bar1,
-			JavaFXProgressBar bar2) {
+	public MetaLabMagFragpipeTask(MetaParameterMag metaPar, MetaResourceParameters mrp, ProgressBar bar1,
+			ProgressBar bar2) {
 		super(metaPar, mrp, bar1, bar2);
 		// TODO Auto-generated constructor stub
 	}
@@ -941,7 +941,7 @@ public class MetaLabMagFragpipeTask extends MagHapPFindTask {
 
 		String[] razorProteins = this.refineProteins(quanPeps, genomeScoreMap, FastaManager.shuffle);
 
-		setProgress(82);
+		updateProgress(82, 100);
 
 		HashMap<String, double[]> genomeIntensityMap = new HashMap<String, double[]>();
 		HashMap<String, double[]> proteinIntensityMap = new HashMap<String, double[]>();
@@ -1130,7 +1130,7 @@ public class MetaLabMagFragpipeTask extends MagHapPFindTask {
 					+ new File(metaPar.getResult(), "id.tsv"), e);
 		}
 
-		setProgress(85);
+		updateProgress(85, 100);
 
 		HashMap<String, ArrayList<Integer>> proPepIdMap = new HashMap<String, ArrayList<Integer>>();
 		HashMap<String, ArrayList<Integer>> proPepRazorIdMap = new HashMap<String, ArrayList<Integer>>();
@@ -1317,7 +1317,7 @@ public class MetaLabMagFragpipeTask extends MagHapPFindTask {
 			return false;
 		}
 
-		setProgress(87);
+		updateProgress(87, 100);
 
 		LOGGER.info(getTaskName() + ": exporting protein report started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting protein report started");
@@ -1411,7 +1411,7 @@ public class MetaLabMagFragpipeTask extends MagHapPFindTask {
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": protein report has been exported to "
 				+ final_pro_txt.getName());
 
-		setProgress(89);
+		updateProgress(89, 100);
 
 		LOGGER.info(getTaskName() + ": functional annotation started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": functional annotation started");
@@ -1482,7 +1482,7 @@ public class MetaLabMagFragpipeTask extends MagHapPFindTask {
 					+ html.getName() + " finished");
 		}
 
-		setProgress(91);
+		updateProgress(91, 100);
 
 		// taxonomy analysis
 
@@ -1577,7 +1577,7 @@ public class MetaLabMagFragpipeTask extends MagHapPFindTask {
 
 			genomeWriter.println(genomeTitlesb);
 
-			setProgress(94);
+			updateProgress(94, 100);
 
 			for (int i = 0; i < genomes.length; i++) {
 				String[] taxaContent = genomeTaxaMap.get(genomes[i]);
@@ -1765,9 +1765,9 @@ public class MetaLabMagFragpipeTask extends MagHapPFindTask {
 		LOGGER.info(getTaskName() + ": taxonomy analysis finished");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": taxonomy analysis finished");
 
-		setProgress(95);
+		updateProgress(95, 100);
 
-		progressBar.setString(getTaskName() + ": exporting report");
+		updateMessage(getTaskName() + ": exporting report");
 
 		LOGGER.info(getTaskName() + ": exporting report started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting report started");
@@ -1871,7 +1871,7 @@ public class MetaLabMagFragpipeTask extends MagHapPFindTask {
 				LOGGER.info(getTaskName() + ": report generation successes");
 				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": report generation successes");
 
-				setProgress(100);
+				updateProgress(100, 100);
 				return true;
 			}
 
@@ -2558,7 +2558,7 @@ public class MetaLabMagFragpipeTask extends MagHapPFindTask {
 			}
 		}
 
-		setProgress(88);
+		updateProgress(88, 100);
 
 		File funcResultFile = final_pro_xml_file.getParentFile();
 		File funTsv = new File(funcResultFile, "functions.tsv");
@@ -2635,7 +2635,7 @@ public class MetaLabMagFragpipeTask extends MagHapPFindTask {
 		LOGGER.info(getTaskName() + ": functional annotation finished");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": functional annotation finished");
 
-		setProgress(92);
+		updateProgress(92, 100);
 
 		// taxonomy analysis
 

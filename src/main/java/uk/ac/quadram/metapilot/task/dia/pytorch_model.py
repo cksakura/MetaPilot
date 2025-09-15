@@ -32,9 +32,118 @@ def set_seed(seed=42):
 
 set_seed()
 
-# Check if CUDA is available
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-print(f"Using device: {device}")
+# Enhanced GPU detection and information
+def get_device_info():
+    """Get detailed device information and recommendations"""
+    print("=" * 60)
+    print("GPU/CPU DETECTION AND CONFIGURATION")
+    print("=" * 60)
+    
+    # Check CUDA availability
+    cuda_available = torch.cuda.is_available()
+    print(f"CUDA Available: {cuda_available}")
+    
+    if cuda_available:
+        # Get CUDA information
+        cuda_version = torch.version.cuda
+        cudnn_version = torch.backends.cudnn.version()
+        device_count = torch.cuda.device_count()
+        
+        print(f"CUDA Version: {cuda_version}")
+        print(f"cuDNN Version: {cudnn_version}")
+        print(f"Number of GPUs: {device_count}")
+        
+        # List all available GPUs
+        for i in range(device_count):
+            gpu_name = torch.cuda.get_device_name(i)
+            gpu_memory = torch.cuda.get_device_properties(i).total_memory / (1024**3)  # GB
+            print(f"GPU {i}: {gpu_name} ({gpu_memory:.1f} GB)")
+        
+        # Select the best GPU (usually GPU 0)
+        device = torch.device('cuda:0')
+        print(f"Selected Device: {device}")
+        print(f"GPU Memory Available: {torch.cuda.get_device_properties(0).total_memory / (1024**3):.1f} GB")
+        
+        # Check for CUDA capability compatibility issues
+        try:
+            gpu_props = torch.cuda.get_device_properties(0)
+            gpu_name = gpu_props.name
+            major, minor = gpu_props.major, gpu_props.minor
+            compute_capability = f"sm_{major}{minor}"
+            
+            # Check for known incompatible GPUs
+            if "RTX 5070" in gpu_name or "RTX 5080" in gpu_name or "RTX 5090" in gpu_name:
+                print(f"[WARNING] {gpu_name} detected with compute capability {compute_capability}")
+                print("[WARNING] This GPU may not be compatible with the current PyTorch installation.")
+                print("[WARNING] PyTorch may fall back to CPU or show compatibility warnings.")
+                print("[INFO] For full RTX 50xx support, you may need to:")
+                print("       1. Update to the latest PyTorch version")
+                print("       2. Use PyTorch nightly builds")
+                print("       3. Wait for official RTX 50xx support")
+                print("")
+        except Exception as e:
+            print(f"[INFO] Could not check GPU compute capability: {e}")
+        
+        # Test GPU functionality
+        try:
+            test_tensor = torch.randn(100, 100).to(device)
+            result = torch.mm(test_tensor, test_tensor.t())
+            print("[OK] GPU functionality test: PASSED")
+        except Exception as e:
+            print(f"[ERROR] GPU functionality test: FAILED - {e}")
+            print("Falling back to CPU...")
+            device = torch.device('cpu')
+    else:
+        print("CUDA not available. Diagnosing the issue...")
+        
+        # Check PyTorch CUDA support
+        print(f"PyTorch version: {torch.__version__}")
+        print(f"PyTorch CUDA compiled version: {torch.version.cuda}")
+        print(f"PyTorch CUDA available: {torch.cuda.is_available()}")
+        
+        # Check if we can detect GPU hardware
+        try:
+            import subprocess
+            result = subprocess.run(['nvidia-smi'], capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                print("[OK] nvidia-smi found - GPU hardware is present")
+                print("  GPU information:")
+                # Extract GPU info from nvidia-smi output
+                lines = result.stdout.split('\n')
+                for line in lines:
+                    if 'NVIDIA' in line or 'GeForce' in line or 'RTX' in line or 'GTX' in line:
+                        print(f"    {line.strip()}")
+                
+                # Check CUDA version compatibility
+                if torch.version.cuda is None:
+                    print("  [ERROR] PyTorch was installed WITHOUT CUDA support")
+                    print("  Recommendation: Reinstall PyTorch with CUDA support")
+                    print("  Command: pip uninstall torch torchvision torchaudio")
+                    print("           pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118")
+                else:
+                    print(f"  [OK] PyTorch has CUDA support (version {torch.version.cuda})")
+                    print("  Possible issues:")
+                    print("    - CUDA drivers are outdated")
+                    print("    - CUDA toolkit version mismatch")
+                    print("    - GPU not compatible with current CUDA version")
+            else:
+                print("[ERROR] nvidia-smi not found - GPU may not be properly installed")
+                print("  Possible issues:")
+                print("    - NVIDIA drivers not installed")
+                print("    - GPU not detected by system")
+                print("    - nvidia-smi not in PATH")
+        except Exception as e:
+            print(f"[ERROR] Cannot check GPU hardware: {e}")
+        
+        device = torch.device('cpu')
+        print(f"Using CPU device: {device}")
+        print("Note: Training will be slower on CPU. Consider GPU setup for better performance.")
+    
+    print("=" * 60)
+    return device
+
+# Get device information
+device = get_device_info()
 
 # Custom dataset class
 class PeptideDataset(Dataset):
@@ -229,8 +338,13 @@ def train_epoch(model, train_loader, criterion, optimizer, scaler, device, gradi
         total_loss += loss.item() * gradient_accumulation_steps
         steps += 1
         
-        # Update progress bar
-        pbar.set_postfix({'loss': f"{total_loss / steps:.4f}"})
+        # Update progress bar with loss and GPU memory info (every 100+ batches)
+        if (i + 1) % 100 == 0 or i == len(pbar) - 1:
+            if device.type == 'cuda':
+                gpu_mem = torch.cuda.memory_allocated(device) / (1024**3)
+                pbar.set_postfix({'loss': f"{total_loss / steps:.4f}", 'GPU': f'{gpu_mem:.1f}GB'})
+            else:
+                pbar.set_postfix({'loss': f"{total_loss / steps:.4f}", 'Device': 'CPU'})
     
     return total_loss / steps
 
@@ -417,29 +531,54 @@ def main():
         mae = mean_absolute_error(targets, predictions)
         corr = np.corrcoef(targets, predictions)[0, 1]
         
-        # Print epoch statistics
-        print(f"Epoch {epoch+1}/{n_epochs} - LR: {current_lr:.6f}")
-        print(f"Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
-        print(f"R²: {r2:.4f}, RMSE: {rmse:.4f}, MAE: {mae:.4f}, Corr: {corr:.4f}")
+        # Print epoch statistics with GPU memory info (every 10 epochs)
+        if (epoch + 1) % 10 == 0 or epoch == 0 or epoch == n_epochs - 1:
+            print(f"Epoch {epoch+1}/{n_epochs} - LR: {current_lr:.6f}")
+            print(f"Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
+            print(f"R²: {r2:.4f}, RMSE: {rmse:.4f}, MAE: {mae:.4f}, Corr: {corr:.4f}")
+            
+            # GPU memory monitoring
+            if device.type == 'cuda':
+                allocated = torch.cuda.memory_allocated(device) / (1024**3)  # GB
+                reserved = torch.cuda.memory_reserved(device) / (1024**3)   # GB
+                max_allocated = torch.cuda.max_memory_allocated(device) / (1024**3)  # GB
+                print(f"GPU Memory - Allocated: {allocated:.2f}GB, Reserved: {reserved:.2f}GB, Max: {max_allocated:.2f}GB")
+            else:
+                print("Using CPU - no GPU memory to monitor")
         
         # Save checkpoint if validation loss improves
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             patience_counter = 0
             torch.save(model.state_dict(), best_model_path)
-            print(f"New best model saved! (Val Loss: {val_loss:.4f})")
+            if (epoch + 1) % 10 == 0 or epoch == 0 or epoch == n_epochs - 1:
+                print(f"New best model saved! (Val Loss: {val_loss:.4f})")
         else:
             patience_counter += 1
             if patience_counter >= patience:
                 print(f"Early stopping triggered after {epoch+1} epochs")
                 break
         
-        # Save intermediate model every 10 epochs
+        # Save intermediate model every 10 epochs (silent save)
         if (epoch + 1) % 10 == 0:
             torch.save(model.state_dict(), f'models/checkpoint_epoch_{epoch+1}_{model_name}.pt')
             
     # Save final model
     torch.save(model.state_dict(), final_model_path)
+    
+    # Print training summary with GPU information
+    print("\n" + "=" * 60)
+    print("TRAINING COMPLETED")
+    print("=" * 60)
+    print(f"Total epochs trained: {epoch + 1}")
+    print(f"Best validation loss: {best_val_loss:.4f}")
+    if device.type == 'cuda':
+        max_mem = torch.cuda.max_memory_allocated(device) / (1024**3)
+        print(f"Maximum GPU memory used: {max_mem:.2f} GB")
+        print(f"GPU device: {torch.cuda.get_device_name(device)}")
+    else:
+        print("Training completed on CPU")
+    print("=" * 60)
     
     # Load best model and evaluate
     model.load_state_dict(torch.load(best_model_path))

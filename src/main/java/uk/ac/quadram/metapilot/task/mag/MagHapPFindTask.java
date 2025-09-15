@@ -50,7 +50,7 @@ import uk.ac.quadram.metapilot.dbSearch.pfind.PFindPsmReader;
 import uk.ac.quadram.metapilot.dbSearch.pfind.PFindResultReader;
 import uk.ac.quadram.metapilot.dbSearch.pfind.PFindTask;
 import uk.ac.quadram.metapilot.dbSearch.pfind.PFindResultReader.PeptideResult;
-import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
+import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.quant.flashLFQ.FlashLfqPsmReader;
 import uk.ac.quadram.metapilot.quant.flashLFQ.FlashLfqPsmReader.FlashLfqPsm;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
@@ -84,8 +84,8 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 	protected static final Logger LOGGER = LogManager.getLogger(MagHapPFindTask.class);
 	protected static final String taskName = "pFind HAP workflow";
 
-	public MagHapPFindTask(MetaParameterMag metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
-			JavaFXProgressBar secondBar) {
+	public MagHapPFindTask(MetaParameterMag metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
+			ProgressBar secondBar) {
 		super(metaPar, mrp, progressBar, secondBar);
 	}
 
@@ -1044,7 +1044,7 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 					+ ": peptide and protein identification results have been found in " + resultFolderFile
 					+ ", go to next step");
 
-			setProgress(55);
+			updateProgress(55, 100);
 
 			return true;
 		}
@@ -1785,7 +1785,7 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 				return false;
 			}
 
-			setProgress(55);
+			updateProgress(55, 100);
 
 		} else {
 
@@ -2561,14 +2561,14 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 			return false;
 		}
 
-		setProgress(40);
+		updateProgress(40, 100);
 
 		return true;
 	}
 
 	protected boolean iden() {
 
-		progressBar.setString(getTaskName() + ": peptide and protein identification");
+		updateMessage(getTaskName() + ": peptide and protein identification");
 
 		LOGGER.info(getTaskName() + ": peptide and protein identification started");
 		System.out.println(
@@ -2604,7 +2604,7 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 		System.out.println(
 				format.format(new Date()) + "\t" + getTaskName() + ": peptide and protein identification finished");
 
-		setProgress(70);
+		updateProgress(70, 100);
 
 		return true;
 	}
@@ -2615,7 +2615,7 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 			return true;
 		}
 
-		progressBar.setString(getTaskName() + ": peptide and protein quantification");
+		updateMessage(getTaskName() + ": peptide and protein quantification");
 
 		LOGGER.info(getTaskName() + ": peptide and protein label-free quantification started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName()
@@ -2668,7 +2668,7 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 			return true;
 		}
 
-		progressBar.setString(getTaskName() + ": peptide and protein quantification");
+		updateMessage(getTaskName() + ": peptide and protein quantification");
 
 		LOGGER.info(getTaskName() + ": peptide and protein isobaric quantification started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName()
@@ -2726,7 +2726,7 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 	 */
 	protected boolean exportReportPFind() {
 
-		progressBar.setString(getTaskName() + ": exporting report");
+		updateMessage(getTaskName() + ": exporting report");
 
 		LOGGER.info(getTaskName() + ": exporting report started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting report started");
@@ -2746,7 +2746,7 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 			reportHtmlDir.mkdirs();
 		}
 
-		MetaPythonReportTask task = new MetaPythonReportTask(metaPar.getThreadCount());
+		MetaPythonReportTask task = new MetaPythonReportTask(metaPar.getThreadCount(), mrp);
 
 		this.summaryMetaFile = new File(this.metaPar.getResult(), "metainfo.tsv");
 		try {
@@ -2758,7 +2758,7 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 
 		boolean summayrFinished = this.exportSummary(task);
 
-		setProgress(82);
+		updateProgress(82, 100);
 
 		this.final_pep_txt = new File(this.metaPar.getResult(), "final_peptides.tsv");
 
@@ -2783,7 +2783,7 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 			}
 		}
 
-		setProgress(84);
+		updateProgress(84, 100);
 
 		this.final_pro_txt = new File(this.metaPar.getResult(), "final_proteins.tsv");
 
@@ -2808,12 +2808,12 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 			}
 		}
 
-		setProgress(86);
+		updateProgress(86, 100);
 
 		boolean taxFuncReportOk = exportTaxaFunc(task);
 
 		if (!summayrFinished || !pepReportOk || !proReportOk || !taxFuncReportOk) {
-			setProgress(99);
+			updateProgress(99, 100);
 
 			LOGGER.info(getTaskName() + ": error in generating the reports");
 			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": error in generating the reports");
@@ -2830,7 +2830,7 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 				LOGGER.info(getTaskName() + ": report generation successes");
 				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": report generation successes");
 
-				setProgress(100);
+				updateProgress(100, 100);
 				return true;
 			}
 
@@ -2999,7 +2999,7 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 
 		String[] razorProteins = this.refineProteins(quanPeps, genomeScoreMap);
 
-		setProgress(82);
+		updateProgress(82, 100);
 
 		HashMap<String, double[]> genomeIntensityMap = new HashMap<String, double[]>();
 		HashMap<String, double[]> proteinIntensityMap = new HashMap<String, double[]>();
@@ -3177,7 +3177,7 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 					+ new File(this.metaPar.getResult(), "id.tsv"), e);
 		}
 
-		setProgress(85);
+		updateProgress(85, 100);
 
 		HashMap<String, ArrayList<Integer>> proPepIdMap = new HashMap<String, ArrayList<Integer>>();
 		HashMap<String, ArrayList<Integer>> proPepRazorIdMap = new HashMap<String, ArrayList<Integer>>();
@@ -3372,7 +3372,7 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 			return false;
 		}
 
-		setProgress(87);
+		updateProgress(87, 100);
 
 		LOGGER.info(getTaskName() + ": exporting protein report started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting protein report started");
@@ -3474,7 +3474,7 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": protein report has been exported to "
 				+ final_pro_txt.getName());
 
-		setProgress(89);
+		updateProgress(89, 100);
 
 		LOGGER.info(getTaskName() + ": functional annotation started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": functional annotation started");
@@ -3563,7 +3563,7 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 					+ html.getName() + " finished");
 		}
 
-		setProgress(91);
+		updateProgress(91, 100);
 
 		// taxonomy analysis
 
@@ -3658,7 +3658,7 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 
 			genomeWriter.println(genomeTitlesb);
 
-			setProgress(94);
+			updateProgress(94, 100);
 
 			for (int i = 0; i < genomes.length; i++) {
 				String[] taxaContent = genomeTaxaMap.get(genomes[i]);
@@ -3846,9 +3846,9 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 		LOGGER.info(getTaskName() + ": taxonomy analysis finished");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": taxonomy analysis finished");
 
-		setProgress(95);
+		updateProgress(95, 100);
 
-		progressBar.setString(getTaskName() + ": exporting report");
+		updateMessage(getTaskName() + ": exporting report");
 
 		LOGGER.info(getTaskName() + ": exporting report started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting report started");
@@ -3877,7 +3877,7 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 			MetaTreeHandler.exportJS(taxRankMaps, taxIntensityMaps, cellularIntensity, expNames, jsOutput);
 		}
 
-		MetaPythonReportTask task = new MetaPythonReportTask(metaPar.getThreadCount());
+		MetaPythonReportTask task = new MetaPythonReportTask(metaPar.getThreadCount(), mrp);
 
 		this.summaryMetaFile = new File(this.metaPar.getResult(), "metainfo.tsv");
 		try {
@@ -3952,7 +3952,7 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 				LOGGER.info(getTaskName() + ": report generation successes");
 				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": report generation successes");
 
-				setProgress(100);
+				updateProgress(100, 100);
 				return true;
 			}
 
@@ -4234,7 +4234,7 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 						+ ": error in reading quantified proteins from " + this.final_pro_txt.getName());
 			}
 
-			setProgress(88);
+			updateProgress(88, 100);
 
 			MetaProtein[] metapros = list.toArray(new MetaProtein[list.size()]);
 			MetaProteinAnnoMag[] mpas = funcAnnoSqlite(metapros, fileNames);
@@ -4322,7 +4322,7 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 		LOGGER.info(getTaskName() + ": functional annotation finished");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": functional annotation finished");
 
-		setProgress(92);
+		updateProgress(92, 100);
 
 		// taxonomy analysis
 
@@ -4492,7 +4492,7 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 
 		genomeWriter.println(genomeTitlesb);
 
-		setProgress(94);
+		updateProgress(94, 100);
 
 		double[] cellularIntensity = new double[expNames.length];
 		HashMap<String, String[]>[] taxRankMaps = new HashMap[mainRanks.length];
@@ -4738,7 +4738,7 @@ public class MagHapPFindTask extends MetaIdenPFindTask {
 		LOGGER.info(getTaskName() + ": taxonomy analysis started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": taxonomy analysis started");
 
-		setProgress(96);
+		updateProgress(96, 100);
 
 		return finished;
 	}

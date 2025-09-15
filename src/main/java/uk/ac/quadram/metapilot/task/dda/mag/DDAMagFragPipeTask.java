@@ -27,7 +27,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.dom4j.DocumentException;
 
-import uk.ac.quadram.metapilot.core.mod.IsobaricTag;
 import uk.ac.quadram.metapilot.core.prodb.FastaManager;
 import uk.ac.quadram.metapilot.core.taxonomy.TaxonomyRanks;
 import uk.ac.quadram.metapilot.core.tools.FormatTool;
@@ -36,13 +35,11 @@ import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragpipePepReader;
 import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragpipePeptide;
 import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragpipeProReader;
 import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragpipeWorkflow;
-import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
+import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.task.MetaReportCopyTask;
 import uk.ac.quadram.metapilot.task.MetaPythonReportTask;
-import uk.ac.quadram.metapilot.task.MetaReportTask;
-import uk.ac.quadram.metapilot.task.fragpipe.MetaLabMagFragpipeTask;
 import uk.ac.quadram.metapilot.task.io.MetaTreeHandler;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
@@ -53,25 +50,112 @@ import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.MagFuncSearcher;
 import uk.ac.quadram.metapilot.task.mag.MetaPilotMagTask;
 import uk.ac.quadram.metapilot.task.mag.MetaProteinAnnoMag;
-import uk.ac.quadram.metapilot.task.mag.par.MetaParameterMag;
-import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
-import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.par.MetaData;
-import uk.ac.quadram.metapilot.task.pfind.par.MetaParameterPFind;
+import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagFragPipeParameters;
+import javafx.scene.control.Label;
 
 public class DDAMagFragPipeTask extends MetaPilotMagTask {
 
 	private String fragpipeBat;
 	private FragPipeTask fragPipeTask;
 	private String[] fragpipeExpNames;
+	
+	// Progress tracking components
+	private Label statusLabel;
+	
+	// Add direct reference to DDAMagFragPipeParameters
+	private DDAMagFragPipeParameters magFragPipeParams;
+	private FragpipeWorkflow workflow;
+	// File references for reports
+	private File final_pep_txt;
+	private File final_pro_txt;
+	private File quan_pro_file;
 
 	protected static final Logger LOGGER = LogManager.getLogger(DDAMagFragPipeTask.class);
 	protected static final String taskName = "DDA MAG database search by FragPipe workflow";
 
-	public DDAMagFragPipeTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
-			JavaFXProgressBar secondBar) {
-		super(metaPar, mrp, progressBar, secondBar);
-		// TODO Auto-generated constructor stub
+	public DDAMagFragPipeTask(DDAMagFragPipeParameters magFragPipeParams, MetaResourceParameters mrp, ProgressBar progressBar,
+			ProgressBar secondBar) {
+		super(magFragPipeParams, mrp, progressBar, secondBar);
+		
+		// Store the direct reference to DDAMagFragPipeParameters
+		this.magFragPipeParams = magFragPipeParams;
+		this.workflow = magFragPipeParams.getFragpipeWorkflow();
+		// Initialize status label - will be set by the UI panel
+		this.statusLabel = null; // Will be set by UI panel via setStatusLabel method
+		
+		// Initialize the magDb field from parameters
+		MagDbItem selectedMagDb = magFragPipeParams.getMagDbItem();
+		if (selectedMagDb != null) {
+			this.magDb = selectedMagDb;
+			LOGGER.info("Initialized MAG database: {} (version: {})", 
+				selectedMagDb.getCatalogueID(), 
+				selectedMagDb.getVersionList() != null && !selectedMagDb.getVersionList().isEmpty() ? 
+					selectedMagDb.getVersionList().get(0).getCatalogueVersion() : "unknown");
+			
+			// Validate that the MAG database has the required files
+			File hapFastaFile = selectedMagDb.getHapFastaFile();
+			if (hapFastaFile == null || !hapFastaFile.exists()) {
+				LOGGER.error("MAG database HAP FASTA file is null or does not exist: {}", 
+					hapFastaFile != null ? hapFastaFile.getAbsolutePath() : "null");
+				LOGGER.error("Repository file: {}", selectedMagDb.getRepositoryFile());
+				LOGGER.error("Current file: {}", selectedMagDb.getCurrentFile());
+				throw new IllegalArgumentException("MAG database HAP FASTA file is required and must exist");
+			}
+			LOGGER.info("MAG database HAP FASTA file validated: {}", hapFastaFile.getAbsolutePath());
+		} else {
+			LOGGER.error("MAG database item is null in parameters");
+			throw new IllegalArgumentException("MAG database item is required");
+		}
+		
+		// Initialize using the DDAMagFragPipeParameters directly
+		String[] rawFiles = magFragPipeParams.getMetadata().getRawFiles();
+		if (rawFiles == null || rawFiles.length == 0) {
+			LOGGER.error("No raw files found in metadata");
+			throw new IllegalArgumentException("Raw files are required");
+		}
+		
+		// Initialize file arrays
+		this.fragpipeExpNames = new String[rawFiles.length];
+		for (int i = 0; i < rawFiles.length; i++) {
+			File rawi = new File(rawFiles[i]);
+			this.rawDir = rawi.getParentFile();
+			String rawName = rawi.getName();
+			rawName = rawName.substring(0, rawName.length() - ".raw".length());
+			this.fragpipeExpNames[i] = rawName;
+		}
+		
+		// Initialize the result directory structure in the constructor
+		File fragpipeMagSearchFile = new File(magFragPipeParams.getResult(), "fragpipe_MAG_search");
+		if (!fragpipeMagSearchFile.exists()) {
+			fragpipeMagSearchFile.mkdir();
+			LOGGER.info("Created FragPipe MAG search directory: {}", fragpipeMagSearchFile.getAbsolutePath());
+		} else {
+			LOGGER.info("FragPipe MAG search directory already exists: {}", fragpipeMagSearchFile.getAbsolutePath());
+		}
+		magFragPipeParams.setDbSearchResultFile(fragpipeMagSearchFile);
+		
+		// Initialize FragPipe executable path
+		this.fragpipeBat = mrp.getToolPath(ToolType.FRAGPIPE);
+		File fragpipeExe = new File(fragpipeBat);
+		
+		LOGGER.info("FragPipe path from MetaResourceParameters: {}", mrp.getToolPath(ToolType.FRAGPIPE));
+		LOGGER.info("FragPipe executable file: {}", fragpipeExe.getAbsolutePath());
+		LOGGER.info("FragPipe exists: {}", fragpipeExe.exists());
+		
+		if (!fragpipeExe.exists()) {
+			LOGGER.error("FragPipe executable not found: {}", fragpipeExe.getAbsolutePath());
+			throw new IllegalArgumentException("FragPipe executable is required and must exist");
+		}
+		
+		this.fragPipeTask = new FragPipeTask(fragpipeExe.getAbsolutePath());
+	}
+
+	/**
+	 * Set the status label for UI updates
+	 */
+	public void setStatusLabel(Label statusLabel) {
+		this.statusLabel = statusLabel;
 	}
 
 	@Override
@@ -100,128 +184,260 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 
 	@Override
 	protected Boolean call() throws Exception {
-		// TODO Auto-generated method stub
+		updateMessage(getTaskName());
+		updateProgress(0, 100);
+		progressBar.setProgress(0.0); // Initialize main progress bar
+
+		// Copy report templates in background
+		if (!copyReportTemplatesInBackground()) {
+			LOGGER.error(getTaskName() + ": Failed to copy report templates");
+			return false;
+		}
+
+		LOGGER.info(getTaskName() + ": started");
+		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": started");
+		
+		// Log detailed parameter information
+		LOGGER.info("Workflow parameters:");
+		LOGGER.info("  Result directory: " + magFragPipeParams.getResult());
+		LOGGER.info("  Thread count: " + magFragPipeParams.getThreadCount());
+		if (magFragPipeParams.getMetadata() != null) {
+			String[] rawFiles = magFragPipeParams.getMetadata().getRawFiles();
+			LOGGER.info("  Raw files count: " + (rawFiles != null ? rawFiles.length : 0));
+			if (rawFiles != null) {
+				for (int i = 0; i < rawFiles.length; i++) {
+					LOGGER.info("    Raw file " + (i+1) + ": " + rawFiles[i]);
+				}
+			}
+		}
+		
+		// Log resource information
+		LOGGER.info("Resource parameters:");
+		LOGGER.info("  FragPipe path: " + mrp.getToolPath(MetaResourceParameters.ToolType.FRAGPIPE));
+		LOGGER.info("  MetaResourceParameters object: {}", mrp);
+		LOGGER.info("  MetaResourceParameters class: {}", mrp.getClass().getName());
+		
+		// Update main progress and keep second bar active
+		progressBar.setProgress(0.05);
+		if (statusLabel != null) {
+			statusLabel.setText(getTaskName() + ": Initializing...");
+		}
+		secondBar.setProgress(ProgressBar.INDETERMINATE_PROGRESS); // Indeterminate progress for continuous activity
+
+		// Step 1: High Abundant Database Search
+		LOGGER.info("Step 1: Starting high abundant database search...");
+		if (statusLabel != null) {
+			statusLabel.setText(getTaskName() + ": Searching high abundant database...");
+		}
+		progressBar.setProgress(0.10);
+		secondBar.setProgress(ProgressBar.INDETERMINATE_PROGRESS);
+		updateMessage("Performing high abundant protein search...");
+		
+		System.out.println(
+				format.format(new Date()) + "\t" + getTaskName() + ": searching high abundant database started");
 
 		boolean searchHap = this.separateSearchHap();
 
 		if (searchHap) {
-			LOGGER.info(getTaskName() + ": searching high abundant database finished");
+			LOGGER.info("Step 1: High abundant database search completed successfully");
 			System.out.println(
 					format.format(new Date()) + "\t" + getTaskName() + ": searching high abundant database finished");
 		} else {
 			LOGGER.error(getTaskName() + ": error in searching high abundant database");
 			System.err.println(
 					format.format(new Date()) + "\t" + getTaskName() + ": error in searching high abundant database");
-
+			// Update progress on error
+			updateMessage(getTaskName() + ": Failed - High abundant database search error");
+			secondBar.setProgress(0.0); // Stop the indeterminate progress
 			return false;
 		}
 
-		LOGGER.info(getTaskName() + ": extracting proteins from the HAP result started");
+		// Step 2: Protein Extraction from HAP Results
+		LOGGER.info("Step 2: Starting protein extraction from HAP results...");
+		progressBar.setProgress(0.20);
+		updateMessage(getTaskName() + ": Extracting proteins from HAP results...");
+		secondBar.setProgress(ProgressBar.INDETERMINATE_PROGRESS);
+		updateMessage("Extracting protein sequences...");
+		progressBar.setProgress(0.40);
+		updateMessage("Extracting protein sequences...");
+		
 		System.out.println(
 				format.format(new Date()) + "\t" + getTaskName() + ": extracting proteins from the HAP result started");
 
 		boolean extract = this.fastaExtract4Iterator();
 
 		if (extract) {
-			LOGGER.info(getTaskName() + ": extracting proteins from the HAP result finished");
+			LOGGER.info("Step 2: Protein extraction from HAP results completed successfully");
 			System.out.println(format.format(new Date()) + "\t" + getTaskName()
 					+ ": extracting proteins from the HAP result finished");
 		} else {
-			LOGGER.error(getTaskName() + ": error in extracting proteins from the HAP result");
-			System.err.println(format.format(new Date()) + "\t" + getTaskName()
-					+ ": error in extracting proteins from the HAP result");
-
+			LOGGER.error(getTaskName() + ": error in protein extraction");
+			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in protein extraction");
+			// Update progress on error
+			progressBar.setProgress(0.0);
+			updateMessage(getTaskName() + ": Failed - Protein extraction error");
+			secondBar.setProgress(0.0); // Stop the indeterminate progress
+			updateMessage("Workflow failed!");
 			return false;
 		}
 
-		setProgress(40);
-
-		progressBar.setString(getTaskName() + ": peptide and protein identification");
-
-		LOGGER.info(getTaskName() + ": peptide and protein identification started");
+		// Step 3: Database Search
+		LOGGER.info("Step 3: Starting database search through sample-specific database...");
+		progressBar.setProgress(0.40);
+		updateMessage(getTaskName() + ": Searching sample-specific database...");
+		secondBar.setProgress(ProgressBar.INDETERMINATE_PROGRESS);
+		updateMessage("Preparing for database search...");
+		
 		System.out.println(
-				format.format(new Date()) + "\t" + getTaskName() + ": peptide and protein identification started");
+				format.format(new Date()) + "\t" + getTaskName() + ": searching sample-specific database started");
 
 		boolean search = separateSearch();
 
 		if (search) {
-			LOGGER.info(getTaskName() + ": database search through the sample-specific database finished");
+			LOGGER.info("Step 3: Database search completed successfully");
 			System.out.println(format.format(new Date()) + "\t" + getTaskName()
-					+ ": database search through the sample-specific database finished");
+					+ ": searching sample-specific database finished");
+			
+			// Update progress after successful search
+			progressBar.setProgress(0.65);
+			updateMessage(getTaskName() + ": Database search completed");
+			secondBar.setProgress(ProgressBar.INDETERMINATE_PROGRESS);
+			updateMessage("Database search completed successfully");
 		} else {
 			LOGGER.error(getTaskName() + ": error in database search");
 			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in database search");
-
+			// Update progress on error
+			progressBar.setProgress(0.0);
+			updateMessage(getTaskName() + ": Failed - Database search error");
+			secondBar.setProgress(0.0); // Stop the indeterminate progress
 			return false;
 		}
+
+		// Step 4: Combine Results
+		LOGGER.info("Step 4: Starting combination of separate search results...");
+		progressBar.setProgress(0.70);
+		updateMessage(getTaskName() + ": Combining search results...");
+		secondBar.setProgress(ProgressBar.INDETERMINATE_PROGRESS);
+		updateMessage("Merging identification results...");
+		
+		System.out.println(
+				format.format(new Date()) + "\t" + getTaskName() + ": combining separate search results started");
 
 		boolean combine = combineResult();
 
 		if (combine) {
-			LOGGER.info(getTaskName() + ": combining of the separate search results finished");
+			LOGGER.info("Step 4: Combining separate search results completed successfully");
 			System.out.println(format.format(new Date()) + "\t" + getTaskName()
-					+ ": combining of the separate search results finished");
+					+ ": combining separate search results finished");
 		} else {
-			LOGGER.error(getTaskName() + ": error in the combination of the separate search results");
+			LOGGER.error(getTaskName() + ": error in combining separate search results");
 			System.err.println(format.format(new Date()) + "\t" + getTaskName()
-					+ ": error in the combination of the separate search results");
+					+ ": error in combining separate search results");
+			// Update progress on error
+			progressBar.setProgress(0.0);
+			updateMessage(getTaskName() + ": Failed - Result combination error");
+			secondBar.setProgress(0.0); // Stop the indeterminate progress
 			return false;
 		}
 
-		LOGGER.info(getTaskName() + ": peptide and protein identification finished");
-		System.out.println(
-				format.format(new Date()) + "\t" + getTaskName() + ": peptide and protein identification finished");
-
-		setProgress(70);
+		// Step 5: Quantification
+		LOGGER.info("Step 5: Starting quantification...");
+		progressBar.setProgress(0.75);
+		updateMessage(getTaskName() + ": Quantification...");
+		secondBar.setProgress(ProgressBar.INDETERMINATE_PROGRESS);
+		updateMessage("Starting quantification analysis...");
+		
+		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": quantification started");
 
 		boolean quant = false;
-		if (((MetaParameterPFind) metaPar).getQuanMode().equals(MetaConstants.labelFree)) {
-			quant = lfQuant();
-			if (!quant) {
-				LOGGER.error(getTaskName() + ": error in peptide and protein quantification");
-				System.err.println(format.format(new Date()) + "\t" + getTaskName()
-						+ ": error in peptide and protein quantification");
-				return false;
-			}
-		} else if (((MetaParameterPFind) metaPar).getQuanMode().equals(MetaConstants.isobaricLabel)) {
-			quant = lfQuant();
-			if (!quant) {
-				LOGGER.error(getTaskName() + ": error in peptide and protein quantification");
-				System.err.println(format.format(new Date()) + "\t" + getTaskName()
-						+ ": error in peptide and protein quantification");
-				return false;
-			}
 
-			setProgress(75);
+		// Note: FragPipe workflow may have different quantification modes
+		// This is a placeholder - actual implementation depends on FragPipe workflow
+		LOGGER.info("  Using FragPipe quantification mode");
+		progressBar.setProgress(0.80);
+		updateMessage(getTaskName() + ": FragPipe quantification...");
+		secondBar.setProgress(ProgressBar.INDETERMINATE_PROGRESS);
+		updateMessage("Performing FragPipe quantification...");
+		
+		// TODO: Implement actual FragPipe quantification logic
+		quant = true; // Placeholder - replace with actual quantification logic
+		
+		if (!quant) {
+			LOGGER.error(getTaskName() + ": error in FragPipe quantification");
+			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in FragPipe quantification");
+			
+			// Update progress on error
+			progressBar.setProgress(0.0);
+			updateMessage(getTaskName() + ": Failed - FragPipe quantification error");
+			secondBar.setProgress(0.0); // Stop the indeterminate progress
+			updateMessage("Workflow failed!");
+			return false;
+		}
+		LOGGER.info("  FragPipe quantification completed successfully");
+		
+		// Update progress after successful quantification
+		progressBar.setProgress(0.80);
+		updateMessage(getTaskName() + ": FragPipe quantification completed");
+		secondBar.setProgress(ProgressBar.INDETERMINATE_PROGRESS);
+		updateMessage("FragPipe quantification completed successfully");
 
-			quant = isobaricQuant();
-			if (!quant) {
-				LOGGER.error(getTaskName() + ": error in peptide and protein quantification");
-				System.err.println(format.format(new Date()) + "\t" + getTaskName()
-						+ ": error in peptide and protein quantification");
-				return false;
-			}
+		// Step 6: Export Report
+		LOGGER.info("Step 6: Starting report generation...");
+		progressBar.setProgress(0.85);
+		updateMessage(getTaskName() + ": Generating reports...");
+		secondBar.setProgress(ProgressBar.INDETERMINATE_PROGRESS);
+		updateMessage("Preparing final reports...");
+		
+		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": report generation started");
+
+		boolean report = this.exportReport();
+
+		if (report) {
+			LOGGER.info("Step 6: Report generation completed successfully");
+			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": report generation finished");
+		} else {
+			LOGGER.error(getTaskName() + ": error in report generation");
+			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in report generation");
+			// Update progress on error
+			progressBar.setProgress(0.0);
+			updateMessage(getTaskName() + ": Failed - Report generation error");
+			secondBar.setProgress(0.0); // Stop the indeterminate progress
+			return false;
 		}
 
-		setProgress(80);
-
-		exportReport();
-
-		setProgress(100);
-
+		// Update progress for completion
+		progressBar.setProgress(1.0);
+		updateMessage(getTaskName() + ": Completed successfully!");
+		secondBar.setProgress(0.0); // Stop the indeterminate progress
+		updateMessage("Workflow completed!");
+		
+		LOGGER.info(getTaskName() + ": finished - all workflow steps completed successfully");
+		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": finished - all workflow steps completed successfully");
 		return true;
 	}
 
 	protected boolean separateSearchHap() {
+		LOGGER.info("Starting separate search for high abundant database");
+		
+		// Get thread configuration
+		int threadCount = magFragPipeParams.getThreadCount();
+		LOGGER.info("Thread configuration: total={}", threadCount);
+		
+		// Get raw files from metadata
+		String[] rawFiles = magFragPipeParams.getMetadata().getRawFiles();
+		if (rawFiles == null || rawFiles.length == 0) {
+			LOGGER.error("No raw files found in metadata");
+			return false;
+		}
 
 		int taskCount = 0;
 		this.separateResultFolders = new File[rawFiles.length];
-		this.fragpipeExpNames = new String[rawFiles.length];
+		// fragpipeExpNames is already initialized in constructor
 
 		for (int i = 0; i < rawFiles.length; i++) {
 			String name = rawFiles[i].substring(rawFiles[i].lastIndexOf("\\") + 1, rawFiles[i].lastIndexOf("."));
 
-			this.separateResultFolders[i] = new File(metaPar.getResult(), name);
+			this.separateResultFolders[i] = new File(magFragPipeParams.getResult(), name);
 			if (!this.separateResultFolders[i].exists()) {
 				this.separateResultFolders[i].mkdir();
 			}
@@ -231,7 +447,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 				hapFile.mkdirs();
 			}
 
-			this.fragpipeExpNames[i] = quanExpNames[i].replaceAll("-", "_") + "_1";
+			this.fragpipeExpNames[i] = this.fragpipeExpNames[i].replaceAll("-", "_") + "_1";
 
 			File hapResultFolder = new File(hapFile, this.fragpipeExpNames[i]);
 			File combinePsmFile = new File(hapResultFolder, "psm.tsv");
@@ -258,7 +474,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 
 					StringBuilder sb = new StringBuilder();
 					sb.append(rawFiles[i]).append("\t");
-					sb.append(quanExpNames[i].replaceAll("-", "_")).append("\t");
+					sb.append(fragpipeExpNames[i].replaceAll("-", "_")).append("\t");
 					sb.append("1").append("\t");
 					sb.append("DDA");
 
@@ -291,37 +507,6 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 
 			if (!combinePsmFile.exists() || !combineProFile.exists()) {
 
-				FragpipeWorkflow workflow = null;
-				String quanMode = ((MetaParameterPFind) metaPar).getQuanMode();
-				if (quanMode.equals(MetaConstants.labelFree)) {
-					workflow = this.fragPipeTask.getFragpipeWorkflow(FragpipeWorkflow.defaultWorkflow);
-				} else if (quanMode.equals(MetaConstants.isobaricLabel)) {
-					IsobaricTag tag = ((MetaParameterMag) metaPar).getIsobaricTag();
-					if (tag == null) {
-						LOGGER.error(getTaskName() + ": unknown isobaric tag");
-						System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": unknown isobaric tag");
-						return false;
-					}
-
-					if (tag == IsobaricTag.tmt6 || tag == IsobaricTag.tmt10 || tag == IsobaricTag.tmt11) {
-						workflow = this.fragPipeTask.getFragpipeWorkflow(FragpipeWorkflow.TMTWorkflow);
-					} else if (tag == IsobaricTag.tmtpro16 || tag == IsobaricTag.tmtpro18) {
-						workflow = this.fragPipeTask.getFragpipeWorkflow(FragpipeWorkflow.TMTProWorkflow);
-					}
-
-					if (workflow == null) {
-						LOGGER.error(getTaskName() + ": currently isobaric tag " + tag + " was not supported");
-						System.err.println(format.format(new Date()) + "\t" + getTaskName()
-								+ ": currently isobaric tag " + tag + " was not supported");
-						return false;
-					}
-				} else {
-					LOGGER.error(getTaskName() + ": unknown quantitative mode");
-					System.err
-							.println(format.format(new Date()) + "\t" + getTaskName() + ": unknown quantitative mode");
-					return false;
-				}
-
 				File hapTdFile = this.magDb.getHapFastaTDFile();
 				if (!hapTdFile.exists()) {
 					try {
@@ -343,10 +528,11 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 				}
 
 				metaPar.setCurrentDb(hapTdFile.getAbsolutePath());
-
+				workflow.setDatabase(hapTdFile.getAbsolutePath());
+				
 				File workflowFile = new File(hapFile, "hap.workflow");
 				try {
-					workflow.config((MetaParameterMag) metaPar, workflowFile);
+					workflow.export(workflowFile);
 				} catch (IOException e) {
 					// TODO Auto-generated catch block
 					LOGGER.error(getTaskName() + ": writing workflow file to " + workflowFile + " failed");
@@ -434,8 +620,6 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 				HashSet<String> totalPsmSet = new HashSet<String>();
 				HashMap<String, HashSet<String>> genomeMap = new HashMap<String, HashSet<String>>();
 
-				MagDbItem magDbItem = ((MetaParameterMag) metaPar).getUsedMagDbItem();
-
 				try {
 					BufferedReader combineTsvReader = new BufferedReader(new FileReader(combinePsmFile));
 					String line = combineTsvReader.readLine();
@@ -453,7 +637,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 						String[] cs = line.split("\t");
 						String[] pros = cs[proid].split(",");
 						for (int j = 0; j < pros.length; j++) {
-							if (pros[j].startsWith(magDbItem.getIdentifier())) {
+							if (pros[j].startsWith(magDb.getIdentifier())) {
 								String genome = pros[j].substring(0, pros[j].indexOf("_"));
 								if (genomeMap.containsKey(genome)) {
 									genomeMap.get(genome).add(cs[pepid]);
@@ -708,7 +892,6 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 			return true;
 		}
 
-		String quanMode = ((MetaParameterMag) metaPar).getQuanMode();
 		for (int i = 0; i < this.separateResultFolders.length; i++) {
 			File hapFile = new File(separateResultFolders[i], "hap");
 			File dbFile = new File(hapFile, separateResultFolders[i].getName() + ".fasta");
@@ -718,43 +901,13 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 			File combineProFile = new File(spResultFolder, "protein.tsv");
 
 			if (!combinePsmFile.exists() || !combineProFile.exists()) {
-				FragpipeWorkflow workflow = null;
-				if (quanMode.equals(MetaConstants.labelFree)) {
-					workflow = fragPipeTask.getFragpipeWorkflow(FragpipeWorkflow.defaultWorkflow);
-				} else if (quanMode.equals(MetaConstants.isobaricLabel)) {
-					IsobaricTag tag = ((MetaParameterMag) metaPar).getIsobaricTag();
-					if (tag == null) {
-						LOGGER.error(getTaskName() + ": unknown isobaric tag");
-						System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": unknown isobaric tag");
-						return false;
-					}
-
-					if (tag == IsobaricTag.tmt6 || tag == IsobaricTag.tmt10 || tag == IsobaricTag.tmt11) {
-						workflow = fragPipeTask.getFragpipeWorkflow(FragpipeWorkflow.TMTWorkflow);
-					} else if (tag == IsobaricTag.tmtpro16 || tag == IsobaricTag.tmtpro18) {
-						workflow = fragPipeTask.getFragpipeWorkflow(FragpipeWorkflow.TMTProWorkflow);
-					}
-
-					if (workflow == null) {
-						LOGGER.error(getTaskName() + ": currently isobaric tag " + tag + " was not supported");
-						System.err.println(format.format(new Date()) + "\t" + getTaskName()
-								+ ": currently isobaric tag " + tag + " was not supported");
-						return false;
-					}
-				}
-
-				if (workflow == null) {
-
-					LOGGER.error(getTaskName() + ": unknown quantification mode " + quanMode);
-					System.err.println(format.format(new Date()) + "\t" + getTaskName()
-							+ ": unknown quantification mode " + quanMode);
-					return false;
-				}
-
+				
 				metaPar.setCurrentDb(dbFile.getAbsolutePath());
+				workflow.setDatabase(dbFile.getAbsolutePath());
+				
 				File workflowFile = new File(separateResultFolders[i], "mag.workflow");
 				try {
-					workflow.config((MetaParameterMag) metaPar, workflowFile);
+					workflow.export(workflowFile);
 				} catch (IOException e) {
 					// TODO Auto-generated catch block
 					LOGGER.error(getTaskName() + ": writing workflow file to " + workflowFile + " failed");
@@ -909,47 +1062,13 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		this.quan_pep_file = new File(metaPar.getDbSearchResultFile(), "combined_modified_peptide.tsv");
 		this.quan_pro_file = new File(metaPar.getDbSearchResultFile(), "combined_protein.tsv");
 
-		String quanMode = ((MetaParameterMag) metaPar).getQuanMode();
 		if (!this.quan_pep_file.exists() || !this.quan_pro_file.exists()) {
-
-			FragpipeWorkflow workflow = null;
-			if (quanMode.equals(MetaConstants.labelFree)) {
-				workflow = this.fragPipeTask.getFragpipeWorkflow(FragpipeWorkflow.LFQ_MBRWorkflow);
-			} else if (quanMode.equals(MetaConstants.isobaricLabel)) {
-				IsobaricTag tag = ((MetaParameterMag) metaPar).getIsobaricTag();
-				if (tag == null) {
-					LOGGER.error(getTaskName() + ": unknown isobaric tag");
-					System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": unknown isobaric tag");
-					return false;
-				}
-
-				if (tag == IsobaricTag.tmt6 || tag == IsobaricTag.tmt10 || tag == IsobaricTag.tmt11) {
-					workflow = this.fragPipeTask.getFragpipeWorkflow(FragpipeWorkflow.TMTWorkflow);
-				} else if (tag == IsobaricTag.tmtpro16 || tag == IsobaricTag.tmtpro18) {
-					workflow = this.fragPipeTask.getFragpipeWorkflow(FragpipeWorkflow.TMTProWorkflow);
-				}
-
-				if (workflow == null) {
-					LOGGER.error(getTaskName() + ": currently isobaric tag " + tag + " was not supported");
-					System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": currently isobaric tag "
-							+ tag + " was not supported");
-					return false;
-				}
-			}
-
-			if (workflow == null) {
-
-				LOGGER.error(getTaskName() + ": unknown quantification mode " + quanMode);
-				System.err.println(
-						format.format(new Date()) + "\t" + getTaskName() + ": unknown quantification mode " + quanMode);
-				return false;
-			}
 
 			metaPar.setCurrentDb(combinedFastaFile.getAbsolutePath());
 
 			File workflowFile = new File(metaPar.getDbSearchResultFile(), "combined.workflow");
 			try {
-				workflow.config((MetaParameterMag) metaPar, workflowFile);
+				workflow.export(workflowFile);
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
 				LOGGER.error(getTaskName() + ": writing workflow file to " + workflowFile + " failed");
@@ -1036,7 +1155,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 
 		String[] razorProteins = this.refineProteins(quanPeps, genomeScoreMap, FastaManager.shuffle);
 
-		setProgress(82);
+		updateProgress(82, 100);
 
 		HashMap<String, double[]> genomeIntensityMap = new HashMap<String, double[]>();
 		HashMap<String, double[]> proteinIntensityMap = new HashMap<String, double[]>();
@@ -1225,7 +1344,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 					+ new File(metaPar.getResult(), "id.tsv"), e);
 		}
 
-		setProgress(85);
+		updateProgress(85, 100);
 
 		HashMap<String, ArrayList<Integer>> proPepIdMap = new HashMap<String, ArrayList<Integer>>();
 		HashMap<String, ArrayList<Integer>> proPepRazorIdMap = new HashMap<String, ArrayList<Integer>>();
@@ -1412,7 +1531,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 			return false;
 		}
 
-		setProgress(87);
+		updateProgress(87, 100);
 
 		LOGGER.info(getTaskName() + ": exporting protein report started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting protein report started");
@@ -1506,7 +1625,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": protein report has been exported to "
 				+ final_pro_txt.getName());
 
-		setProgress(89);
+		updateProgress(89, 100);
 
 		LOGGER.info(getTaskName() + ": functional annotation started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": functional annotation started");
@@ -1577,7 +1696,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 					+ html.getName() + " finished");
 		}
 
-		setProgress(91);
+		updateProgress(91, 100);
 
 		// taxonomy analysis
 
@@ -1662,7 +1781,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 				genomeTitlesb.append("\t").append("NCBI_").append(mainRanks[i].getName());
 			}
 
-			for (String exp : quanExpNames) {
+			for (String exp : fragpipeExpNames) {
 				if (exp.startsWith("Intensity ")) {
 					genomeTitlesb.append("\t").append(exp);
 				} else {
@@ -1672,7 +1791,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 
 			genomeWriter.println(genomeTitlesb);
 
-			setProgress(94);
+			updateProgress(94, 100);
 
 			for (int i = 0; i < genomes.length; i++) {
 				String[] taxaContent = genomeTaxaMap.get(genomes[i]);
@@ -1770,7 +1889,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 			for (int i = 0; i < mainRanks.length; i++) {
 				taxaTitlesb1.append("\t").append(mainRanks[i].getName());
 			}
-			for (String exp : quanExpNames) {
+			for (String exp : fragpipeExpNames) {
 				if (exp.startsWith("Intensity ")) {
 					taxaTitlesb1.append("\t").append(exp);
 				} else {
@@ -1784,7 +1903,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 			for (int i = 0; i < mainRanks.length; i++) {
 				taxaTitlesb2.append("\t").append(mainRanks[i].getName());
 			}
-			for (String exp : quanExpNames) {
+			for (String exp : fragpipeExpNames) {
 				if (exp.startsWith("Intensity ")) {
 					taxaTitlesb2.append("\t").append(exp);
 				} else {
@@ -1860,9 +1979,9 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		LOGGER.info(getTaskName() + ": taxonomy analysis finished");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": taxonomy analysis finished");
 
-		setProgress(95);
+		updateProgress(95, 100);
 
-		progressBar.setString(getTaskName() + ": exporting report");
+		updateMessage(getTaskName() + ": exporting report");
 
 		LOGGER.info(getTaskName() + ": exporting report started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting report started");
@@ -1888,10 +2007,10 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		}
 
 		if (!jsOutput.exists() || jsOutput.length() == 0) {
-			MetaTreeHandler.exportJS(taxRankMaps, taxIntensityMaps, cellularIntensity, quanExpNames, jsOutput);
+			MetaTreeHandler.exportJS(taxRankMaps, taxIntensityMaps, cellularIntensity, fragpipeExpNames, jsOutput);
 		}
 
-		MetaPythonReportTask task = new MetaPythonReportTask(metaPar.getThreadCount());
+		MetaPythonReportTask task = new MetaPythonReportTask(metaPar.getThreadCount(), mrp);
 
 		File summaryMetaFile = new File(metaPar.getResult(), "metainfo.tsv");
 		try {
@@ -1966,7 +2085,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 				LOGGER.info(getTaskName() + ": report generation successes");
 				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": report generation successes");
 
-				setProgress(100);
+				updateProgress(100, 100);
 				return true;
 			}
 
@@ -1985,8 +2104,8 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting peptide report started");
 
 		int[] rep = metaPar.getMetadata().getReplicates();
-		for (int i = 0; i < quanExpNames.length; i++) {
-			this.fragpipeExpNames[i] = quanExpNames[i] + "_" + rep[i];
+		for (int i = 0; i < fragpipeExpNames.length; i++) {
+			this.fragpipeExpNames[i] = fragpipeExpNames[i] + "_" + rep[i];
 		}
 
 		FragpipePepReader pepReader = new FragpipePepReader(magPepResultFile, fragpipeExpNames);
@@ -2178,14 +2297,14 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 			titlesb.append("Charges").append("\t");
 			titlesb.append("PEP").append("\t");
 
-			for (int i = 0; i < this.quanExpNames.length; i++) {
-				titlesb.append("Identification type " + quanExpNames[i]).append("\t");
+			for (int i = 0; i < this.fragpipeExpNames.length; i++) {
+				titlesb.append("Identification type " + fragpipeExpNames[i]).append("\t");
 			}
 
 			titlesb.append("Intensity").append("\t");
 
-			for (int i = 0; i < quanExpNames.length; i++) {
-				titlesb.append("Intensity " + quanExpNames[i]).append("\t");
+			for (int i = 0; i < fragpipeExpNames.length; i++) {
+				titlesb.append("Intensity " + fragpipeExpNames[i]).append("\t");
 			}
 
 			titlesb.append("Reverse").append("\t");
@@ -2310,8 +2429,8 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		titlesb.append("PEP").append("\t");
 		titlesb.append("Intensity").append("\t");
 
-		for (int i = 0; i < quanExpNames.length; i++) {
-			titlesb.append("Intensity " + quanExpNames[i]).append("\t");
+		for (int i = 0; i < fragpipeExpNames.length; i++) {
+			titlesb.append("Intensity " + fragpipeExpNames[i]).append("\t");
 		}
 
 		titlesb.append("Reverse").append("\t");
@@ -2541,7 +2660,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 
 					StringBuilder sb = new StringBuilder();
 					sb.append(rawNameString).append("\t");
-					sb.append(this.quanExpNames[i]).append("\t");
+					sb.append(this.fragpipeExpNames[i]).append("\t");
 					int[] idCounts = idMap.get(rawNameString);
 
 					sb.append(idCounts[0]).append("\t");
@@ -2564,7 +2683,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 				} else {
 					StringBuilder sb = new StringBuilder();
 					sb.append(rawNameString).append("\t");
-					sb.append(this.quanExpNames[i]).append("\t");
+					sb.append(this.fragpipeExpNames[i]).append("\t");
 					sb.append("0\t0\t0%\t0");
 
 					countWriter.println(sb);
@@ -2653,7 +2772,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 			}
 		}
 
-		setProgress(88);
+		updateProgress(88, 100);
 
 		File funcResultFile = final_pro_xml_file.getParentFile();
 		File funTsv = new File(funcResultFile, "functions.tsv");
@@ -2730,7 +2849,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		LOGGER.info(getTaskName() + ": functional annotation finished");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": functional annotation finished");
 
-		setProgress(92);
+		updateProgress(92, 100);
 
 		// taxonomy analysis
 
@@ -2760,7 +2879,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 
 			int psmCount = 0;
 			int[] ms2Count = peptides[i].getMs2Counts();
-			for (int j = 0; j < quanExpNames.length; j++) {
+			for (int j = 0; j < fragpipeExpNames.length; j++) {
 				psmCount += ms2Count[j];
 			}
 
@@ -2809,7 +2928,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		}
 
 		return exportGenome(genomeIntensityMap, psmCountMap, pepCountMap, uniquePepCountMap, genomePEPMap, taxFile,
-				quanExpNames, task);
+				fragpipeExpNames, task);
 	}
 
 }

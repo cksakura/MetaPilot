@@ -21,6 +21,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.dom4j.DocumentException;
 
+import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.core.tools.FormatTool;
 import uk.ac.quadram.metapilot.dbSearch.alphapept.AlphapeptPepReader;
 import uk.ac.quadram.metapilot.dbSearch.alphapept.AlphapeptPeptide;
@@ -49,8 +50,8 @@ public class MetaLabMagAlphapeptTask extends MagHapPFindTask {
 	private static final Logger LOGGER = LogManager.getLogger(MetaLabMagAlphapeptTask.class);
 	private static final String taskName = "Alphapept workflow";
 
-	public MetaLabMagAlphapeptTask(MetaParameterMag metaPar, MetaResourceParameters mrp, JavaFXProgressBar bar1,
-			JavaFXProgressBar bar2) {
+	public MetaLabMagAlphapeptTask(MetaParameterMag metaPar, MetaResourceParameters mrp, ProgressBar bar1,
+			ProgressBar bar2) {
 		super(metaPar, mrp, bar1, bar2);
 		// TODO Auto-generated constructor stub
 	}
@@ -1055,7 +1056,7 @@ public class MetaLabMagAlphapeptTask extends MagHapPFindTask {
 			}
 		}
 
-		setProgress(88);
+		updateProgress(88, 100);
 
 		File funcResultFile = final_pro_xml_file.getParentFile();
 		File funTsv = new File(funcResultFile, "functions.tsv");
@@ -1132,7 +1133,7 @@ public class MetaLabMagAlphapeptTask extends MagHapPFindTask {
 		LOGGER.info(getTaskName() + ": functional annotation finished");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": functional annotation finished");
 
-		setProgress(92);
+		updateProgress(92, 100);
 
 		// taxonomy analysis
 

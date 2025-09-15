@@ -13,7 +13,6 @@ import uk.ac.quadram.metapilot.task.mag.par.MetaParameterMag;
 public class FragpipeWorkflow {
 
 	private HashMap<String, FragpipeWorkflowItem> valueMap;
-	private int workflowId;
 
 	public static final int defaultWorkflow = 0;
 	public static final int LFQ_MBRWorkflow = 1;
@@ -22,20 +21,20 @@ public class FragpipeWorkflow {
 	public static final int TMTWorkflow = 4;
 	public static final int TMTProWorkflow = 5;
 	
-	protected static String[] workflowTypes = new String[] {"Default.workflow", "LFQ-MBR.workflow", "Open.workflow", 
+	protected static String[] workflowTypes = new String[] {"Basic-Search.workflow", "LFQ-MBR.workflow", "Open.workflow", 
 			"SILAC3.workflow", "TMT10.workflow", "TMT16.workflow"};
 
 	private FragpipeWorkflow(HashMap<String, FragpipeWorkflowItem> valueMap) {
 		this.valueMap = valueMap;
 	}
 	
-	public static FragpipeWorkflow parse(File workflowFolder, int workflowType) throws IOException {
-		if (workflowType < 0 || workflowType > workflowTypes.length) {
-			return null;
+	public static FragpipeWorkflow parse(File workflowFolder, String workflowName) throws IOException {
+		if (!workflowName.endsWith(".workflow")) {
+			workflowName += ".workflow";
 		}
-		File workflowFile = new File(workflowFolder, workflowTypes[workflowType]);
+		File workflowFile = new File(workflowFolder, workflowName);
 		FragpipeWorkflow fragpipeWorkflow = parse(workflowFile);
-		fragpipeWorkflow.workflowId = workflowType;
+
 		return fragpipeWorkflow;
 	}
 
@@ -44,6 +43,9 @@ public class FragpipeWorkflow {
 	}
 
 	public static FragpipeWorkflow parse(File params) throws IOException {
+		if (params == null || !params.exists()) {
+			return null;
+		}
 		HashMap<String, FragpipeWorkflowItem> valueMap = new HashMap<String, FragpipeWorkflowItem>();
 
 		int id = 1;
@@ -69,14 +71,6 @@ public class FragpipeWorkflow {
 
 		FragpipeWorkflow parameter = new FragpipeWorkflow(valueMap);
 		return parameter;
-	}
-
-	public int getWorkflowId() {
-		return workflowId;
-	}
-
-	public void setWorkflowId(int workflowId) {
-		this.workflowId = workflowId;
 	}
 
 	public void config(MetaParameterMag metaPar, File output) throws IOException {
@@ -158,6 +152,170 @@ public class FragpipeWorkflow {
 	public void setFragmentMassTol(double massTol, int unit) {
 		this.valueMap.get("msfragger.fragment_mass_tolerance").setValue(String.valueOf(massTol));
 		this.valueMap.get("msfragger.fragment_mass_units").setValue(String.valueOf(unit));
+	}
+
+	/**
+	 * Set modifications from UI panel data
+	 * 
+	 * @param fixedMods List of fixed modifications from UI
+	 * @param variableMods List of variable modifications from UI
+	 */
+	public void setModifications(java.util.List<uk.ac.quadram.metapilot.task.dda.mag.gui.MetaPilotDdaMagFragPipePanel.FixedModificationRow> fixedMods,
+	                           java.util.List<uk.ac.quadram.metapilot.task.dda.mag.gui.MetaPilotDdaMagFragPipePanel.VariableModificationRow> variableMods) {
+		
+		// Build fixed modifications string with correct format and order
+		StringBuilder fixedModsStr = new StringBuilder();
+		
+		// Define the expected order and site names for fixed modifications
+		String[] expectedSites = {
+			"C-Term Peptide", "N-Term Peptide", "C-Term Protein", "N-Term Protein",
+			"G (glycine)", "A (alanine)", "S (serine)", "P (proline)", "V (valine)", "T (threonine)",
+			"C (cysteine)", "L (leucine)", "I (isoleucine)", "N (asparagine)", "D (aspartic acid)",
+			"Q (glutamine)", "K (lysine)", "E (glutamic acid)", "M (methionine)", "H (histidine)",
+			"F (phenylalanine)", "R (arginine)", "Y (tyrosine)", "W (tryptophan)",
+			"B ", "J", "O", "U", "X", "Z"
+		};
+		
+		// Create a map of UI site names to expected site names
+		java.util.Map<String, String> siteMapping = new java.util.HashMap<>();
+		siteMapping.put("peptide c-term", "C-Term Peptide");
+		siteMapping.put("peptide n-term", "N-Term Peptide");
+		siteMapping.put("protein c-term", "C-Term Protein");
+		siteMapping.put("protein n-term", "N-Term Protein");
+		siteMapping.put("A", "A (alanine)");
+		siteMapping.put("R", "R (arginine)");
+		siteMapping.put("N", "N (asparagine)");
+		siteMapping.put("D", "D (aspartic acid)");
+		siteMapping.put("C", "C (cysteine)");
+		siteMapping.put("E", "E (glutamic acid)");
+		siteMapping.put("Q", "Q (glutamine)");
+		siteMapping.put("G", "G (glycine)");
+		siteMapping.put("H", "H (histidine)");
+		siteMapping.put("I", "I (isoleucine)");
+		siteMapping.put("L", "L (leucine)");
+		siteMapping.put("K", "K (lysine)");
+		siteMapping.put("M", "M (methionine)");
+		siteMapping.put("F", "F (phenylalanine)");
+		siteMapping.put("P", "P (proline)");
+		siteMapping.put("S", "S (serine)");
+		siteMapping.put("T", "T (threonine)");
+		siteMapping.put("W", "W (tryptophan)");
+		siteMapping.put("Y", "Y (tyrosine)");
+		siteMapping.put("V", "V (valine)");
+		
+		// Create a map of UI modifications for quick lookup
+		java.util.Map<String, Double> modMap = new java.util.HashMap<>();
+		for (uk.ac.quadram.metapilot.task.dda.mag.gui.MetaPilotDdaMagFragPipePanel.FixedModificationRow mod : fixedMods) {
+			modMap.put(mod.getSite(), mod.getDeltaMass());
+		}
+		
+		// Build the fixed modifications string in the expected order
+		boolean first = true;
+		for (String expectedSite : expectedSites) {
+			// Find the corresponding UI site name
+			String uiSite = null;
+			for (java.util.Map.Entry<String, String> entry : siteMapping.entrySet()) {
+				if (entry.getValue().equals(expectedSite)) {
+					uiSite = entry.getKey();
+					break;
+				}
+			}
+			
+			// Get the mass value (default to 0.0 if not found)
+			double mass = 0.0;
+			if (uiSite != null && modMap.containsKey(uiSite)) {
+				mass = modMap.get(uiSite);
+			}
+			
+			// Add to the string
+			if (!first) {
+				fixedModsStr.append("; ");
+			}
+			fixedModsStr.append(String.format("%.1f,%s,true,-1", mass, expectedSite));
+			first = false;
+		}
+		
+		// Build variable modifications string with expected format and all 16 slots
+		StringBuilder variableModsStr = new StringBuilder();
+		
+		// Define the expected variable modification slots in order
+		String[] expectedVarModSites = {
+			"M", "[^", "STY", "nQnC", "nE", "K", "R", "K", "R", 
+			"site_10", "site_11", "site_12", "site_13", "site_14", "site_15", "site_16"
+		};
+		
+		// Create a map of UI modification names to expected format
+		java.util.Map<String, String> varModMapping = new java.util.HashMap<>();
+		varModMapping.put("Oxidation", "M");
+		varModMapping.put("Acetylation", "[^");
+		varModMapping.put("Phosphorylation", "STY");
+		varModMapping.put("Deamidation", "nQnC");
+		varModMapping.put("Methylation", "K");
+		varModMapping.put("Ubiquitination", "K");
+		varModMapping.put("Nitrosylation", "C");
+		varModMapping.put("Citrullination", "R");
+		
+		// Create a map of UI modifications for quick lookup
+		java.util.Map<String, uk.ac.quadram.metapilot.task.dda.mag.gui.MetaPilotDdaMagFragPipePanel.VariableModificationRow> varModMap = new java.util.HashMap<>();
+		for (uk.ac.quadram.metapilot.task.dda.mag.gui.MetaPilotDdaMagFragPipePanel.VariableModificationRow mod : variableMods) {
+			varModMap.put(mod.getModName(), mod);
+		}
+		
+		// Build the variable modifications string in the expected order
+		boolean firstVar = true;
+		for (int i = 0; i < expectedVarModSites.length; i++) {
+			String expectedSite = expectedVarModSites[i];
+			
+			// Find the corresponding UI modification
+			uk.ac.quadram.metapilot.task.dda.mag.gui.MetaPilotDdaMagFragPipePanel.VariableModificationRow uiMod = null;
+			for (java.util.Map.Entry<String, String> entry : varModMapping.entrySet()) {
+				if (entry.getValue().equals(expectedSite)) {
+					uiMod = varModMap.get(entry.getKey());
+					break;
+				}
+			}
+			
+			// Get the values (defaults if not found)
+			double mass = 0.0;
+			boolean enabled = false;
+			int maxPerPeptide = 1;
+			
+			if (uiMod != null) {
+				mass = uiMod.getDeltaMass();
+				enabled = uiMod.getUse();
+				// Set max_per_peptide based on modification type
+				if (expectedSite.equals("M") || expectedSite.equals("STY")) {
+					maxPerPeptide = 3;
+				} else if (expectedSite.equals("[^")) {
+					maxPerPeptide = 1;
+				} else if (expectedSite.equals("K") || expectedSite.equals("R")) {
+					maxPerPeptide = 2;
+				} else {
+					maxPerPeptide = 1;
+				}
+			}
+			
+			// Add to the string
+			if (!firstVar) {
+				variableModsStr.append("; ");
+			}
+			variableModsStr.append(String.format("%.5f,%s,%s,%d", 
+				mass, expectedSite, enabled ? "true" : "false", maxPerPeptide));
+			firstVar = false;
+		}
+		
+		// Set the modification strings in the workflow
+		if (valueMap.containsKey("msfragger.table.fix-mods")) {
+			valueMap.get("msfragger.table.fix-mods").setValue(fixedModsStr.toString());
+		} else {
+			valueMap.put("msfragger.table.fix-mods", new FragpipeWorkflowItem(0, "msfragger.table.fix-mods", fixedModsStr.toString()));
+		}
+		
+		if (valueMap.containsKey("msfragger.table.var-mods")) {
+			valueMap.get("msfragger.table.var-mods").setValue(variableModsStr.toString());
+		} else {
+			valueMap.put("msfragger.table.var-mods", new FragpipeWorkflowItem(0, "msfragger.table.var-mods", variableModsStr.toString()));
+		}
 	}
 
 	public void export(String file) throws IOException {

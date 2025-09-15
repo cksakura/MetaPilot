@@ -5,7 +5,6 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
-import javafx.stage.FileChooser;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.scene.text.Font;
@@ -20,24 +19,19 @@ import javafx.scene.control.Alert.AlertType;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX.ExperimentRow;
 import uk.ac.quadram.metapilot.task.common.gui.TaxonomicAnalysisPanel;
+import uk.ac.quadram.metapilot.task.common.gui.DdaIgcInputOutputPanel;
+import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
+import uk.ac.quadram.metapilot.MetaPilotApp;
 import uk.ac.quadram.metapilot.core.mod.IsobaricTag;
 import uk.ac.quadram.metapilot.task.dda.igc.DDAIgcMaxQuantTask;
 import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcMaxQuantParameters;
 import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcMaxQuantParameterIO;
-import javafx.animation.KeyFrame;
-import javafx.animation.Timeline;
-import javafx.util.Duration;
-import java.lang.management.ManagementFactory;
-import java.lang.management.OperatingSystemMXBean;
-import java.lang.management.MemoryMXBean;
-import java.lang.management.MemoryUsage;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
-import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -52,26 +46,14 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
     private static final Logger LOGGER = LogManager.getLogger(MetaPilotDdaIgcMaxQuantPanel.class);
     
     // UI Components
-    private MetaPilotIOPanelFX ioPanel;
-    private TextField microbiomeDBField;
-    private TextField hostDBField;
-    private CheckBox appendHostDBCheckBox;
-    private Button browseMicrobiomeDBButton;
-    private Button browseHostDBButton;
-    private TextArea consoleOutput;
-    private TextArea parameterView;
-    private ProgressBar overallProgressBar;
-    private ProgressBar currentTaskProgressBar;
-    private Label currentTaskLabel;
-    private Button startButton;
-    private Button stopButton;
+    private DdaIgcInputOutputPanel ioPanel;
+    private ConsolePanel consolePanel;
     private ToggleGroup quantModeGroup;
     
     // Parameter Panel Components
     private ComboBox<String> enzymeComboBox;
     private Spinner<Integer> missedCleavagesSpinner;
     private ComboBox<String> digestionModeComboBox;
-    private TextArea enzymeSpecificityArea;
     private ListView<String> fixedModListView;
     private ListView<String> variableModListView;
     private ComboBox<String> modificationComboBox;
@@ -101,12 +83,6 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
     private ListView<String> mediumLabelListView;
     private ListView<String> heavyLabelListView;
     private ComboBox<String> labelModificationComboBox;
-    private Button addLightLabelButton;
-    private Button addMediumLabelButton;
-    private Button addHeavyLabelButton;
-    private Button removeLightLabelButton;
-    private Button removeMediumLabelButton;
-    private Button removeHeavyLabelButton;
     private ObservableList<String> lightLabels = FXCollections.observableArrayList();
     private ObservableList<String> mediumLabels = FXCollections.observableArrayList();
     private ObservableList<String> heavyLabels = FXCollections.observableArrayList();
@@ -126,14 +102,23 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
     private Button addMetadataColumnButton;
     private Button removeMetadataColumnButton;
     
-    // Add fields for status panel and timer
-    private Label statusTimeLabel;
-    private Label statusCpuLabel;
-    private Label statusMemLabel;
-    private Timeline statusTimeline;
-    private long taskStartTimeMillis;
+    
+    // Add parameter IO instance
+    private DDAIgcMaxQuantParameterIO parameterIO;
     
     public MetaPilotDdaIgcMaxQuantPanel() {
+        // Initialize parameter IO instance
+        parameterIO = new DDAIgcMaxQuantParameterIO();
+        
+        // Initialize unified IO panel
+        ioPanel = new DdaIgcInputOutputPanel(this::updateParameterView);
+        
+        // Initialize console panel
+        consolePanel = new ConsolePanel();
+        consolePanel.setStartCallback(this::startAnalysis);
+        consolePanel.setStopCallback(this::stopAnalysis);
+        consolePanel.setViewReportCallback(this::viewReport);
+        
         initializeUI();
         
         // Note: Parameters are only saved when starting analysis or explicitly requested
@@ -141,6 +126,9 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
         // Load parameters after UI is fully initialized
         Platform.runLater(() -> {
             loadLastUsedParameters();
+            
+            // Add window close event handler to save parameters
+            setupWindowCloseHandler();
         });
     }
     
@@ -166,23 +154,23 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
         Tab paramTab = new Tab("Parameters");
         paramTab.setContent(createParametersTab());
         
-        Tab consoleTab = new Tab("Console");
-        consoleTab.setContent(createConsoleTab());
+        Tab consoleTabPane = new Tab("Console");
+        consoleTabPane.setContent(consolePanel);
         
-        tabPane.getTabs().addAll(ioTab, paramTab, consoleTab);
+        tabPane.getTabs().addAll(ioTab, paramTab, consoleTabPane);
         
         // Add tab change listener to update metadata when Parameters tab is selected
         // and save parameters when Console tab is selected
         tabPane.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, newTab) -> {
             if (newTab == paramTab) {
                 updateMetadataTableFromIOPanel();
-            } else if (newTab == consoleTab) {
+            } else if (newTab == consoleTabPane) {
                 // Save current parameters when Console tab is selected
                 try {
                     DDAIgcMaxQuantParameters currentParams = collectParametersFromUI();
                     if (currentParams != null) {
-                        DDAIgcMaxQuantParameterIO.saveLastUsedParameters(currentParams);
-                        DDAIgcMaxQuantParameterIO.savePreferences(currentParams);
+                        parameterIO.saveLastUsedParameters(currentParams);
+                        parameterIO.savePreferences(currentParams);
                         LOGGER.info("Saved current parameters when Console tab was selected");
                     }
                 } catch (Exception e) {
@@ -192,7 +180,7 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
         });
         
         // Add tab pane to main panel
-        getChildren().add(tabPane);
+        getChildren().addAll(tabPane);
     }
     
     private int ProcessorCount() {
@@ -239,99 +227,13 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
         VBox tabContent = new VBox(10);
         tabContent.setPadding(new Insets(10));
         
-        // Add IO Panel
-        ioPanel = new MetaPilotIOPanelFX();
-        
-        // Add listener to IO panel to save parameters when experiment data changes
-        // Note: We'll need to check if the IO panel has observable properties
-        // For now, we'll rely on the individual field listeners
-        
-        // Add Database Panel
-        VBox databaseSection = createDatabaseSection();
-        
-        tabContent.getChildren().addAll(
-            createSectionTitle("Input/Output Settings"),
-            ioPanel,
-            createSectionTitle("Database Settings"),
-            databaseSection
-        );
+        // Add unified IO Panel (includes both file selection and database settings)
+        tabContent.getChildren().add(ioPanel);
         
         return tabContent;
     }
     
-    private VBox createDatabaseSection() {
-        VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #f8f8f8; -fx-border-color: #cccccc; -fx-border-radius: 5; -fx-border-width: 1;");
-        
-        // Microbiome Database
-        HBox microbiomeDBBox = new HBox(10);
-        microbiomeDBField = new TextField();
-        microbiomeDBField.setPromptText("Select microbiome database file");
-        microbiomeDBField.setPrefWidth(400);
-        microbiomeDBField.textProperty().addListener((obs, oldVal, newVal) -> {
-            updateParameterView();
-        });
-        browseMicrobiomeDBButton = new Button("Browse");
-        browseMicrobiomeDBButton.setOnAction(e -> browseMicrobiomeDatabase());
-        microbiomeDBBox.getChildren().addAll(new Label("Microbiome Database:"), microbiomeDBField, browseMicrobiomeDBButton);
-        
-        // Append Host Database
-        HBox appendHostBox = new HBox(10);
-        appendHostDBCheckBox = new CheckBox("Append Host Database");
-        appendHostDBCheckBox.setOnAction(e -> {
-            updateHostDBVisibility();
-            updateParameterView();
-        });
-        appendHostBox.getChildren().add(appendHostDBCheckBox);
-        
-        // Host Database
-        HBox hostDBBox = new HBox(10);
-        hostDBField = new TextField();
-        hostDBField.setPromptText("Select host database file");
-        hostDBField.setPrefWidth(400);
-        hostDBField.setDisable(true);
-        hostDBField.textProperty().addListener((obs, oldVal, newVal) -> {
-            updateParameterView();
-        });
-        browseHostDBButton = new Button("Browse");
-        browseHostDBButton.setDisable(true);
-        browseHostDBButton.setOnAction(e -> browseHostDatabase());
-        hostDBBox.getChildren().addAll(new Label("Host Database:"), hostDBField, browseHostDBButton);
-        
-        section.getChildren().addAll(microbiomeDBBox, appendHostBox, hostDBBox);
-        return section;
-    }
     
-    private void updateHostDBVisibility() {
-        boolean selected = appendHostDBCheckBox.isSelected();
-        hostDBField.setDisable(!selected);
-        browseHostDBButton.setDisable(!selected);
-    }
-    
-    private void browseMicrobiomeDatabase() {
-        FileChooser chooser = new FileChooser();
-        chooser.setTitle("Select Microbiome Database File");
-        chooser.getExtensionFilters().add(
-            new FileChooser.ExtensionFilter("FASTA Files", "*.fasta", "*.fa")
-        );
-        File file = chooser.showOpenDialog(getScene().getWindow());
-        if (file != null) {
-            microbiomeDBField.setText(file.getAbsolutePath());
-        }
-    }
-    
-    private void browseHostDatabase() {
-        FileChooser chooser = new FileChooser();
-        chooser.setTitle("Select Host Database File");
-        chooser.getExtensionFilters().add(
-            new FileChooser.ExtensionFilter("FASTA Files", "*.fasta", "*.fa")
-        );
-        File file = chooser.showOpenDialog(getScene().getWindow());
-        if (file != null) {
-            hostDBField.setText(file.getAbsolutePath());
-        }
-    }
     
     private VBox createParametersTab() {
         VBox tabContent = new VBox(10);
@@ -934,7 +836,7 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
     private void updateMetadataTable() {
         // Always show label-free rows by default
         metadataTableData.clear();
-        List<String> experimentNames = ioPanel.getExperimentNames();
+        List<String> experimentNames = ioPanel.getIoPanel().getExperimentNames();
         if (experimentNames.isEmpty()) return;
         createMetadataTableColumns();
         // Determine quantitative mode
@@ -983,20 +885,7 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
             }
         }
     }
-    
-    private void addMetadataColumn() {
-        String columnName = metadataColumnComboBox.getValue();
-        if (columnName != null && !columnName.isEmpty()) {
-            if ("Custom".equals(columnName)) {
-                // Could add a dialog for custom column name
-                columnName = "Custom" + (metadataTable.getColumns().size());
-            }
-            
-            String propertyName = getPropertyNameForColumn(columnName);
-            addMetadataColumnWithProperty(columnName, propertyName);
-        }
-    }
-    
+
     private void addMetadataColumnWithProperty(String columnName, String propertyName) {
         TableColumn<MetadataRow, String> column = new TableColumn<>(columnName);
         column.setCellValueFactory(new PropertyValueFactory<>(propertyName));
@@ -1147,73 +1036,6 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
         return section;
     }
     
-    private VBox createConsoleTab() {
-        VBox tabContent = new VBox(10);
-        tabContent.setPadding(new Insets(10));
-        // Parameter View
-        VBox paramViewBox = new VBox(5);
-        paramViewBox.getChildren().add(new Label("Parameter View:"));
-        parameterView = new TextArea();
-        parameterView.setEditable(false);
-        parameterView.setPrefHeight(200); // Increased height
-        parameterView.setStyle("-fx-font-family: monospace;");
-        VBox.setVgrow(parameterView, Priority.ALWAYS); // Allow to expand
-        paramViewBox.getChildren().add(parameterView);
-        VBox.setVgrow(paramViewBox, Priority.ALWAYS);
-        // Progress Bars
-        VBox progressBox = new VBox(5);
-        currentTaskLabel = new Label("Current Task: None");
-        overallProgressBar = new ProgressBar(0);
-        overallProgressBar.setMaxWidth(Double.MAX_VALUE);
-        currentTaskProgressBar = new ProgressBar(0);
-        currentTaskProgressBar.setMaxWidth(Double.MAX_VALUE);
-        progressBox.getChildren().addAll(
-            currentTaskLabel,
-            new Label("Overall Progress:"),
-            overallProgressBar,
-            new Label("Current Task Progress:"),
-            currentTaskProgressBar
-        );
-        // Console Output
-        VBox consoleBox = new VBox(5);
-        consoleBox.getChildren().add(new Label("Console Output:"));
-        consoleOutput = new TextArea();
-        consoleOutput.setEditable(false);
-        consoleOutput.setPrefHeight(250); // Increased height
-        consoleOutput.setStyle("-fx-font-family: monospace;");
-        VBox.setVgrow(consoleOutput, Priority.ALWAYS); // Allow to expand
-        consoleBox.getChildren().add(consoleOutput);
-        VBox.setVgrow(consoleBox, Priority.ALWAYS);
-        // Control Buttons
-        HBox controlBox = new HBox(10);
-        startButton = new Button("Start Analysis");
-        stopButton = new Button("Stop");
-        stopButton.setDisable(true);
-        startButton.setOnAction(e -> startAnalysis());
-        stopButton.setOnAction(e -> stopAnalysis());
-        controlBox.getChildren().addAll(startButton, stopButton);
-        // Status Panel (bottom)
-        HBox statusPanel = new HBox(20);
-        statusPanel.setPadding(new Insets(5, 0, 0, 0));
-        statusPanel.setAlignment(Pos.CENTER_LEFT);
-        statusTimeLabel = new Label("Time: 00:00:00");
-        statusCpuLabel = new Label("CPU: 0.0%");
-        statusMemLabel = new Label("Memory: 0 / 0 MB");
-        statusPanel.getChildren().addAll(statusTimeLabel, statusCpuLabel, statusMemLabel);
-        // Layout: parameterView and consoleOutput fill available space, statusPanel at bottom
-        tabContent.getChildren().addAll(
-            paramViewBox,
-            progressBox,
-            consoleBox,
-            controlBox
-        );
-        VBox.setVgrow(paramViewBox, Priority.ALWAYS);
-        VBox.setVgrow(consoleBox, Priority.ALWAYS);
-        VBox.setVgrow(tabContent, Priority.ALWAYS);
-        // Always keep status panel at the bottom
-        tabContent.getChildren().add(statusPanel);
-        return tabContent;
-    }
     
     // Inner class for metadata table rows
     public static class MetadataRow {
@@ -1397,9 +1219,17 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
     }
     
     private void updateParameterView() {
+        // Update the console panel's parameter view
+        if (consolePanel != null) {
+            consolePanel.setParameterText(getParameterDisplay());
+        }
+    }
+    
+    private String getParameterDisplay() {
         StringBuilder sb = new StringBuilder();
         
         // Enzyme settings
+        sb.append("=== MaxQuant Analysis Parameters ===\n\n");
         sb.append("=== ENZYME SETTINGS ===\n");
         sb.append("Enzyme: ").append(enzymeComboBox.getValue()).append("\n");
         sb.append("Missed Cleavages: ").append(missedCleavagesSpinner.getValue()).append("\n");
@@ -1446,23 +1276,23 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
         // Taxonomic analysis
         sb.append("\n").append(taxonomicAnalysisPanel.getTaxonomicSummary());
         
-        parameterView.setText(sb.toString());
+        return sb.toString();
     }
     
     private boolean validateInputs() {
-        if (ioPanel.getExperimentData().isEmpty()) {
+        if (ioPanel.getIoPanel().getExperimentData().isEmpty()) {
             showError("Validation Error", "Please add at least one experiment.");
             return false;
         }
-        if (ioPanel.getOutputDirectory().isEmpty()) {
+        if (ioPanel.getIoPanel().getOutputDirectory().isEmpty()) {
             showError("Validation Error", "Please select an output directory.");
             return false;
         }
-        if (microbiomeDBField.getText().isEmpty()) {
+        if (ioPanel.getMicrobiomeDBPath().isEmpty()) {
             showError("Validation Error", "Please select a microbiome database file.");
             return false;
         }
-        if (appendHostDBCheckBox.isSelected() && hostDBField.getText().isEmpty()) {
+        if (ioPanel.isHostDBEnabled() && ioPanel.getHostDBPath().isEmpty()) {
             showError("Validation Error", "Please select a host database file.");
             return false;
         }
@@ -1487,7 +1317,7 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
             String outputDir = analysisParams.getResult();
             if (outputDir != null && !outputDir.trim().isEmpty()) {
                 // Save analysis-specific parameters
-                boolean analysisParamsSaved = DDAIgcMaxQuantParameterIO.saveAnalysisParameters(outputDir, analysisParams);
+                boolean analysisParamsSaved = parameterIO.saveAnalysisParameters(outputDir, analysisParams);
                 if (!analysisParamsSaved) {
                     LOGGER.warn("Failed to save analysis parameters to {}/analysis_parameters.json", outputDir);
                     showAlert("Warning", "Failed to save analysis parameters to result directory. Analysis will continue but parameters may not be preserved.");
@@ -1496,13 +1326,13 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
                 }
                 
                 // Save as last used parameters
-                boolean lastParamsSaved = DDAIgcMaxQuantParameterIO.saveLastUsedParameters(analysisParams);
+                boolean lastParamsSaved = parameterIO.saveLastUsedParameters(analysisParams);
                 if (!lastParamsSaved) {
                     LOGGER.warn("Failed to save last used parameters");
                 }
                 
                 // Also save to preferences for quick defaults
-                DDAIgcMaxQuantParameterIO.savePreferences(analysisParams);
+                parameterIO.savePreferences(analysisParams);
             }
             
             // Create MetaResourceParameters by loading from config file
@@ -1510,27 +1340,22 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
             MetaResourceParameters mrp = resourceIO.loadParameters();
             
             // Create JavaFXProgressBar for overall and current task
-            uk.ac.quadram.metapilot.gui.JavaFXProgressBar overallBar = new uk.ac.quadram.metapilot.gui.JavaFXProgressBar(0, 100, 0);
-            uk.ac.quadram.metapilot.gui.JavaFXProgressBar currentBar = new uk.ac.quadram.metapilot.gui.JavaFXProgressBar(0, 100, 0);
-            
-            // Bind progress bars to UI
-            overallProgressBar.progressProperty().bind(overallBar.getProgressBar().progressProperty());
-            currentTaskProgressBar.progressProperty().bind(currentBar.getProgressBar().progressProperty());
+            ProgressBar overallBar = consolePanel.getOverallProgressBar();
+            ProgressBar currentBar = consolePanel.getCurrentTaskProgressBar();
             
             // Create and run DDAIgcMaxQuantTask with the single parameters object
             DDAIgcMaxQuantTask task = new DDAIgcMaxQuantTask(analysisParams, mrp, overallBar, currentBar);
             
-            // Bind task message to currentTaskLabel
+            // Bind task message to console panel
             task.messageProperty().addListener((obs, oldMsg, newMsg) -> {
-                Platform.runLater(() -> currentTaskLabel.setText("Current Task: " + newMsg));
+                Platform.runLater(() -> consolePanel.setCurrentTaskLabel("Current Task: " + newMsg));
             });
             
             // Handle task completion
             task.setOnSucceeded(e -> {
                 Platform.runLater(() -> {
-                    startButton.setDisable(false);
-                    stopButton.setDisable(true);
-                    if (statusTimeline != null) statusTimeline.stop();
+                    consolePanel.setButtonsEnabled(true, false, true);
+                    consolePanel.stopStatusTimer();
                     
                     // Check if the task actually succeeded by examining the result
                     try {
@@ -1547,9 +1372,8 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
             });
             task.setOnFailed(e -> {
                 Platform.runLater(() -> {
-                    startButton.setDisable(false);
-                    stopButton.setDisable(true);
-                    if (statusTimeline != null) statusTimeline.stop();
+                    consolePanel.setButtonsEnabled(true, false, false);
+                    consolePanel.stopStatusTimer();
                     showAlert("Error", "Analysis failed: " + task.getException());
                 });
             });
@@ -1559,16 +1383,9 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
             t.setDaemon(true);
             t.start();
             
-            // Update UI buttons
-            startButton.setDisable(true);
-            stopButton.setDisable(false);
-            
-            // Start status panel timer
-            taskStartTimeMillis = System.currentTimeMillis();
-            if (statusTimeline != null) statusTimeline.stop();
-            statusTimeline = new Timeline(new KeyFrame(Duration.seconds(1), ev -> updateStatusPanel()));
-            statusTimeline.setCycleCount(Timeline.INDEFINITE);
-            statusTimeline.play();
+            // Update UI buttons and start status timer
+            consolePanel.setButtonsEnabled(false, true, false);
+            consolePanel.startStatusTimer();
         } catch (Exception e) {
             showAlert("Error", "Failed to start analysis: " + e.getMessage());
             e.printStackTrace();
@@ -1583,12 +1400,43 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
         
         Optional<ButtonType> result = alert.showAndWait();
         if (result.isPresent() && result.get() == ButtonType.OK) {
-            startButton.setDisable(false);
-            stopButton.setDisable(true);
-            overallProgressBar.progressProperty().unbind();
-            overallProgressBar.setProgress(0);
-            currentTaskProgressBar.setProgress(0);
-            currentTaskLabel.setText("Current Task: None");
+            consolePanel.setButtonsEnabled(true, false, false);
+            consolePanel.stopStatusTimer();
+            consolePanel.getOverallProgressBar().setProgress(0);
+            consolePanel.getCurrentTaskProgressBar().setProgress(0);
+            consolePanel.setCurrentTaskLabel("Current Task: None");
+        }
+    }
+    
+    private void viewReport() {
+        try {
+            // Get the result directory from the IO panel
+            String resultDir = ioPanel.getIoPanel().getOutputDirectory();
+            if (resultDir == null || resultDir.trim().isEmpty()) {
+                showAlert("Error", "No result directory available. Please run analysis first.");
+                return;
+            }
+            
+            // Look for the main report file
+            java.io.File reportDir = new java.io.File(resultDir);
+            java.io.File indexFile = new java.io.File(reportDir, "index.html");
+            
+            if (!indexFile.exists()) {
+                showAlert("Error", "Report not found. Please ensure the analysis has completed successfully.");
+                return;
+            }
+            
+            // Open the report in the default browser
+            if (java.awt.Desktop.isDesktopSupported()) {
+                java.awt.Desktop.getDesktop().browse(indexFile.toURI());
+                showAlert("Success", "Report opened in default browser.");
+            } else {
+                showAlert("Error", "Desktop not supported. Please open manually: " + indexFile.getAbsolutePath());
+            }
+            
+        } catch (Exception e) {
+            showAlert("Error", "Failed to open report: " + e.getMessage());
+            e.printStackTrace();
         }
     }
     
@@ -1817,47 +1665,13 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
         alert.showAndWait();
     }
     
-    private void updateStatusPanel() {
-        // Elapsed time
-        long elapsedMillis = System.currentTimeMillis() - taskStartTimeMillis;
-        long seconds = elapsedMillis / 1000;
-        long hh = seconds / 3600;
-        long mm = (seconds % 3600) / 60;
-        long ss = seconds % 60;
-        String timeStr = String.format("Time: %02d:%02d:%02d", hh, mm, ss);
-        // CPU usage (system-wide)
-        double cpuLoad = 0.0;
-        try {
-            OperatingSystemMXBean osBean = ManagementFactory.getOperatingSystemMXBean();
-            if (osBean instanceof com.sun.management.OperatingSystemMXBean) {
-                cpuLoad = ((com.sun.management.OperatingSystemMXBean) osBean).getSystemCpuLoad();
-                if (cpuLoad >= 0) cpuLoad *= 100.0;
-                else cpuLoad = 0.0;
-            }
-        } catch (Throwable t) { cpuLoad = 0.0; }
-        String cpuStr = String.format("CPU: %.1f%%", cpuLoad);
-        // Memory usage (heap)
-        long usedMem = 0, maxMem = 0;
-        try {
-            MemoryMXBean memBean = ManagementFactory.getMemoryMXBean();
-            MemoryUsage heap = memBean.getHeapMemoryUsage();
-            usedMem = heap.getUsed() / (1024 * 1024);
-            maxMem = heap.getMax() / (1024 * 1024);
-        } catch (Throwable t) { usedMem = 0; maxMem = 0; }
-        String memStr = String.format("Memory: %d / %d MB", usedMem, maxMem);
-        Platform.runLater(() -> {
-            statusTimeLabel.setText(timeStr);
-            statusCpuLabel.setText(cpuStr);
-            statusMemLabel.setText(memStr);
-        });
-    }
     
     /**
      * Collect all parameters from the UI into a parameters object
      */
     private DDAIgcMaxQuantParameters collectParametersFromUI() {
         // Collect experiment data from ioPanel
-        ObservableList<ExperimentRow> fileRows = ioPanel.getExperimentData();
+        ObservableList<ExperimentRow> fileRows = ioPanel.getIoPanel().getExperimentData();
         String[] rawFiles = new String[fileRows.size()];
         String[] expNames = new String[fileRows.size()];
         int[] fractions = new int[fileRows.size()];
@@ -1872,10 +1686,10 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
         MetaData metadata = new MetaData(rawFiles, expNames, fractions, replicates);
         
         // Collect basic parameters with null checks
-        String resultDir = ioPanel.getOutputDirectory();
-        String microDb = microbiomeDBField.getText();
-        boolean appendHostDb = appendHostDBCheckBox.isSelected();
-        String hostDB = appendHostDb ? hostDBField.getText() : "";
+        String resultDir = ioPanel.getIoPanel().getOutputDirectory();
+        String microDb = ioPanel.getMicrobiomeDBPath();
+        boolean appendHostDb = ioPanel.isHostDBEnabled();
+        String hostDB = appendHostDb ? ioPanel.getHostDBPath() : "";
         String selectedEnzymeStr = enzymeComboBox.getValue();
         if (selectedEnzymeStr == null) {
             selectedEnzymeStr = "Trypsin"; // Default
@@ -1893,7 +1707,8 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
         boolean spectraCluster = spectraClusteringCheckBox.isSelected();
         
         // Create DDAIgcMaxQuantParameters using parameterized constructor
-		DDAIgcMaxQuantParameters params = new DDAIgcMaxQuantParameters("DDA_IGC_MAXQUANT", // analysisType
+		DDAIgcMaxQuantParameters params = new DDAIgcMaxQuantParameters(
+				MetaPilotApp.WorkflowType.DDA_IGC_MAXQUANT.getAnalysisType(), // analysisType
 				metadata, // MetaData object
 				resultDir, // output directory (result)
 				microDb, // microbiome database (microDb)
@@ -1995,7 +1810,7 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
      */
     private void loadLastUsedParameters() {
         try {
-            DDAIgcMaxQuantParameters params = DDAIgcMaxQuantParameterIO.loadLastUsedParameters();
+            DDAIgcMaxQuantParameters params = (DDAIgcMaxQuantParameters) parameterIO.loadLastUsedParameters();
             applyParametersToUI(params);
             LOGGER.info("Loaded last used parameters for DDA IGC MaxQuant workflow");
         } catch (Exception e) {
@@ -2012,7 +1827,7 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
         
         // Apply Input/Output settings
         if (params.getResult() != null && ioPanel != null) {
-            ioPanel.setOutputDirectory(params.getResult());
+            ioPanel.getIoPanel().setOutputDirectory(params.getResult());
         }
         
         // Set the result directory for logging (this is used by MetaPilotTask.configLog)
@@ -2021,15 +1836,14 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
         }
         
         // Apply database settings
-        if (params.getMicroDb() != null && microbiomeDBField != null) {
-            microbiomeDBField.setText(params.getMicroDb());
+        if (params.getMicroDb() != null && ioPanel != null) {
+            ioPanel.setMicrobiomeDBPath(params.getMicroDb());
         }
-        if (appendHostDBCheckBox != null) {
-            appendHostDBCheckBox.setSelected(params.isAppendHostDb());
-            updateHostDBVisibility(); // Update the visibility of host DB fields
+        if (ioPanel != null) {
+            ioPanel.setHostDBEnabled(params.isAppendHostDb());
         }
-        if (params.getHostDB() != null && hostDBField != null) {
-            hostDBField.setText(params.getHostDB());
+        if (params.getHostDB() != null && ioPanel != null) {
+            ioPanel.setHostDBPath(params.getHostDB());
         }
         
         // Apply experiment data to IO panel
@@ -2049,7 +1863,7 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
                         experimentData.add(new MetaPilotIOPanelFX.ExperimentRow(rawFile, expName));
                     }
                 }
-                ioPanel.setExperimentData(experimentData);
+                ioPanel.getIoPanel().setExperimentData(experimentData);
             }
         }
         
@@ -2154,7 +1968,7 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
      */
     public void loadAnalysisParameters(String resultDirectory) {
         try {
-            DDAIgcMaxQuantParameters params = DDAIgcMaxQuantParameterIO.loadAnalysisParameters(resultDirectory);
+            DDAIgcMaxQuantParameters params = (DDAIgcMaxQuantParameters) parameterIO.loadAnalysisParameters(resultDirectory);
             applyParametersToUI(params);
             showAlert("Success", "Loaded analysis parameters from " + resultDirectory);
             LOGGER.info("Loaded analysis parameters from {}", resultDirectory);
@@ -2162,5 +1976,40 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
             showAlert("Error", "Failed to load analysis parameters: " + e.getMessage());
             LOGGER.error("Failed to load analysis parameters from " + resultDirectory, e);
         }
+    }
+    
+    /**
+     * Set up window close handler to save parameters when the window is closed
+     */
+    private void setupWindowCloseHandler() {
+        Platform.runLater(() -> {
+            try {
+                // Get the current scene and window
+                if (getScene() != null) {
+                    javafx.stage.Window window = getScene().getWindow();
+                    if (window != null) {
+                        window.setOnCloseRequest(event -> {
+                            try {
+                                DDAIgcMaxQuantParameters currentParams = collectParametersFromUI();
+                                if (currentParams != null) {
+                                    parameterIO.saveLastUsedParameters(currentParams);
+                                    parameterIO.savePreferences(currentParams);
+                                    LOGGER.info("Saved current parameters when window was closed");
+                                }
+                            } catch (Exception e) {
+                                LOGGER.warn("Failed to save parameters when window was closed: " + e.getMessage(), e);
+                            }
+                        });
+                        LOGGER.info("Window close handler set up successfully");
+                    } else {
+                        LOGGER.warn("Window is null, cannot set close handler");
+                    }
+                } else {
+                    LOGGER.warn("Scene is null, cannot set close handler");
+                }
+            } catch (Exception e) {
+                LOGGER.error("Failed to set up window close handler", e);
+            }
+        });
     }
 } 

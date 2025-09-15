@@ -392,6 +392,131 @@ public class MagDbConfigIO {
 		writer.close();
 	}
 	
+	/**
+	 * Update a single MagDbItem in the JSON configuration file
+	 * This method is more efficient than exporting the entire array when only one item needs to be updated
+	 * 
+	 * @param magDbItem The MagDbItem to update
+	 * @param isMgnify True if the item is from MGnify, false if it's a local MAG
+	 * @param configFile The configuration file to update
+	 */
+	public static void updateMagDbItem(MagDbItem magDbItem, boolean isMgnify, File configFile) {
+		if (!configFile.exists()) {
+			LOGGER.error("Configuration file does not exist: " + configFile);
+			return;
+		}
+		
+		try {
+			// Parse the existing configuration
+			MagDbItem[][] existingItems = parse(configFile);
+			
+			// Find and update the specific item
+			boolean found = false;
+			if (isMgnify && existingItems[0] != null) {
+				for (int i = 0; i < existingItems[0].length; i++) {
+					if (existingItems[0][i].getCatalogueID().equals(magDbItem.getCatalogueID()) &&
+						existingItems[0][i].getIdentifier().equals(magDbItem.getIdentifier())) {
+						// Update the item with new data
+						existingItems[0][i] = magDbItem;
+						found = true;
+						break;
+					}
+				}
+			} else if (!isMgnify && existingItems[1] != null) {
+				for (int i = 0; i < existingItems[1].length; i++) {
+					if (existingItems[1][i].getCatalogueID().equals(magDbItem.getCatalogueID()) &&
+						existingItems[1][i].getIdentifier().equals(magDbItem.getIdentifier())) {
+						// Update the item with new data
+						existingItems[1][i] = magDbItem;
+						found = true;
+						break;
+					}
+				}
+			}
+			
+			if (!found) {
+				LOGGER.warn("MagDbItem not found for update: " + magDbItem.getCatalogueID() + " - " + magDbItem.getIdentifier());
+				return;
+			}
+			
+			// Export the updated configuration
+			export(existingItems, configFile);
+			LOGGER.info("Successfully updated MagDbItem: " + magDbItem.getCatalogueID() + " - " + magDbItem.getIdentifier());
+			
+		} catch (Exception e) {
+			LOGGER.error("Error updating MagDbItem in configuration file: " + configFile, e);
+		}
+	}
+	
+	/**
+	 * Update a single MagDbItem in the JSON configuration file (String path version)
+	 * 
+	 * @param magDbItem The MagDbItem to update
+	 * @param isMgnify True if the item is from MGnify, false if it's a local MAG
+	 * @param configFilePath The path to the configuration file to update
+	 */
+	public static void updateMagDbItem(MagDbItem magDbItem, boolean isMgnify, String configFilePath) {
+		updateMagDbItem(magDbItem, isMgnify, new File(configFilePath));
+	}
+	
+	/**
+	 * Add a new MagDbItem to the JSON configuration file
+	 * 
+	 * @param magDbItem The new MagDbItem to add
+	 * @param isMgnify True if the item is from MGnify, false if it's a local MAG
+	 * @param configFile The configuration file to update
+	 */
+	public static void addMagDbItem(MagDbItem magDbItem, boolean isMgnify, File configFile) {
+		if (!configFile.exists()) {
+			LOGGER.error("Configuration file does not exist: " + configFile);
+			return;
+		}
+		
+		try {
+			// Parse the existing configuration
+			MagDbItem[][] existingItems = parse(configFile);
+			
+			// Add the new item to the appropriate array
+			if (isMgnify) {
+				if (existingItems[0] == null) {
+					existingItems[0] = new MagDbItem[]{magDbItem};
+				} else {
+					MagDbItem[] newArray = new MagDbItem[existingItems[0].length + 1];
+					System.arraycopy(existingItems[0], 0, newArray, 0, existingItems[0].length);
+					newArray[existingItems[0].length] = magDbItem;
+					existingItems[0] = newArray;
+				}
+			} else {
+				if (existingItems[1] == null) {
+					existingItems[1] = new MagDbItem[]{magDbItem};
+				} else {
+					MagDbItem[] newArray = new MagDbItem[existingItems[1].length + 1];
+					System.arraycopy(existingItems[1], 0, newArray, 0, existingItems[1].length);
+					newArray[existingItems[1].length] = magDbItem;
+					existingItems[1] = newArray;
+				}
+			}
+			
+			// Export the updated configuration
+			export(existingItems, configFile);
+			LOGGER.info("Successfully added new MagDbItem: " + magDbItem.getCatalogueID() + " - " + magDbItem.getIdentifier());
+			
+		} catch (Exception e) {
+			LOGGER.error("Error adding MagDbItem to configuration file: " + configFile, e);
+		}
+	}
+	
+	/**
+	 * Add a new MagDbItem to the JSON configuration file (String path version)
+	 * 
+	 * @param magDbItem The new MagDbItem to add
+	 * @param isMgnify True if the item is from MGnify, false if it's a local MAG
+	 * @param configFilePath The path to the configuration file to update
+	 */
+	public static void addMagDbItem(MagDbItem magDbItem, boolean isMgnify, String configFilePath) {
+		addMagDbItem(magDbItem, isMgnify, new File(configFilePath));
+	}
+	
 	public static void main(String[] args) {
 		/*
 		try (BufferedReader br = new BufferedReader(new InputStreamReader(

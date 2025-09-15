@@ -16,6 +16,7 @@ import java.util.Random;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNTask;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiannParameter;
 import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
@@ -34,8 +35,8 @@ public class MetaDiaCombineTask extends MetaDiaTask {
 	private static final Logger LOGGER = LogManager.getLogger(MetaDiaMonitorTask.class);
 	private static final String taskName = "Realtime DIA data analysis";
 
-	public MetaDiaCombineTask(MetaParameterDiaRT metaPar, MetaResourceParameters mrp, JavaFXProgressBar bar1,
-			JavaFXProgressBar bar2, HashMap<String, String[]> rawResultFileMap) {
+	public MetaDiaCombineTask(MetaParameterDiaRT metaPar, MetaResourceParameters mrp, ProgressBar bar1,
+			ProgressBar bar2, HashMap<String, String[]> rawResultFileMap) {
 		super(metaPar, mrp, bar1, bar2);
 		this.rawResultFileMap = rawResultFileMap;
 	}
@@ -66,20 +67,20 @@ public class MetaDiaCombineTask extends MetaDiaTask {
 			return false;
 		}
 
-		setProgress(90);
+		updateProgress(90, 100);
 
 		exportReport();
 
 		cleanTempFiles();
 
-		setProgress(100);
+		updateProgress(100, 100);
 
 		return true;
 	}
 
 	protected boolean iden() {
 
-		progressBar.setString(getTaskName() + ": peptide and protein identification");
+		updateMessage(getTaskName() + ": peptide and protein identification");
 		LOGGER.info(getTaskName() + ": peptide and protein identification started");
 		System.out.println(
 				format.format(new Date()) + "\t" + getTaskName() + ": peptide and protein identification started");
@@ -271,7 +272,7 @@ public class MetaDiaCombineTask extends MetaDiaTask {
 				}
 			}
 
-			setProgress(10);
+			updateProgress(10, 100);
 			
 			if (hostTsvFile != null && hostTsvFile.exists()) {
 				try (BufferedReader reader = new BufferedReader(new FileReader(hostTsvFile))) {
@@ -352,7 +353,7 @@ public class MetaDiaCombineTask extends MetaDiaTask {
 			diaNNTask.addTask(diannPar, diaFiles, combineFile.getAbsolutePath(), combineLibFile.getAbsolutePath());
 			diaNNTask.run(diaFiles.length * 4);
 			
-			setProgress(50);
+			updateProgress(50, 100);
 
 			File shufFastaFile = new File(resultFolderFile, "shuffled.fasta");
 			File shufPepFile = new File(resultFolderFile, "shuffledPeptide.tsv");
@@ -448,7 +449,7 @@ public class MetaDiaCombineTask extends MetaDiaTask {
 
 		} else {
 
-			setProgress(50);
+			updateProgress(50, 100);
 			
 			HashSet<String> pepSet = new HashSet<String>();
 			try (BufferedReader reader = new BufferedReader(new FileReader(combineFile))) {

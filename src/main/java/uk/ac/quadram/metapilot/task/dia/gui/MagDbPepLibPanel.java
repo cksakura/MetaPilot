@@ -13,7 +13,6 @@ import javax.swing.JCheckBox;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
-import javax.swing.JProgressBar;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
 import javax.swing.JTextField;
@@ -26,7 +25,7 @@ import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableCellRenderer;
 
-import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
+import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagPepLib;
 
@@ -48,7 +47,7 @@ public class MagDbPepLibPanel extends JPanel {
 	private final String[] columnNames = { "Select", "Name", "Peptide count", "Protease", "Miss cleavages", "Remove library" };
 	private Object[][] data;
 	private JButton createPepDbButton;
-	private JavaFXProgressBar progressBar;
+	private ProgressBar progressBar;
 	/**
 	 * Create the panel.
 	 */
@@ -160,7 +159,7 @@ public class MagDbPepLibPanel extends JPanel {
 		createPepDbButton = new JButton("Start");
 		createPepDbPanel.add(createPepDbButton, "cell 0 2,alignx left");
 
-		progressBar = new JavaFXProgressBar();
+		progressBar = new ProgressBar();
 //		createPepDbPanel.add(progressBar, "cell 1 2 7 1,growx");
 	}
 
@@ -176,7 +175,7 @@ public class MagDbPepLibPanel extends JPanel {
 		return createPepDbButton;
 	}
 
-	public JavaFXProgressBar getProgressBar() {
+	public ProgressBar getProgressBar() {
 		return progressBar;
 	}
 	

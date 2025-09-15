@@ -44,9 +44,9 @@ import org.apache.logging.log4j.core.config.builder.impl.BuiltConfiguration;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.task.pfind.gui.MetaPilotPFindMainFrame;
 import uk.ac.quadram.metapilot.task.pfind.par.MetaParameterPFind;
-import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
 import uk.ac.quadram.metapilot.license.LicenseVerifier;
 import uk.ac.quadram.metapilot.resources.MetaResourceIO;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
@@ -66,7 +66,7 @@ import uk.ac.quadram.metapilot.task.par.MetaParameterIOHandler;
  */
 public abstract class MetaPilotTask extends MetaAbstractTask {
 
-	protected JavaFXProgressBar secondBar;
+	protected ProgressBar secondBar;
 	protected static Logger LOGGER = LogManager.getLogger(MetaPilotTask.class);
 	protected SimpleDateFormat format = new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss");
 	
@@ -74,19 +74,20 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 	
 	protected File final_pep_txt;
 	protected File final_pro_txt;
+	protected File reportHtmlDir;
 
 	private static final String taskName = "MetaPilot task";
 	public static final String version = "1.0.0";
 	public static final String versionFile = "_1_0_0.json";
 
-	public MetaPilotTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
-			JavaFXProgressBar secondBar) {
+	public MetaPilotTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
+			ProgressBar secondBar) {
 		super(metaPar, mrp, progressBar);
 		this.secondBar = secondBar;
 		this.configLog(new File(metaPar.getResult()));
 		this.progressProperty().addListener((observable, oldValue, newValue) -> {
 			if (this.progressBar != null) {
-				this.progressBar.setValue(newValue.intValue() * 100);
+				this.progressBar.setProgress(newValue.doubleValue());
 			}
 		});
 	}
@@ -196,6 +197,67 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 		}
 
 		metaPar.setReportDir(destDir);
+	}
+
+	/**
+	 * Copy report templates in background thread with progress updates.
+	 * This method should be called from the call() method after setting up the result directory.
+	 * 
+	 * @return true if copy was successful, false otherwise
+	 */
+	protected boolean copyReportTemplatesInBackground() {
+		try {
+			updateMessage("Setting up report templates...");
+			updateProgress(5, 100);
+
+			// Get the result directory from metaPar
+			File resultDir = metaPar.getDbSearchResultFile();
+			if (resultDir == null) {
+				LOGGER.error(getTaskName() + ": Result directory is null, cannot copy report templates");
+				return false;
+			}
+
+			// Create report directory
+			File reportDir = new File(resultDir, "report");
+			if (!reportDir.exists()) {
+				reportDir.mkdirs();
+			}
+			metaPar.setReportDir(reportDir);
+			
+			// Copy report templates using MetaPythonReportCopyTask
+			MetaPythonReportCopyTask reportCopyTask = new MetaPythonReportCopyTask(resultDir);
+			Thread reportCopyThread = new Thread(reportCopyTask);
+			reportCopyThread.start();
+
+			updateMessage("Copying report templates...");
+			updateProgress(8, 100);
+
+			try {
+				reportCopyThread.join();
+				if (!reportCopyTask.get()) {
+					LOGGER.error(getTaskName() + ": error in copying report template");
+					updateMessage("Error: Failed to copy report templates");
+					return false;
+				}
+			} catch (Exception e) {
+				LOGGER.error(getTaskName() + ": error in copying report template", e);
+				updateMessage("Error: " + e.getMessage());
+				return false;
+			}
+
+			reportHtmlDir = new File(reportDir + "\\reports\\rmd_html");		
+
+			updateMessage("Report templates ready");
+			updateProgress(10, 100);
+
+			LOGGER.info(getTaskName() + ": Report templates copied successfully");
+			return true;
+
+		} catch (Exception e) {
+			LOGGER.error(getTaskName() + ": error in copying report templates", e);
+			updateMessage("Error: " + e.getMessage());
+			return false;
+		}
 	}
 
 	protected void loadRecourseFromJarByFolder(String fromPath, File toPath) throws IOException {
@@ -442,8 +504,7 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 
 					MetaParameterPFind metaPar = (MetaParameterPFind) loadPar;
 
-					JavaFXProgressBar bar1 = new JavaFXProgressBar();
-					JavaFXProgressBar bar2 = new JavaFXProgressBar();
+					// ProgressBar instances removed - not needed for command line execution
 
 					File file = getApplicationBaseDirectory();
 					File setting = new File(file, "resources" + versionFile);

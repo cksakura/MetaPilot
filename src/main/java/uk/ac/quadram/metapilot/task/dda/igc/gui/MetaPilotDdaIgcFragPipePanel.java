@@ -1,68 +1,34 @@
 package uk.ac.quadram.metapilot.task.dda.igc.gui;
 
-import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
-import javafx.stage.FileChooser;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.scene.paint.Color;
+import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.control.cell.TextFieldTableCell;
-import javafx.scene.control.cell.CheckBoxTableCell;
-import javafx.util.converter.DefaultStringConverter;
-import javafx.util.converter.DoubleStringConverter;
 import javafx.beans.property.SimpleStringProperty;
-import javafx.beans.property.StringProperty;
-import javafx.beans.property.SimpleBooleanProperty;
-import javafx.beans.property.BooleanProperty;
-import javafx.beans.property.SimpleDoubleProperty;
-import javafx.beans.property.DoubleProperty;
-import javafx.concurrent.Task;
-import javafx.scene.control.Alert.AlertType;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
-import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX.ExperimentRow;
-import uk.ac.quadram.metapilot.task.common.gui.IsobaricLabelingPanel;
-import uk.ac.quadram.metapilot.task.par.MetaData;
-import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
-import uk.ac.quadram.metapilot.task.par.MetaConstants;
-import uk.ac.quadram.metapilot.task.MetaLabWorkflowType;
-import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
-import uk.ac.quadram.metapilot.core.mod.IsobaricTag;
+import uk.ac.quadram.metapilot.task.common.gui.TaxonomicAnalysisPanel;
+import uk.ac.quadram.metapilot.task.common.gui.DdaIgcInputOutputPanel;
+import uk.ac.quadram.metapilot.task.common.gui.ModificationsPanel;
 import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel;
-import javafx.animation.KeyFrame;
-import javafx.animation.Timeline;
-import javafx.util.Duration;
-import java.lang.management.ManagementFactory;
-import java.lang.management.OperatingSystemMXBean;
-import java.lang.management.MemoryMXBean;
-import java.lang.management.MemoryUsage;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.io.File;
-import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
-import uk.ac.quadram.metapilot.task.v2.par.MaxQuantModIO;
-import java.util.HashMap;
 
 public class MetaPilotDdaIgcFragPipePanel extends VBox {
     // UI Components (similar to pFind panel)
-    private MetaPilotIOPanelFX ioPanel;
-    private TextField microbiomeDBField;
-    private TextField hostDBField;
-    private CheckBox appendHostDBCheckBox;
-    private Button browseMicrobiomeDBButton;
-    private Button browseHostDBButton;
+    private DdaIgcInputOutputPanel ioPanel;
     private TextArea consoleOutput;
     private TextArea parameterView;
     private ProgressBar overallProgressBar;
@@ -70,46 +36,29 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
     private Label currentTaskLabel;
     private Button startButton;
     private Button stopButton;
-    private ToggleGroup quantModeGroup;
 
     // Parameter Panel Components
     private ComboBox<String> enzymeComboBox;
     private Spinner<Integer> missedCleavagesSpinner;
     private ComboBox<String> digestionModeComboBox;
 
-    // FragPipe-specific modification tables
-    private TableView<FixedModificationRow> fixedModTable;
-    private ObservableList<FixedModificationRow> fixedModData = FXCollections.observableArrayList();
-    private Button restoreDefaultButton;
-    
-    private TableView<VariableModificationRow> variableModTable;
-    private ObservableList<VariableModificationRow> variableModData = FXCollections.observableArrayList();
+    // Reusable modifications panel
+    private ModificationsPanel modificationsPanel;
 
     // Additional parameters
     private Spinner<Integer> threadsSpinner;
-    private ComboBox<String> ms2ScanModeComboBox;
+    private ComboBox<String> workflowComboBox;
+    private ComboBox<String> msDataTypeComboBox;
     private CheckBox generateSampleSpecificDBCheckBox;
     private CheckBox spectraClusteringCheckBox;
 
     // Data
     private ObservableList<String> enzymes = FXCollections.observableArrayList();
-    private ObservableList<String> isobaricBaseTypes = FXCollections.observableArrayList();
+    private ObservableList<String> workflows = FXCollections.observableArrayList();
 
-    // Isobaric labeling components
-    private ComboBox<String> isobaricTypeComboBox;
-    private TableView<IsobaricLabelingPanel.IsobaricLabelRow> isobaricTable;
-    private ObservableList<IsobaricLabelingPanel.IsobaricLabelRow> isobaricTableData = FXCollections.observableArrayList();
 
-    // Taxonomic analysis components
-    private CheckBox eukaryotaCheckBox;
-    private CheckBox bacteriaCheckBox;
-    private CheckBox archaeaCheckBox;
-    private CheckBox virusesCheckBox;
-    private CheckBox viroidsCheckBox;
-    private CheckBox unclassifiedCheckBox;
-    private CheckBox otherCheckBox;
-    private ComboBox<String> ignoreRankComboBox;
-    private CheckBox environmentalSamplesCheckBox;
+    // Taxonomic analysis panel (unified component)
+    private TaxonomicAnalysisPanel taxonomicAnalysisPanel;
 
     // Metadata configuration components
     private TableView<MetaPilotDdaIgcMaxQuantPanel.MetadataRow> metadataTable;
@@ -122,13 +71,17 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
     private Label statusTimeLabel;
     private Label statusCpuLabel;
     private Label statusMemLabel;
-    private Timeline statusTimeline;
-    private long taskStartTimeMillis;
 
     public MetaPilotDdaIgcFragPipePanel() {
         loadEnzymesFromIni();
-        loadIsobaricBaseTypes();
-        initializeModificationData();
+        loadWorkflowsFromFragPipe();
+        
+        // Initialize unified IO panel
+        ioPanel = new DdaIgcInputOutputPanel(this::updateParameterView);
+        
+        // Initialize taxonomic analysis panel
+        taxonomicAnalysisPanel = new TaxonomicAnalysisPanel(this::updateParameterView);
+        
         initializeUI();
     }
 
@@ -174,78 +127,13 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
     private VBox createIOTab() {
         VBox tabContent = new VBox(10);
         tabContent.setPadding(new Insets(10));
-        ioPanel = new MetaPilotIOPanelFX();
-        VBox databaseSection = createDatabaseSection();
-        tabContent.getChildren().addAll(
-            createSectionTitle("Input/Output Settings"),
-            ioPanel,
-            createSectionTitle("Database Settings"),
-            databaseSection
-        );
+        
+        // Add unified IO Panel (includes both file selection and database settings)
+        tabContent.getChildren().add(ioPanel);
+        
         return tabContent;
     }
 
-    private VBox createDatabaseSection() {
-        VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #f8f8f8; -fx-border-color: #cccccc; -fx-border-radius: 5; -fx-border-width: 1;");
-        
-        HBox microbiomeDBBox = new HBox(10);
-        microbiomeDBField = new TextField();
-        microbiomeDBField.setPromptText("Select microbiome database file");
-        microbiomeDBField.setPrefWidth(400);
-        browseMicrobiomeDBButton = new Button("Browse");
-        browseMicrobiomeDBButton.setOnAction(e -> browseMicrobiomeDatabase());
-        microbiomeDBBox.getChildren().addAll(new Label("Microbiome Database:"), microbiomeDBField, browseMicrobiomeDBButton);
-        
-        HBox appendHostBox = new HBox(10);
-        appendHostDBCheckBox = new CheckBox("Append Host Database");
-        appendHostDBCheckBox.setOnAction(e -> updateHostDBVisibility());
-        appendHostBox.getChildren().add(appendHostDBCheckBox);
-        
-        HBox hostDBBox = new HBox(10);
-        hostDBField = new TextField();
-        hostDBField.setPromptText("Select host database file");
-        hostDBField.setPrefWidth(400);
-        hostDBField.setDisable(true);
-        browseHostDBButton = new Button("Browse");
-        browseHostDBButton.setDisable(true);
-        browseHostDBButton.setOnAction(e -> browseHostDatabase());
-        hostDBBox.getChildren().addAll(new Label("Host Database:"), hostDBField, browseHostDBButton);
-        
-        section.getChildren().addAll(microbiomeDBBox, appendHostBox, hostDBBox);
-        return section;
-    }
-
-    private void updateHostDBVisibility() {
-        boolean selected = appendHostDBCheckBox.isSelected();
-        hostDBField.setDisable(!selected);
-        browseHostDBButton.setDisable(!selected);
-    }
-
-    private void browseMicrobiomeDatabase() {
-        FileChooser chooser = new FileChooser();
-        chooser.setTitle("Select Microbiome Database File");
-        chooser.getExtensionFilters().add(
-            new FileChooser.ExtensionFilter("FASTA Files", "*.fasta", "*.fa")
-        );
-        File file = chooser.showOpenDialog(getScene().getWindow());
-        if (file != null) {
-            microbiomeDBField.setText(file.getAbsolutePath());
-        }
-    }
-
-    private void browseHostDatabase() {
-        FileChooser chooser = new FileChooser();
-        chooser.setTitle("Select Host Database File");
-        chooser.getExtensionFilters().add(
-            new FileChooser.ExtensionFilter("FASTA Files", "*.fasta", "*.fa")
-        );
-        File file = chooser.showOpenDialog(getScene().getWindow());
-        if (file != null) {
-            hostDBField.setText(file.getAbsolutePath());
-        }
-    }
 
     private VBox createParametersTab() {
         VBox tabContent = new VBox(10);
@@ -284,20 +172,18 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
         leftColumn.setMinWidth(430);
         VBox enzymeSection = createEnzymeSection();
         VBox additionalParamsSection = createAdditionalParametersSection();
-        VBox taxonomicSection = createTaxonomicAnalysisSection();
         
         // Create horizontal modifications panel with fixed mods (narrow) and variable mods (wider)
-        HBox modificationsPanel = createModificationsPanel();
+        modificationsPanel = new ModificationsPanel(this::updateParameterView);
         
-        leftColumn.getChildren().addAll(enzymeSection, additionalParamsSection, taxonomicSection, modificationsPanel);
+        leftColumn.getChildren().addAll(enzymeSection, additionalParamsSection, taxonomicAnalysisPanel, modificationsPanel);
         GridPane.setVgrow(leftColumn, Priority.ALWAYS);
 
-        // Right column: Quantitative Mode and Metadata Configuration (keeping original layout)
+        // Right column: Metadata Configuration only
         VBox rightColumn = new VBox(15);
         rightColumn.setMinWidth(430);
-        VBox quantModeSection = createQuantitativeModeSection();
         VBox metadataSection = createMetadataConfigurationSection();
-        rightColumn.getChildren().addAll(quantModeSection, metadataSection);
+        rightColumn.getChildren().addAll(metadataSection);
         GridPane.setVgrow(rightColumn, Priority.ALWAYS);
 
         // Add columns to grid
@@ -309,242 +195,6 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
     }
     
     // Combined modifications panel with fixed mods (narrow) and variable mods (wider) side by side
-    private HBox createModificationsPanel() {
-        HBox modificationsContainer = new HBox(10);
-        modificationsContainer.setMinHeight(200);
-        HBox.setHgrow(modificationsContainer, Priority.ALWAYS);
-        
-        // Fixed modifications section (narrow - only 2 columns)
-        VBox fixedModSection = createFixedModificationsSection();
-        fixedModSection.setMinWidth(180);
-        fixedModSection.setPrefWidth(200);
-        fixedModSection.setMaxWidth(220);
-        
-        // Variable modifications section (wider - 4 columns)
-        VBox variableModSection = createVariableModificationsSection();
-        HBox.setHgrow(variableModSection, Priority.ALWAYS);
-        
-        modificationsContainer.getChildren().addAll(fixedModSection, variableModSection);
-        return modificationsContainer;
-    }
-
-    // FragPipe-specific Fixed Modifications Section
-    private VBox createFixedModificationsSection() {
-        VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #fff8dc; -fx-background-radius: 5;");
-        section.setMinHeight(200);
-        VBox.setVgrow(section, Priority.ALWAYS);
-
-        Label titleLabel = createSectionTitle("Fixed Modifications");
-        
-        // Create table - narrower since only 2 columns
-        fixedModTable = new TableView<>(fixedModData);
-        fixedModTable.setMinHeight(150);
-        fixedModTable.setPrefHeight(180);
-        fixedModTable.setMaxHeight(Double.MAX_VALUE);
-        fixedModTable.setEditable(true);
-        fixedModTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
-        VBox.setVgrow(fixedModTable, Priority.ALWAYS);
-
-        // Site column (read-only) - narrower
-        TableColumn<FixedModificationRow, String> siteCol = new TableColumn<>("Site");
-        siteCol.setCellValueFactory(new PropertyValueFactory<>("site"));
-        siteCol.setMinWidth(60);
-        siteCol.setPrefWidth(80);
-        siteCol.setSortable(false);
-
-        // Delta Mass column (editable) - narrower
-        TableColumn<FixedModificationRow, Double> deltaMassCol = new TableColumn<>("Delta Mass");
-        deltaMassCol.setCellValueFactory(new PropertyValueFactory<>("deltaMass"));
-        deltaMassCol.setCellFactory(TextFieldTableCell.forTableColumn(new DoubleStringConverter()));
-        deltaMassCol.setOnEditCommit(e -> {
-            e.getRowValue().setDeltaMass(e.getNewValue());
-            updateParameterView();
-        });
-        deltaMassCol.setMinWidth(80);
-        deltaMassCol.setPrefWidth(100);
-        deltaMassCol.setSortable(false);
-
-        fixedModTable.getColumns().addAll(siteCol, deltaMassCol);
-
-        // Restore default button
-        restoreDefaultButton = new Button("Restore Default");
-        restoreDefaultButton.setOnAction(e -> restoreDefaultFixedModifications());
-        
-        HBox buttonBox = new HBox();
-        buttonBox.setAlignment(Pos.CENTER_RIGHT);
-        buttonBox.getChildren().add(restoreDefaultButton);
-
-        section.getChildren().addAll(titleLabel, fixedModTable, buttonBox);
-        return section;
-    }
-
-    // FragPipe-specific Variable Modifications Section
-    private VBox createVariableModificationsSection() {
-        VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #f0fff0; -fx-background-radius: 5;");
-        section.setMinHeight(200);  // Reduced from 300 to match fixed mods
-        VBox.setVgrow(section, Priority.ALWAYS);
-
-        Label titleLabel = createSectionTitle("Variable Modifications");
-        
-        // Create table
-        variableModTable = new TableView<>(variableModData);
-        variableModTable.setMinHeight(150);  // Reduced to match fixed mods
-        variableModTable.setPrefHeight(180);  // Reduced to match fixed mods
-        variableModTable.setMaxHeight(Double.MAX_VALUE);
-        variableModTable.setEditable(true);
-        variableModTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
-        VBox.setVgrow(variableModTable, Priority.ALWAYS);
-
-        // Use column (checkbox) - smaller
-        TableColumn<VariableModificationRow, Boolean> useCol = new TableColumn<>("Use");
-        useCol.setCellValueFactory(new PropertyValueFactory<>("use"));
-        useCol.setCellFactory(CheckBoxTableCell.forTableColumn(useCol));
-        useCol.setOnEditCommit(e -> updateParameterView());
-        useCol.setMinWidth(40);
-        useCol.setPrefWidth(50);
-        useCol.setSortable(false);
-
-        // Mod Name column (editable) - adjusted width
-        TableColumn<VariableModificationRow, String> modNameCol = new TableColumn<>("Modification");
-        modNameCol.setCellValueFactory(new PropertyValueFactory<>("modName"));
-        modNameCol.setCellFactory(TextFieldTableCell.forTableColumn());
-        modNameCol.setOnEditCommit(e -> {
-            e.getRowValue().setModName(e.getNewValue());
-            updateParameterView();
-        });
-        modNameCol.setMinWidth(100);
-        modNameCol.setPrefWidth(120);
-        modNameCol.setSortable(false);
-
-        // Sites column (editable) - smaller
-        TableColumn<VariableModificationRow, String> sitesCol = new TableColumn<>("Sites");
-        sitesCol.setCellValueFactory(new PropertyValueFactory<>("sites"));
-        sitesCol.setCellFactory(TextFieldTableCell.forTableColumn());
-        sitesCol.setOnEditCommit(e -> {
-            e.getRowValue().setSites(e.getNewValue());
-            updateParameterView();
-        });
-        sitesCol.setMinWidth(60);
-        sitesCol.setPrefWidth(70);
-        sitesCol.setSortable(false);
-
-        // Delta Mass column (editable) - adjusted width
-        TableColumn<VariableModificationRow, Double> deltaMassCol = new TableColumn<>("Delta Mass");
-        deltaMassCol.setCellValueFactory(new PropertyValueFactory<>("deltaMass"));
-        deltaMassCol.setCellFactory(TextFieldTableCell.forTableColumn(new DoubleStringConverter()));
-        deltaMassCol.setOnEditCommit(e -> {
-            e.getRowValue().setDeltaMass(e.getNewValue());
-            updateParameterView();
-        });
-        deltaMassCol.setMinWidth(80);
-        deltaMassCol.setPrefWidth(90);
-        deltaMassCol.setSortable(false);
-
-        variableModTable.getColumns().addAll(useCol, modNameCol, sitesCol, deltaMassCol);
-
-        section.getChildren().addAll(titleLabel, variableModTable);
-        return section;
-    }
-
-    private void restoreDefaultFixedModifications() {
-        for (FixedModificationRow row : fixedModData) {
-            if (row.getSite().equals("C")) {
-                row.setDeltaMass(57.02146);  // Carbamidomethyl
-            } else {
-                row.setDeltaMass(0.0);
-            }
-        }
-        fixedModTable.refresh();
-        updateParameterView();
-    }
-
-    // Fixed Modification Row class for FragPipe
-    public static class FixedModificationRow {
-        private final SimpleStringProperty site;
-        private final SimpleDoubleProperty deltaMass;
-        
-        public FixedModificationRow(String site, double deltaMass) {
-            this.site = new SimpleStringProperty(site);
-            this.deltaMass = new SimpleDoubleProperty(deltaMass);
-        }
-        
-        public String getSite() { return site.get(); }
-        public void setSite(String value) { site.set(value); }
-        public StringProperty siteProperty() { return site; }
-        
-        public double getDeltaMass() { return deltaMass.get(); }
-        public void setDeltaMass(double value) { deltaMass.set(value); }
-        public DoubleProperty deltaMassProperty() { return deltaMass; }
-    }
-
-    // Variable Modification Row class for FragPipe
-    public static class VariableModificationRow {
-        private final SimpleBooleanProperty use;
-        private final SimpleStringProperty modName;
-        private final SimpleStringProperty sites;
-        private final SimpleDoubleProperty deltaMass;
-        
-        public VariableModificationRow(boolean use, String modName, String sites, double deltaMass) {
-            this.use = new SimpleBooleanProperty(use);
-            this.modName = new SimpleStringProperty(modName);
-            this.sites = new SimpleStringProperty(sites);
-            this.deltaMass = new SimpleDoubleProperty(deltaMass);
-        }
-        
-        public boolean getUse() { return use.get(); }
-        public void setUse(boolean value) { use.set(value); }
-        public BooleanProperty useProperty() { return use; }
-        
-        public String getModName() { return modName.get(); }
-        public void setModName(String value) { modName.set(value); }
-        public StringProperty modNameProperty() { return modName; }
-        
-        public String getSites() { return sites.get(); }
-        public void setSites(String value) { sites.set(value); }
-        public StringProperty sitesProperty() { return sites; }
-        
-        public double getDeltaMass() { return deltaMass.get(); }
-        public void setDeltaMass(double value) { deltaMass.set(value); }
-        public DoubleProperty deltaMassProperty() { return deltaMass; }
-    }
-
-    private void initializeModificationData() {
-        // Initialize fixed modifications (all amino acids + termini)
-        String[] allSites = {
-            "peptide c-term", "peptide n-term", "protein c-term", "protein n-term",
-            "A", "R", "N", "D", "C", "E", "Q", "G", "H", "I", "L", "K", "M", "F", "P", "S", "T", "W", "Y", "V"
-        };
-        
-        for (String site : allSites) {
-            double defaultMass = site.equals("C") ? 57.02146 : 0.0; // Carbamidomethyl on Cysteine
-            fixedModData.add(new FixedModificationRow(site, defaultMass));
-        }
-
-        // Initialize variable modifications (15 rows)
-        variableModData.addAll(
-            // Common modifications
-            new VariableModificationRow(false, "Oxidation", "M", 15.9949),
-            new VariableModificationRow(false, "Phosphorylation", "STY", 79.9663),
-            new VariableModificationRow(false, "Acetylation", "protein n-term", 42.0106),
-            new VariableModificationRow(false, "Deamidation", "NQ", 0.9840),
-            new VariableModificationRow(false, "Methylation", "KR", 14.0157),
-            new VariableModificationRow(false, "Ubiquitination", "K", 114.0429),
-            new VariableModificationRow(false, "Nitrosylation", "C", 28.9898),
-            new VariableModificationRow(false, "Citrullination", "R", 0.9840),
-            // User-defined slots
-            new VariableModificationRow(false, "User Mod 1", "", 0.0),
-            new VariableModificationRow(false, "User Mod 2", "", 0.0),
-            new VariableModificationRow(false, "User Mod 3", "", 0.0),
-            new VariableModificationRow(false, "User Mod 4", "", 0.0),
-            new VariableModificationRow(false, "User Mod 5", "", 0.0),
-            new VariableModificationRow(false, "User Mod 6", "", 0.0),
-            new VariableModificationRow(false, "User Mod 7", "", 0.0)
-        );
-    }
 
     // Add missing utility methods
     private void loadEnzymesFromIni() {
@@ -566,10 +216,53 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
         }
     }
 
-    private void loadIsobaricBaseTypes() {
-        IsobaricTag[] tags = IsobaricTag.getPFindTags();
-        for (IsobaricTag tag : tags) {
-            isobaricBaseTypes.add(tag.getName());
+    private void loadWorkflowsFromFragPipe() {
+        try {
+            // Get FragPipe path from MetaResourceParameters
+            uk.ac.quadram.metapilot.resources.MetaResourceIO resourceIO = new uk.ac.quadram.metapilot.resources.MetaResourceIO();
+            uk.ac.quadram.metapilot.resources.MetaResourceParameters mrp = resourceIO.loadParameters();
+            String fragpipePath = mrp.getToolPath(uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType.FRAGPIPE);
+
+            if (fragpipePath != null && !fragpipePath.trim().isEmpty()) {
+                File fragpipeFile = new File(fragpipePath);
+                if (fragpipeFile.exists()) {
+                    // Get parent directory (bin)
+                    File binDir = fragpipeFile.getParentFile();
+                    if (binDir != null) {
+                        // Get workflows directory (same level as bin)
+                        File workflowsDir = new File(binDir.getParentFile(), "workflows");
+                        if (workflowsDir.exists() && workflowsDir.isDirectory()) {
+                            // List all .workflow files
+                            File[] workflowFiles = workflowsDir
+                                    .listFiles((dir, name) -> name.toLowerCase().endsWith(".workflow"));
+                            if (workflowFiles != null) {
+                                for (File workflowFile : workflowFiles) {
+                                    String fileName = workflowFile.getName();
+                                    // Remove .workflow extension
+                                    String workflowName = fileName.substring(0, fileName.lastIndexOf('.'));
+                                    workflows.add(workflowName);
+                                }
+                                System.out.println("Loaded " + workflows.size() + " workflows from FragPipe: " + workflowsDir.getAbsolutePath());
+                            }
+                        } else {
+                            System.out.println("FragPipe workflows directory not found: " + workflowsDir.getAbsolutePath());
+                        }
+                    }
+                } else {
+                    System.out.println("FragPipe executable not found: " + fragpipePath);
+                }
+            } else {
+                System.out.println("FragPipe path not configured in MetaResourceParameters");
+            }
+        } catch (Exception e) {
+            System.out.println("Failed to load workflows from FragPipe: " + e.getMessage());
+            e.printStackTrace();
+        }
+
+        // Add default workflow if none found
+        if (workflows.isEmpty()) {
+            workflows.add("Standard");
+            System.out.println("No workflows found, using default: Standard");
         }
     }
 
@@ -671,20 +364,36 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
         VBox threadsBox = new VBox(5);
         threadsBox.getChildren().addAll(threadsLabel, threadsSpinner);
 
-        Label ms2Label = new Label("MS2 Scan Mode:");
-        ms2Label.setStyle("-fx-font-weight: bold;");
-        ms2ScanModeComboBox = new ComboBox<>(FXCollections.observableArrayList("HCD-FTMS", "HCD-ITMS", "CID-FTMS", "CID-ITMS"));
-        ms2ScanModeComboBox.setValue("HCD-FTMS");
-        ms2ScanModeComboBox.setMinWidth(100);
-        ms2ScanModeComboBox.setPrefWidth(120);
-        ms2ScanModeComboBox.setMaxWidth(Double.MAX_VALUE);
-        ms2ScanModeComboBox.setOnAction(e -> updateParameterView());
+        Label workflowLabel = new Label("Workflow:");
+        workflowLabel.setStyle("-fx-font-weight: bold;");
+        workflowComboBox = new ComboBox<>(workflows);
+        workflowComboBox.setMinWidth(100);
+        workflowComboBox.setPrefWidth(120);
+        workflowComboBox.setMaxWidth(Double.MAX_VALUE);
+        if (workflows.size() > 0) {
+            workflowComboBox.setValue(workflows.get(0));
+        }
+        workflowComboBox.setOnAction(e -> updateParameterView());
 
-        VBox ms2Box = new VBox(5);
-        ms2Box.getChildren().addAll(ms2Label, ms2ScanModeComboBox);
+        VBox workflowBox = new VBox(5);
+        workflowBox.getChildren().addAll(workflowLabel, workflowComboBox);
+
+        // Add MS data type option
+        Label msDataTypeLabel = new Label("MS data type:");
+        msDataTypeLabel.setStyle("-fx-font-weight: bold;");
+        msDataTypeComboBox = new ComboBox<>(FXCollections.observableArrayList("Regular MS", "IM-MS (ion mobility, timsTOF only)"));
+        msDataTypeComboBox.setValue("Regular MS");
+        msDataTypeComboBox.setMinWidth(100);
+        msDataTypeComboBox.setPrefWidth(200);
+        msDataTypeComboBox.setMaxWidth(Double.MAX_VALUE);
+        msDataTypeComboBox.setOnAction(e -> updateParameterView());
+
+        VBox msDataTypeBox = new VBox(5);
+        msDataTypeBox.getChildren().addAll(msDataTypeLabel, msDataTypeComboBox);
 
         paramGrid.add(threadsBox, 0, 0);
-        paramGrid.add(ms2Box, 1, 0);
+        paramGrid.add(workflowBox, 1, 0);
+        paramGrid.add(msDataTypeBox, 0, 1, 2, 1); // Span both columns
 
         VBox checkBoxContainer = new VBox(8);
         generateSampleSpecificDBCheckBox = new CheckBox("Generate sample specific database");
@@ -701,201 +410,8 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
         return section;
     }
 
-    private VBox createTaxonomicAnalysisSection() {
-        VBox section = new VBox(8);
-        section.setPadding(new Insets(8));
-        section.setStyle("-fx-background-color: #f0fff0; -fx-background-radius: 5;");
 
-        Label titleLabel = createSectionTitle("Taxonomic Analysis");
-        Label taxaLabel = new Label("Taxa from which top nodes showed in result:");
-        taxaLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 11px;");
 
-        GridPane taxaGrid = new GridPane();
-        taxaGrid.setHgap(8);
-        taxaGrid.setVgap(5);
-
-        eukaryotaCheckBox = new CheckBox("Eukaryota");
-        bacteriaCheckBox = new CheckBox("Bacteria");
-        archaeaCheckBox = new CheckBox("Archaea");
-        virusesCheckBox = new CheckBox("Viruses");
-        viroidsCheckBox = new CheckBox("Viroids");
-        unclassifiedCheckBox = new CheckBox("Unclassified");
-        otherCheckBox = new CheckBox("Other");
-
-        taxaGrid.add(eukaryotaCheckBox, 0, 0);
-        taxaGrid.add(bacteriaCheckBox, 1, 0);
-        taxaGrid.add(archaeaCheckBox, 2, 0);
-        taxaGrid.add(virusesCheckBox, 3, 0);
-        taxaGrid.add(viroidsCheckBox, 0, 1);
-        taxaGrid.add(unclassifiedCheckBox, 1, 1);
-        taxaGrid.add(otherCheckBox, 2, 1);
-
-        HBox rankBox = new HBox(8);
-        rankBox.setAlignment(Pos.CENTER_LEFT);
-        Label rankLabel = new Label("Ignore blanks below rank:");
-        rankLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 11px;");
-
-        ignoreRankComboBox = new ComboBox<>(FXCollections.observableArrayList(
-            "Superkingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species"));
-        ignoreRankComboBox.setValue("Species");
-        ignoreRankComboBox.setMinWidth(80);
-        ignoreRankComboBox.setPrefWidth(100);
-        ignoreRankComboBox.setMaxWidth(Double.MAX_VALUE);
-        ignoreRankComboBox.setOnAction(e -> updateParameterView());
-
-        rankBox.getChildren().addAll(rankLabel, ignoreRankComboBox);
-
-        environmentalSamplesCheckBox = new CheckBox("Ignore environmental samples");
-        environmentalSamplesCheckBox.setOnAction(e -> updateParameterView());
-
-        section.getChildren().addAll(titleLabel, taxaLabel, taxaGrid, rankBox, environmentalSamplesCheckBox);
-        return section;
-    }
-
-    private VBox createQuantitativeModeSection() {
-        VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #f5f5f5; -fx-background-radius: 5;");
-        section.setMinHeight(300);
-        VBox.setVgrow(section, Priority.ALWAYS);
-
-        Label titleLabel = createSectionTitle("Quantitative Mode");
-        quantModeGroup = new ToggleGroup();
-
-        // Radio buttons for quantitative modes
-        RadioButton labelFreeRadio = new RadioButton("Label-free");
-        labelFreeRadio.setToggleGroup(quantModeGroup);
-        labelFreeRadio.setSelected(true);
-        RadioButton isobaricRadio = new RadioButton("Isobaric");
-        isobaricRadio.setToggleGroup(quantModeGroup);
-
-        HBox radioBox = new HBox(15);
-        radioBox.setAlignment(Pos.CENTER_LEFT);
-        radioBox.getChildren().addAll(labelFreeRadio, isobaricRadio);
-
-        // StackPane for overlapping panels
-        StackPane labelingStackPane = new StackPane();
-        labelingStackPane.setMinHeight(200);
-        labelingStackPane.setMaxHeight(Double.MAX_VALUE);
-        VBox.setVgrow(labelingStackPane, Priority.ALWAYS);
-
-        VBox isobaricPanel = createCompactIsobaricLabelingPanel();
-        isobaricPanel.setMinHeight(200);
-        isobaricPanel.setPrefHeight(220);
-        isobaricPanel.setMaxHeight(Double.MAX_VALUE);
-        isobaricPanel.setVisible(false);
-        isobaricPanel.setManaged(false);
-        labelingStackPane.getChildren().add(isobaricPanel);
-
-        labelFreeRadio.setOnAction(e -> {
-            isobaricPanel.setVisible(false);
-            isobaricPanel.setManaged(false);
-            updateParameterView();
-            updateMetadataTable();
-        });
-
-        isobaricRadio.setOnAction(e -> {
-            isobaricPanel.setVisible(true);
-            isobaricPanel.setManaged(true);
-            updateParameterView();
-            updateMetadataTable();
-        });
-
-        section.getChildren().addAll(titleLabel, radioBox, labelingStackPane);
-        return section;
-    }
-
-    private VBox createCompactIsobaricLabelingPanel() {
-        VBox panel = new VBox(8);
-        panel.setPadding(new Insets(8));
-        panel.setStyle("-fx-background-color: #f8e8f4; -fx-background-radius: 5;");
-
-        HBox typeBox = new HBox(10);
-        typeBox.setAlignment(Pos.CENTER_LEFT);
-        Label typeLabel = new Label("Isobaric Type:");
-        typeLabel.setStyle("-fx-font-weight: bold;");
-
-        isobaricTypeComboBox = new ComboBox<>(isobaricBaseTypes);
-        isobaricTypeComboBox.setMinWidth(200);
-        isobaricTypeComboBox.setPrefWidth(220);
-        isobaricTypeComboBox.setMaxWidth(Double.MAX_VALUE);
-        isobaricTypeComboBox.setOnAction(e -> updateIsobaricTable());
-        HBox.setHgrow(isobaricTypeComboBox, Priority.ALWAYS);
-
-        typeBox.getChildren().addAll(typeLabel, isobaricTypeComboBox);
-
-        isobaricTable = new TableView<>(isobaricTableData);
-        isobaricTable.setMinHeight(120);
-        isobaricTable.setPrefHeight(140);
-        isobaricTable.setMaxHeight(Double.MAX_VALUE);
-        isobaricTable.setEditable(true);
-        isobaricTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
-        VBox.setVgrow(isobaricTable, Priority.ALWAYS);
-
-        TableColumn<IsobaricLabelingPanel.IsobaricLabelRow, String> labelCol = new TableColumn<>("Label");
-        labelCol.setCellValueFactory(new PropertyValueFactory<>("labelName"));
-        labelCol.setMinWidth(120);
-        labelCol.setPrefWidth(150);
-
-        TableColumn<IsobaricLabelingPanel.IsobaricLabelRow, String> minus2Col = new TableColumn<>("-2");
-        minus2Col.setCellValueFactory(new PropertyValueFactory<>("minus2"));
-        minus2Col.setCellFactory(TextFieldTableCell.forTableColumn(new DefaultStringConverter()));
-        minus2Col.setOnEditCommit(e -> e.getRowValue().setMinus2(e.getNewValue()));
-        minus2Col.setMinWidth(50);
-        minus2Col.setPrefWidth(60);
-
-        TableColumn<IsobaricLabelingPanel.IsobaricLabelRow, String> minus1Col = new TableColumn<>("-1");
-        minus1Col.setCellValueFactory(new PropertyValueFactory<>("minus1"));
-        minus1Col.setCellFactory(TextFieldTableCell.forTableColumn(new DefaultStringConverter()));
-        minus1Col.setOnEditCommit(e -> e.getRowValue().setMinus1(e.getNewValue()));
-        minus1Col.setMinWidth(50);
-        minus1Col.setPrefWidth(60);
-
-        TableColumn<IsobaricLabelingPanel.IsobaricLabelRow, String> plus1Col = new TableColumn<>("+1");
-        plus1Col.setCellValueFactory(new PropertyValueFactory<>("plus1"));
-        plus1Col.setCellFactory(TextFieldTableCell.forTableColumn(new DefaultStringConverter()));
-        plus1Col.setOnEditCommit(e -> e.getRowValue().setPlus1(e.getNewValue()));
-        plus1Col.setMinWidth(50);
-        plus1Col.setPrefWidth(60);
-
-        TableColumn<IsobaricLabelingPanel.IsobaricLabelRow, String> plus2Col = new TableColumn<>("+2");
-        plus2Col.setCellValueFactory(new PropertyValueFactory<>("plus2"));
-        plus2Col.setCellFactory(TextFieldTableCell.forTableColumn(new DefaultStringConverter()));
-        plus2Col.setOnEditCommit(e -> e.getRowValue().setPlus2(e.getNewValue()));
-        plus2Col.setMinWidth(50);
-        plus2Col.setPrefWidth(60);
-
-        isobaricTable.getColumns().addAll(labelCol, minus2Col, minus1Col, plus1Col, plus2Col);
-
-        panel.getChildren().addAll(typeBox, isobaricTable);
-        return panel;
-    }
-
-    private void updateIsobaricTable() {
-        String selectedType = isobaricTypeComboBox.getValue();
-        isobaricTableData.clear();
-        
-        if (selectedType != null) {
-            // Find the IsobaricTag that matches the selected type
-            IsobaricTag selectedTag = null;
-            IsobaricTag[] tags = IsobaricTag.getPFindTags();
-            for (IsobaricTag tag : tags) {
-                if (tag.getName().equals(selectedType)) {
-                    selectedTag = tag;
-                    break;
-                }
-            }
-            
-            if (selectedTag != null) {
-                // Use the getReportTitle() method to get the proper labels
-                String[] reportTitles = selectedTag.getReportTitle();
-                for (String title : reportTitles) {
-                    isobaricTableData.add(new IsobaricLabelingPanel.IsobaricLabelRow(title));
-                }
-            }
-            updateMetadataTable();
-        }
-    }
 
     // Add remaining missing methods
     private VBox createConsoleTab() {
@@ -976,7 +492,7 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
             return;
         }
         
-        ObservableList<MetaPilotIOPanelFX.ExperimentRow> experiments = ioPanel.getExperimentData();
+        ObservableList<MetaPilotIOPanelFX.ExperimentRow> experiments = ioPanel.getIoPanel().getExperimentData();
         metadataTableData.clear();
         for (MetaPilotIOPanelFX.ExperimentRow exp : experiments) {
             metadataTableData.add(new MetaPilotDdaIgcMaxQuantPanel.MetadataRow(exp.getExperimentName()));
@@ -999,7 +515,7 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
         metadataTable.setPrefHeight(150);
         metadataTable.setMaxHeight(Double.MAX_VALUE);
         metadataTable.setEditable(true);
-        metadataTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        metadataTable.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
         VBox.setVgrow(metadataTable, Priority.ALWAYS);
 
         createMetadataTableColumns();
@@ -1068,18 +584,6 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
         sampleCol.setMinWidth(120);
         sampleCol.setPrefWidth(150);
         metadataTable.getColumns().add(sampleCol);
-
-        if (quantModeGroup != null && quantModeGroup.getSelectedToggle() != null) {
-            RadioButton selected = (RadioButton) quantModeGroup.getSelectedToggle();
-            String mode = selected.getText();
-            if (mode.contains("Isobaric")) {
-                TableColumn<MetaPilotDdaIgcMaxQuantPanel.MetadataRow, String> labelCol = new TableColumn<>("Label Type");
-                labelCol.setCellValueFactory(new PropertyValueFactory<>("labelType"));
-                labelCol.setMinWidth(120);
-                labelCol.setPrefWidth(150);
-                metadataTable.getColumns().add(labelCol);
-            }
-        }
     }
 
     private void updateParameterView() {
@@ -1092,10 +596,10 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
 
         // Database settings
         sb.append("Database Settings:\n");
-        sb.append("  Microbiome DB: ").append(microbiomeDBField != null ? microbiomeDBField.getText() : "").append("\n");
-        sb.append("  Append Host DB: ").append(appendHostDBCheckBox != null ? appendHostDBCheckBox.isSelected() : false).append("\n");
-        if (appendHostDBCheckBox != null && appendHostDBCheckBox.isSelected() && hostDBField != null && !hostDBField.getText().isEmpty()) {
-            sb.append("  Host Database: ").append(hostDBField.getText()).append("\n");
+        sb.append("  Microbiome DB: ").append(ioPanel != null ? ioPanel.getMicrobiomeDBPath() : "").append("\n");
+        sb.append("  Append Host DB: ").append(ioPanel != null ? ioPanel.isHostDBEnabled() : false).append("\n");
+        if (ioPanel != null && ioPanel.isHostDBEnabled() && !ioPanel.getHostDBPath().isEmpty()) {
+            sb.append("  Host Database: ").append(ioPanel.getHostDBPath()).append("\n");
         }
         sb.append("\n");
 
@@ -1114,8 +618,8 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
 
         // Fixed modifications
         sb.append("Fixed Modifications:\n");
-        if (fixedModData != null) {
-            for (FixedModificationRow row : fixedModData) {
+        if (modificationsPanel != null) {
+            for (ModificationsPanel.FixedModificationRow row : modificationsPanel.getFixedModData()) {
                 if (row.getDeltaMass() != 0.0) {
                     sb.append("  ").append(row.getSite()).append(": ").append(row.getDeltaMass()).append("\n");
                 }
@@ -1125,8 +629,8 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
 
         // Variable modifications
         sb.append("Variable Modifications:\n");
-        if (variableModData != null) {
-            for (VariableModificationRow row : variableModData) {
+        if (modificationsPanel != null) {
+            for (ModificationsPanel.VariableModificationRow row : modificationsPanel.getVariableModData()) {
                 if (row.getUse()) {
                     sb.append("  ").append(row.getModName()).append(" (").append(row.getSites()).append("): ")
                       .append(row.getDeltaMass()).append("\n");
@@ -1140,8 +644,11 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
         if (threadsSpinner != null) {
             sb.append("  Threads: ").append(threadsSpinner.getValue()).append("\n");
         }
-        if (ms2ScanModeComboBox != null) {
-            sb.append("  MS2 Scan Mode: ").append(ms2ScanModeComboBox.getValue()).append("\n");
+        if (workflowComboBox != null) {
+            sb.append("  Workflow: ").append(workflowComboBox.getValue()).append("\n");
+        }
+        if (msDataTypeComboBox != null) {
+            sb.append("  MS data type: ").append(msDataTypeComboBox.getValue()).append("\n");
         }
         if (generateSampleSpecificDBCheckBox != null) {
             sb.append("  Generate Sample-specific DB: ").append(generateSampleSpecificDBCheckBox.isSelected()).append("\n");
@@ -1151,36 +658,11 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
         }
         sb.append("\n");
 
-        // Quantitative mode
-        sb.append("Quantitative Mode:\n");
-        if (quantModeGroup != null && quantModeGroup.getSelectedToggle() != null) {
-            RadioButton selected = (RadioButton) quantModeGroup.getSelectedToggle();
-            sb.append("  Mode: ").append(selected.getText()).append("\n");
-
-            if (selected.getText().contains("Isobaric") && isobaricTypeComboBox != null) {
-                sb.append("  Isobaric Type: ").append(isobaricTypeComboBox.getValue()).append("\n");
-                sb.append("  Configured Labels: ").append(isobaricTableData.size()).append("\n");
-            }
-        }
-        sb.append("\n");
+        // Note: Quantitative mode is determined by the selected workflow
+        sb.append("Quantitative Mode: Determined by workflow selection\n\n");
 
         // Taxonomic analysis
-        sb.append("Taxonomic Analysis:\n");
-        if (eukaryotaCheckBox != null) {
-            sb.append("  Eukaryota: ").append(eukaryotaCheckBox.isSelected()).append("\n");
-        }
-        if (bacteriaCheckBox != null) {
-            sb.append("  Bacteria: ").append(bacteriaCheckBox.isSelected()).append("\n");
-        }
-        if (archaeaCheckBox != null) {
-            sb.append("  Archaea: ").append(archaeaCheckBox.isSelected()).append("\n");
-        }
-        if (virusesCheckBox != null) {
-            sb.append("  Viruses: ").append(virusesCheckBox.isSelected()).append("\n");
-        }
-        if (ignoreRankComboBox != null) {
-            sb.append("  Ignore Rank: ").append(ignoreRankComboBox.getValue()).append("\n");
-        }
+        sb.append("\n").append(taxonomicAnalysisPanel.getTaxonomicSummary());
 
         parameterView.setText(sb.toString());
     }
@@ -1191,30 +673,14 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
         }
         
         metadataTableData.clear();
-        ObservableList<MetaPilotIOPanelFX.ExperimentRow> fileRows = ioPanel.getExperimentData();
+        ObservableList<MetaPilotIOPanelFX.ExperimentRow> fileRows = ioPanel.getIoPanel().getExperimentData();
         if (fileRows.isEmpty()) return;
 
         createMetadataTableColumns();
 
-        if (quantModeGroup != null && quantModeGroup.getSelectedToggle() != null) {
-            RadioButton selected = (RadioButton) quantModeGroup.getSelectedToggle();
-            String mode = selected.getText();
-            boolean hasLabels = !isobaricTableData.isEmpty();
-
-            if (mode.contains("Isobaric") && hasLabels) {
-                for (MetaPilotIOPanelFX.ExperimentRow row : fileRows) {
-                    for (IsobaricLabelingPanel.IsobaricLabelRow isoLabel : isobaricTableData) {
-                        MetaPilotDdaIgcMaxQuantPanel.MetadataRow metadataRow = 
-                            new MetaPilotDdaIgcMaxQuantPanel.MetadataRow(row.getExperimentName());
-                        metadataRow.setLabelType("Isobaric - " + isoLabel.getLabelName());
-                        metadataTableData.add(metadataRow);
-                    }
-                }
-            } else {
-                for (MetaPilotIOPanelFX.ExperimentRow row : fileRows) {
-                    metadataTableData.add(new MetaPilotDdaIgcMaxQuantPanel.MetadataRow(row.getExperimentName()));
-                }
-            }
+        // Simple metadata table for label-free mode (quantitative mode determined by workflow)
+        for (MetaPilotIOPanelFX.ExperimentRow row : fileRows) {
+            metadataTableData.add(new MetaPilotDdaIgcMaxQuantPanel.MetadataRow(row.getExperimentName()));
         }
     }
 
@@ -1287,4 +753,45 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
         consoleOutput.appendText("Stopping FragPipe analysis...\n");
         System.out.println("DEBUG: stopAnalysis called");
     }
+    
+    private boolean validateInputs() {
+        if (ioPanel.getIoPanel().getExperimentData().isEmpty()) {
+            showAlert("Validation Error", "Please add at least one experiment.");
+            return false;
+        }
+        if (ioPanel.getIoPanel().getOutputDirectory().isEmpty()) {
+            showAlert("Validation Error", "Please select an output directory.");
+            return false;
+        }
+        if (ioPanel.getMicrobiomeDBPath().isEmpty()) {
+            showAlert("Validation Error", "Please select a microbiome database file.");
+            return false;
+        }
+        if (ioPanel.isHostDBEnabled() && ioPanel.getHostDBPath().isEmpty()) {
+            showAlert("Validation Error", "Please select a host database file.");
+            return false;
+        }
+        if (enzymeComboBox.getValue() == null) {
+            showAlert("Validation Error", "Please select an enzyme.");
+            return false;
+        }
+        return true;
+    }
+    
+    private void showAlert(String title, String message) {
+        Alert alert = new Alert(AlertType.INFORMATION);
+        alert.setTitle(title);
+        alert.setHeaderText(null);
+        alert.setContentText(message);
+        alert.showAndWait();
+    }
+    
+    private void showError(String title, String content) {
+        Alert alert = new Alert(AlertType.ERROR);
+        alert.setTitle(title);
+        alert.setHeaderText(null);
+        alert.setContentText(content);
+        alert.showAndWait();
+    }
+    
 } 

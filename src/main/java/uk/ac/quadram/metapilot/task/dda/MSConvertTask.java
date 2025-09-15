@@ -11,7 +11,7 @@ import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
+import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.spectra.Spectrum;
@@ -25,28 +25,28 @@ public class MSConvertTask extends MetaAbstractTask {
 	private static final Logger LOGGER = LogManager.getLogger(MSConvertTask.class);
 	private static final String taskName = "pFind spectrum convert workflow";
 
-	public MSConvertTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar) {
+	public MSConvertTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar) {
 		super(metaPar, mrp, progressBar);
 		// TODO Auto-generated constructor stub
 	}
 
 	@Override
 	protected String getTaskName() {
-		// TODO Auto-generated method stub
+		// TODO Auto-generated constructor stub
 		return taskName;
 	}
 
 	@Override
 	protected Logger getLogger() {
-		// TODO Auto-generated method stub
+		// TODO Auto-generated constructor stub
 		return LOGGER;
 	}
 
 	@Override
 	protected Boolean call() throws Exception {
-		// TODO Auto-generated method stub
+		// TODO Auto-generated constructor stub
 
-		progressBar.setString(getTaskName() + ": extracting spectra");
+		updateMessage(getTaskName() + ": extracting spectra");
 
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": extracting spectra started");
 		LOGGER.info(getTaskName() + ": extracting spectra started");

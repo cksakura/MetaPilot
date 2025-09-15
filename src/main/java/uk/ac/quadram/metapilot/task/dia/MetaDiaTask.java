@@ -27,6 +27,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.math.NumberUtils;
@@ -50,14 +52,16 @@ import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNResultReader;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNTask;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiannParameter;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiannPrMatrixReader;
-import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
 import uk.ac.quadram.metapilot.quant.flashLFQ.FlashLfqQuanPeptide;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.task.MetaPythonReportTask;
-import uk.ac.quadram.metapilot.task.MetaReportCopyTask;
+import uk.ac.quadram.metapilot.task.MetaPythonReportCopyTask;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParaIoDia;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
+import uk.ac.quadram.metapilot.task.dia.target.par.MetaParameterDiaTg;
+import uk.ac.quadram.metapilot.task.par.MetaData;
+import javafx.application.Platform;
 import uk.ac.quadram.metapilot.task.io.MetaTreeHandler;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
@@ -65,11 +69,11 @@ import uk.ac.quadram.metapilot.task.io.pro.pfind.MetaProteinAnnoEggNog;
 import uk.ac.quadram.metapilot.task.io.pro.pfind.MetaProteinXMLReader2;
 import uk.ac.quadram.metapilot.task.mag.HMGenomeHtmlWriter;
 import uk.ac.quadram.metapilot.task.mag.MagFuncSearcher;
-import uk.ac.quadram.metapilot.task.mag.MagHapPFindTask;
+import uk.ac.quadram.metapilot.task.mag.MetaPilotMagTask;
 import uk.ac.quadram.metapilot.task.mag.MetaProteinAnnoMag;
-import uk.ac.quadram.metapilot.task.mag.par.MetaParameterMag;
+import javafx.scene.control.ProgressBar;
 
-public class MetaDiaTask extends MagHapPFindTask {
+public class MetaDiaTask extends MetaPilotMagTask {
 
 	protected String[] diaFiles;
 	protected DiaNNTask diaNNTask;
@@ -79,57 +83,153 @@ public class MetaDiaTask extends MagHapPFindTask {
 	private boolean libSearch;
 	private boolean selfModelSearch;
 	
+	// Fields that were available in MagHapPFindTask but not in MetaPilotMagTask
+	protected MetaData metadata;
+	protected String[] expNames;
+	protected int[] fractions;
+	protected int maxTaskCount;
+	protected File final_pro_xml_file;
+	protected File reportHtmlDir;
+	protected File final_summary_txt;
+	protected File resultFolderFile;
+	
 	private static final Logger LOGGER = LogManager.getLogger(MetaDiaTask.class);
 	private static final String taskName = "DIA data analysis";
 
-	public MetaDiaTask(MetaParameterDia metaPar, MetaResourceParameters mrp, JavaFXProgressBar bar1,
-			JavaFXProgressBar bar2) {
+	public MetaDiaTask(MetaParameterDia metaPar, MetaResourceParameters mrp, ProgressBar bar1,
+			ProgressBar bar2) {
 		super(metaPar, mrp, bar1, bar2);
-	}
-	
-	protected void initial() {
+
+		LOGGER.info("Initializing MetaDiaTask...");
+		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": initializing task");
 
 		this.metadata = metaPar.getMetadata();
-		this.magDb = ((MetaParameterMag) metaPar).getUsedMagDbItem();
-		this.threadCount = metaPar.getThreadCount();
+		LOGGER.info("Metadata loaded: {}", metadata != null ? "Yes" : "No");
 
-		this.diaNNTask = new DiaNNTask(mrp.getToolPath(ToolType.DIANN));
+		this.magDb = metaPar.getMagDbItem();
+		if (magDb != null) {
+			LOGGER.info("MAG database loaded: {} (version: {})", magDb.getCatalogueID(),
+					magDb.getUsedVersion() != null ? magDb.getUsedVersion().getCatalogueVersion() : "unknown");
+		} else {
+			LOGGER.error("MAG database is null!");
+		}
+
+		this.threadCount = metaPar.getThreadCount();
+		LOGGER.info("Thread count set to: {}", threadCount);
+
+		setTaskCount();
+		LOGGER.info("Task count set to: {}", maxTaskCount);
+
+		// Initialize DiaNN task
+		String diaNNPath = mrp.getToolPath(ToolType.DIANN);
+		LOGGER.info("DiaNN path: {}", diaNNPath);
+		
+		// Validate DiaNN path
+		if (diaNNPath == null || diaNNPath.trim().isEmpty()) {
+			LOGGER.error("DiaNN path is null or empty!");
+			System.err.println("ERROR: DiaNN path is not configured in MetaResourceParameters");
+			return;
+		}
+		
+		File diaNNFile = new File(diaNNPath);
+		if (!diaNNFile.exists()) {
+			LOGGER.error("DiaNN executable not found at path: {}", diaNNPath);
+			System.err.println("ERROR: DiaNN executable not found at: " + diaNNPath);
+			return;
+		}
+		
+		this.diaNNTask = new DiaNNTask(diaNNPath);
+		LOGGER.info("DiaNN task initialized successfully");
+
+		// Initialize DiaLibSearchPar
 		this.diaLibSearchPar = new DiaLibSearchPar();
 		this.diaLibSearchPar.setThreadCount(metaPar.getThreadCount());
+		LOGGER.info("DiaLibSearchPar initialized with thread count: {}", metaPar.getThreadCount());
 
+		// Initialize DiannParameter
 		this.diannPar = new DiannParameter();
 		this.diannPar.setThreads(metaPar.getThreadCount());
-		this.libSearch = ((MetaParameterDia) metaPar).isLibrarySearch();
-		this.selfModelSearch = ((MetaParameterDia) metaPar).isSelfModelSearch();
+		LOGGER.info("DiannParameter initialized with thread count: {}", metaPar.getThreadCount());
 
+		// Set search modes
+		this.libSearch = metaPar.isLibrarySearch();
+		this.selfModelSearch = metaPar.isSelfModelSearch();
+		LOGGER.info("Search modes - Library search: {}, Self model search: {}", libSearch, selfModelSearch);
+
+		// Create result directory if not already set
+		if (metaPar.getDbSearchResultFile() == null) {
+			File diaResultDir;
+			if (this.libSearch) {
+				diaResultDir = new File(metaPar.getResult(), "library_analysis");
+				if (!diaResultDir.exists()) {
+					diaResultDir.mkdirs();
+					LOGGER.info("Created result directory: {}", diaResultDir.getAbsolutePath());
+				}
+			} else if (this.selfModelSearch) {
+				diaResultDir = new File(metaPar.getResult(), "self_model_analysis");
+				if (!diaResultDir.exists()) {
+					diaResultDir.mkdirs();
+					LOGGER.info("Created result directory: {}", diaResultDir.getAbsolutePath());
+				}
+			} else {
+				diaResultDir = new File(metaPar.getResult(), "iterative_analysis");
+				if (!diaResultDir.exists()) {
+					diaResultDir.mkdirs();
+					LOGGER.info("Created result directory: {}", diaResultDir.getAbsolutePath());
+				}
+			}
+			metaPar.setDbSearchResultFile(diaResultDir);
+		} else {
+			LOGGER.info("Result directory already exist: {}", metaPar.getDbSearchResultFile().getAbsolutePath());
+		}
+		
+		// Set the resultFolderFile field
 		this.resultFolderFile = metaPar.getDbSearchResultFile();
+		
+		LOGGER.info("Result folder file: {}",
+				resultFolderFile != null ? resultFolderFile.getAbsolutePath() : "null");
+
 		this.expNameMap = new HashMap<String, String>();
+		LOGGER.info("Experiment name map initialized");
 
 		if (metadata != null) {
 			this.rawFiles = metadata.getRawFiles();
 			this.expNames = metadata.getExpNames();
-			this.quanExpNames = new String[rawFiles.length];
 			this.fractions = metadata.getFractions();
 
+			LOGGER.info("Metadata processing:");
+			LOGGER.info("  Raw files count: {}", rawFiles != null ? rawFiles.length : 0);
+			LOGGER.info("  Experiment names count: {}", expNames != null ? expNames.length : 0);
+			LOGGER.info("  Fractions count: {}", fractions != null ? fractions.length : 0);
+
 			if (rawFiles != null && rawFiles.length > 0) {
+				this.quanExpNames = new String[rawFiles.length];
+				LOGGER.info("Processing raw files:");
 				for (int i = 0; i < rawFiles.length; i++) {
 					this.quanExpNames[i] = rawFiles[i].substring(rawFiles[i].lastIndexOf("\\") + 1,
 							rawFiles[i].lastIndexOf("."));
 					this.expNameMap.put(quanExpNames[i], expNames[i]);
+					LOGGER.info("    Raw file {}: {} -> {}", i + 1, rawFiles[i], quanExpNames[i]);
 				}
+				LOGGER.info("Experiment name mapping completed: {} entries", expNameMap.size());
+			} else {
+				LOGGER.warn("No raw files found in metadata");
 			}
+		} else {
+			LOGGER.warn("Metadata is null - no raw files to process");
 		}
 
-		setTaskCount();
+		LOGGER.info("MetaDiaTask initialization completed successfully");
+		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": initialization completed");
 	}
-	
-	protected boolean spectraConvert() {
 
-		LOGGER.info(getTaskName() + ": converting raw files started");
+	protected boolean spectraConvert() {
+		LOGGER.info("Starting spectra conversion for {} files", rawFiles != null ? rawFiles.length : 0);
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": converting raw files started");
 
 		ArrayList<String> list = new ArrayList<String>();
 		this.diaFiles = new String[rawFiles.length];
+		LOGGER.info("Processing {} raw files for DIA format conversion", rawFiles.length);
 		for (int i = 0; i < diaFiles.length; i++) {
 			if (rawFiles[i].endsWith(".dia") || rawFiles[i].endsWith(".DIA")) {
 				diaFiles[i] = rawFiles[i];
@@ -152,19 +252,34 @@ public class MetaDiaTask extends MagHapPFindTask {
 		}
 
 		if (list.size() > 0) {
+			LOGGER.info("Adding {} raw files to DiaNN conversion task", list.size());
+			for (String file : list) {
+				LOGGER.info("  Converting: {} -> {}.dia", file, file);
+			}
 			diaNNTask.addTask(diannPar, list.toArray(String[]::new));
 		}
 
+		LOGGER.info("Starting DiaNN conversion with {} threads", diaFiles.length);
 		diaNNTask.run(1, diaFiles.length);
+		LOGGER.info("DiaNN conversion completed");
 
 		for (int i = 0; i < diaFiles.length; i++) {
 			File file = new File(diaFiles[i]);
 			if (!file.exists()) {
 				LOGGER.error(getTaskName() + ": converting raw file to " + diaFiles[i] + " failed");
+				LOGGER.error("Expected output file does not exist: {}", file.getAbsolutePath());
+				LOGGER.error("Original raw file: {}", rawFiles[i]);
 				System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": converting raw file to "
 						+ diaFiles[i] + " failed");
+				System.err.println("Expected output file: " + file.getAbsolutePath());
+				System.err.println("Original raw file: " + rawFiles[i]);
+				System.err.println("ERROR: cannot read .raw files, please download and install .NET Runtime .NET SDK 8.0.407 or later");
+				System.err.println("https://dotnet.microsoft.com/en-us/download/dotnet/8.0");
 
 				return false;
+			} else {
+				LOGGER.info("Successfully converted: {} -> {} (size: {} bytes)", 
+					rawFiles[i], diaFiles[i], file.length());
 			}
 		}
 
@@ -174,20 +289,21 @@ public class MetaDiaTask extends MagHapPFindTask {
 		return true;
 	}
 
-	protected boolean createSSDB() {
-		
-		setProgress(0);
-		
+	protected boolean createSSLibrary() {
+		LOGGER.info("Starting sample-specific library creation...");
+		updateProgress(0, 100);
+
 		if (libSearch) {
+			LOGGER.info("Library search mode detected - skipping sample-specific library creation");
 			return true;
 		}
 
-		LOGGER.info(getTaskName() + ": iterative search started");
+		LOGGER.info("starting iterative search for sample-specific library creation");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": iterative search started");
 
-		boolean searchHap = this.separateSearchHap();
+		boolean iterativeSearch = this.iterativeSearch();
 
-		if (searchHap) {
+		if (iterativeSearch) {
 			LOGGER.info(getTaskName() + ": iterative search finished");
 			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": iterative search finished");
 
@@ -201,12 +317,16 @@ public class MetaDiaTask extends MagHapPFindTask {
 	}
 	
 	protected boolean iden() {
+		LOGGER.info("Starting identification process...");
+		updateMessage(getTaskName() + ": peptide and protein identification");
+		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": peptide and protein identification started");
 
-		progressBar.setString(getTaskName() + ": peptide and protein identification");
-		LOGGER.info(getTaskName() + ": peptide and protein identification started");
-		System.out.println(
-				format.format(new Date()) + "\t" + getTaskName() + ": peptide and protein identification started");
-
+		LOGGER.info("Configuring DiaLibSearchPar:");
+		LOGGER.info("  DIA files count: {}", diaFiles != null ? diaFiles.length : 0);
+		LOGGER.info("  Thread count: {}", threadCount);
+		LOGGER.info("  Q-value threshold: 0.01");
+		LOGGER.info("  MBR enabled: true");
+		
 		diaLibSearchPar.setMbr(true);
 		diaLibSearchPar.setDiaFiles(diaFiles);
 		diaLibSearchPar.setThreadCount(threadCount);
@@ -217,8 +337,14 @@ public class MetaDiaTask extends MagHapPFindTask {
 		diannPar.setRelaxed_prot_inf(true);
 		diannPar.setReanalyse(true);
 
-		this.quan_pep_file = new File(resultFolderFile, "combined.pr_matrix.tsv");
-		File combineParquetFile = new File(resultFolderFile, "combined.parquet");
+		File combinedFile = new File(metaPar.getDbSearchResultFile(), "combined");
+		if (!combinedFile.exists()) {
+			combinedFile.mkdir();
+		}
+		this.quan_pep_file = new File(combinedFile, "combined.pr_matrix.tsv");
+		this.quan_pro_file = new File(combinedFile, "combined.pg_matrix.tsv");
+		
+		File combineParquetFile = new File(combinedFile, "combined.parquet");
 
 		if (!quan_pep_file.exists() || !combineParquetFile.exists()) {
 
@@ -227,48 +353,54 @@ public class MetaDiaTask extends MagHapPFindTask {
 
 			if (libSearch) {
 
-				setProgress(10);
+				updateProgress(10, 100);
 
 				diannPar.setExportDecoy(true);
+				
+				if (metaPar instanceof MetaParameterDiaTg) {
+					String libraryPath = ((MetaParameterDiaTg) metaPar).getLibraryPath();
+					diaNNTask.addTask(diannPar, diaLibSearchPar, combineParquetFile.getAbsolutePath(),
+							new String[] { libraryPath });
+				} else {
+					File magDbFile = this.magDb.getCurrentFile();
+					File libFolderFile = new File(magDbFile, "libraries");
 
-				File magDbFile = this.magDb.getCurrentFile();
-				File libFolderFile = new File(magDbFile, "libraries");
-
-				String[] usedLibs = ((MetaParameterDia) metaPar).getLibrary();
-				String[] libPath = new String[usedLibs.length];
-				for (int i = 0; i < usedLibs.length; i++) {
-					File directLibFile = new File(usedLibs[i]);
-					if (directLibFile.exists()) {
-						libPath[i] = directLibFile.getAbsolutePath();
-					} else {
-						File libFile = new File(new File(libFolderFile, usedLibs[i]), usedLibs[i] + ".speclib");
-						File libTsvFile = new File(new File(libFolderFile, usedLibs[i]), usedLibs[i] + ".tsv");
-						if (libPath.length == 1) {
-							libPath[i] = libFile.getAbsolutePath();
-							if (!libFile.exists()) {
-								LOGGER.error(getTaskName() + ": library file doesn't exist in " + libFile);
-								System.err.println(format.format(new Date()) + "\t" + getTaskName()
-										+ ": library file doesn't exist in " + libFile);
-
-								return false;
-							}
+					String[] usedLibs = ((MetaParameterDia) metaPar).getLibrary();
+					String[] libPath = new String[usedLibs.length];
+					for (int i = 0; i < usedLibs.length; i++) {
+						File directLibFile = new File(usedLibs[i]);
+						if (directLibFile.exists()) {
+							libPath[i] = directLibFile.getAbsolutePath();
 						} else {
-							libPath[i] = libTsvFile.getAbsolutePath();
-							if (!libTsvFile.exists()) {
-								LOGGER.error(getTaskName() + ": library file doesn't exist in " + libTsvFile);
-								System.err.println(format.format(new Date()) + "\t" + getTaskName()
-										+ ": library file doesn't exist in " + libTsvFile);
+							File libFile = new File(new File(libFolderFile, usedLibs[i]), usedLibs[i] + ".speclib");
+							File libTsvFile = new File(new File(libFolderFile, usedLibs[i]), usedLibs[i] + ".tsv");
+							if (libPath.length == 1) {
+								libPath[i] = libFile.getAbsolutePath();
+								if (!libFile.exists()) {
+									LOGGER.error(getTaskName() + ": library file doesn't exist in " + libFile);
+									System.err.println(format.format(new Date()) + "\t" + getTaskName()
+											+ ": library file doesn't exist in " + libFile);
 
-								return false;
+									return false;
+								}
+							} else {
+								libPath[i] = libTsvFile.getAbsolutePath();
+								if (!libTsvFile.exists()) {
+									LOGGER.error(getTaskName() + ": library file doesn't exist in " + libTsvFile);
+									System.err.println(format.format(new Date()) + "\t" + getTaskName()
+											+ ": library file doesn't exist in " + libTsvFile);
+
+									return false;
+								}
 							}
 						}
 					}
-				}
-				diaNNTask.addTask(diannPar, diaLibSearchPar, combineParquetFile.getAbsolutePath(), libPath);
+					diaNNTask.addTask(diannPar, diaLibSearchPar, combineParquetFile.getAbsolutePath(), libPath);
+				}				
 				diaNNTask.run(diaFiles.length * 12);
 			} else {
 
-				setProgress(75);
+				updateProgress(75, 100);
 
 				HashSet<String> pepSet = new HashSet<String>();
 				for (int i = 0; i < separateResultFolders.length; i++) {
@@ -336,7 +468,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 					}
 				}
 
-				File hostFile = new File(metaPar.getResult(), "host");
+				File hostFile = new File(resultFolderFile, "host");
 				File hostTsvFile = new File(hostFile, "host.parquet");
 				if (hostTsvFile.exists()) {
 					try {
@@ -351,7 +483,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 					}
 				}
 
-				File fastaFile = new File(resultFolderFile, "combined.fasta");
+				File fastaFile = new File(combinedFile, "combined.fasta");
 				if (!fastaFile.exists() || fastaFile.length() == 0) {
 					try (PrintWriter fastaWriter = new PrintWriter(fastaFile)) {
 
@@ -372,11 +504,11 @@ public class MetaDiaTask extends MagHapPFindTask {
 					}
 				}
 
-				File combineLibFile = new File(resultFolderFile, "combined.speclib");
+				File combineLibFile = new File(combinedFile, "combined.speclib");
 
 				if (!combineLibFile.exists() || combineLibFile.length() == 0) {
 
-					File tempLibFile = new File(resultFolderFile, "combined.predicted.speclib");
+					File tempLibFile = new File(combinedFile, "combined.predicted.speclib");
 					if (tempLibFile.exists()) {
 						tempLibFile.renameTo(combineLibFile);
 					} else {
@@ -417,7 +549,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 
 		cleanTempFiles();
 
-		setProgress(85);
+		updateProgress(85, 100);
 
 		return true;
 	}
@@ -429,7 +561,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 		LOGGER.info(getTaskName() + ": exporting peptide report started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting peptide report started");
 
-		this.final_pep_txt = new File(metaPar.getResult(), "final_peptides.tsv");
+		this.final_pep_txt = new File(resultFolderFile, "final_peptides.tsv");
 		HashMap<String, HashSet<Integer>> proPepIdMap = new HashMap<String, HashSet<Integer>>();
 
 		PrintWriter writer = null;
@@ -553,7 +685,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 		LOGGER.info(getTaskName() + ": exporting protein report started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting protein report started");
 
-		this.final_pro_txt = new File(metaPar.getResult(), "final_proteins.tsv");
+		this.final_pro_txt = new File(resultFolderFile, "final_proteins.tsv");
 
 		PrintWriter writer = null;
 		try {
@@ -771,13 +903,12 @@ public class MetaDiaTask extends MagHapPFindTask {
 		}
 	}
 	
-	protected boolean separateSearchHap() {
-
-		LOGGER.info(getTaskName() + ": parsing peptide from the libraries started");
-		System.out.println(
-				format.format(new Date()) + "\t" + getTaskName() + ": parsing peptide from the libraries started");
+	protected boolean iterativeSearch() {
+		LOGGER.info("Starting iterative search process...");
+		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": parsing peptide from the libraries started");
 
 		MetaParameterDia diaPar = (MetaParameterDia) metaPar;
+		LOGGER.info("Retrieved MetaParameterDia from metaPar");
 		String[] usedLibs = diaPar.getLibrary();
 
 		File magDbFile = this.magDb.getCurrentFile();
@@ -796,7 +927,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 
 				File libFile = new File(new File(libFolderFile, "host"), "host.speclib");
 
-				File hostFile = new File(metaPar.getResult(), "host");
+				File hostFile = new File(resultFolderFile, "host");
 				if (!hostFile.exists()) {
 					hostFile.mkdirs();
 				}
@@ -824,7 +955,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 							+ ": host library search result already existed in " + hostFile);
 				}
 
-				setProgress(15);
+				updateProgress(15, 100);
 
 				LOGGER.info(getTaskName() + ": host library search finished");
 				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": host library search finished");
@@ -865,7 +996,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 				} else if (name.endsWith(".mzML")) {
 					name = name.substring(0, name.length() - 5);
 				}
-				this.separateResultFolders[i] = new File(metaPar.getResult(), name);
+				this.separateResultFolders[i] = new File(resultFolderFile, name);
 
 				if (!this.separateResultFolders[i].exists()) {
 					this.separateResultFolders[i].mkdir();
@@ -912,7 +1043,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 			}
 		}
 
-		setProgress(20);
+		updateProgress(20, 100);
 
 		LOGGER.info(getTaskName() + ": round 1 library search finished");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": round 1 library search finished");
@@ -928,7 +1059,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 			this.buildSelfModel();
 		}
 		
-		setProgress(35);
+		updateProgress(35, 100);
 
 		firstTaskCount = 0;
 		for (int i = 0; i < separateResultFolders.length; i++) {
@@ -971,7 +1102,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 							ArrayList<String> modelListI = new ArrayList<String>(modelPathList);
 							if (modelFile.exists()) {
 								File pepRankFile = new File(modelFile,
-										separateResultFolders[index].getName() + "_pep_rank.tsv");
+										"model_pep_rank.tsv");
 								if (pepRankFile.exists()) {
 									modelListI.add(pepRankFile.getAbsolutePath());
 								}
@@ -994,27 +1125,41 @@ public class MetaDiaTask extends MagHapPFindTask {
 							
 							String[] modelPath = modelListI.toArray(String[]::new);
 							if (modelPath.length > 0) {
+								// MODELS DETECTED - Using ML model-based approach
+								LOGGER.info(getTaskName() + ": *** USING ML MODELS *** - Found " + modelPath.length + " models for iterative search");
+								System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": *** USING ML MODELS *** - Found " + modelPath.length + " models for iterative search");
+								
+								// Log which models are being used
+								for (int m = 0; m < modelPath.length; m++) {
+									LOGGER.info(getTaskName() + ": Model " + (m + 1) + ": " + modelPath[m]);
+									System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Model " + (m + 1) + ": " + modelPath[m]);
+								}
+								
 								HashSet<String> genomeSet1 = getGenomeSet(firstFile, 1.0, pepSet1, 5, false,
 										eachThreadCount);
 
 								LOGGER.info(getTaskName() + ": generating database for " + separateResultFolders[index]
-										+ ", " + pepSet1.size() + " peptide sequences were identified, "
+										+ " using ML models, " + pepSet1.size() + " peptide sequences were identified, "
 										+ genomeSet1.size() + " MAGs were used in this step");
 								System.out.println(format.format(new Date()) + "\t" + getTaskName()
-										+ ": generating database for " + separateResultFolders[index] + ", "
+										+ ": generating database for " + separateResultFolders[index] + " using ML models, "
 										+ pepSet1.size() + " peptide sequences were identified, " + genomeSet1.size()
 										+ " MAGs were used in this step");
 								dbFromModelPeptide(modelPath, genomeSet1, pepSet1, notUsedSet,
 										round1DbFile, 2000000);
 							} else {
+								// NO MODELS DETECTED - Using traditional predicted peptide approach
+								LOGGER.info(getTaskName() + ": *** NO ML MODELS FOUND *** - Using traditional predicted peptide approach for iterative search");
+								System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": *** NO ML MODELS FOUND *** - Using traditional predicted peptide approach for iterative search");
+								
 								HashSet<String> genomeSet1 = getGenomeSet(firstFile, 1.0, pepSet1, 5, true,
 										eachThreadCount);
 
 								LOGGER.info(getTaskName() + ": generating database for " + separateResultFolders[index]
-										+ ", " + pepSet1.size() + " peptide sequences were identified, "
+										+ " using predicted peptides (no models), " + pepSet1.size() + " peptide sequences were identified, "
 										+ genomeSet1.size() + " MAGs were used in this step");
 								System.out.println(format.format(new Date()) + "\t" + getTaskName()
-										+ ": generating database for " + separateResultFolders[index] + ", "
+										+ ": generating database for " + separateResultFolders[index] + " using predicted peptides (no models), "
 										+ pepSet1.size() + " peptide sequences were identified, " + genomeSet1.size()
 										+ " MAGs were used in this step");
 								dbFromPredictedPeptideFunc(predictedFolder, funcFolder, round1DbFile, genomeSet1,
@@ -1132,7 +1277,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 			}
 		}
 
-		setProgress(50);
+		updateProgress(50, 100);
 
 		LOGGER.info(getTaskName() + ": round 2 library search finished");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": round 2 library search finished");
@@ -1217,8 +1362,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 
 							ArrayList<String> modelListI = new ArrayList<String>(modelPathList);
 							if (modelFile.exists()) {
-								File pepRankFile = new File(modelFile,
-										separateResultFolders[index].getName() + "_pep_rank.tsv");
+								File pepRankFile = new File(modelFile, "model_pep_rank");
 								if (pepRankFile.exists()) {
 									modelListI.add(pepRankFile.getAbsolutePath());
 								}
@@ -1226,30 +1370,44 @@ public class MetaDiaTask extends MagHapPFindTask {
 
 							String[] modelPath = modelListI.toArray(String[]::new);
 							if (modelPath.length > 0) {
+								// MODELS DETECTED - Using ML model-based approach (Round 2)
+								LOGGER.info(getTaskName() + ": *** USING ML MODELS (ROUND 2) *** - Found " + modelPath.length + " models for iterative search");
+								System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": *** USING ML MODELS (ROUND 2) *** - Found " + modelPath.length + " models for iterative search");
+								
+								// Log which models are being used
+								for (int m = 0; m < modelPath.length; m++) {
+									LOGGER.info(getTaskName() + ": Model " + (m + 1) + ": " + modelPath[m]);
+									System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Model " + (m + 1) + ": " + modelPath[m]);
+								}
+								
 								HashSet<String> genomeSet2 = getGenomeSet(secondFile, 1.0, pepSet2, 5, false,
 										eachThreadCount);
 								LOGGER.info(getTaskName() + ": generating database for " + separateResultFolders[index]
-										+ ", " + pepSet2.size() + " peptide sequences were identified, "
+										+ " using ML models (Round 2), " + pepSet2.size() + " peptide sequences were identified, "
 										+ genomeSet2.size()
 										+ " MAGs were used in this step, the size of the excluded set is "
 										+ notUsedSet.size());
 								System.out.println(format.format(new Date()) + "\t" + getTaskName()
-										+ ": generating database for " + separateResultFolders[index] + ", "
+										+ ": generating database for " + separateResultFolders[index] + " using ML models (Round 2), "
 										+ pepSet2.size() + " peptide sequences were identified, " + genomeSet2.size()
 										+ " MAGs were used in this step, the size of the excluded set is "
 										+ notUsedSet.size());
 
 								dbFromModelPeptide(modelPath, genomeSet2, pepSet2, notUsedSet, round2DbFile, 2000000);
 							} else {
+								// NO MODELS DETECTED - Using traditional predicted peptide approach (Round 2)
+								LOGGER.info(getTaskName() + ": *** NO ML MODELS FOUND (ROUND 2) *** - Using traditional predicted peptide approach for iterative search");
+								System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": *** NO ML MODELS FOUND (ROUND 2) *** - Using traditional predicted peptide approach for iterative search");
+								
 								HashSet<String> genomeSet2 = getGenomeSet(secondFile, 1.0, pepSet2, 5, true,
 										eachThreadCount);
 								LOGGER.info(getTaskName() + ": generating database for " + separateResultFolders[index]
-										+ ", " + pepSet2.size() + " peptide sequences were identified, "
+										+ " using predicted peptides (no models, Round 2), " + pepSet2.size() + " peptide sequences were identified, "
 										+ genomeSet2.size()
 										+ " MAGs were used in this step, the size of the excluded set is "
 										+ notUsedSet.size());
 								System.out.println(format.format(new Date()) + "\t" + getTaskName()
-										+ ": generating database for " + separateResultFolders[index] + ", "
+										+ ": generating database for " + separateResultFolders[index] + " using predicted peptides (no models, Round 2), "
 										+ pepSet2.size() + " peptide sequences were identified, " + genomeSet2.size()
 										+ " MAGs were used in this step, the size of the excluded set is "
 										+ notUsedSet.size());
@@ -1478,8 +1636,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 
 							ArrayList<String> modelListI = new ArrayList<String>(modelPathList);
 							if (modelFile.exists()) {
-								File pepRankFile = new File(modelFile,
-										separateResultFolders[index].getName() + "_pep_rank.tsv");
+								File pepRankFile = new File(modelFile, "model_pep_rank");
 								if (pepRankFile.exists()) {
 									modelListI.add(pepRankFile.getAbsolutePath());
 								}
@@ -1487,28 +1644,42 @@ public class MetaDiaTask extends MagHapPFindTask {
 
 							String[] modelPath = modelListI.toArray(String[]::new);
 							if (modelPath.length > 0) {
+								// MODELS DETECTED - Using ML model-based approach (Round 3)
+								LOGGER.info(getTaskName() + ": *** USING ML MODELS (ROUND 3) *** - Found " + modelPath.length + " models for iterative search");
+								System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": *** USING ML MODELS (ROUND 3) *** - Found " + modelPath.length + " models for iterative search");
+								
+								// Log which models are being used
+								for (int m = 0; m < modelPath.length; m++) {
+									LOGGER.info(getTaskName() + ": Model " + (m + 1) + ": " + modelPath[m]);
+									System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Model " + (m + 1) + ": " + modelPath[m]);
+								}
+								
 								HashSet<String> genomeSet3 = getGenomeSet(thirdFile, 1.0, pepSet3, 5, false,
 										eachThreadCount);
 								LOGGER.info(getTaskName() + ": generating database for " + separateResultFolders[index]
-										+ ", " + genomeSet3.size()
+										+ " using ML models (Round 3), " + genomeSet3.size()
 										+ " MAGs were used in this step, the size of the excluded set is "
 										+ notUsedSet.size());
 								System.out.println(
 										format.format(new Date()) + "\t" + getTaskName() + ": generating database for "
-												+ separateResultFolders[index] + ", " + genomeSet3.size()
+												+ separateResultFolders[index] + " using ML models (Round 3), " + genomeSet3.size()
 												+ " MAGs were used in this step, the size of the excluded set is "
 												+ notUsedSet.size());
 								dbFromModelPeptide(modelPath, genomeSet3, pepSet3, notUsedSet, round3DbFile, 2000000);
 							} else {
+								// NO MODELS DETECTED - Using traditional predicted peptide approach (Round 3)
+								LOGGER.info(getTaskName() + ": *** NO ML MODELS FOUND (ROUND 3) *** - Using traditional predicted peptide approach for iterative search");
+								System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": *** NO ML MODELS FOUND (ROUND 3) *** - Using traditional predicted peptide approach for iterative search");
+								
 								HashSet<String> genomeSet3 = getGenomeSet(thirdFile, 1.0, pepSet3, 5, true,
 										eachThreadCount);
 								LOGGER.info(getTaskName() + ": generating database for " + separateResultFolders[index]
-										+ ", " + genomeSet3.size()
+										+ " using predicted peptides (no models, Round 3), " + genomeSet3.size()
 										+ " MAGs were used in this step, the size of the excluded set is "
 										+ notUsedSet.size());
 								System.out.println(
 										format.format(new Date()) + "\t" + getTaskName() + ": generating database for "
-												+ separateResultFolders[index] + ", " + genomeSet3.size()
+												+ separateResultFolders[index] + " using predicted peptides (no models, Round 3), " + genomeSet3.size()
 												+ " MAGs were used in this step, the size of the excluded set is "
 												+ notUsedSet.size());
 								dbFromPredictedPeptideFunc(predictedFolder, funcFolder, round3DbFile, genomeSet3,
@@ -1545,7 +1716,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 				return false;
 			}
 		}
-		setProgress(65);
+		updateProgress(65, 100);
 		
 		LOGGER.info(getTaskName() + ": round 4 library search started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": round 4 library search started");
@@ -1629,19 +1800,11 @@ public class MetaDiaTask extends MagHapPFindTask {
 		LOGGER.info(getTaskName() + ": round 4 library search finished");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": round 4 library search finished");
 
-		setProgress(80);
+		updateProgress(80, 100);
 
 		return true;
 	}
-	
-	protected boolean lfQuant() {
-		return true;
-	}
-	
-	protected boolean isobaricQuant() {
-		return true;
-	}
-	
+
 	protected String getVersion() {
 		return MetaParaIoDia.version;
 	}
@@ -2204,7 +2367,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 
 		HashMap<String, HashSet<String>> hostPepProMap = new HashMap<String, HashSet<String>>();
 		HashMap<String, HashSet<String>> hostProPepMap = new HashMap<String, HashSet<String>>();
-		File hostFile = new File(metaPar.getResult(), "host");
+		File hostFile = new File(resultFolderFile, "host");
 		File hostTsvFile = new File(hostFile, "host.tsv");
 		if (hostTsvFile.exists()) {
 			File magDbFile = this.magDb.getCurrentFile();
@@ -2244,8 +2407,10 @@ public class MetaDiaTask extends MagHapPFindTask {
 		MetaParameterDia diaPar = (MetaParameterDia) metaPar;
 		String[] usedLibs = diaPar.getLibrary();
 
+		File combinedFile = new File(metaPar.getDbSearchResultFile(), "combined");
 		HashMap<String, String> fastaProPepMap = new HashMap<String, String>();
-		File combinedFastaFile = new File(resultFolderFile, "combined.fasta");
+		
+		File combinedFastaFile = new File(combinedFile, "combined.fasta");
 		if (combinedFastaFile.exists()) {
 
 			try (BufferedReader reader = new BufferedReader(new FileReader(combinedFastaFile))) {
@@ -2266,32 +2431,54 @@ public class MetaDiaTask extends MagHapPFindTask {
 			}
 
 		} else {
-			File magDbFile = this.magDb.getCurrentFile();
-			File libFolderFile = new File(magDbFile, "libraries");
-			for (int i = 0; i < usedLibs.length; i++) {
-				File libFastaFile = new File(new File(libFolderFile, usedLibs[i]), usedLibs[i] + ".fasta");
-				if (libFastaFile.exists()) {
-					try (BufferedReader reader = new BufferedReader(new FileReader(libFastaFile))) {
-						String line = null;
-						while ((line = reader.readLine()) != null) {
-							if (line.startsWith(">")) {
-								String proName = line.split("\\s")[1];
-								fastaProPepMap.put(proName, reader.readLine());
-							}
-						}
-						reader.close();
-					} catch (IOException e) {
-						LOGGER.error(getTaskName() + ": error in reading the library from " + libFastaFile, e);
-						System.err.println(format.format(new Date()) + "\t" + getTaskName()
-								+ ": error in reading the library from " + libFastaFile);
 
-						return false;
+			File targetFastaFile = new File(metaPar.getDbSearchResultFile(),
+					metaPar.getDbSearchResultFile().getName() + ".fasta");
+			if (targetFastaFile.exists()) {
+				try (BufferedReader reader = new BufferedReader(new FileReader(targetFastaFile))) {
+					String line = null;
+					while ((line = reader.readLine()) != null) {
+						if (line.startsWith(">")) {
+							String proName = line.split("\\s")[1];
+							fastaProPepMap.put(proName, reader.readLine());
+						}
+					}
+					reader.close();
+				} catch (IOException e) {
+					LOGGER.error(getTaskName() + ": error in reading the library from " + targetFastaFile, e);
+					System.err.println(format.format(new Date()) + "\t" + getTaskName()
+							+ ": error in reading the library from " + targetFastaFile);
+
+					return false;
+				}
+			} else {
+				File magDbFile = this.magDb.getCurrentFile();
+				File libFolderFile = new File(magDbFile, "libraries");
+				for (int i = 0; i < usedLibs.length; i++) {
+					File libFastaFile = new File(new File(libFolderFile, usedLibs[i]), usedLibs[i] + ".fasta");
+					if (libFastaFile.exists()) {
+						try (BufferedReader reader = new BufferedReader(new FileReader(libFastaFile))) {
+							String line = null;
+							while ((line = reader.readLine()) != null) {
+								if (line.startsWith(">")) {
+									String proName = line.split("\\s")[1];
+									fastaProPepMap.put(proName, reader.readLine());
+								}
+							}
+							reader.close();
+						} catch (IOException e) {
+							LOGGER.error(getTaskName() + ": error in reading the library from " + libFastaFile, e);
+							System.err.println(format.format(new Date()) + "\t" + getTaskName()
+									+ ": error in reading the library from " + libFastaFile);
+
+							return false;
+						}
 					}
 				}
 			}
 		}
 		
-		File parquetFile = new File(resultFolderFile, "combined.parquet");
+		File parquetFile = new File(combinedFile, "combined.parquet");
 		DiaNNParquetReader reader = new DiaNNParquetReader(parquetFile.getAbsolutePath(), this.diannPar.getCut());
 		this.diaPp = reader.getDiaNNPrecursors(0.01);
 
@@ -2416,8 +2603,8 @@ public class MetaDiaTask extends MagHapPFindTask {
 				+ " peptide sequences were not found from the in-silico digested MAG database, "
 				+ "maybe due to unspecific digestion, will be not be included in the following analysis");
 
-		File genomeRazorFile = new File(resultFolderFile, "genomes_razor.tsv");
-		File proRazorFile = new File(resultFolderFile, "proteins_razor.tsv");
+		File genomeRazorFile = new File(combinedFile, "genomes_razor.tsv");
+		File proRazorFile = new File(combinedFile, "proteins_razor.tsv");
 		
 		HashSet<String> genomeSet = new HashSet<String>();
 		HashSet<String> proteinSet = new HashSet<String>();
@@ -2468,8 +2655,8 @@ public class MetaDiaTask extends MagHapPFindTask {
 		}
 
 		DiaNNPrecursor[] filteredPPS = genomeFilteredList.toArray(DiaNNPrecursor[]::new);
-		File genomeScoreFile = new File(resultFolderFile, "genomes_score.tsv");
-		File proteinScoreFile = new File(resultFolderFile, "proteins_score.tsv");
+		File genomeScoreFile = new File(combinedFile, "genomes_score.tsv");
+		File proteinScoreFile = new File(combinedFile, "proteins_score.tsv");
 	
 		HashMap<String, double[]> genomeScoreMap = new HashMap<String, double[]>();
 		HashMap<String, double[]> proteinScoreMap = new HashMap<String, double[]>();
@@ -2520,7 +2707,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 		LOGGER.info(getTaskName() + ": exporting peptide report started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting peptide report started");
 
-		setProgress(82);
+		updateProgress(82, 100);
 
 		HashMap<String, double[]> genomeIntensityMap = new HashMap<String, double[]>();
 		HashMap<String, double[]> proteinIntensityMap = new HashMap<String, double[]>();
@@ -2705,12 +2892,12 @@ public class MetaDiaTask extends MagHapPFindTask {
 					+ new File(resultFolderFile, "id.tsv"), e);
 		}
 
-		setProgress(85);
+		updateProgress(85, 100);
 
 		HashMap<String, ArrayList<Integer>> proPepIdMap = new HashMap<String, ArrayList<Integer>>();
 		HashMap<String, ArrayList<Integer>> proPepRazorIdMap = new HashMap<String, ArrayList<Integer>>();
 		try {
-			this.final_pep_txt = new File(metaPar.getResult(), "final_peptides.tsv");
+			this.final_pep_txt = new File(resultFolderFile, "final_peptides.tsv");
 
 			PrintWriter writer = new PrintWriter(this.final_pep_txt);
 
@@ -2871,7 +3058,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 			return false;
 		}
 
-		setProgress(87);
+		updateProgress(87, 100);
 
 		LOGGER.info(getTaskName() + ": exporting protein report started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting protein report started");
@@ -2879,7 +3066,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 		ArrayList<MetaProtein> proteinList = new ArrayList<MetaProtein>();
 		try {
 
-			this.final_pro_txt = new File(metaPar.getResult(), "final_proteins.tsv");
+			this.final_pro_txt = new File(resultFolderFile, "final_proteins.tsv");
 
 			PrintWriter writer = new PrintWriter(this.final_pro_txt);
 
@@ -2964,12 +3151,12 @@ public class MetaDiaTask extends MagHapPFindTask {
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": protein report has been exported to "
 				+ final_pro_txt.getName());
 
-		setProgress(89);
+		updateProgress(89, 100);	
 
 		LOGGER.info(getTaskName() + ": functional annotation started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": functional annotation started");
 
-		File funcFile = new File(metaPar.getResult(), "functional_annotation");
+		File funcFile = new File(resultFolderFile, "functional_annotation");
 		if (!funcFile.exists()) {
 			funcFile.mkdir();
 		}
@@ -2998,7 +3185,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 			LOGGER.error(getTaskName() + ": error in reading protein function information from "
 					+ this.final_pro_xml_file.getName(), e);
 			System.err.println(format.format(new Date()) + "\t" + getTaskName()
-					+ ": error in reading protein function information from " + this.quan_pro_file.getName());
+					+ ": error in reading protein function information from " + this.final_pro_xml_file.getName());
 			return false;
 		}
 
@@ -3034,14 +3221,14 @@ public class MetaDiaTask extends MagHapPFindTask {
 					+ " finished");
 		}
 
-		setProgress(91);
+		updateProgress(91, 100);
 
 		// taxonomy analysis
 
 		LOGGER.info(getTaskName() + ": taxonomy analysis started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": taxonomy analysis started");
 
-		File taxFile = new File(metaPar.getResult(), "taxonomy_analysis");
+		File taxFile = new File(resultFolderFile, "taxonomy_analysis");
 		if (!taxFile.exists()) {
 			taxFile.mkdir();
 		}
@@ -3129,7 +3316,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 
 			genomeWriter.println(genomeTitlesb);
 
-			setProgress(94);
+			updateProgress(94, 100);
 
 			for (int i = 0; i < genomes.length; i++) {
 				String[] taxaContent = genomeTaxaMap.get(genomes[i]);
@@ -3321,19 +3508,34 @@ public class MetaDiaTask extends MagHapPFindTask {
 		LOGGER.info(getTaskName() + ": taxonomy analysis finished");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": taxonomy analysis finished");
 
-		setProgress(95);
+		updateProgress(95, 100);
 
-		progressBar.setString(getTaskName() + ": exporting report");
+		updateMessage(getTaskName() + ": exporting report");
 
 		LOGGER.info(getTaskName() + ": exporting report started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting report started");
 
-		File reportDir = new File(metaPar.getResult(), "report");
+		File reportDir = new File(resultFolderFile, "report");
 		if (!reportDir.exists()) {
 			reportDir.mkdirs();
 		}
 
-		MetaReportCopyTask.copy(reportDir, getVersion());
+		// Copy report templates using MetaPythonReportCopyTask (same as DDA workflow)
+		MetaPythonReportCopyTask reportCopyTask = new MetaPythonReportCopyTask(resultFolderFile);
+		Thread copyThread = new Thread(reportCopyTask);
+		copyThread.start();
+		try {
+			copyThread.join();
+			if (!reportCopyTask.get()) {
+				LOGGER.error(getTaskName() + ": error in copying report template");
+				System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in copying report template");
+				return false;
+			}
+		} catch (Exception e) {
+			LOGGER.error(getTaskName() + ": error in copying report template", e);
+			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in copying report template: " + e.getMessage());
+			return false;
+		}
 
 		metaPar.setReportDir(reportDir);
 
@@ -3352,7 +3554,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 			MetaTreeHandler.exportJS(taxRankMaps, taxIntensityMaps, cellularIntensity, expNames, jsOutput);
 		}
 
-		MetaPythonReportTask task = new MetaPythonReportTask(metaPar.getThreadCount());
+		MetaPythonReportTask task = new MetaPythonReportTask(metaPar.getThreadCount(), mrp);
 
 		this.summaryMetaFile = new File(this.resultFolderFile, "metainfo.tsv");
 		try {
@@ -3427,7 +3629,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 				LOGGER.info(getTaskName() + ": report generation successes");
 				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": report generation successes");
 
-				setProgress(100);
+				updateProgress(100, 100);
 				return true;
 			}
 
@@ -3444,17 +3646,32 @@ public class MetaDiaTask extends MagHapPFindTask {
 	 */
 	protected boolean exportReportDiaNN() {
 
-		progressBar.setString(getTaskName() + ": exporting report");
+		updateMessage(getTaskName() + ": exporting report");
 
 		LOGGER.info(getTaskName() + ": exporting report started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting report started");
 
-		File reportDir = new File(metaPar.getResult(), "report");
+		File reportDir = new File(resultFolderFile, "report");
 		if (!reportDir.exists()) {
 			reportDir.mkdirs();
 		}
 
-		MetaReportCopyTask.copy(reportDir, getVersion());
+		// Copy report templates using MetaPythonReportCopyTask (same as DDA workflow)
+		MetaPythonReportCopyTask reportCopyTask = new MetaPythonReportCopyTask(resultFolderFile);
+		Thread copyThread = new Thread(reportCopyTask);
+		copyThread.start();
+		try {
+			copyThread.join();
+			if (!reportCopyTask.get()) {
+				LOGGER.error(getTaskName() + ": error in copying report template");
+				System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in copying report template");
+				return false;
+			}
+		} catch (Exception e) {
+			LOGGER.error(getTaskName() + ": error in copying report template", e);
+			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in copying report template: " + e.getMessage());
+			return false;
+		}
 
 		metaPar.setReportDir(reportDir);
 
@@ -3464,9 +3681,9 @@ public class MetaDiaTask extends MagHapPFindTask {
 			reportHtmlDir.mkdirs();
 		}
 
-		MetaPythonReportTask task = new MetaPythonReportTask(metaPar.getThreadCount());
+		MetaPythonReportTask task = new MetaPythonReportTask(metaPar.getThreadCount(), mrp);
 		
-		this.summaryMetaFile = new File(metaPar.getResult(), "metainfo.tsv");
+		this.summaryMetaFile = new File(resultFolderFile, "metainfo.tsv");
 		try {
 			metadata.exportMetadata(summaryMetaFile);
 		} catch (FileNotFoundException e) {
@@ -3476,9 +3693,9 @@ public class MetaDiaTask extends MagHapPFindTask {
 
 		boolean summayrFinished = this.exportSummary(task);
 		
-		setProgress(82);
+		updateProgress(82, 100);
 		
-		this.final_pep_txt = new File(metaPar.getResult(), "final_peptides.tsv");
+		this.final_pep_txt = new File(resultFolderFile, "final_peptides.tsv");
 
 		boolean pepReportOk = false;
 		if (!final_pep_txt.exists() || final_pep_txt.length() == 0) {
@@ -3497,9 +3714,9 @@ public class MetaDiaTask extends MagHapPFindTask {
 			}
 		}
 
-		setProgress(84);
+		updateProgress(84, 100);
 		
-		this.final_pro_txt = new File(metaPar.getResult(), "final_proteins.tsv");
+		this.final_pro_txt = new File(resultFolderFile, "final_proteins.tsv");
 
 		boolean proReportOk = false;
 		if (!final_pro_txt.exists() || final_pro_txt.length() == 0) {
@@ -3518,12 +3735,12 @@ public class MetaDiaTask extends MagHapPFindTask {
 			}
 		}
 		
-		setProgress(86);
+		updateProgress(86, 100);
 
 		boolean taxFuncReportOk = exportTaxaFunc(task);
 
 		if (!summayrFinished || !pepReportOk || !proReportOk || !taxFuncReportOk) {
-			setProgress(99);
+			updateProgress(99, 100);
 
 			LOGGER.info(getTaskName() + ": error in generating the reports");
 			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": error in generating the reports");
@@ -3540,7 +3757,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 				LOGGER.info(getTaskName() + ": report generation successes");
 				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": report generation successes");
 				
-				setProgress(100);
+				updateProgress(100, 100);
 				return true;
 			}
 
@@ -3554,7 +3771,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 	
 	protected boolean exportSummary(MetaPythonReportTask task) {
 
-		this.final_summary_txt = new File(metaPar.getResult(), "final_summary.tsv");
+		this.final_summary_txt = new File(resultFolderFile, "final_summary.tsv");
 		try {
 
 			PrintWriter countWriter = new PrintWriter(this.final_summary_txt);
@@ -3714,7 +3931,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 					+ ": error in reading quantified peptides from " + this.quan_pep_file.getName());
 		}
 
-		File funcFile = new File(metaPar.getResult(), "functional_annotation");
+		File funcFile = new File(resultFolderFile, "functional_annotation");
 		if (!funcFile.exists()) {
 			funcFile.mkdir();
 		}
@@ -3891,7 +4108,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 						+ ": error in reading quantified proteins from " + this.final_pro_txt.getName());
 			}
 
-			setProgress(88);
+			updateProgress(88, 100);
 
 			MetaProtein[] metapros = list.toArray(new MetaProtein[list.size()]);
 			MetaProteinAnnoMag[] mpas = funcAnnoSqlite(metapros, fileNames);
@@ -3917,7 +4134,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 			LOGGER.error(getTaskName() + ": error in reading protein function information from "
 					+ this.final_pro_xml_file.getName(), e);
 			System.err.println(format.format(new Date()) + "\t" + getTaskName()
-					+ ": error in reading protein function information from " + this.quan_pro_file.getName());
+					+ ": error in reading protein function information from " + this.final_pro_xml_file.getName());
 			return false;
 		}
 
@@ -3979,14 +4196,14 @@ public class MetaDiaTask extends MagHapPFindTask {
 		LOGGER.info(getTaskName() + ": functional annotation finished");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": functional annotation finished");
 
-		setProgress(92);
+		updateProgress(92, 100);
 
 		// taxonomy analysis
 
 		LOGGER.info(getTaskName() + ": taxonomy analysis started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": taxonomy analysis started");
 
-		File taxFile = new File(metaPar.getResult(), "taxonomy_analysis");
+		File taxFile = new File(resultFolderFile, "taxonomy_analysis");
 		if (!taxFile.exists()) {
 			taxFile.mkdir();
 		}
@@ -4534,7 +4751,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 		for (int i = 0; i < modelRankFiles.length; i++) {
 
 			File modelRankFile = new File(modelRankFiles[i]);
-			File modelIntensityFile = new File(modelRankFiles[i].replace("_pep_rank.tsv", "_predicted_allData.tsv"));
+			File modelIntensityFile = new File(modelRankFiles[i].replace("_pep_rank.tsv", "_pytorch_predictions.tsv"));
 
 			HashMap<String, Double> pepIntensityMap = new HashMap<String, Double>();
 			HashMap<String, HashSet<String>> pepGenomeMap = new HashMap<String, HashSet<String>>();
@@ -4696,7 +4913,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 
 		for (int i = 0; i < modelRankFiles.length; i++) {
 			File modelRankFile = new File(modelRankFiles[i]);
-			File modelIntensityFile = new File(modelRankFiles[i].replace("_pep_rank.tsv", "_predicted_allData.tsv"));
+			File modelIntensityFile = new File(modelRankFiles[i].replace("_pep_rank.tsv", "_pytorch_predictions.tsv"));
 
 			HashMap<String, Double> pepIntensityMap = new HashMap<String, Double>();
 			HashMap<String, HashSet<String>> pepGenomeMap = new HashMap<String, HashSet<String>>();
@@ -4755,7 +4972,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 			try (BufferedReader reader = new BufferedReader(new FileReader(modelIntensityFile))) {
 				String line = reader.readLine();
 				while ((line = reader.readLine()) != null) {
-					String[] cs = line.split(",");
+					String[] cs = line.split("[\t,]");
 					if (pepIntensityMap.containsKey(cs[1])) {
 						double intensity = Double.parseDouble(cs[2]);
 						if (intensity > pepIntensityMap.get(cs[1])) {
@@ -5274,6 +5491,206 @@ public class MetaDiaTask extends MagHapPFindTask {
 	protected Logger getLogger() {
 		// TODO Auto-generated method stub
 		return LOGGER;
+	}
+	
+	/**
+	 * Thread-safe method to update the main progress bar
+	 */
+	private void updateMainProgress(double progress) {
+		if (Platform.isFxApplicationThread()) {
+			updateMainProgress(progress);
+		} else {
+			Platform.runLater(() -> progressBar.setProgress(progress));
+		}
+	}
+	
+	/**
+	 * Thread-safe method to update the secondary progress bar
+	 */
+	private void updateSecondaryProgress(double progress) {
+		if (Platform.isFxApplicationThread()) {
+			secondBar.setProgress(progress);
+		} else {
+			Platform.runLater(() -> secondBar.setProgress(progress));
+		}
+	}
+	
+	@Override
+	protected Boolean call() throws Exception {
+		updateMessage(getTaskName());
+		updateProgress(0, 100);
+		updateMainProgress(0.0); // Initialize main progress bar
+
+		LOGGER.info(getTaskName() + ": started");
+		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": started");
+		
+		// Log detailed parameter information
+		LOGGER.info("Workflow parameters:");
+		LOGGER.info("  Result directory: " + metaPar.getResult());
+		LOGGER.info("  Thread count: " + metaPar.getThreadCount());
+		LOGGER.info("  Library search: " + libSearch);
+		LOGGER.info("  Self model search: " + selfModelSearch);
+		if (metadata != null) {
+			String[] rawFiles = metadata.getRawFiles();
+			LOGGER.info("  Raw files count: " + (rawFiles != null ? rawFiles.length : 0));
+			if (rawFiles != null) {
+				for (int i = 0; i < rawFiles.length; i++) {
+					LOGGER.info("    Raw file " + (i+1) + ": " + rawFiles[i]);
+				}
+			}
+		}
+		if (magDb != null) {
+			LOGGER.info("  MAG database: " + magDb.getCatalogueID());
+			LOGGER.info("  MAG database version: " + (magDb.getUsedVersion() != null ? magDb.getUsedVersion().getCatalogueVersion() : "unknown"));
+		}
+		
+		// Log resource information
+		LOGGER.info("Resource parameters:");
+		LOGGER.info("  DiaNN path: " + mrp.getToolPath(MetaResourceParameters.ToolType.DIANN));
+		LOGGER.info("  MetaResourceParameters object: {}", mrp);
+		LOGGER.info("  MetaResourceParameters class: {}", mrp.getClass().getName());
+		
+		// Update main progress and keep second bar active
+		updateMainProgress(0.05);
+		updateSecondaryProgress(ProgressBar.INDETERMINATE_PROGRESS); // Indeterminate progress for continuous activity
+
+		// Step 0: Copy report templates in background
+		if (!copyReportTemplatesInBackground()) {
+			LOGGER.error(getTaskName() + ": Failed to copy report templates");
+			return false;
+		}
+
+		// Step 1: Spectra Conversion
+		LOGGER.info("Step 1: Starting spectra format conversion...");
+		updateMessage(getTaskName() + ": Converting spectra format...");
+		updateMainProgress(0.10);
+		updateSecondaryProgress(ProgressBar.INDETERMINATE_PROGRESS);
+		
+		boolean convert = spectraConvert();
+		if (!convert) {
+			LOGGER.error(getTaskName() + ": error in spectra format conversion");
+			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in spectra format conversion");
+			System.err.println("ERROR: cannot read .raw files, please download and install .NET SDK 8.0.407 or later");
+			System.err.println("https://dotnet.microsoft.com/en-us/download/dotnet/8.0");
+			// Update progress on error
+			updateMessage(getTaskName() + ": Failed - Spectra conversion error");
+			updateSecondaryProgress(0.0); // Stop the indeterminate progress
+			return false;
+		}
+		LOGGER.info("Step 1: Spectra format conversion completed successfully");
+
+		// Step 2: sample-specific library generation
+		LOGGER.info("Step 2: Starting sample-specific library generation...");
+		updateMainProgress(0.15);
+		updateMessage(getTaskName() + ": Creating library...");
+		updateSecondaryProgress(ProgressBar.INDETERMINATE_PROGRESS);
+		updateMessage("Creating sample-specific library...");
+		
+		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": creating sample-specific library started");
+
+		boolean createSSDB = createSSLibrary();
+		if (!createSSDB) {
+			LOGGER.error(getTaskName() + ": error in creating sample-specific library");
+			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in creating sample-specific library");
+			// Update progress on error
+			updateMessage(getTaskName() + ": Failed - sample-specific library creation error");
+			updateSecondaryProgress(0.0); // Stop the indeterminate progress
+			return false;
+		}
+		LOGGER.info("Step 2: sample-specific library creation completed successfully");
+		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": creating sample-specific library finished");
+
+		// Step 3: Identification
+		LOGGER.info("Step 3: Starting identification...");
+		updateMainProgress(0.20);
+		updateMessage(getTaskName() + ": Running identification...");
+		updateSecondaryProgress(ProgressBar.INDETERMINATE_PROGRESS);
+		updateMessage("Performing protein identification...");
+		
+		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": identification started");
+
+		boolean iden = iden();
+		if (!iden) {
+			LOGGER.error(getTaskName() + ": error in identification");
+			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in identification");
+			// Update progress on error
+			updateMessage(getTaskName() + ": Failed - Identification error");
+			updateSecondaryProgress(0.0); // Stop the indeterminate progress
+			return false;
+		}
+		LOGGER.info("Step 3: Identification completed successfully");
+		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": identification finished");
+
+		// Step 4: Export Report
+		LOGGER.info("Step 4: Starting report generation...");
+		updateMainProgress(0.85);
+		updateMessage(getTaskName() + ": Generating reports...");
+		updateSecondaryProgress(ProgressBar.INDETERMINATE_PROGRESS);
+		updateMessage("Preparing final reports...");
+		
+		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": report generation started");
+
+		boolean exportReport = exportReport();
+		if (!exportReport) {
+			LOGGER.error(getTaskName() + ": error in report generation");
+			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in report generation");
+			// Update progress on error
+			updateMessage(getTaskName() + ": Failed - Report generation error");
+			updateSecondaryProgress(0.0); // Stop the indeterminate progress
+			return false;
+		}
+		LOGGER.info("Step 4: Report generation completed successfully");
+		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": report generation finished");
+
+		// Update progress for completion
+		updateMainProgress(1.0);
+		updateMessage(getTaskName() + ": Completed successfully!");
+		updateSecondaryProgress(0.0); // Stop the indeterminate progress
+		updateMessage("Workflow completed!");
+		
+		LOGGER.info(getTaskName() + ": finished - all workflow steps completed successfully");
+		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": finished - all workflow steps completed successfully");
+		return true;
+	}
+	
+	@Override
+	public void forceStop() {
+		LOGGER.info(getTaskName() + ": force stop requested");
+		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": force stop requested");
+		// Add any cleanup logic here if needed
+	}
+	
+	protected void setTaskCount() {
+		long totalMemorySize = ((OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean())
+				.getTotalMemorySize() / 1024 / 1024 / 1024;
+		this.maxTaskCount = (int) (totalMemorySize / 20);
+		if (this.maxTaskCount == 0) {
+			this.maxTaskCount = 1;
+		}
+
+		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": the number of max memory is "
+				+ totalMemorySize + " GB, the max number of tasks is set as " + maxTaskCount);
+	}
+	
+	protected class ProteinGroup {
+		@SuppressWarnings("unused")
+		String proName;
+		HashSet<String> sameSet;
+		HashSet<String> subSet;
+
+		ProteinGroup(String proName) {
+			this.proName = proName;
+			this.sameSet = new HashSet<String>();
+			this.subSet = new HashSet<String>();
+		}
+
+		public void addSameGroup(String pro) {
+			this.sameSet.add(pro);
+		}
+
+		public HashSet<String> getSameSet() {
+			return sameSet;
+		}
 	}
 	
 	@SuppressWarnings("unused")
@@ -6752,7 +7169,7 @@ public class MetaDiaTask extends MagHapPFindTask {
 
 		for (int i = 0; i < modelRankFiles.length; i++) {
 			File modelRankFile = new File(modelRankFiles[i]);
-			File modelIntensityFile = new File(modelRankFiles[i].replace("_pep_rank.tsv", "_predicted_allData.tsv"));
+			File modelIntensityFile = new File(modelRankFiles[i].replace("_pep_rank.tsv", "_pytorch_predictions.tsv"));
 
 			HashMap<String, Double> pepIntensityMap = new HashMap<String, Double>();
 			HashMap<String, HashSet<String>> pepGenomeMap = new HashMap<String, HashSet<String>>();
@@ -7087,9 +7504,110 @@ System.out.println("8325\t"+genome+"\t"+usedLogInten.length+"\t"+mean1+"\t"+sd1+
 		}
 	}
 	
+	/**
+	 * Static method to copy first search results from input folder to output folder
+	 * This is useful for testing different workflows where the initial search results are identical
+	 * 
+	 * @param inputFolder The source folder containing the first search results
+	 * @param outputFolder The destination folder where results will be copied
+	 * @return true if copy was successful, false otherwise
+	 */
+	public static boolean copyFirstSearchResults(File inputFolder, File outputFolder) {
+		if (inputFolder == null || outputFolder == null) {
+			System.err.println("Error: Input or output folder is null");
+			return false;
+		}
+		
+		if (!inputFolder.exists() || !inputFolder.isDirectory()) {
+			System.err.println("Error: Input folder does not exist or is not a directory: " + inputFolder.getAbsolutePath());
+			return false;
+		}
+		
+		// Create output folder if it doesn't exist
+		if (!outputFolder.exists()) {
+			if (!outputFolder.mkdirs()) {
+				System.err.println("Error: Failed to create output folder: " + outputFolder.getAbsolutePath());
+				return false;
+			}
+		}
+		
+		System.out.println("Copying first search results from: " + inputFolder.getAbsolutePath());
+		System.out.println("To: " + outputFolder.getAbsolutePath());
+		
+		boolean success = true;
+		
+		try {
+			// Copy all separate result folders (one for each DIA file)
+			File[] inputFiles = inputFolder.listFiles();
+			if (inputFiles != null) {
+				for (File inputFile : inputFiles) {
+					if (inputFile.isDirectory()) {
+						// Check if this folder contains a "firstSearch" subfolder
+						File firstSearchInput = new File(inputFile, "firstSearch");
+						if (firstSearchInput.exists() && firstSearchInput.isDirectory()) {
+							// Only process folders that contain firstSearch
+							File outputFile = new File(outputFolder, inputFile.getName());
+							
+							// Create the output directory
+							if (!outputFile.exists()) {
+								outputFile.mkdirs();
+							}
+							
+							File firstSearchOutput = new File(outputFile, "firstSearch");
+							if (!firstSearchOutput.exists()) {
+								firstSearchOutput.mkdirs();
+							}
+							
+							// Copy firstSearch.parquet
+							File parquetInput = new File(firstSearchInput, "firstSearch.parquet");
+							File parquetOutput = new File(firstSearchOutput, "firstSearch.parquet");
+							if (parquetInput.exists()) {
+								Files.copy(parquetInput.toPath(), parquetOutput.toPath(), StandardCopyOption.REPLACE_EXISTING);
+								System.out.println("Copied: " + parquetInput.getAbsolutePath() + " -> " + parquetOutput.getAbsolutePath());
+							}
+							
+							// Copy all other files in firstSearch folder (excluding firstSearch.fasta)
+							File[] firstSearchFiles = firstSearchInput.listFiles();
+							if (firstSearchFiles != null) {
+								for (File file : firstSearchFiles) {
+									if (file.isFile() && !file.getName().equals("firstSearch.fasta")) {
+										File outputFile1 = new File(firstSearchOutput, file.getName());
+										Files.copy(file.toPath(), outputFile1.toPath(), StandardCopyOption.REPLACE_EXISTING);
+										System.out.println("Copied: " + file.getAbsolutePath() + " -> " + outputFile1.getAbsolutePath());
+									}
+								}
+							}
+						} else {
+							// Skip folders that don't contain firstSearch
+							System.out.println("Skipping folder (no firstSearch found): " + inputFile.getName());
+						}
+					}
+				}
+			}
+
+			System.out.println("First search results copied successfully!");
+			
+		} catch (IOException e) {
+			System.err.println("Error copying files: " + e.getMessage());
+			e.printStackTrace();
+			success = false;
+		}
+		
+		return success;
+	}
+	
 	public static void main(String[] args) {
+		
+		MetaDiaTask.copyFirstSearchResults(new File("Z:\\PRIDE_dataset\\PXD050781\\MetaPilot_DIA_S48\\iterative_analysis_nomodel"), 
+				new File("Z:\\PRIDE_dataset\\PXD050781\\MetaPilot_DIA_S48\\self_model_analysis"));
 //		MetaDiaTask.calGenomeProteinScoreTest(new File("Z:\\Kai\\20250425\\MetaLab_it\\mag_result\\combined.parquet"),
 //				new File("Z:\\Kai\\20250425\\MetaLab_it\\mag_result\\gs.tsv"),
 //				new File("Z:\\Kai\\20250425\\MetaLab_it\\mag_result\\ps.tsv"));
+		
+		// Example usage of copyFirstSearchResults method:
+		// File inputFolder = new File("path/to/input/results");
+		// File outputFolder = new File("path/to/output/results");
+		// boolean success = copyFirstSearchResults(inputFolder, outputFolder);
+		// System.out.println("Copy successful: " + success);
 	}
 }

@@ -1,70 +1,34 @@
 {
   "quantitative_mode": {"mode": "Label-free"},
-  "metadata": [
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "20221208_Ailing_Jumpstart_C"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "20221208_Ailing_Jumpstart_D"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "20221208_Ailing_Jumpstart_E"
-    }
-  ],
+  "metadata": [{
+    "treatment": "",
+    "condition": "",
+    "gender": "",
+    "custom_field_1": "",
+    "custom_field_2": "",
+    "time_point": "",
+    "label_type": "",
+    "custom_field_3": "",
+    "age": "",
+    "sample_name": "20221208_Ailing_Jumpstart_C"
+  }],
   "workflow": "DDA_IGC_MAXQUANT",
   "input_output": {
     "host_database": "C:\\Users\\daz25hak\\MetaProAI\\database\\uniprotkb_Human_AND_reviewed_true_AND_m_2025_09_01.fasta",
     "microbiome_database": "C:\\Users\\daz25hak\\MetaProAI\\database\\760MetaHit_139HMP_368PKU_511Bac.uniq.pep.fasta",
     "output_directory": "Z:\\PRIDE_dataset\\PXD050781\\MetaPilot",
     "append_host_db": true,
-    "experiments": [
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\20221208_Ailing_Jumpstart_C.raw",
-        "experiment_name": "20221208_Ailing_Jumpstart_C"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\20221208_Ailing_Jumpstart_D.raw",
-        "experiment_name": "20221208_Ailing_Jumpstart_D"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\20221208_Ailing_Jumpstart_E.raw",
-        "experiment_name": "20221208_Ailing_Jumpstart_E"
-      }
-    ]
+    "experiments": [{
+      "file_path": "Z:\\PRIDE_dataset\\PXD050781\\20221208_Ailing_Jumpstart_C.raw",
+      "experiment_name": "20221208_Ailing_Jumpstart_C"
+    }]
   },
   "enzyme_settings": {
     "enzyme": "Trypsin",
     "missed_cleavages": 2,
     "digestion_mode": "Specific"
   },
-  "generated_at": "2025-09-02 10:09:42",
+  "generated_at": "2025-09-11 16:20:53",
   "additional_parameters": {
     "generate_sample_specific_db": true,
     "ms2_scan_mode": "HCD-FTMS",

@@ -27,6 +27,7 @@ public class MetaPilotIOPanelFX extends VBox {
     private final TextField outputDirField;
     private final Button browseRawFilesButton;
     private final Button removeExperimentButton;
+    private final Button removeAllExperimentsButton;
     private final Button browseOutputDirButton;
     
     // Experiment naming components
@@ -110,7 +111,10 @@ public class MetaPilotIOPanelFX extends VBox {
         removeExperimentButton = new Button("Remove Selected");
         removeExperimentButton.setOnAction(e -> removeSelectedExperiment());
         removeExperimentButton.setTooltip(new Tooltip("Remove the selected experiment row"));
-        expButtonBox.getChildren().addAll(removeExperimentButton);
+        removeAllExperimentsButton = new Button("Remove All");
+        removeAllExperimentsButton.setOnAction(e -> removeAllExperiments());
+        removeAllExperimentsButton.setTooltip(new Tooltip("Remove all raw files"));
+        expButtonBox.getChildren().addAll(removeExperimentButton, removeAllExperimentsButton);
 
         // Create left panel for Raw Files
         VBox leftPanel = new VBox(10);
@@ -447,6 +451,12 @@ public class MetaPilotIOPanelFX extends VBox {
             experimentData.remove(selected);
             updatePatternTable();
         }
+    }
+
+    private void removeAllExperiments() {
+        experimentData.clear();
+        fileSet.clear();
+        updatePatternTable();
     }
 
     private void selectOutputDirectory() {

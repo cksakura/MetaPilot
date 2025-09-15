@@ -4,137 +4,90 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
-import javafx.stage.FileChooser;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.scene.paint.Color;
-import javafx.scene.control.cell.PropertyValueFactory;
-import javafx.scene.control.cell.TextFieldTableCell;
-import javafx.scene.control.cell.CheckBoxTableCell;
-import javafx.util.converter.DefaultStringConverter;
-import javafx.util.converter.DoubleStringConverter;
-import javafx.beans.property.SimpleStringProperty;
-import javafx.beans.property.StringProperty;
-import javafx.beans.property.SimpleBooleanProperty;
-import javafx.beans.property.BooleanProperty;
-import javafx.beans.property.SimpleDoubleProperty;
-import javafx.beans.property.DoubleProperty;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
-import uk.ac.quadram.metapilot.task.common.gui.IsobaricLabelingPanel;
-import uk.ac.quadram.metapilot.core.mod.IsobaricTag;
-import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel;
+import uk.ac.quadram.metapilot.task.common.gui.MagDatabaseSettingsPanel;
+import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
+import uk.ac.quadram.metapilot.task.common.gui.MetadataConfigurationPanel;
+import uk.ac.quadram.metapilot.task.common.gui.ModificationsPanel;
+import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagFragPipeParameters;
+import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagFragPipeParameterIO;
+import uk.ac.quadram.metapilot.task.dda.mag.DDAMagFragPipeTask;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
-import uk.ac.quadram.metapilot.task.mag.par.MetaParameterMag;
-import javafx.animation.Timeline;
+import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagVersion;
+import uk.ac.quadram.metapilot.task.par.MetaData;
+import uk.ac.quadram.metapilot.MetaPilotApp;
+import uk.ac.quadram.metapilot.resources.MetaResourceIO;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
+import javafx.application.Platform;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.IOException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.List;
+import java.util.ArrayList;
 import java.io.File;
 
 public class MetaPilotDdaMagFragPipePanel extends VBox {
     // UI Components - Database specific for MAG
     private MetaPilotIOPanelFX ioPanel;
-    private ComboBox<MagDbItem> magDatabaseComboBox;
-    private TextField hostDBField;
-    private CheckBox appendHostDBCheckBox;
-    private Button browseHostDBButton;
-    private TextArea consoleOutput;
-    private TextArea parameterView;
-    private ProgressBar overallProgressBar;
-    private ProgressBar currentTaskProgressBar;
-    private Label currentTaskLabel;
-    private Button startButton;
-    private Button stopButton;
-    private ToggleGroup quantModeGroup;
+    private MagDatabaseSettingsPanel magDatabasePanel;
+
+    // Reusable UI Components
+    private ConsolePanel consolePanel;
+    private MetadataConfigurationPanel metadataPanel;
 
     // Parameter Panel Components
     private ComboBox<String> enzymeComboBox;
     private Spinner<Integer> missedCleavagesSpinner;
     private ComboBox<String> digestionModeComboBox;
 
-    // FragPipe-specific modification tables
-    private TableView<FixedModificationRow> fixedModTable;
-    private ObservableList<FixedModificationRow> fixedModData = FXCollections.observableArrayList();
-    private Button restoreDefaultButton;
-    
-    private TableView<VariableModificationRow> variableModTable;
-    private ObservableList<VariableModificationRow> variableModData = FXCollections.observableArrayList();
+    // Reusable modifications panel
+    private ModificationsPanel modificationsPanel;
 
     // Additional parameters
     private Spinner<Integer> threadsSpinner;
-    private ComboBox<String> ms2ScanModeComboBox;
-    private CheckBox generateSampleSpecificDBCheckBox;
-    private CheckBox spectraClusteringCheckBox;
+    private ComboBox<String> workflowComboBox;
+    private ComboBox<String> msDataTypeComboBox;
 
     // Data
     private ObservableList<String> enzymes = FXCollections.observableArrayList();
-    private ObservableList<String> isobaricBaseTypes = FXCollections.observableArrayList();
+    private ObservableList<String> workflows = FXCollections.observableArrayList();
 
-    // Isobaric labeling components
-    private ComboBox<String> isobaricTypeComboBox;
-    private TableView<IsobaricLabelingPanel.IsobaricLabelRow> isobaricTable;
-    private ObservableList<IsobaricLabelingPanel.IsobaricLabelRow> isobaricTableData = FXCollections.observableArrayList();
+    // Add parameter IO instance
+    private DDAMagFragPipeParameterIO parameterIO;
+    private MetaResourceParameters resourceParams;
+    
+    // Store the last used analysis parameters for viewReport
+    private DDAMagFragPipeParameters currentAnalysisParams;
+    
+    // Logger
+    private static final Logger LOGGER = LoggerFactory.getLogger(MetaPilotDdaMagFragPipePanel.class);
 
-    // Metadata configuration components
-    private TableView<MetaPilotDdaIgcMaxQuantPanel.MetadataRow> metadataTable;
-    private ObservableList<MetaPilotDdaIgcMaxQuantPanel.MetadataRow> metadataTableData = FXCollections.observableArrayList();
-    private ComboBox<String> metadataColumnComboBox;
-    private Button addMetadataColumnButton;
-    private Button removeMetadataColumnButton;
-
-    // Status panel fields
-    private Label statusTimeLabel;
-    private Label statusCpuLabel;
-    private Label statusMemLabel;
-    private Timeline statusTimeline;
-    private long taskStartTimeMillis;
-
-    // MAG database items
-    private ObservableList<MagDbItem> availableMagDatabases = FXCollections.observableArrayList();
-
-	public MetaPilotDdaMagFragPipePanel(MagDbItem[] magDbItems) {
+	public MetaPilotDdaMagFragPipePanel(MagDbItem[] magDbItems, MetaResourceParameters resourceParams) {
+		// Initialize parameter IO instance
+		parameterIO = new DDAMagFragPipeParameterIO();
+		this.resourceParams = resourceParams;
+		
 		loadEnzymesFromIni();
-		loadIsobaricBaseTypes();
-		initializeModificationData();
-		if (magDbItems != null) {
-			for (MagDbItem item : magDbItems) {
-				availableMagDatabases.add(item);
-			}
-		}
+		loadWorkflowsFromFragPipe();
 		initializeUI();
+		// Set MAG databases after UI is initialized
+		setAvailableMagDatabases(magDbItems);
 	}
-
-    public MetaPilotDdaMagFragPipePanel(MetaParameterMag metaParameterMag) {
-        loadEnzymesFromIni();
-        loadIsobaricBaseTypes();
-        initializeModificationData();
-        // Initialize MAG databases from parameter
-        if (metaParameterMag != null) {
-            MagDbItem[] magDbItems = metaParameterMag.getAvailableMagDbItem();
-            if (magDbItems != null) {
-                for (MagDbItem item : magDbItems) {
-                    availableMagDatabases.add(item);
-                }
-            }
-        }
-        initializeUI();
-    }
-
+	
     // Load available MAG databases
     public void setAvailableMagDatabases(MagDbItem[] magDbItems) {
-        availableMagDatabases.clear();
-        if (magDbItems != null) {
-            for (MagDbItem item : magDbItems) {
-                availableMagDatabases.add(item);
-            }
-        }
-        if (magDatabaseComboBox != null && !availableMagDatabases.isEmpty()) {
-            magDatabaseComboBox.setValue(availableMagDatabases.get(0));
+        if (magDatabasePanel != null) {
+            magDatabasePanel.setAvailableMagDatabases(magDbItems);
         }
     }
 
@@ -145,6 +98,18 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
         setMinHeight(800);
         setPrefWidth(1600);
         setPrefHeight(900);
+
+        // Initialize reusable components
+        consolePanel = new ConsolePanel();
+        metadataPanel = new MetadataConfigurationPanel();
+        magDatabasePanel = new MagDatabaseSettingsPanel();
+        
+        // Set up callbacks for parameter updates
+        metadataPanel.setParameterUpdateCallback(this::updateParameterView);
+        magDatabasePanel.setParameterUpdateCallback(this::updateParameterView);
+        consolePanel.setStartCallback(this::startAnalysis);
+        consolePanel.setStopCallback(this::stopAnalysis);
+        consolePanel.setViewReportCallback(this::viewReport);
 
         // Create tab pane with responsive sizing
         TabPane tabPane = new TabPane();
@@ -161,19 +126,59 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
         paramTab.setContent(createParametersTab());
 
         Tab consoleTab = new Tab("Console");
-        consoleTab.setContent(createConsoleTab());
+        consoleTab.setContent(consolePanel);
 
         tabPane.getTabs().addAll(ioTab, paramTab, consoleTab);
 
         // Add tab change listener to update metadata when Parameters tab is selected
+        // and save parameters when Console tab is selected
         tabPane.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, newTab) -> {
             if (newTab == paramTab) {
                 updateMetadataTableFromIOPanel();
+            } else if (newTab == consoleTab) {
+                // Save current parameters when Console tab is selected
+                try {
+                    consolePanel.appendConsoleText("Auto-saving parameters when switching to Console tab...\n");
+                    DDAMagFragPipeParameters currentParams = collectParametersFromUI();
+                    if (currentParams != null) {
+                        boolean saved = parameterIO.saveLastUsedParameters(currentParams);
+                        if (saved) {
+                            consolePanel.appendConsoleText("✓ Parameters auto-saved to config folder\n");
+                            LOGGER.info("Successfully auto-saved parameters to config folder when Console tab was selected");
+                        } else {
+                            consolePanel.appendConsoleText("WARNING: Failed to auto-save parameters to config folder\n");
+                            LOGGER.warn("Failed to auto-save parameters to config folder when Console tab was selected");
+                        }
+                        
+                        // Also save preferences
+                        boolean prefsSaved = parameterIO.savePreferences(currentParams);
+                        if (prefsSaved) {
+                            consolePanel.appendConsoleText("✓ Preferences auto-saved\n");
+                        } else {
+                            consolePanel.appendConsoleText("WARNING: Failed to auto-save preferences\n");
+                        }
+                    } else {
+                        consolePanel.appendConsoleText("WARNING: No parameters to auto-save\n");
+                        LOGGER.warn("No parameters to auto-save when Console tab was selected");
+                    }
+                } catch (Exception e) {
+                    String errorMsg = "ERROR: Failed to auto-save parameters: " + e.getMessage();
+                    consolePanel.appendConsoleText(errorMsg + "\n");
+                    LOGGER.warn("Failed to auto-save parameters when Console tab was selected: " + e.getMessage(), e);
+                }
             }
         });
 
         // Add tab pane to main panel
         getChildren().add(tabPane);
+        
+        // Load parameters after UI is fully initialized
+        Platform.runLater(() -> {
+            loadLastUsedParameters();
+            
+            // Add window close event handler to save parameters
+            setupWindowCloseHandler();
+        });
     }
 
     // Create IO tab (similar to pFind)
@@ -181,65 +186,15 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
         VBox tabContent = new VBox(10);
         tabContent.setPadding(new Insets(10));
         ioPanel = new MetaPilotIOPanelFX();
-        VBox databaseSection = createDatabaseSection();
         tabContent.getChildren().addAll(
             createSectionTitle("Input/Output Settings"),
             ioPanel,
             createSectionTitle("Database Settings"),
-            databaseSection
+            magDatabasePanel
         );
         return tabContent;
     }
 
-    private VBox createDatabaseSection() {
-        VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #f8f8f8; -fx-border-color: #cccccc; -fx-border-radius: 5; -fx-border-width: 1;");
-        
-        // MAG Database ComboBox (not file browser)
-        HBox magDBBox = new HBox(10);
-        magDatabaseComboBox = new ComboBox<>(availableMagDatabases);
-        magDatabaseComboBox.setPromptText("Select MAG database");
-        magDatabaseComboBox.setPrefWidth(400);
-        magDatabaseComboBox.setOnAction(e -> updateParameterView());
-        magDBBox.getChildren().addAll(new Label("MAG Database:"), magDatabaseComboBox);
-        
-        HBox appendHostBox = new HBox(10);
-        appendHostDBCheckBox = new CheckBox("Append Host Database");
-        appendHostDBCheckBox.setOnAction(e -> updateHostDBVisibility());
-        appendHostBox.getChildren().add(appendHostDBCheckBox);
-        
-        HBox hostDBBox = new HBox(10);
-        hostDBField = new TextField();
-        hostDBField.setPromptText("Select host database file");
-        hostDBField.setPrefWidth(400);
-        hostDBField.setDisable(true);
-        browseHostDBButton = new Button("Browse");
-        browseHostDBButton.setDisable(true);
-        browseHostDBButton.setOnAction(e -> browseHostDatabase());
-        hostDBBox.getChildren().addAll(new Label("Host Database:"), hostDBField, browseHostDBButton);
-        
-        section.getChildren().addAll(magDBBox, appendHostBox, hostDBBox);
-        return section;
-    }
-
-    private void updateHostDBVisibility() {
-        boolean selected = appendHostDBCheckBox.isSelected();
-        hostDBField.setDisable(!selected);
-        browseHostDBButton.setDisable(!selected);
-    }
-
-    private void browseHostDatabase() {
-        FileChooser chooser = new FileChooser();
-        chooser.setTitle("Select Host Database File");
-        chooser.getExtensionFilters().add(
-            new FileChooser.ExtensionFilter("FASTA Files", "*.fasta", "*.fa")
-        );
-        File file = chooser.showOpenDialog(getScene().getWindow());
-        if (file != null) {
-            hostDBField.setText(file.getAbsolutePath());
-        }
-    }
 
     private VBox createParametersTab() {
         VBox tabContent = new VBox(10);
@@ -280,17 +235,16 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
         VBox additionalParamsSection = createAdditionalParametersSection();
         
         // Create horizontal modifications panel with fixed mods (narrow) and variable mods (wider)
-        HBox modificationsPanel = createModificationsPanel();
+        modificationsPanel = new ModificationsPanel(this::updateParameterView);
         
         leftColumn.getChildren().addAll(enzymeSection, additionalParamsSection, modificationsPanel);
         GridPane.setVgrow(leftColumn, Priority.ALWAYS);
-
-        // Right column: Quantitative Mode and Metadata Configuration (keeping original layout)
+        
+        // Right column: Metadata Configuration only
         VBox rightColumn = new VBox(15);
         rightColumn.setMinWidth(430);
-        VBox quantModeSection = createQuantitativeModeSection();
-        VBox metadataSection = createMetadataConfigurationSection();
-        rightColumn.getChildren().addAll(quantModeSection, metadataSection);
+        
+        rightColumn.getChildren().addAll(metadataPanel);
         GridPane.setVgrow(rightColumn, Priority.ALWAYS);
 
         // Add columns to grid
@@ -299,244 +253,6 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
         
         tabContent.getChildren().add(mainGrid);
         return tabContent;
-    }
-    
-    // Combined modifications panel with fixed mods (narrow) and variable mods (wider) side by side
-    private HBox createModificationsPanel() {
-        HBox modificationsContainer = new HBox(10);
-        modificationsContainer.setMinHeight(200);
-        HBox.setHgrow(modificationsContainer, Priority.ALWAYS);
-        
-        // Fixed modifications section (narrow - only 2 columns)
-        VBox fixedModSection = createFixedModificationsSection();
-        fixedModSection.setMinWidth(180);
-        fixedModSection.setPrefWidth(200);
-        fixedModSection.setMaxWidth(220);
-        
-        // Variable modifications section (wider - 4 columns)
-        VBox variableModSection = createVariableModificationsSection();
-        HBox.setHgrow(variableModSection, Priority.ALWAYS);
-        
-        modificationsContainer.getChildren().addAll(fixedModSection, variableModSection);
-        return modificationsContainer;
-    }
-
-    // FragPipe-specific Fixed Modifications Section
-    private VBox createFixedModificationsSection() {
-        VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #fff8dc; -fx-background-radius: 5;");
-        section.setMinHeight(200);
-        VBox.setVgrow(section, Priority.ALWAYS);
-
-        Label titleLabel = createSectionTitle("Fixed Modifications");
-        
-        // Create table - narrower since only 2 columns
-        fixedModTable = new TableView<>(fixedModData);
-        fixedModTable.setMinHeight(150);
-        fixedModTable.setPrefHeight(180);
-        fixedModTable.setMaxHeight(Double.MAX_VALUE);
-        fixedModTable.setEditable(true);
-        fixedModTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
-        VBox.setVgrow(fixedModTable, Priority.ALWAYS);
-
-        // Site column (read-only) - narrower
-        TableColumn<FixedModificationRow, String> siteCol = new TableColumn<>("Site");
-        siteCol.setCellValueFactory(new PropertyValueFactory<>("site"));
-        siteCol.setMinWidth(60);
-        siteCol.setPrefWidth(80);
-        siteCol.setSortable(false);
-
-        // Delta Mass column (editable) - narrower
-        TableColumn<FixedModificationRow, Double> deltaMassCol = new TableColumn<>("Delta Mass");
-        deltaMassCol.setCellValueFactory(new PropertyValueFactory<>("deltaMass"));
-        deltaMassCol.setCellFactory(TextFieldTableCell.forTableColumn(new DoubleStringConverter()));
-        deltaMassCol.setOnEditCommit(e -> {
-            e.getRowValue().setDeltaMass(e.getNewValue());
-            updateParameterView();
-        });
-        deltaMassCol.setMinWidth(80);
-        deltaMassCol.setPrefWidth(100);
-        deltaMassCol.setSortable(false);
-
-        fixedModTable.getColumns().addAll(siteCol, deltaMassCol);
-
-        // Restore default button
-        restoreDefaultButton = new Button("Restore Default");
-        restoreDefaultButton.setOnAction(e -> restoreDefaultFixedModifications());
-        
-        HBox buttonBox = new HBox();
-        buttonBox.setAlignment(Pos.CENTER_RIGHT);
-        buttonBox.getChildren().add(restoreDefaultButton);
-
-        section.getChildren().addAll(titleLabel, fixedModTable, buttonBox);
-        return section;
-    }
-
-    // FragPipe-specific Variable Modifications Section
-    private VBox createVariableModificationsSection() {
-        VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #f0fff0; -fx-background-radius: 5;");
-        section.setMinHeight(200);  // Reduced from 300 to match fixed mods
-        VBox.setVgrow(section, Priority.ALWAYS);
-
-        Label titleLabel = createSectionTitle("Variable Modifications");
-        
-        // Create table
-        variableModTable = new TableView<>(variableModData);
-        variableModTable.setMinHeight(150);  // Reduced to match fixed mods
-        variableModTable.setPrefHeight(180);  // Reduced to match fixed mods
-        variableModTable.setMaxHeight(Double.MAX_VALUE);
-        variableModTable.setEditable(true);
-        variableModTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
-        VBox.setVgrow(variableModTable, Priority.ALWAYS);
-
-        // Use column (checkbox) - smaller
-        TableColumn<VariableModificationRow, Boolean> useCol = new TableColumn<>("Use");
-        useCol.setCellValueFactory(new PropertyValueFactory<>("use"));
-        useCol.setCellFactory(CheckBoxTableCell.forTableColumn(useCol));
-        useCol.setOnEditCommit(e -> updateParameterView());
-        useCol.setMinWidth(40);
-        useCol.setPrefWidth(50);
-        useCol.setSortable(false);
-
-        // Mod Name column (editable) - adjusted width
-        TableColumn<VariableModificationRow, String> modNameCol = new TableColumn<>("Modification");
-        modNameCol.setCellValueFactory(new PropertyValueFactory<>("modName"));
-        modNameCol.setCellFactory(TextFieldTableCell.forTableColumn());
-        modNameCol.setOnEditCommit(e -> {
-            e.getRowValue().setModName(e.getNewValue());
-            updateParameterView();
-        });
-        modNameCol.setMinWidth(100);
-        modNameCol.setPrefWidth(120);
-        modNameCol.setSortable(false);
-
-        // Sites column (editable) - smaller
-        TableColumn<VariableModificationRow, String> sitesCol = new TableColumn<>("Sites");
-        sitesCol.setCellValueFactory(new PropertyValueFactory<>("sites"));
-        sitesCol.setCellFactory(TextFieldTableCell.forTableColumn());
-        sitesCol.setOnEditCommit(e -> {
-            e.getRowValue().setSites(e.getNewValue());
-            updateParameterView();
-        });
-        sitesCol.setMinWidth(60);
-        sitesCol.setPrefWidth(70);
-        sitesCol.setSortable(false);
-
-        // Delta Mass column (editable) - adjusted width
-        TableColumn<VariableModificationRow, Double> deltaMassCol = new TableColumn<>("Delta Mass");
-        deltaMassCol.setCellValueFactory(new PropertyValueFactory<>("deltaMass"));
-        deltaMassCol.setCellFactory(TextFieldTableCell.forTableColumn(new DoubleStringConverter()));
-        deltaMassCol.setOnEditCommit(e -> {
-            e.getRowValue().setDeltaMass(e.getNewValue());
-            updateParameterView();
-        });
-        deltaMassCol.setMinWidth(80);
-        deltaMassCol.setPrefWidth(90);
-        deltaMassCol.setSortable(false);
-
-        variableModTable.getColumns().addAll(useCol, modNameCol, sitesCol, deltaMassCol);
-
-        section.getChildren().addAll(titleLabel, variableModTable);
-        return section;
-    }
-
-    private void restoreDefaultFixedModifications() {
-        for (FixedModificationRow row : fixedModData) {
-            if (row.getSite().equals("C")) {
-                row.setDeltaMass(57.02146);  // Carbamidomethyl
-            } else {
-                row.setDeltaMass(0.0);
-            }
-        }
-        fixedModTable.refresh();
-        updateParameterView();
-    }
-
-    // Fixed Modification Row class for FragPipe
-    public static class FixedModificationRow {
-        private final SimpleStringProperty site;
-        private final SimpleDoubleProperty deltaMass;
-        
-        public FixedModificationRow(String site, double deltaMass) {
-            this.site = new SimpleStringProperty(site);
-            this.deltaMass = new SimpleDoubleProperty(deltaMass);
-        }
-        
-        public String getSite() { return site.get(); }
-        public void setSite(String value) { site.set(value); }
-        public StringProperty siteProperty() { return site; }
-        
-        public double getDeltaMass() { return deltaMass.get(); }
-        public void setDeltaMass(double value) { deltaMass.set(value); }
-        public DoubleProperty deltaMassProperty() { return deltaMass; }
-    }
-
-    // Variable Modification Row class for FragPipe
-    public static class VariableModificationRow {
-        private final SimpleBooleanProperty use;
-        private final SimpleStringProperty modName;
-        private final SimpleStringProperty sites;
-        private final SimpleDoubleProperty deltaMass;
-        
-        public VariableModificationRow(boolean use, String modName, String sites, double deltaMass) {
-            this.use = new SimpleBooleanProperty(use);
-            this.modName = new SimpleStringProperty(modName);
-            this.sites = new SimpleStringProperty(sites);
-            this.deltaMass = new SimpleDoubleProperty(deltaMass);
-        }
-        
-        public boolean getUse() { return use.get(); }
-        public void setUse(boolean value) { use.set(value); }
-        public BooleanProperty useProperty() { return use; }
-        
-        public String getModName() { return modName.get(); }
-        public void setModName(String value) { modName.set(value); }
-        public StringProperty modNameProperty() { return modName; }
-        
-        public String getSites() { return sites.get(); }
-        public void setSites(String value) { sites.set(value); }
-        public StringProperty sitesProperty() { return sites; }
-        
-        public double getDeltaMass() { return deltaMass.get(); }
-        public void setDeltaMass(double value) { deltaMass.set(value); }
-        public DoubleProperty deltaMassProperty() { return deltaMass; }
-    }
-
-    private void initializeModificationData() {
-        // Initialize fixed modifications (all amino acids + termini)
-        String[] allSites = {
-            "peptide c-term", "peptide n-term", "protein c-term", "protein n-term",
-            "A", "R", "N", "D", "C", "E", "Q", "G", "H", "I", "L", "K", "M", "F", "P", "S", "T", "W", "Y", "V"
-        };
-        
-        for (String site : allSites) {
-            double defaultMass = site.equals("C") ? 57.02146 : 0.0; // Carbamidomethyl on Cysteine
-            fixedModData.add(new FixedModificationRow(site, defaultMass));
-        }
-
-        // Initialize variable modifications (15 rows)
-        variableModData.addAll(
-            // Common modifications
-            new VariableModificationRow(false, "Oxidation", "M", 15.9949),
-            new VariableModificationRow(false, "Phosphorylation", "STY", 79.9663),
-            new VariableModificationRow(false, "Acetylation", "protein n-term", 42.0106),
-            new VariableModificationRow(false, "Deamidation", "NQ", 0.9840),
-            new VariableModificationRow(false, "Methylation", "KR", 14.0157),
-            new VariableModificationRow(false, "Ubiquitination", "K", 114.0429),
-            new VariableModificationRow(false, "Nitrosylation", "C", 28.9898),
-            new VariableModificationRow(false, "Citrullination", "R", 0.9840),
-            // User-defined slots
-            new VariableModificationRow(false, "User Mod 1", "", 0.0),
-            new VariableModificationRow(false, "User Mod 2", "", 0.0),
-            new VariableModificationRow(false, "User Mod 3", "", 0.0),
-            new VariableModificationRow(false, "User Mod 4", "", 0.0),
-            new VariableModificationRow(false, "User Mod 5", "", 0.0),
-            new VariableModificationRow(false, "User Mod 6", "", 0.0),
-            new VariableModificationRow(false, "User Mod 7", "", 0.0)
-        );
     }
 
     // Add missing utility methods
@@ -559,12 +275,52 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
         }
     }
 
-    private void loadIsobaricBaseTypes() {
-        IsobaricTag[] tags = IsobaricTag.getPFindTags();
-        for (IsobaricTag tag : tags) {
-            isobaricBaseTypes.add(tag.getName());
-        }
-    }
+	private void loadWorkflowsFromFragPipe() {
+		try {
+			String fragpipePath = resourceParams.getToolPath(MetaResourceParameters.ToolType.FRAGPIPE);
+
+			if (fragpipePath != null && !fragpipePath.trim().isEmpty()) {
+				File fragpipeFile = new File(fragpipePath);
+				if (fragpipeFile.exists()) {
+					// Get parent directory (bin)
+					File binDir = fragpipeFile.getParentFile();
+					if (binDir != null) {
+						// Get workflows directory (same level as bin)
+						File workflowsDir = new File(binDir.getParentFile(), "workflows");
+						if (workflowsDir.exists() && workflowsDir.isDirectory()) {
+							// List all .workflow files
+							File[] workflowFiles = workflowsDir
+									.listFiles((dir, name) -> name.toLowerCase().endsWith(".workflow"));
+							if (workflowFiles != null) {
+								for (File workflowFile : workflowFiles) {
+									String fileName = workflowFile.getName();
+									// Remove .workflow extension
+									String workflowName = fileName.substring(0, fileName.lastIndexOf('.'));
+									workflows.add(workflowName);
+								}
+								LOGGER.info("Loaded {} workflows from FragPipe: {}", workflows.size(),
+										workflowsDir.getAbsolutePath());
+							}
+						} else {
+							LOGGER.warn("FragPipe workflows directory not found: {}", workflowsDir.getAbsolutePath());
+						}
+					}
+				} else {
+					LOGGER.warn("FragPipe executable not found: {}", fragpipePath);
+				}
+			} else {
+				LOGGER.warn("FragPipe path not configured in MetaResourceParameters");
+			}
+		} catch (Exception e) {
+			LOGGER.error("Failed to load workflows from FragPipe: " + e.getMessage(), e);
+		}
+
+		// Add default workflow if none found
+		if (workflows.isEmpty()) {
+			workflows.add("Standard");
+			LOGGER.warn("No workflows found, using default: Standard");
+		}
+	}
 
     private Label createSectionTitle(String title) {
         Label label = new Label(title);
@@ -638,13 +394,13 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
         VBox section = new VBox(10);
         section.setPadding(new Insets(10));
         section.setStyle("-fx-background-color: #f0f8ff; -fx-background-radius: 5;");
-
+        
         Label titleLabel = createSectionTitle("Additional Parameters");
-
+        
         GridPane paramGrid = new GridPane();
         paramGrid.setHgap(15);
         paramGrid.setVgap(8);
-
+        
         ColumnConstraints col1 = new ColumnConstraints();
         col1.setMinWidth(150);
         col1.setHgrow(Priority.ALWAYS);
@@ -652,7 +408,7 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
         col2.setMinWidth(150);
         col2.setHgrow(Priority.ALWAYS);
         paramGrid.getColumnConstraints().addAll(col1, col2);
-
+        
         Label threadsLabel = new Label("Threads:");
         threadsLabel.setStyle("-fx-font-weight: bold;");
         threadsSpinner = new Spinner<>(1, Runtime.getRuntime().availableProcessors(), 4);
@@ -660,372 +416,58 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
         threadsSpinner.setPrefWidth(100);
         threadsSpinner.setMaxWidth(Double.MAX_VALUE);
         threadsSpinner.valueProperty().addListener((obs, oldVal, newVal) -> updateParameterView());
-
+        
         VBox threadsBox = new VBox(5);
         threadsBox.getChildren().addAll(threadsLabel, threadsSpinner);
-
-        Label ms2Label = new Label("MS2 Scan Mode:");
-        ms2Label.setStyle("-fx-font-weight: bold;");
-        ms2ScanModeComboBox = new ComboBox<>(FXCollections.observableArrayList("HCD-FTMS", "HCD-ITMS", "CID-FTMS", "CID-ITMS"));
-        ms2ScanModeComboBox.setValue("HCD-FTMS");
-        ms2ScanModeComboBox.setMinWidth(100);
-        ms2ScanModeComboBox.setPrefWidth(120);
-        ms2ScanModeComboBox.setMaxWidth(Double.MAX_VALUE);
-        ms2ScanModeComboBox.setOnAction(e -> updateParameterView());
-
-        VBox ms2Box = new VBox(5);
-        ms2Box.getChildren().addAll(ms2Label, ms2ScanModeComboBox);
-
-        paramGrid.add(threadsBox, 0, 0);
-        paramGrid.add(ms2Box, 1, 0);
-
-        VBox checkBoxContainer = new VBox(8);
-        generateSampleSpecificDBCheckBox = new CheckBox("Generate sample specific database");
-        generateSampleSpecificDBCheckBox.setSelected(true);
-        generateSampleSpecificDBCheckBox.setOnAction(e -> updateParameterView());
-
-        spectraClusteringCheckBox = new CheckBox("Spectra clustering in first search");
-        spectraClusteringCheckBox.setSelected(false);
-        spectraClusteringCheckBox.setOnAction(e -> updateParameterView());
-
-        checkBoxContainer.getChildren().addAll(generateSampleSpecificDBCheckBox, spectraClusteringCheckBox);
-
-        section.getChildren().addAll(titleLabel, paramGrid, checkBoxContainer);
-        return section;
-    }
-
-    private VBox createQuantitativeModeSection() {
-        VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #f5f5f5; -fx-background-radius: 5;");
-        section.setMinHeight(300);
-        VBox.setVgrow(section, Priority.ALWAYS);
-
-        Label titleLabel = createSectionTitle("Quantitative Mode");
-        quantModeGroup = new ToggleGroup();
-
-        // Radio buttons for quantitative modes
-        RadioButton labelFreeRadio = new RadioButton("Label-free");
-        labelFreeRadio.setToggleGroup(quantModeGroup);
-        labelFreeRadio.setSelected(true);
-        RadioButton isobaricRadio = new RadioButton("Isobaric");
-        isobaricRadio.setToggleGroup(quantModeGroup);
-
-        HBox radioBox = new HBox(15);
-        radioBox.setAlignment(Pos.CENTER_LEFT);
-        radioBox.getChildren().addAll(labelFreeRadio, isobaricRadio);
-
-        // StackPane for overlapping panels
-        StackPane labelingStackPane = new StackPane();
-        labelingStackPane.setMinHeight(200);
-        labelingStackPane.setMaxHeight(Double.MAX_VALUE);
-        VBox.setVgrow(labelingStackPane, Priority.ALWAYS);
-
-        VBox isobaricPanel = createCompactIsobaricLabelingPanel();
-        isobaricPanel.setMinHeight(200);
-        isobaricPanel.setPrefHeight(220);
-        isobaricPanel.setMaxHeight(Double.MAX_VALUE);
-        isobaricPanel.setVisible(false);
-        isobaricPanel.setManaged(false);
-        labelingStackPane.getChildren().add(isobaricPanel);
-
-        labelFreeRadio.setOnAction(e -> {
-            isobaricPanel.setVisible(false);
-            isobaricPanel.setManaged(false);
-            updateParameterView();
-            updateMetadataTable();
-        });
-
-        isobaricRadio.setOnAction(e -> {
-            isobaricPanel.setVisible(true);
-            isobaricPanel.setManaged(true);
-            updateParameterView();
-            updateMetadataTable();
-        });
-
-        section.getChildren().addAll(titleLabel, radioBox, labelingStackPane);
-        return section;
-    }
-
-    private VBox createCompactIsobaricLabelingPanel() {
-        VBox panel = new VBox(8);
-        panel.setPadding(new Insets(8));
-        panel.setStyle("-fx-background-color: #f8e8f4; -fx-background-radius: 5;");
-
-        HBox typeBox = new HBox(10);
-        typeBox.setAlignment(Pos.CENTER_LEFT);
-        Label typeLabel = new Label("Isobaric Type:");
-        typeLabel.setStyle("-fx-font-weight: bold;");
-
-        isobaricTypeComboBox = new ComboBox<>(isobaricBaseTypes);
-        isobaricTypeComboBox.setMinWidth(200);
-        isobaricTypeComboBox.setPrefWidth(220);
-        isobaricTypeComboBox.setMaxWidth(Double.MAX_VALUE);
-        isobaricTypeComboBox.setOnAction(e -> updateIsobaricTable());
-        HBox.setHgrow(isobaricTypeComboBox, Priority.ALWAYS);
-
-        typeBox.getChildren().addAll(typeLabel, isobaricTypeComboBox);
-
-        isobaricTable = new TableView<>(isobaricTableData);
-        isobaricTable.setMinHeight(120);
-        isobaricTable.setPrefHeight(140);
-        isobaricTable.setMaxHeight(Double.MAX_VALUE);
-        isobaricTable.setEditable(true);
-        isobaricTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
-        VBox.setVgrow(isobaricTable, Priority.ALWAYS);
-
-        TableColumn<IsobaricLabelingPanel.IsobaricLabelRow, String> labelCol = new TableColumn<>("Label");
-        labelCol.setCellValueFactory(new PropertyValueFactory<>("labelName"));
-        labelCol.setMinWidth(120);
-        labelCol.setPrefWidth(150);
-
-        TableColumn<IsobaricLabelingPanel.IsobaricLabelRow, String> minus2Col = new TableColumn<>("-2");
-        minus2Col.setCellValueFactory(new PropertyValueFactory<>("minus2"));
-        minus2Col.setCellFactory(TextFieldTableCell.forTableColumn(new DefaultStringConverter()));
-        minus2Col.setOnEditCommit(e -> e.getRowValue().setMinus2(e.getNewValue()));
-        minus2Col.setMinWidth(50);
-        minus2Col.setPrefWidth(60);
-
-        TableColumn<IsobaricLabelingPanel.IsobaricLabelRow, String> minus1Col = new TableColumn<>("-1");
-        minus1Col.setCellValueFactory(new PropertyValueFactory<>("minus1"));
-        minus1Col.setCellFactory(TextFieldTableCell.forTableColumn(new DefaultStringConverter()));
-        minus1Col.setOnEditCommit(e -> e.getRowValue().setMinus1(e.getNewValue()));
-        minus1Col.setMinWidth(50);
-        minus1Col.setPrefWidth(60);
-
-        TableColumn<IsobaricLabelingPanel.IsobaricLabelRow, String> plus1Col = new TableColumn<>("+1");
-        plus1Col.setCellValueFactory(new PropertyValueFactory<>("plus1"));
-        plus1Col.setCellFactory(TextFieldTableCell.forTableColumn(new DefaultStringConverter()));
-        plus1Col.setOnEditCommit(e -> e.getRowValue().setPlus1(e.getNewValue()));
-        plus1Col.setMinWidth(50);
-        plus1Col.setPrefWidth(60);
-
-        TableColumn<IsobaricLabelingPanel.IsobaricLabelRow, String> plus2Col = new TableColumn<>("+2");
-        plus2Col.setCellValueFactory(new PropertyValueFactory<>("plus2"));
-        plus2Col.setCellFactory(TextFieldTableCell.forTableColumn(new DefaultStringConverter()));
-        plus2Col.setOnEditCommit(e -> e.getRowValue().setPlus2(e.getNewValue()));
-        plus2Col.setMinWidth(50);
-        plus2Col.setPrefWidth(60);
-
-        isobaricTable.getColumns().addAll(labelCol, minus2Col, minus1Col, plus1Col, plus2Col);
-
-        panel.getChildren().addAll(typeBox, isobaricTable);
-        return panel;
-    }
-
-    private void updateIsobaricTable() {
-        String selectedType = isobaricTypeComboBox.getValue();
-        isobaricTableData.clear();
         
-        if (selectedType != null) {
-            // Find the IsobaricTag that matches the selected type
-            IsobaricTag selectedTag = null;
-            IsobaricTag[] tags = IsobaricTag.getPFindTags();
-            for (IsobaricTag tag : tags) {
-                if (tag.getName().equals(selectedType)) {
-                    selectedTag = tag;
-                    break;
-                }
-            }
-            
-            if (selectedTag != null) {
-                // Use the getReportTitle() method to get the proper labels
-                String[] reportTitles = selectedTag.getReportTitle();
-                for (String title : reportTitles) {
-                    isobaricTableData.add(new IsobaricLabelingPanel.IsobaricLabelRow(title));
-                }
-            }
-            updateMetadataTable();
+        Label workflowLabel = new Label("Workflow:");
+        workflowLabel.setStyle("-fx-font-weight: bold;");
+        workflowComboBox = new ComboBox<>(workflows);
+        workflowComboBox.setMinWidth(100);
+        workflowComboBox.setPrefWidth(120);
+        workflowComboBox.setMaxWidth(Double.MAX_VALUE);
+        if (workflows.size() > 0) {
+            workflowComboBox.setValue(workflows.get(0));
         }
+        workflowComboBox.setOnAction(e -> updateParameterView());
+        
+        VBox workflowBox = new VBox(5);
+        workflowBox.getChildren().addAll(workflowLabel, workflowComboBox);
+        
+        // Add MS data type option
+        Label msDataTypeLabel = new Label("MS data type:");
+        msDataTypeLabel.setStyle("-fx-font-weight: bold;");
+        msDataTypeComboBox = new ComboBox<>(FXCollections.observableArrayList("Regular MS", "IM-MS (ion mobility, timsTOF only)"));
+        msDataTypeComboBox.setValue("Regular MS");
+        msDataTypeComboBox.setMinWidth(100);
+        msDataTypeComboBox.setPrefWidth(200);
+        msDataTypeComboBox.setMaxWidth(Double.MAX_VALUE);
+        msDataTypeComboBox.setOnAction(e -> updateParameterView());
+        
+        VBox msDataTypeBox = new VBox(5);
+        msDataTypeBox.getChildren().addAll(msDataTypeLabel, msDataTypeComboBox);
+        
+        paramGrid.add(threadsBox, 0, 0);
+        paramGrid.add(workflowBox, 1, 0);
+        paramGrid.add(msDataTypeBox, 0, 1, 2, 1); // Span both columns
+
+        section.getChildren().addAll(titleLabel, paramGrid);
+        return section;
     }
-
-    // Add remaining missing methods
-    private VBox createConsoleTab() {
-        VBox tabContent = new VBox(10);
-        tabContent.setPadding(new Insets(10));
-
-        // Parameter View
-        VBox paramViewBox = new VBox(5);
-        paramViewBox.getChildren().add(new Label("Parameter View:"));
-        parameterView = new TextArea();
-        parameterView.setEditable(false);
-        parameterView.setPrefHeight(200);
-        parameterView.setStyle("-fx-font-family: monospace;");
-        VBox.setVgrow(parameterView, Priority.ALWAYS);
-        paramViewBox.getChildren().add(parameterView);
-        VBox.setVgrow(paramViewBox, Priority.ALWAYS);
-
-        // Progress Bars
-        VBox progressBox = new VBox(5);
-        currentTaskLabel = new Label("Current Task: None");
-        overallProgressBar = new ProgressBar(0);
-        overallProgressBar.setMaxWidth(Double.MAX_VALUE);
-        currentTaskProgressBar = new ProgressBar(0);
-        currentTaskProgressBar.setMaxWidth(Double.MAX_VALUE);
-        progressBox.getChildren().addAll(
-            currentTaskLabel,
-            new Label("Overall Progress:"),
-            overallProgressBar,
-            new Label("Current Task Progress:"),
-            currentTaskProgressBar
-        );
-
-        // Console Output
-        VBox consoleBox = new VBox(5);
-        consoleBox.getChildren().add(new Label("Console Output:"));
-        consoleOutput = new TextArea();
-        consoleOutput.setEditable(false);
-        consoleOutput.setPrefHeight(250);
-        consoleOutput.setStyle("-fx-font-family: monospace;");
-        VBox.setVgrow(consoleOutput, Priority.ALWAYS);
-        consoleBox.getChildren().add(consoleOutput);
-        VBox.setVgrow(consoleBox, Priority.ALWAYS);
-
-        // Control Buttons
-        HBox controlBox = new HBox(10);
-        startButton = new Button("Start Analysis");
-        stopButton = new Button("Stop");
-        stopButton.setDisable(true);
-        startButton.setOnAction(e -> startAnalysis());
-        stopButton.setOnAction(e -> stopAnalysis());
-        controlBox.getChildren().addAll(startButton, stopButton);
-
-        // Status Panel
-        HBox statusPanel = new HBox(20);
-        statusPanel.setPadding(new Insets(5, 0, 0, 0));
-        statusPanel.setAlignment(Pos.CENTER_LEFT);
-        statusTimeLabel = new Label("Time: 00:00:00");
-        statusCpuLabel = new Label("CPU: 0.0%");
-        statusMemLabel = new Label("Memory: 0 / 0 MB");
-        statusPanel.getChildren().addAll(statusTimeLabel, statusCpuLabel, statusMemLabel);
-
-        tabContent.getChildren().addAll(
-            paramViewBox,
-            progressBox,
-            consoleBox,
-            controlBox,
-            statusPanel
-        );
-        VBox.setVgrow(paramViewBox, Priority.ALWAYS);
-        VBox.setVgrow(consoleBox, Priority.ALWAYS);
-        VBox.setVgrow(tabContent, Priority.ALWAYS);
-
-        return tabContent;
-    }
+    
+    // Combined modifications panel with fixed mods (narrow) and variable mods (wider) side by side
 
     private void updateMetadataTableFromIOPanel() {
-        if (ioPanel == null || metadataTable == null) {
+        if (ioPanel == null || metadataPanel == null) {
             return;
         }
         
         ObservableList<MetaPilotIOPanelFX.ExperimentRow> experiments = ioPanel.getExperimentData();
-        metadataTableData.clear();
-        for (MetaPilotIOPanelFX.ExperimentRow exp : experiments) {
-            metadataTableData.add(new MetaPilotDdaIgcMaxQuantPanel.MetadataRow(exp.getExperimentName()));
-        }
-    }
-
-    private VBox createMetadataConfigurationSection() {
-        VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #fff8f0; -fx-background-radius: 5;");
-        section.setMinHeight(200);
-        VBox.setVgrow(section, Priority.ALWAYS);
-
-        Label titleLabel = createSectionTitle("Metadata Configuration");
-        Label infoLabel = new Label("Metadata will be configured based on selected quantitative mode");
-        infoLabel.setStyle("-fx-font-style: italic; -fx-text-fill: #666666;");
-
-        metadataTable = new TableView<>(metadataTableData);
-        metadataTable.setMinHeight(120);
-        metadataTable.setPrefHeight(150);
-        metadataTable.setMaxHeight(Double.MAX_VALUE);
-        metadataTable.setEditable(true);
-        metadataTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
-        VBox.setVgrow(metadataTable, Priority.ALWAYS);
-
-        createMetadataTableColumns();
-
-        HBox controlBox = new HBox(8);
-        controlBox.setAlignment(Pos.CENTER_LEFT);
-
-        metadataColumnComboBox = new ComboBox<>(FXCollections.observableArrayList(
-            "Age", "Gender", "Condition", "Treatment", "Time Point", "BMI", "Custom"));
-        metadataColumnComboBox.setMinWidth(100);
-        metadataColumnComboBox.setPrefWidth(120);
-        metadataColumnComboBox.setPromptText("Add column");
-
-        TextField customColumnTextField = new TextField();
-        customColumnTextField.setPromptText("Enter custom column name");
-        customColumnTextField.setMinWidth(120);
-        customColumnTextField.setVisible(false);
-        customColumnTextField.setManaged(false);
-
-        metadataColumnComboBox.setOnAction(e -> {
-            String selected = metadataColumnComboBox.getValue();
-            boolean isCustom = "Custom".equals(selected);
-            customColumnTextField.setVisible(isCustom);
-            customColumnTextField.setManaged(isCustom);
-            if (isCustom) {
-                customColumnTextField.requestFocus();
-            }
-        });
-
-        addMetadataColumnButton = new Button("Add Column");
-        addMetadataColumnButton.setMinWidth(120);
-        addMetadataColumnButton.setPrefWidth(150);
-        addMetadataColumnButton.setOnAction(e -> {
-            String columnName = metadataColumnComboBox.getValue();
-            if ("Custom".equals(columnName)) {
-                String customName = customColumnTextField.getText();
-                if (customName != null && !customName.trim().isEmpty()) {
-                    addMetadataColumnWithProperty(customName.trim(), getPropertyNameForColumn(customName.trim()));
-                    customColumnTextField.clear();
-                }
-            } else if (columnName != null && !columnName.isEmpty()) {
-                addMetadataColumnWithProperty(columnName, getPropertyNameForColumn(columnName));
-            }
-        });
-
-        removeMetadataColumnButton = new Button("Remove Column");
-        removeMetadataColumnButton.setMinWidth(120);
-        removeMetadataColumnButton.setPrefWidth(150);
-        removeMetadataColumnButton.setOnAction(e -> removeMetadataColumn());
-
-        controlBox.getChildren().addAll(
-            metadataColumnComboBox, 
-            customColumnTextField, 
-            addMetadataColumnButton, 
-            removeMetadataColumnButton
-        );
-
-        section.getChildren().addAll(titleLabel, infoLabel, metadataTable, controlBox);
-        return section;
-    }
-
-    private void createMetadataTableColumns() {
-        metadataTable.getColumns().clear();
-        TableColumn<MetaPilotDdaIgcMaxQuantPanel.MetadataRow, String> sampleCol = new TableColumn<>("Sample");
-        sampleCol.setCellValueFactory(new PropertyValueFactory<>("sampleName"));
-        sampleCol.setMinWidth(120);
-        sampleCol.setPrefWidth(150);
-        metadataTable.getColumns().add(sampleCol);
-
-        if (quantModeGroup != null && quantModeGroup.getSelectedToggle() != null) {
-            RadioButton selected = (RadioButton) quantModeGroup.getSelectedToggle();
-            String mode = selected.getText();
-            if (mode.contains("Isobaric")) {
-                TableColumn<MetaPilotDdaIgcMaxQuantPanel.MetadataRow, String> labelCol = new TableColumn<>("Label Type");
-                labelCol.setCellValueFactory(new PropertyValueFactory<>("labelType"));
-                labelCol.setMinWidth(120);
-                labelCol.setPrefWidth(150);
-                metadataTable.getColumns().add(labelCol);
-            }
-        }
+        metadataPanel.updateMetadataFromIOPanel(experiments);
     }
 
     private void updateParameterView() {
-        if (parameterView == null) {
+        if (consolePanel == null) {
             return;
         }
         
@@ -1034,10 +476,19 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
 
         // Database settings
         sb.append("Database Settings:\n");
-        sb.append("  MAG Database: ").append(magDatabaseComboBox != null ? magDatabaseComboBox.getValue() != null ? magDatabaseComboBox.getValue().getCatalogueID() : "" : "").append("\n");
-        sb.append("  Append Host DB: ").append(appendHostDBCheckBox != null ? appendHostDBCheckBox.isSelected() : false).append("\n");
-        if (appendHostDBCheckBox != null && appendHostDBCheckBox.isSelected() && hostDBField != null && !hostDBField.getText().isEmpty()) {
-            sb.append("  Host Database: ").append(hostDBField.getText()).append("\n");
+        if (magDatabasePanel != null) {
+            MagDbItem selectedDb = magDatabasePanel.getSelectedMagDatabase();
+            if (selectedDb != null) {
+                sb.append("  MAG Database: ").append(selectedDb.getCatalogueID()).append("\n");
+            }
+            MagVersion selectedVersion = magDatabasePanel.getSelectedMagVersion();
+            if (selectedVersion != null) {
+                sb.append("  MAG Version: ").append(selectedVersion.getCatalogueVersion()).append("\n");
+            }
+            sb.append("  Append Host DB: ").append(magDatabasePanel.isAppendHostDb()).append("\n");
+            if (magDatabasePanel.isAppendHostDb() && magDatabasePanel.getHostDatabase() != null && !magDatabasePanel.getHostDatabase().isEmpty()) {
+                sb.append("  Host Database: ").append(magDatabasePanel.getHostDatabase()).append("\n");
+            }
         }
         sb.append("\n");
 
@@ -1056,8 +507,8 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
 
         // Fixed modifications
         sb.append("Fixed Modifications:\n");
-        if (fixedModData != null) {
-            for (FixedModificationRow row : fixedModData) {
+        if (modificationsPanel != null) {
+            for (ModificationsPanel.FixedModificationRow row : modificationsPanel.getFixedModData()) {
                 if (row.getDeltaMass() != 0.0) {
                     sb.append("  ").append(row.getSite()).append(": ").append(row.getDeltaMass()).append("\n");
                 }
@@ -1067,8 +518,8 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
 
         // Variable modifications
         sb.append("Variable Modifications:\n");
-        if (variableModData != null) {
-            for (VariableModificationRow row : variableModData) {
+        if (modificationsPanel != null) {
+            for (ModificationsPanel.VariableModificationRow row : modificationsPanel.getVariableModData()) {
                 if (row.getUse()) {
                     sb.append("  ").append(row.getModName()).append(" (").append(row.getSites()).append("): ")
                       .append(row.getDeltaMass()).append("\n");
@@ -1082,133 +533,722 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
         if (threadsSpinner != null) {
             sb.append("  Threads: ").append(threadsSpinner.getValue()).append("\n");
         }
-        if (ms2ScanModeComboBox != null) {
-            sb.append("  MS2 Scan Mode: ").append(ms2ScanModeComboBox.getValue()).append("\n");
+        if (workflowComboBox != null) {
+            sb.append("  Workflow: ").append(workflowComboBox.getValue()).append("\n");
         }
-        if (generateSampleSpecificDBCheckBox != null) {
-            sb.append("  Generate Sample-specific DB: ").append(generateSampleSpecificDBCheckBox.isSelected()).append("\n");
-        }
-        if (spectraClusteringCheckBox != null) {
-            sb.append("  Spectra Clustering: ").append(spectraClusteringCheckBox.isSelected()).append("\n");
+        if (msDataTypeComboBox != null) {
+            sb.append("  MS data type: ").append(msDataTypeComboBox.getValue()).append("\n");
         }
         sb.append("\n");
 
-        // Quantitative mode
-        sb.append("Quantitative Mode:\n");
-        if (quantModeGroup != null && quantModeGroup.getSelectedToggle() != null) {
-            RadioButton selected = (RadioButton) quantModeGroup.getSelectedToggle();
-            sb.append("  Mode: ").append(selected.getText()).append("\n");
+        // Note: Quantitative mode is determined by the selected workflow
+        sb.append("Quantitative Mode: Determined by workflow selection\n\n");
 
-            if (selected.getText().contains("Isobaric") && isobaricTypeComboBox != null) {
-                sb.append("  Isobaric Type: ").append(isobaricTypeComboBox.getValue()).append("\n");
-                sb.append("  Configured Labels: ").append(isobaricTableData.size()).append("\n");
-            }
-        }
-        sb.append("\n");
-
-        parameterView.setText(sb.toString());
+        consolePanel.setParameterText(sb.toString());
     }
 
+
     private void updateMetadataTable() {
-        if (metadataTable == null || ioPanel == null) {
+        if (metadataPanel == null || ioPanel == null) {
             return;
         }
         
-        metadataTableData.clear();
         ObservableList<MetaPilotIOPanelFX.ExperimentRow> fileRows = ioPanel.getExperimentData();
         if (fileRows.isEmpty()) return;
-
-        createMetadataTableColumns();
-
-        if (quantModeGroup != null && quantModeGroup.getSelectedToggle() != null) {
-            RadioButton selected = (RadioButton) quantModeGroup.getSelectedToggle();
-            String mode = selected.getText();
-            boolean hasLabels = !isobaricTableData.isEmpty();
-
-            if (mode.contains("Isobaric") && hasLabels) {
-                for (MetaPilotIOPanelFX.ExperimentRow row : fileRows) {
-                    for (IsobaricLabelingPanel.IsobaricLabelRow isoLabel : isobaricTableData) {
-                        MetaPilotDdaIgcMaxQuantPanel.MetadataRow metadataRow = 
-                            new MetaPilotDdaIgcMaxQuantPanel.MetadataRow(row.getExperimentName());
-                        metadataRow.setLabelType("Isobaric - " + isoLabel.getLabelName());
-                        metadataTableData.add(metadataRow);
-                    }
-                }
-            } else {
-                for (MetaPilotIOPanelFX.ExperimentRow row : fileRows) {
-                    metadataTableData.add(new MetaPilotDdaIgcMaxQuantPanel.MetadataRow(row.getExperimentName()));
-                }
-            }
-        }
-    }
-
-    private String getPropertyNameForColumn(String columnName) {
-        switch (columnName) {
-            case "Age": return "age";
-            case "Gender": return "gender";
-            case "Condition": return "condition";
-            case "Treatment": return "treatment";
-            case "Time Point": return "timePoint";
-            case "BMI": return "customField1";
-            default: return "customField1";
-        }
-    }
-
-    private void addMetadataColumnWithProperty(String columnName, String propertyName) {
-        TableColumn<MetaPilotDdaIgcMaxQuantPanel.MetadataRow, String> newCol = new TableColumn<>(columnName);
-        newCol.setCellValueFactory(data -> {
-            switch (propertyName) {
-                case "age": return new SimpleStringProperty(data.getValue().getAge());
-                case "gender": return new SimpleStringProperty(data.getValue().getGender());
-                case "condition": return new SimpleStringProperty(data.getValue().getCondition());
-                case "treatment": return new SimpleStringProperty(data.getValue().getTreatment());
-                case "timePoint": return new SimpleStringProperty(data.getValue().getTimePoint());
-                case "customField1": return new SimpleStringProperty(data.getValue().getCustomField1());
-                case "customField2": return new SimpleStringProperty(data.getValue().getCustomField2());
-                case "customField3": return new SimpleStringProperty(data.getValue().getCustomField3());
-                default: return new SimpleStringProperty("");
-            }
-        });
-        newCol.setCellFactory(TextFieldTableCell.forTableColumn());
-        newCol.setOnEditCommit(e -> {
-            switch (propertyName) {
-                case "age": e.getRowValue().setAge(e.getNewValue()); break;
-                case "gender": e.getRowValue().setGender(e.getNewValue()); break;
-                case "condition": e.getRowValue().setCondition(e.getNewValue()); break;
-                case "treatment": e.getRowValue().setTreatment(e.getNewValue()); break;
-                case "timePoint": e.getRowValue().setTimePoint(e.getNewValue()); break;
-                case "customField1": e.getRowValue().setCustomField1(e.getNewValue()); break;
-                case "customField2": e.getRowValue().setCustomField2(e.getNewValue()); break;
-                case "customField3": e.getRowValue().setCustomField3(e.getNewValue()); break;
-            }
-        });
-        newCol.setMinWidth(100);
-        newCol.setPrefWidth(120);
-        metadataTable.getColumns().add(newCol);
-    }
-
-    private void removeMetadataColumn() {
-        TableColumn<MetaPilotDdaIgcMaxQuantPanel.MetadataRow, ?> selectedColumn = 
-            metadataTable.getSelectionModel().getSelectedCells().isEmpty() ? null :
-            metadataTable.getColumns().get(metadataTable.getSelectionModel().getSelectedCells().get(0).getColumn());
         
-        if (selectedColumn != null && !selectedColumn.getText().equals("Sample")) {
-            metadataTable.getColumns().remove(selectedColumn);
-        }
+        // Note: Quantitative mode is determined by workflow, use default label-free mode
+        ObservableList<uk.ac.quadram.metapilot.task.common.gui.IsobaricLabelingPanel.IsobaricLabelRow> emptyIsobaricList = FXCollections.observableArrayList();
+        metadataPanel.updateMetadataForQuantMode("Label-free", false, fileRows, emptyIsobaricList);
     }
+
 
     private void startAnalysis() {
-        startButton.setDisable(true);
-        stopButton.setDisable(false);
-        consoleOutput.clear();
-        consoleOutput.appendText("Starting FragPipe analysis...\n");
-        System.out.println("DEBUG: startAnalysis called - FragPipe workflow");
+        try {
+            consolePanel.appendConsoleText("Starting MAG FragPipe analysis...\n");
+            System.out.println("DEBUG: startAnalysis called - MAG FragPipe workflow");
+            
+            // 1. Collect parameters from UI
+            consolePanel.appendConsoleText("Collecting parameters from UI...\n");
+            DDAMagFragPipeParameters analysisParams = collectParametersFromUI();
+            if (analysisParams == null) {
+                consolePanel.appendConsoleText("ERROR: Failed to collect parameters from UI.\n");
+                LOGGER.error("Failed to collect parameters from UI in startAnalysis");
+                return;
+            }
+            
+            consolePanel.appendConsoleText("✓ Successfully collected parameters from UI\n");
+            LOGGER.info("Successfully collected parameters from UI for MAG FragPipe workflow");
+            
+            // Store analysis parameters for viewReport
+            this.currentAnalysisParams = analysisParams;
+            
+            // 2. Save parameters to file
+            String outputDir = analysisParams.getResult();
+            if (outputDir != null && !outputDir.trim().isEmpty()) {
+                consolePanel.appendConsoleText("Saving parameters to output directory...\n");
+                
+                // Save analysis-specific parameters
+                boolean analysisParamsSaved = parameterIO.saveAnalysisParameters(outputDir, analysisParams);
+                if (!analysisParamsSaved) {
+                    consolePanel.appendConsoleText("WARNING: Failed to save analysis parameters to result directory\n");
+                    LOGGER.warn("Failed to save analysis parameters to {}/analysis_parameters.json", outputDir);
+                } else {
+                    consolePanel.appendConsoleText("✓ Analysis parameters saved to result directory\n");
+                    LOGGER.info("Saved analysis parameters to {}/analysis_parameters.json", outputDir);
+                }
+                
+                // Save as last used parameters
+                boolean lastParamsSaved = parameterIO.saveLastUsedParameters(analysisParams);
+                if (!lastParamsSaved) {
+                    consolePanel.appendConsoleText("WARNING: Failed to save last used parameters\n");
+                    LOGGER.warn("Failed to save last used parameters");
+                } else {
+                    consolePanel.appendConsoleText("✓ Last used parameters saved\n");
+                }
+                
+                // Also save to preferences for quick defaults
+                boolean prefsSaved = parameterIO.savePreferences(analysisParams);
+                if (prefsSaved) {
+                    consolePanel.appendConsoleText("✓ Preferences saved\n");
+                } else {
+                    consolePanel.appendConsoleText("WARNING: Failed to save preferences\n");
+                }
+            } else {
+                consolePanel.appendConsoleText("WARNING: No output directory specified, skipping parameter save\n");
+                LOGGER.warn("No output directory specified, skipping parameter save");
+            }
+            
+            // 3. Create MetaResourceParameters (load from config file)
+            consolePanel.appendConsoleText("Loading resource parameters from config...\n");
+            MetaResourceIO resourceIO = new MetaResourceIO();
+            MetaResourceParameters mrp = resourceIO.loadParameters();
+            consolePanel.appendConsoleText("✓ Resource parameters loaded from config file\n");
+            
+            // 4. Create progress bars and status label
+            consolePanel.appendConsoleText("Setting up progress tracking...\n");
+            ProgressBar overallBar = new ProgressBar();
+            ProgressBar currentBar = new ProgressBar();
+            Label statusLabel = new Label("Ready to start analysis...");
+            consolePanel.appendConsoleText("✓ Progress bars and status label initialized\n");
+            
+            // 5. Set status label in parameters
+            analysisParams.setStatusLabel(statusLabel);
+            consolePanel.appendConsoleText("✓ Status label set in parameters\n");
+            
+            // 6. Create and run DDAMagFragPipeTask with DDAMagFragPipeParameters directly
+            consolePanel.appendConsoleText("Creating MAG FragPipe task...\n");
+            DDAMagFragPipeTask task = new DDAMagFragPipeTask(analysisParams, mrp, overallBar, currentBar);
+            consolePanel.appendConsoleText("✓ Task created successfully\n");
+            
+            // 7. Set up task callbacks
+            consolePanel.appendConsoleText("Setting up task callbacks...\n");
+            task.messageProperty().addListener((obs, oldMsg, newMsg) -> {
+                Platform.runLater(() -> {
+                    if (newMsg != null) {
+                        consolePanel.appendConsoleText("Current Task: " + newMsg + "\n");
+                        statusLabel.setText(newMsg);
+                    }
+                });
+            });
+            
+            // Set up task completion callback to enable View Report button
+            task.setOnSucceeded(e -> {
+                Platform.runLater(() -> {
+                    consolePanel.appendConsoleText("✓ Analysis completed successfully!\n");
+                    consolePanel.enableViewReportButton();
+                    consolePanel.setButtonsEnabled(true, false, true);
+                });
+            });
+            
+            task.setOnFailed(e -> {
+                Platform.runLater(() -> {
+                    consolePanel.appendConsoleText("✗ Analysis failed. Check console output for details.\n");
+                    consolePanel.setButtonsEnabled(true, false, false);
+                });
+            });
+            
+            consolePanel.appendConsoleText("✓ Task callbacks configured\n");
+            
+            // 8. Run task in background thread
+            consolePanel.appendConsoleText("Starting task execution...\n");
+            Thread taskThread = new Thread(task);
+            taskThread.setDaemon(true);
+            taskThread.start();
+            
+            consolePanel.appendConsoleText("✓ Analysis task started successfully.\n");
+            LOGGER.info("MAG FragPipe analysis task started successfully");
+            
+        } catch (Exception e) {
+            String errorMsg = "ERROR: Failed to start analysis: " + e.getMessage();
+            consolePanel.appendConsoleText(errorMsg + "\n");
+            LOGGER.error("Failed to start MAG FragPipe analysis", e);
+            e.printStackTrace();
+        }
     }
 
     private void stopAnalysis() {
-        startButton.setDisable(false);
-        stopButton.setDisable(true);
-        consoleOutput.appendText("Stopping FragPipe analysis...\n");
+        consolePanel.appendConsoleText("Stopping FragPipe analysis...\n");
         System.out.println("DEBUG: stopAnalysis called");
+        // TODO: Implement task cancellation functionality
+        consolePanel.appendConsoleText("Analysis stop requested (not yet implemented).\n");
+        LOGGER.warn("Analysis stop requested but not yet implemented");
+    }
+    
+    private void viewReport() {
+        try {
+            consolePanel.appendConsoleText("Opening report in default browser...\n");
+            
+            if (currentAnalysisParams == null) {
+                consolePanel.appendConsoleText("ERROR: No analysis parameters available. Please run analysis first.\n");
+                return;
+            }
+            
+            File reportDir = currentAnalysisParams.getReportDir();
+            if (reportDir == null || !reportDir.exists()) {
+                consolePanel.appendConsoleText("ERROR: Report directory not available or does not exist.\n");
+                consolePanel.appendConsoleText("Please ensure the analysis has completed successfully.\n");
+                return;
+            }
+            
+            File indexFile = new File(reportDir, "index.html");
+            
+            if (!indexFile.exists()) {
+                consolePanel.appendConsoleText("ERROR: Main report index.html not found in " + reportDir.getAbsolutePath() + "\n");
+                consolePanel.appendConsoleText("Please ensure the analysis has completed successfully.\n");
+                return;
+            }
+            
+            consolePanel.appendConsoleText("Opening main report: index.html\n");
+            
+            if (java.awt.Desktop.isDesktopSupported()) {
+                java.awt.Desktop.getDesktop().browse(indexFile.toURI());
+                consolePanel.appendConsoleText("✓ Report opened in default browser\n");
+            } else {
+                consolePanel.appendConsoleText("ERROR: Desktop not supported. Please open manually: " + indexFile.getAbsolutePath() + "\n");
+            }
+            
+        } catch (Exception e) {
+            String errorMsg = "ERROR: Failed to open report: " + e.getMessage();
+            consolePanel.appendConsoleText(errorMsg + "\n");
+            System.err.println("Failed to open report: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+    
+    /**
+     * Collect all parameters from the UI into a parameters object
+     */
+    private DDAMagFragPipeParameters collectParametersFromUI() {
+        try {
+            LOGGER.info("Starting parameter collection from UI for MAG FragPipe workflow");
+            
+            // Validate inputs first
+            if (!validateInputs()) {
+                LOGGER.error("Input validation failed");
+                return null;
+            }
+            LOGGER.info("Input validation passed");
+            
+            // Collect experiment data from ioPanel
+            ObservableList<MetaPilotIOPanelFX.ExperimentRow> fileRows = ioPanel.getExperimentData();
+            LOGGER.info("Found {} experiment rows", fileRows.size());
+            
+            if (fileRows.isEmpty()) {
+                LOGGER.error("No experiment data found in IO panel");
+                return null;
+            }
+            
+            String[] rawFiles = new String[fileRows.size()];
+            String[] expNames = new String[fileRows.size()];
+            int[] fractions = new int[fileRows.size()];
+            int[] replicates = new int[fileRows.size()];
+            
+            for (int i = 0; i < fileRows.size(); i++) {
+                MetaPilotIOPanelFX.ExperimentRow row = fileRows.get(i);
+                rawFiles[i] = row.getFilePath();
+                expNames[i] = row.getExperimentName();
+                fractions[i] = 1; // Default fraction
+                replicates[i] = 1; // Default replicate
+                LOGGER.debug("Experiment {}: file={}, name={}", i, rawFiles[i], expNames[i]);
+            }
+            
+            // Create MetaData object
+            MetaData metaData = new MetaData(rawFiles, expNames, fractions, replicates);
+            LOGGER.info("MetaData created successfully with {} raw files", rawFiles.length);
+            
+            // Collect basic parameters
+            String result = ioPanel.getOutputDirectory();
+            LOGGER.info("Output directory: {}", result);
+            
+            MagDbItem selectedMagDb = magDatabasePanel.getSelectedMagDatabase();
+            String microDb = selectedMagDb != null ? selectedMagDb.getCatalogueID() : "";
+            LOGGER.info("Selected MAG database: {}", microDb);
+            
+            boolean appendHostDb = magDatabasePanel.isAppendHostDb();
+            String hostDB = appendHostDb ? magDatabasePanel.getHostDatabase() : "";
+            
+            String enzyme = enzymeComboBox.getValue() != null ? enzymeComboBox.getValue() : "Trypsin";
+            int missCleavages = missedCleavagesSpinner.getValue() != null ? missedCleavagesSpinner.getValue() : 2;
+            String digestMode = digestionModeComboBox.getValue() != null ? digestionModeComboBox.getValue() : "Specific";
+            int threadCount = threadsSpinner.getValue() != null ? threadsSpinner.getValue() : 4;
+            String workflow = workflowComboBox.getValue() != null ? workflowComboBox.getValue() : "Standard";
+            String msDataType = msDataTypeComboBox.getValue() != null ? msDataTypeComboBox.getValue() : "Regular MS";
+            
+            // Create DDAMagFragPipeParameters with required constructor parameters
+            DDAMagFragPipeParameters analysisParams = new DDAMagFragPipeParameters(
+                MetaPilotApp.WorkflowType.DDA_MAG_FRAGPIPE.getAnalysisType(),
+                metaData,
+                result,
+                microDb,
+                appendHostDb,
+                hostDB,
+                "HCD-FTMS", // Default MS2 scan mode for FragPipe
+                threadCount
+            );
+            LOGGER.info("DDAMagFragPipeParameters object created successfully");
+            
+            // Set additional parameters
+            analysisParams.setEnzyme(enzyme);
+            analysisParams.setMissCleavages(missCleavages);
+            analysisParams.setDigestMode(digestMode);
+            
+            // Set MAG-specific fields
+            analysisParams.setMagDbCatalogueId(microDb);
+            if (selectedMagDb != null && selectedMagDb.getVersionList() != null && !selectedMagDb.getVersionList().isEmpty()) {
+                String magDbVersion = selectedMagDb.getVersionList().get(0).getCatalogueVersion();
+                analysisParams.setMagDbVersion(magDbVersion);
+            }
+            
+            // Set the used version on the MagDbItem
+            MagVersion selectedVersion = magDatabasePanel.getSelectedMagVersion();
+            if (selectedVersion != null && selectedMagDb != null) {
+                selectedMagDb.setUsedVersion(selectedVersion);
+                LOGGER.info("Set used version on MagDbItem: {}", selectedVersion.getCatalogueVersion());
+            }
+            
+            analysisParams.setMagDbItem(selectedMagDb);
+            
+            // Set quantitative mode based on workflow (default to label-free)
+            analysisParams.setQuantitativeMode("Label-Free");
+            
+            // Set modifications (convert from FragPipe format to standard format)
+            // Note: Modifications are set later in the workflow configuration section
+            
+            // Set experiment data
+            analysisParams.setExperimentData(new ArrayList<>(fileRows));
+            
+            // Set metadata table data using reusable component
+            if (metadataPanel != null) {
+                analysisParams.setMetadataTableData(new ArrayList<>(metadataPanel.getMetadataTableData()));
+            }
+            
+            // Create and configure FragPipe workflow
+            try {
+                // Get FragPipe path from MetaResourceParameters
+                MetaResourceIO resourceIO = new MetaResourceIO();
+                MetaResourceParameters mrp = resourceIO.loadParameters();
+                String fragpipePath = mrp.getToolPath(MetaResourceParameters.ToolType.FRAGPIPE);
+                
+                if (fragpipePath != null && !fragpipePath.trim().isEmpty()) {
+                    File fragpipeFile = new File(fragpipePath);
+                    if (fragpipeFile.exists()) {
+                        File binDir = fragpipeFile.getParentFile();
+                        if (binDir != null) {
+                            File workflowsDir = new File(binDir.getParentFile(), "workflows");
+                            if (workflowsDir.exists() && workflowsDir.isDirectory()) {
+                                // Parse the selected workflow
+                                uk.ac.quadram.metapilot.dbSearch.fragpipe.FragpipeWorkflow fragpipeWorkflow = 
+                                    uk.ac.quadram.metapilot.dbSearch.fragpipe.FragpipeWorkflow.parse(workflowsDir, workflow);
+                                
+                                if (fragpipeWorkflow != null) {
+                                    // Configure the workflow with UI parameters
+                                    
+                                    // Set enzyme configuration
+                                    String[] enzymeInfo = getEnzymeInfo(enzyme);
+                                    fragpipeWorkflow.setEnzyme(enzymeInfo[0], enzymeInfo[1], enzymeInfo[2], 2, missCleavages);
+                                    
+                                    // Set mass tolerances
+                                    fragpipeWorkflow.setPrecursorMassTol(20.0, 1, 20.0, 1); // 20 ppm
+                                    fragpipeWorkflow.setFragmentMassTol(0.5, 0); // 0.5 Da
+                                    
+                                    // Set ion mobility based on MS data type
+                                    boolean isIonMobility = msDataType.contains("IM-MS");
+                                    fragpipeWorkflow.setIonMobility(isIonMobility);
+                                    
+                                    // Set modifications from UI - convert from ModificationsPanel format to FragpipeWorkflow format
+                                    List<String> fixedMods = new ArrayList<>();
+                                    List<String> variableMods = new ArrayList<>();
+                                    
+                                    // Convert fixed modifications
+                                    for (ModificationsPanel.FixedModificationRow row : modificationsPanel.getFixedModData()) {
+                                        if (row.getDeltaMass() != 0.0) {
+                                            fixedMods.add(row.getSite() + ":" + row.getDeltaMass());
+                                        }
+                                    }
+                                    
+                                    // Convert variable modifications
+                                    for (ModificationsPanel.VariableModificationRow row : modificationsPanel.getVariableModData()) {
+                                        if (row.getUse()) {
+                                            variableMods.add(row.getModName() + ":" + row.getSites() + ":" + row.getDeltaMass());
+                                        }
+                                    }
+                                    
+                                    // Set modifications using the string format
+                                    analysisParams.setFixedModifications(fixedMods);
+                                    analysisParams.setVariableModifications(variableMods);
+                                    
+                                    // Set the configured workflow
+                                    analysisParams.setFragpipeWorkflow(fragpipeWorkflow);
+                                    
+                                    LOGGER.info("Successfully configured FragPipe workflow: {}", workflow);
+                                } else {
+                                    LOGGER.warn("Failed to parse FragPipe workflow: {}", workflow);
+                                }
+                            } else {
+                                LOGGER.warn("FragPipe workflows directory not found: {}", workflowsDir.getAbsolutePath());
+                            }
+                        }
+                    } else {
+                        LOGGER.warn("FragPipe executable not found: {}", fragpipePath);
+                    }
+                } else {
+                    LOGGER.warn("FragPipe path not configured in MetaResourceParameters");
+                }
+            } catch (Exception e) {
+                LOGGER.error("Failed to configure FragPipe workflow: " + e.getMessage(), e);
+            }
+            
+            LOGGER.info("Successfully collected parameters from UI for MAG FragPipe workflow");
+            return analysisParams;
+            
+        } catch (Exception e) {
+            LOGGER.error("Failed to collect parameters from UI: " + e.getMessage(), e);
+            return null;
+        }
+    }
+    
+    /**
+     * Validate inputs before starting analysis
+     */
+    private boolean validateInputs() {
+        LOGGER.info("Starting input validation for MAG FragPipe workflow");
+        
+        // Check experiment data
+        if (ioPanel == null) {
+            LOGGER.error("IO panel is null");
+            return false;
+        }
+        
+        if (ioPanel.getExperimentData().isEmpty()) {
+            LOGGER.error("No experiment data found in IO panel");
+            return false;
+        }
+        LOGGER.info("Experiment data validation passed: {} experiments found", ioPanel.getExperimentData().size());
+        
+        // Check output directory
+        String outputDir = ioPanel.getOutputDirectory();
+        if (outputDir == null || outputDir.trim().isEmpty()) {
+            LOGGER.error("Output directory is empty or null");
+            return false;
+        }
+        LOGGER.info("Output directory validation passed: {}", outputDir);
+        
+        // Check MAG database selection using reusable component
+        if (magDatabasePanel == null) {
+            LOGGER.error("MAG database panel is null");
+            return false;
+        }
+        
+        if (!magDatabasePanel.validateSelection()) {
+            String errorMsg = magDatabasePanel.getValidationErrorMessage();
+            LOGGER.error("MAG database validation failed: {}", errorMsg);
+            return false;
+        }
+        
+        MagDbItem selectedMagDb = magDatabasePanel.getSelectedMagDatabase();
+        MagVersion selectedVersion = magDatabasePanel.getSelectedMagVersion();
+        LOGGER.info("MAG database validation passed: {} (version: {})", 
+            selectedMagDb.getCatalogueID(), selectedVersion.getCatalogueVersion());
+        
+        LOGGER.info("All input validation checks passed successfully");
+        return true;
+    }
+    
+    /**
+     * Load last used parameters and apply them to the UI
+     */
+    private void loadLastUsedParameters() {
+        try {
+            LOGGER.info("Attempting to load last used parameters for DDA MAG FragPipe workflow");
+            DDAMagFragPipeParameters params = (DDAMagFragPipeParameters) parameterIO.loadLastUsedParameters();
+            if (params != null) {
+                LOGGER.info("Successfully loaded parameters from file");
+                applyParametersToUI(params);
+                LOGGER.info("Applied parameters to UI for DDA MAG FragPipe workflow");
+                
+                // Also apply experiment data to the IO panel if available
+                if (params.getExperimentData() != null && !params.getExperimentData().isEmpty()) {
+                    ioPanel.setExperimentData(params.getExperimentData());
+                    LOGGER.info("Applied {} experiment rows to IO panel", params.getExperimentData().size());
+                }
+                
+                // Apply output directory if available
+                if (params.getResult() != null && !params.getResult().trim().isEmpty()) {
+                    ioPanel.setOutputDirectory(params.getResult());
+                    LOGGER.info("Applied output directory: {}", params.getResult());
+                }
+                
+                // Update metadata table after loading parameters
+                Platform.runLater(() -> {
+                    updateMetadataTable();
+                    updateParameterView();
+                });
+            } else {
+                LOGGER.warn("No parameters loaded from file, using defaults");
+            }
+        } catch (Exception e) {
+            LOGGER.error("Failed to load last used MAG FragPipe parameters: " + e.getMessage(), e);
+            // Continue with default UI state
+        }
+    }
+    
+    /**
+     * Apply parameters to the UI components
+     */
+    private void applyParametersToUI(DDAMagFragPipeParameters params) {
+        if (params == null) return;
+        
+        // Apply metadata to IO panel if available
+        if (params.getMetadata() != null) {
+            MetaData metadata = params.getMetadata();
+            String[] rawFiles = metadata.getRawFiles();
+            String[] expNames = metadata.getExpNames();
+            
+            if (rawFiles != null && expNames != null && rawFiles.length > 0) {
+                ObservableList<MetaPilotIOPanelFX.ExperimentRow> experimentRows = FXCollections.observableArrayList();
+                for (int i = 0; i < rawFiles.length; i++) {
+                    if (rawFiles[i] != null && !rawFiles[i].trim().isEmpty()) {
+                        experimentRows.add(new MetaPilotIOPanelFX.ExperimentRow(rawFiles[i], expNames[i]));
+                    }
+                }
+                ioPanel.setExperimentData(experimentRows);
+                LOGGER.info("Applied metadata with {} raw files to IO panel", rawFiles.length);
+            }
+        }
+        
+        // Apply only essential parameters from saved settings
+        // Thread count is the only parameter that should be loaded from saved parameters
+        if (threadsSpinner != null) {
+            threadsSpinner.getValueFactory().setValue(params.getThreadCount());
+        }
+        
+        // Workflow selection - use default since workflow is configured dynamically
+        if (workflowComboBox != null && workflows.size() > 0) {
+            workflowComboBox.setValue(workflows.get(0)); // Default to first workflow
+        }
+        
+        // MS data type - use default
+        if (msDataTypeComboBox != null) {
+            msDataTypeComboBox.setValue("Regular MS");
+        }
+        
+        // Note: Enzyme, modifications, and other UI parameters are not loaded from saved parameters
+        // They remain as user-configurable settings with their default values
+        
+        // Apply database settings using reusable component
+        if (magDatabasePanel != null) {
+            if (params.getMagDbCatalogueId() != null) {
+                // Find and select the matching MAG database
+                for (MagDbItem item : magDatabasePanel.getAvailableMagDatabases()) {
+                    if (item.getCatalogueID().equals(params.getMagDbCatalogueId())) {
+                        magDatabasePanel.setSelectedMagDatabase(item);
+                        
+                        // Also apply version selection if available
+                        if (params.getMagDbVersion() != null) {
+                            for (MagVersion version : magDatabasePanel.getSelectedMagDatabase().getVersionList()) {
+                                if (version.getCatalogueVersion().equals(params.getMagDbVersion())) {
+                                    magDatabasePanel.setSelectedMagVersion(version);
+                                    LOGGER.info("Applied version selection: {}", version.getCatalogueVersion());
+                                    break;
+                                }
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+            magDatabasePanel.setAppendHostDb(params.isAppendHostDb());
+            if (params.getHostDB() != null) {
+                magDatabasePanel.setHostDatabase(params.getHostDB());
+            }
+        }
+        
+        // Apply modifications
+        if (modificationsPanel != null) {
+            if (params.getFixedModifications() != null) {
+                // Apply saved fixed modifications
+                for (String mod : params.getFixedModifications()) {
+                    if (mod.contains(":")) {
+                        String[] parts = mod.split(":", 2);
+                        if (parts.length == 2) {
+                            String site = parts[0];
+                            try {
+                                double mass = Double.parseDouble(parts[1]);
+                                // Find and update the corresponding row
+                                for (ModificationsPanel.FixedModificationRow row : modificationsPanel.getFixedModData()) {
+                                    if (row.getSite().equals(site)) {
+                                        row.setDeltaMass(mass);
+                                        break;
+                                    }
+                                }
+                            } catch (NumberFormatException e) {
+                                LOGGER.warn("Invalid mass format in fixed modification: {}", mod);
+                            }
+                        }
+                    }
+                }
+                LOGGER.info("Applied {} fixed modifications", params.getFixedModifications().size());
+            }
+            
+            if (params.getVariableModifications() != null) {
+                // Apply saved variable modifications
+                for (String mod : params.getVariableModifications()) {
+                    if (mod.contains(":")) {
+                        String[] parts = mod.split(":", 3);
+                        if (parts.length == 3) {
+                            String modName = parts[0];
+                            String sites = parts[1];
+                            try {
+                                double mass = Double.parseDouble(parts[2]);
+                                // Find and update the corresponding row
+                                for (ModificationsPanel.VariableModificationRow row : modificationsPanel.getVariableModData()) {
+                                    if (row.getModName().equals(modName)) {
+                                        row.setUse(true);
+                                        row.setSites(sites);
+                                        row.setDeltaMass(mass);
+                                        break;
+                                    }
+                                }
+                            } catch (NumberFormatException e) {
+                                LOGGER.warn("Invalid mass format in variable modification: {}", mod);
+                            }
+                        }
+                    }
+                }
+                LOGGER.info("Applied {} variable modifications", params.getVariableModifications().size());
+            }
+        }
+        
+        // Note: Quantitative mode is determined by workflow selection, no UI settings needed
+
+        // Apply metadata table data if available
+        if (params.getMetadataTableData() != null && !params.getMetadataTableData().isEmpty() && metadataPanel != null) {
+            metadataPanel.setMetadataTableData(params.getMetadataTableData());
+            LOGGER.info("Applied {} metadata table rows", params.getMetadataTableData().size());
+        }
+        
+        // Update parameter view after applying parameters
+        Platform.runLater(() -> updateParameterView());
+    }
+    
+    /**
+     * Get enzyme information for FragPipe workflow configuration
+     * Returns [enzymeName, cutAfter, notCut] array
+     */
+    private String[] getEnzymeInfo(String enzyme) {
+        // Map common enzyme names to FragPipe format
+        switch (enzyme.toLowerCase()) {
+            case "trypsin":
+                return new String[]{"stricttrypsin", "KR", ""};
+            case "trypsin/p":
+                return new String[]{"trypsin", "KR", "P"};
+            case "chymotrypsin":
+                return new String[]{"chymotrypsin", "FWY", ""};
+            case "gluc":
+                return new String[]{"gluc", "DE", ""};
+            case "gluc-bicarb":
+                return new String[]{"gluc-bicarb", "DE", ""};
+            case "lysc":
+                return new String[]{"lysc", "K", ""};
+            case "lysc-p":
+                return new String[]{"lysc-p", "K", "P"};
+            case "argc":
+                return new String[]{"argc", "R", ""};
+            case "aspn":
+                return new String[]{"aspn", "D", ""};
+            case "elastase":
+                return new String[]{"elastase", "AGILV", ""};
+            case "proteinasek":
+                return new String[]{"proteinasek", "AEFILMVWY", ""};
+            case "thermolysin":
+                return new String[]{"thermolysin", "AEFILMV", ""};
+            default:
+                // Default to trypsin
+                return new String[]{"stricttrypsin", "KR", ""};
+        }
+    }
+    
+    /**
+     * Show error dialog
+     */
+    private void showError(String title, String content) {
+        Platform.runLater(() -> {
+            Alert alert = new Alert(Alert.AlertType.ERROR);
+            alert.setTitle(title);
+            alert.setHeaderText(null);
+            alert.setContentText(content);
+            alert.showAndWait();
+        });
+    }
+    
+    private void setupWindowCloseHandler() {
+        Platform.runLater(() -> {
+            try {
+                // Get the current scene and window
+                if (getScene() != null) {
+                    javafx.stage.Window window = getScene().getWindow();
+                    if (window != null) {
+                        window.setOnCloseRequest(event -> {
+                            try {
+                                consolePanel.appendConsoleText("Saving parameters on window close...\n");
+                                DDAMagFragPipeParameters currentParams = collectParametersFromUI();
+                                if (currentParams != null) {
+                                    boolean saved = parameterIO.saveLastUsedParameters(currentParams);
+                                    if (saved) {
+                                        consolePanel.appendConsoleText("✓ Parameters saved to config folder: last_used_mag_fragpipe_parameters.json\n");
+                                        LOGGER.info("Successfully saved parameters on window close to config folder");
+                                    } else {
+                                        consolePanel.appendConsoleText("WARNING: Failed to save parameters to config folder\n");
+                                        LOGGER.warn("Failed to save parameters to config folder on window close");
+                                    }
+                                    
+                                    // Also save preferences
+                                    boolean prefsSaved = parameterIO.savePreferences(currentParams);
+                                    if (prefsSaved) {
+                                        consolePanel.appendConsoleText("✓ Preferences saved\n");
+                                    } else {
+                                        consolePanel.appendConsoleText("WARNING: Failed to save preferences\n");
+                                    }
+                                } else {
+                                    consolePanel.appendConsoleText("WARNING: No parameters to save on window close\n");
+                                    LOGGER.warn("No parameters to save on window close");
+                                }
+                            } catch (Exception e) {
+                                String errorMsg = "ERROR: Failed to save parameters on window close: " + e.getMessage();
+                                consolePanel.appendConsoleText(errorMsg + "\n");
+                                LOGGER.error("Failed to save parameters on window close", e);
+                            }
+                        });
+                        LOGGER.info("Window close handler set up successfully");
+                    } else {
+                        LOGGER.warn("Window is null, cannot set close handler");
+                    }
+                } else {
+                    LOGGER.warn("Scene is null, cannot set close handler");
+                }
+            } catch (Exception e) {
+                LOGGER.error("Failed to set up window close handler", e);
+            }
+        });
     }
 } 

@@ -35,7 +35,7 @@ import uk.ac.quadram.metapilot.dbSearch.pfind.PFindProtein;
 import uk.ac.quadram.metapilot.dbSearch.pfind.PFindResultReader;
 import uk.ac.quadram.metapilot.dbSearch.pfind.PFindTask;
 import uk.ac.quadram.metapilot.dbSearch.pfind.PFindResultReader.PeptideResult;
-import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
+import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.mdb.unipept.UnipLCAResult;
 import uk.ac.quadram.metapilot.mdb.unipept.UnipeptRequester;
 import uk.ac.quadram.metapilot.quant.flashLFQ.FlashLfqTask;
@@ -72,8 +72,8 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 	protected PFindResultReader pFindResultReader;
 	protected HashMap<String, PostTransModification> ptmMap;
 
-	public DDAIgcPFindTask(DDAIgcPFindParameters metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
-			JavaFXProgressBar secondBar) {
+	public DDAIgcPFindTask(DDAIgcPFindParameters metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
+			ProgressBar secondBar) {
 		super(metaPar, mrp, progressBar, secondBar);
 		
 		// Debug logging for metadata
@@ -122,7 +122,7 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 		updateProgress(0, 100);
 		updateMessage("Starting DDA IGC pFind workflow...");
 
-		progressBar.setString(getTaskName());
+		updateMessage(getTaskName());
 
 		LOGGER.info(getTaskName() + ": start");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": start");
@@ -205,7 +205,7 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 		updateProgress(60, 100);
 		updateMessage("Identification completed, starting quantification...");
 
-		setProgress(70);
+		updateProgress(70, 100);
 
 		String quanMode = metaPar.getQuantitativeMode();
 		boolean quant = false;
@@ -226,7 +226,7 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 				return false;
 			}
 
-			setProgress(75);
+			updateProgress(75, 100);
 
 			quant = isobaricQuant();
 			if (!quant) {
@@ -241,7 +241,7 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 		updateProgress(80, 100);
 		updateMessage("Quantification completed, generating reports...");
 
-		setProgress(80);
+		updateProgress(80, 100);
 
 		exportReport();
 
@@ -249,14 +249,14 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 		updateProgress(100, 100);
 		updateMessage("Workflow completed successfully!");
 
-		setProgress(100);
+		updateProgress(100, 100);
 
 		return true;
 	}
 
 	protected boolean iden(String[] mgfFiles, String[] pf2Files) {
 
-		progressBar.setString(getTaskName() + ": peptide and protein identification");
+		updateMessage(getTaskName() + ": peptide and protein identification");
 
 		LOGGER.info(getTaskName() + ": peptide and protein identification started");
 		System.out.println(
@@ -375,7 +375,7 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 	}
 
 	protected boolean lfQuant() {
-		progressBar.setString(getTaskName() + ": peptide and protein quantification");
+		updateMessage(getTaskName() + ": peptide and protein quantification");
 
 		LOGGER.info(getTaskName() + ": peptide and protein label-free quantification started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName()
@@ -416,7 +416,7 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 	}
 
 	protected boolean isobaricQuant() {
-		progressBar.setString(getTaskName() + ": peptide and protein quantification");
+		updateMessage(getTaskName() + ": peptide and protein quantification");
 
 		LOGGER.info(getTaskName() + ": peptide and protein isobaric quantification started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName()
@@ -477,7 +477,7 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 
 	protected boolean exportReport() {
 
-		progressBar.setString(getTaskName() + ": exporting report");
+		updateMessage(getTaskName() + ": exporting report");
 
 		LOGGER.info(getTaskName() + ": exporting report started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting report started");
@@ -525,7 +525,7 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 
 		boolean summayrFinished = this.exportSummary(task);
 
-		setProgress(82);
+		updateProgress(82, 100);
 
 		String[] rawFiles = this.metaPar.getMetadata().getRawFiles();
 		String[] quanExpNames = new String[rawFiles.length];
@@ -786,7 +786,7 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 			}
 		}
 
-		setProgress(84);
+		updateProgress(84, 100);
 
 		this.final_pro_txt = new File(this.metaPar.getResult(), "final_proteins.tsv");
 
@@ -1043,7 +1043,7 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 			}
 		}
 
-		setProgress(86);
+		updateProgress(86, 100);
 
 		LOGGER.info(getTaskName() + ": taxonomy analysis started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": taxonomy analysis started");
@@ -1157,14 +1157,14 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 			}
 		}
 
-		setProgress(88);
+		updateProgress(88, 100);
 
 		HashMap<String, ArrayList<PeptideResult>> baseSeqMap = this.pFindResultReader.getBasePeptideMap();
 		TaxonomyDatabase td = new TaxonomyDatabase(mrp.getToolPath(ToolType.FUNCDB));
 		HashSet<String> sequenceSet = new HashSet<String>();
 		sequenceSet.addAll(baseSeqMap.keySet());
 
-		setProgress(90);
+		updateProgress(90, 100);
 
 		if (executeUnipept) {
 
@@ -1404,7 +1404,7 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 						+ ": error in reading quantified proteins from " + this.quan_pro_file);
 			}
 
-			setProgress(94);
+			updateProgress(94, 100);
 		}
 
 		LOGGER.info(getTaskName() + ": proteins with functional annotations have been exported to "
@@ -1412,7 +1412,7 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 		System.out.println(format.format(new Date()) + "\t" + getTaskName()
 				+ ": proteins with functional annotations have been exported to " + final_pro_xml_file.getName());
 
-		setProgress(96);
+		updateProgress(96, 100);
 
 		File funcResultFile = final_pro_xml_file.getParentFile();
 		File funTsv = new File(funcResultFile, "functions.tsv");
@@ -1430,7 +1430,7 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": functional annotation finished");
 
 		if (!summayrFinished || !pepReportOk || !proReportOk) {
-			setProgress(99);
+			updateProgress(99, 100);
 
 			LOGGER.info(getTaskName() + ": error in generating the reports");
 			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": error in generating the reports");
@@ -1446,7 +1446,7 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 				LOGGER.info(getTaskName() + ": report generation successes");
 				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": report generation successes");
 
-				setProgress(100);
+				updateProgress(100, 100);
 				return true;
 			}
 
@@ -1626,7 +1626,7 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 							int percentage = (int) ((double) currentCount / (double) totalCount
 									* (double) (barEnd - barStart));
 
-							DDAIgcPFindTask.this.setProgress(barStart + percentage);
+							DDAIgcPFindTask.this.updateProgress(barStart + percentage, 100);
 
 							System.out.println(format.format(new Date()) + "\t" + getTaskName()
 									+ ": WatchService find one finished task at " + fileName.toFile());

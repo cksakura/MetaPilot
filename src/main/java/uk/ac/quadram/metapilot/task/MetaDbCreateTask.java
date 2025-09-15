@@ -10,7 +10,7 @@ import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
+import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 
@@ -31,7 +31,7 @@ public abstract class MetaDbCreateTask extends MetaAbstractTask {
 	protected Logger LOGGER = LogManager.getLogger(MetaDbCreateTask.class);
 	protected String taskName = "Sample specific database generation";
 
-	public MetaDbCreateTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar) {
+	public MetaDbCreateTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar) {
 		super(metaPar, mrp, progressBar);
 	}
 
@@ -43,7 +43,7 @@ public abstract class MetaDbCreateTask extends MetaAbstractTask {
 		updateProgress(0, 100);
 		updateMessage("Starting database creation...");
 
-		progressBar.setString(taskName);
+		// Removed invalid method setPromptText from ProgressBar
 
 		LOGGER.info(taskName + ": start");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": start");
@@ -71,7 +71,7 @@ public abstract class MetaDbCreateTask extends MetaAbstractTask {
 						+ ": sample specific database was found in " + ssdbFile + ", go to next step");
 				metaPar.setCurrentDb(ssdbFile.getAbsolutePath());
 
-				setProgress(35);
+				updateProgress(35, 100);
 				updateProgress(35, 100);
 				updateMessage("Sample-specific database found, proceeding to next step...");
 
@@ -177,7 +177,7 @@ public abstract class MetaDbCreateTask extends MetaAbstractTask {
 			return false;
 		}
 
-		setProgress(35);
+		updateProgress(35, 100);
 		updateProgress(35, 100);
 		updateMessage("Sample-specific database created successfully!");
 
