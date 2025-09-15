@@ -64,14 +64,14 @@
     "missed_cleavages": 2,
     "digestion_mode": "Specific"
   },
-  "generated_at": "2025-09-02 15:40:35",
+  "generated_at": "2025-09-11 16:10:59",
   "additional_parameters": {
     "generate_sample_specific_db": true,
     "ms2_scan_mode": "HCD-FTMS",
     "spectra_clustering": true,
     "threads": 24
   },
-  "description": "Last used pFind workflow parameters",
+  "description": "Last used parameters",
   "taxonomic_analysis": {
     "viruses": true,
     "unclassified": false,

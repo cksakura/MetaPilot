@@ -34,34 +34,6 @@ public class FragPipeTask {
 		this.parList = new ArrayList<String>();
 	}
 
-	public FragpipeWorkflow getFragpipeWorkflow(int workflowType) {
-
-		if (workflowType < 0 || workflowType > FragpipeWorkflow.workflowTypes.length) {
-			
-			LOGGER.error(taskName + ": unknown workflow type " + workflowType);
-			System.out.println(format.format(new Date()) + "\t" + taskName + ": unknown workflow type " + workflowType);
-			
-			return null;
-		}
-
-		File workflowFile = new File(workflowFolder, FragpipeWorkflow.workflowTypes[workflowType]);
-		try {
-			FragpipeWorkflow fragpipeWorkflow = FragpipeWorkflow.parse(workflowFile);
-			fragpipeWorkflow.setWorkflowId(workflowType);
-
-			return fragpipeWorkflow;
-			
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-
-			LOGGER.error(taskName + ": can't parse workflow file from " + workflowFile.getAbsolutePath(), e);
-			System.err.println(format.format(new Date()) + "\t" + taskName + ": can't parse workflow file from "
-					+ workflowFile.getAbsolutePath());
-
-		}
-		return null;
-	}
-	
 	public void addTask(File workflowFile, File manifestFile, File workDir, int thread) {
 
 		StringBuilder sb = new StringBuilder();

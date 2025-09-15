@@ -10,6 +10,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import javafx.concurrent.Task;
+import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNParquetReader;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNTask;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiannParameter;
@@ -63,8 +64,8 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 	private static final Logger LOGGER = LogManager.getLogger(MetaDiaMonitorTask.class);
 	private static final String taskName = "Realtime DIA data analysis";
 
-	public MetaDiaMonitorTask(MetaParameterDiaRT metaPar, MetaResourceParameters mrp, JavaFXProgressBar bar1,
-			JavaFXProgressBar bar2, File monitorFolder, File destinationFolder,
+	public MetaDiaMonitorTask(MetaParameterDiaRT metaPar, MetaResourceParameters mrp, ProgressBar bar1,
+			ProgressBar bar2, File monitorFolder, File destinationFolder,
 			DefaultTableModel resultTableModel, DefaultListModel<String> rawListModel) {
 
 		super(metaPar, mrp, bar1, bar2);
@@ -267,7 +268,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 				return false;
 			}
 
-			setProgress(90);
+			updateProgress(90, 100);
 
 			boolean quant = false;
 			if (this.quanMode.equals(MetaConstants.labelFree)) {
@@ -289,7 +290,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 					return false;
 				}
 
-				setProgress(95);
+				updateProgress(95, 100);
 
 				quant = isobaricQuant();
 				if (!quant) {
@@ -312,7 +313,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 
 		cleanTempFiles();
 
-		setProgress(100);
+		updateProgress(100, 100);
 
 		return true;
 	}
@@ -1050,7 +1051,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 					+ " files are finished, the total number of file is " + this.rawListModel.size());
 
 			if (count <= this.rawListModel.size()) {
-				setProgress((int) ((double) count / (double) this.rawListModel.size() * 100.0));
+				updateProgress((int) ((double) count / (double) this.rawListModel.size() * 100.0), 100);
 			}
 
 			return diaFile.getAbsolutePath();

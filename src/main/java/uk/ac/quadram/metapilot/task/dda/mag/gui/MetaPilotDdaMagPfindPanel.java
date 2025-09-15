@@ -4,7 +4,6 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
-import javafx.stage.FileChooser;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.scene.text.Font;
@@ -14,19 +13,18 @@ import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
 import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
 import uk.ac.quadram.metapilot.task.common.gui.MetadataConfigurationPanel;
 import uk.ac.quadram.metapilot.task.common.gui.IsobaricLabelingPanel;
-import uk.ac.quadram.metapilot.task.common.gui.ModificationsPanel;
+import uk.ac.quadram.metapilot.task.common.gui.MagDatabaseSettingsPanel;
+import uk.ac.quadram.metapilot.task.common.gui.PFindModificationPanel;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.par.MetaParameterMag;
 import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel;
 import uk.ac.quadram.metapilot.task.dda.mag.DDAMagPfindTask;
-import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
-import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
+import uk.ac.quadram.metapilot.resources.MetaResourceIO;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX.ExperimentRow;
-import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantModification;
+import uk.ac.quadram.metapilot.MetaPilotApp;
 import javafx.application.Platform;
-import javafx.concurrent.Task;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -36,21 +34,29 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.io.File;
+import java.io.FileWriter;
+import org.json.JSONArray;
+import org.json.JSONObject;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagPfindParameters;
+import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagPfindParameterIO;
+import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagVersion;
+import uk.ac.quadram.metapilot.task.mag.MagDbConfigIO;
 
 public class MetaPilotDdaMagPfindPanel extends VBox {
     // UI Components - Database specific
     private MetaPilotIOPanelFX ioPanel;
-    private ComboBox<MagDbItem> magDatabaseComboBox;
-    private TextField hostDBField;
-    private CheckBox appendHostDBCheckBox;
-    private Button browseHostDBButton;
+    private MagDatabaseSettingsPanel magDatabasePanel;
     private ToggleGroup quantModeGroup;
 
     // Reusable UI Components
     private ConsolePanel consolePanel;
     private MetadataConfigurationPanel metadataPanel;
     private IsobaricLabelingPanel isobaricPanel;
-    private ModificationsPanel modificationsPanel;
+    // pFind uses a different modification system - no modifications panel needed
 
     // Parameter Panel Components
     private ComboBox<String> enzymeComboBox;
@@ -63,13 +69,19 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
     private CheckBox generateSampleSpecificDBCheckBox;
     private CheckBox spectraClusteringCheckBox;
 
+    // Reusable pFind modifications panel
+    private PFindModificationPanel pfindModificationsPanel;
+
     // Data
     private ObservableList<String> enzymes = FXCollections.observableArrayList();
-
-    // MAG database items
-    private ObservableList<MagDbItem> availableMagDatabases = FXCollections.observableArrayList();
-
+    
+    // Add parameter IO instance
+    private DDAMagPfindParameterIO parameterIO;
+    
     public MetaPilotDdaMagPfindPanel(MagDbItem[] magDbItems) {
+        // Initialize parameter IO instance
+        parameterIO = new DDAMagPfindParameterIO();
+        
         System.out.println("DEBUG: MetaPilotDdaMagPfindPanel() constructor started");
         try {
             loadEnzymesFromIni();
@@ -91,20 +103,39 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
         System.out.println("DEBUG: MetaPilotDdaMagPfindPanel(MetaParameterMag) constructor started");
         try {
             loadEnzymesFromIni();
+            
             // Initialize MAG databases from parameter
             if (metaParameterMag != null) {
                 System.out.println("DEBUG: MetaParameterMag provided, loading MAG databases...");
                 MagDbItem[] magDbItems = metaParameterMag.getAvailableMagDbItem();
                 System.out.println("DEBUG: Found " + (magDbItems != null ? magDbItems.length : 0) + " MAG database items");
+                
+                // If no databases found, try to load from configuration files
+                if (magDbItems == null || magDbItems.length == 0) {
+                    System.out.println("DEBUG: No MAG databases found in MetaParameterMag, attempting to load from config files...");
+                    magDbItems = loadMagDatabasesFromConfig();
+                }
             } else {
-                System.out.println("DEBUG: MetaParameterMag is null, no MAG databases to load");
+                System.out.println("DEBUG: MetaParameterMag is null, loading MAG databases from config files...");
+                MagDbItem[] magDbItems = loadMagDatabasesFromConfig();
+                if (magDbItems != null && magDbItems.length > 0) {
+                    // Just log that we found databases, but don't create a temporary MetaParameterMag
+                    System.out.println("DEBUG: Found " + magDbItems.length + " MAG databases from config, but MetaParameterMag is required for analysis");
+                }
             }
+            
             initializeUI();
+            
             // Now set MAG databases after UI is initialized
             if (metaParameterMag != null) {
                 MagDbItem[] magDbItems = metaParameterMag.getAvailableMagDbItem();
-                setAvailableMagDatabases(magDbItems);
+                if (magDbItems != null && magDbItems.length > 0) {
+                    setAvailableMagDatabases(magDbItems);
+                } else {
+                    System.err.println("WARNING: No MAG databases available for analysis");
+                }
             }
+            
             System.out.println("DEBUG: MetaPilotDdaMagPfindPanel(MetaParameterMag) constructor completed successfully");
         } catch (Exception e) {
             System.err.println("ERROR: Exception in MetaPilotDdaMagPfindPanel(MetaParameterMag) constructor: " + e.getMessage());
@@ -113,24 +144,45 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
         }
     }
 
-    // Test method to create sample MAG database items for testing
-    public static MagDbItem[] createTestMagDbItems() {
-        List<MagDbItem> testItems = new ArrayList<>();
-        
-        // Create test MAG database items similar to the real ones
-        MagDbItem chickenGut = new MagDbItem("chicken-gut", "Chicken Gut v1.0");
-        testItems.add(chickenGut);
-        
-        MagDbItem humanGut = new MagDbItem("human-gut", "Human Gut v2.0.1");
-        testItems.add(humanGut);
-        
-        MagDbItem mouseGut = new MagDbItem("mouse-gut", "Mouse Gut v1.0");
-        testItems.add(mouseGut);
-        
-        MagDbItem pigGut = new MagDbItem("pig-gut", "Pig Gut v1.0");
-        testItems.add(pigGut);
-        
-        return testItems.toArray(new MagDbItem[0]);
+    // Load MAG databases from configuration files
+    private MagDbItem[] loadMagDatabasesFromConfig() {
+        try {
+            // Try to load from the default MAG database configuration file
+            File configFile = new File("MAGDB_1_0.json");
+            if (configFile.exists()) {
+                System.out.println("DEBUG: Loading MAG databases from config file: " + configFile.getAbsolutePath());
+                MagDbItem[][] magDbItems = MagDbConfigIO.parse(configFile);
+                if (magDbItems != null && magDbItems.length > 0) {
+                    // Combine MGnify and local databases
+                    List<MagDbItem> allDatabases = new ArrayList<>();
+                    for (MagDbItem[] dbArray : magDbItems) {
+                        if (dbArray != null) {
+                            for (MagDbItem db : dbArray) {
+                                if (db != null) {
+                                    // Only include databases that have local files available
+                                    if (db.getVersionList() != null) {
+                                        for (MagVersion version : db.getVersionList()) {
+                                            if (version.isLocalAvailable()) {
+                                                allDatabases.add(db);
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    System.out.println("DEBUG: Loaded " + allDatabases.size() + " available MAG databases from config");
+                    return allDatabases.toArray(new MagDbItem[0]);
+                }
+            } else {
+                System.out.println("DEBUG: MAG database config file not found: " + configFile.getAbsolutePath());
+            }
+        } catch (Exception e) {
+            System.err.println("ERROR: Failed to load MAG databases from config: " + e.getMessage());
+            e.printStackTrace();
+        }
+        return new MagDbItem[0];
     }
 
     private void initializeUI() {
@@ -149,7 +201,8 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
             consolePanel = new ConsolePanel();
             metadataPanel = new MetadataConfigurationPanel();
             isobaricPanel = new IsobaricLabelingPanel();
-            modificationsPanel = new ModificationsPanel();
+            // pFind doesn't use the ModificationsPanel - it has its own modification system
+            magDatabasePanel = new MagDatabaseSettingsPanel();
             
             // Set up callbacks for parameter updates
             metadataPanel.setParameterUpdateCallback(this::updateParameterView);
@@ -157,9 +210,11 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
                 updateParameterView();
                 updateMetadataTable(); // Also update metadata when isobaric settings change
             });
-            modificationsPanel.setParameterUpdateCallback(this::updateParameterView);
+            // pFind doesn't use modifications panel callback
+            magDatabasePanel.setParameterUpdateCallback(this::updateParameterView);
             consolePanel.setStartCallback(this::startAnalysis);
             consolePanel.setStopCallback(this::stopAnalysis);
+            consolePanel.setViewReportCallback(this::viewReport);
 
             System.out.println("DEBUG: Creating tab pane...");
             // Create tab pane with responsive sizing
@@ -187,9 +242,41 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
 
             System.out.println("DEBUG: Adding tab change listener...");
             // Add tab change listener to update metadata when Parameters tab is selected
+            // and save parameters when Console tab is selected
             tabPane.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, newTab) -> {
                 if (newTab == paramTab) {
                     updateMetadataTableFromIOPanel();
+                } else if (newTab == consoleTab) {
+                    // Save current parameters when Console tab is selected
+                    try {
+                        consolePanel.appendConsoleText("Auto-saving parameters when switching to Console tab...\n");
+                        DDAMagPfindParameters currentParams = collectParametersFromUI();
+                        if (currentParams != null) {
+                            boolean saved = parameterIO.saveLastUsedParameters(currentParams);
+                            if (saved) {
+                                consolePanel.appendConsoleText("✓ Parameters auto-saved to config folder\n");
+                                LOGGER.info("Successfully auto-saved parameters to config folder when Console tab was selected");
+                            } else {
+                                consolePanel.appendConsoleText("WARNING: Failed to auto-save parameters to config folder\n");
+                                LOGGER.warn("Failed to auto-save parameters to config folder when Console tab was selected");
+                            }
+                            
+                            // Also save preferences
+                            boolean prefsSaved = parameterIO.savePreferences(currentParams);
+                            if (prefsSaved) {
+                                consolePanel.appendConsoleText("✓ Preferences auto-saved\n");
+                            } else {
+                                consolePanel.appendConsoleText("WARNING: Failed to auto-save preferences\n");
+                            }
+                        } else {
+                            consolePanel.appendConsoleText("WARNING: No parameters to auto-save\n");
+                            LOGGER.warn("No parameters to auto-save when Console tab was selected");
+                        }
+                    } catch (Exception e) {
+                        String errorMsg = "ERROR: Failed to auto-save parameters: " + e.getMessage();
+                        consolePanel.appendConsoleText(errorMsg + "\n");
+                        LOGGER.warn("Failed to auto-save parameters when Console tab was selected: " + e.getMessage(), e);
+                    }
                 }
             });
 
@@ -198,6 +285,14 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
             getChildren().add(tabPane);
             
             System.out.println("DEBUG: initializeUI() completed successfully");
+            
+            // Load parameters after UI is fully initialized
+            Platform.runLater(() -> {
+                loadLastUsedParameters();
+                
+                // Add window close event handler to save parameters
+                setupWindowCloseHandler();
+            });
         } catch (Exception e) {
             System.err.println("ERROR: Exception in initializeUI(): " + e.getMessage());
             e.printStackTrace();
@@ -212,14 +307,12 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
             tabContent.setPadding(new Insets(10));
             System.out.println("DEBUG: Creating MetaLabIOPanelFX...");
             ioPanel = new MetaPilotIOPanelFX();
-            System.out.println("DEBUG: Creating database section...");
-            VBox databaseSection = createDatabaseSection();
             System.out.println("DEBUG: Adding components to IO tab...");
             tabContent.getChildren().addAll(
                 createSectionTitle("Input/Output Settings"),
                 ioPanel,
                 createSectionTitle("Database Settings"),
-                databaseSection
+                magDatabasePanel
             );
             System.out.println("DEBUG: createIOTab() completed successfully");
             return tabContent;
@@ -230,77 +323,18 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
         }
     }
 
-    private VBox createDatabaseSection() {
-        VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #f8f8f8; -fx-border-color: #cccccc; -fx-border-radius: 5; -fx-border-width: 1;");
-        
-        // MAG Database ComboBox (not file browser)
-        HBox magDBBox = new HBox(10);
-        magDatabaseComboBox = new ComboBox<>(availableMagDatabases);
-        magDatabaseComboBox.setPromptText("Select MAG database");
-        magDatabaseComboBox.setPrefWidth(400);
-        magDatabaseComboBox.setOnAction(e -> updateParameterView());
-        magDBBox.getChildren().addAll(new Label("MAG Database:"), magDatabaseComboBox);
-        
-        HBox appendHostBox = new HBox(10);
-        appendHostDBCheckBox = new CheckBox("Append Host Database");
-        appendHostDBCheckBox.setOnAction(e -> updateHostDBVisibility());
-        appendHostBox.getChildren().add(appendHostDBCheckBox);
-        
-        HBox hostDBBox = new HBox(10);
-        hostDBField = new TextField();
-        hostDBField.setPromptText("Select host database file");
-        hostDBField.setPrefWidth(400);
-        hostDBField.setDisable(true);
-        browseHostDBButton = new Button("Browse");
-        browseHostDBButton.setDisable(true);
-        browseHostDBButton.setOnAction(e -> browseHostDatabase());
-        hostDBBox.getChildren().addAll(new Label("Host Database:"), hostDBField, browseHostDBButton);
-        
-        section.getChildren().addAll(magDBBox, appendHostBox, hostDBBox);
-        return section;
-    }
-
-    private void updateHostDBVisibility() {
-        boolean selected = appendHostDBCheckBox.isSelected();
-        hostDBField.setDisable(!selected);
-        browseHostDBButton.setDisable(!selected);
-    }
-
-    private void browseHostDatabase() {
-        FileChooser chooser = new FileChooser();
-        chooser.setTitle("Select Host Database File");
-        chooser.getExtensionFilters().add(
-            new FileChooser.ExtensionFilter("FASTA Files", "*.fasta", "*.fa")
-        );
-        File file = chooser.showOpenDialog(getScene().getWindow());
-        if (file != null) {
-            hostDBField.setText(file.getAbsolutePath());
-        }
-    }
 
     // Load available MAG databases
     public void setAvailableMagDatabases(MagDbItem[] magDbItems) {
         System.out.println("DEBUG: setAvailableMagDatabases called with " + (magDbItems != null ? magDbItems.length : 0) + " items");
-        availableMagDatabases.clear();
-        if (magDbItems != null) {
-            for (MagDbItem item : magDbItems) {
-                System.out.println("DEBUG: Adding MAG database: " + item.getCatalogueID() + " - " + item.getIdentifier());
-                availableMagDatabases.add(item);
-            }
-        }
-        System.out.println("DEBUG: Available MAG databases size: " + availableMagDatabases.size());
-        // Add null check to prevent NPE
-        if (magDatabaseComboBox != null && !availableMagDatabases.isEmpty()) {
-            magDatabaseComboBox.setValue(availableMagDatabases.get(0));
-            System.out.println("DEBUG: Set default MAG database to: " + availableMagDatabases.get(0).getCatalogueID());
-        } else if (magDatabaseComboBox == null) {
-            System.out.println("DEBUG: magDatabaseComboBox is null - UI not initialized yet");
+        if (magDatabasePanel != null) {
+            magDatabasePanel.setAvailableMagDatabases(magDbItems);
+            System.out.println("DEBUG: Set MAG databases in reusable panel");
         } else {
-            System.out.println("DEBUG: No MAG databases available to set as default");
+            System.out.println("DEBUG: magDatabasePanel is null - UI not initialized yet");
         }
     }
+    
 
     private VBox createParametersTab() {
         VBox tabContent = new VBox(10);
@@ -340,7 +374,8 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
         VBox enzymeSection = createEnzymeSection();
         VBox additionalParamsSection = createAdditionalParametersSection();
         
-        leftColumn.getChildren().addAll(enzymeSection, additionalParamsSection, modificationsPanel);
+        pfindModificationsPanel = new PFindModificationPanel(this::updateParameterView);
+        leftColumn.getChildren().addAll(enzymeSection, additionalParamsSection, pfindModificationsPanel);
         GridPane.setVgrow(leftColumn, Priority.ALWAYS);
         
         // Right column: Quantitative Mode and Metadata Configuration (stacked)
@@ -528,164 +563,125 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
         return section;
     }
     
+    
     private void startAnalysis() {
         try {
             consolePanel.appendConsoleText("Starting MAG pFind analysis...\n");
             System.out.println("DEBUG: startAnalysis called - MAG pFind workflow");
             
-            // 1. Validate inputs
-            ObservableList<ExperimentRow> fileRows = ioPanel.getExperimentData();
-            if (fileRows.isEmpty()) {
-                consolePanel.appendConsoleText("ERROR: No files selected for analysis.\n");
+            // 1. Collect parameters from UI
+            consolePanel.appendConsoleText("Collecting parameters from UI...\n");
+            DDAMagPfindParameters analysisParams = collectParametersFromUI();
+            if (analysisParams == null) {
+                consolePanel.appendConsoleText("ERROR: Failed to collect parameters from UI.\n");
+                LOGGER.error("Failed to collect parameters from UI in startAnalysis");
                 return;
             }
             
-            MagDbItem selectedMagDb = magDatabaseComboBox.getValue();
-            if (selectedMagDb == null) {
-                consolePanel.appendConsoleText("ERROR: No MAG database selected.\n");
-                return;
-            }
+            consolePanel.appendConsoleText("✓ Successfully collected parameters from UI\n");
+            LOGGER.info("Successfully collected parameters from UI for MAG pFind workflow");
             
-            String outputDir = ioPanel.getOutputDirectory();
-            if (outputDir == null || outputDir.isEmpty()) {
-                consolePanel.appendConsoleText("ERROR: No output directory specified.\n");
-                return;
-            }
-            
-            // 2. Collect file and experiment information
-            String[] rawFiles = new String[fileRows.size()];
-            String[] expNames = new String[fileRows.size()];
-            int[] fractions = new int[fileRows.size()];
-            int[] replicates = new int[fileRows.size()];
-            
-            for (int i = 0; i < fileRows.size(); i++) {
-                ExperimentRow row = fileRows.get(i);
-                rawFiles[i] = row.getFilePath();
-                expNames[i] = row.getExperimentName();
-                fractions[i] = 1; // Default fraction
-                replicates[i] = 1; // Default replicate
-            }
-            
-            // 3. Collect isobaric labeling information
-            String[] labelTitles = new String[0];
-            if (quantModeGroup.getSelectedToggle() != null) {
-                RadioButton selected = (RadioButton) quantModeGroup.getSelectedToggle();
-                if (selected.getText().contains("Isobaric") && isobaricPanel.hasLabels()) {
-                    ObservableList<IsobaricLabelingPanel.IsobaricLabelRow> isoLabels = isobaricPanel.getIsobaricTableData();
-                    labelTitles = new String[isoLabels.size()];
-                    for (int i = 0; i < isoLabels.size(); i++) {
-                        labelTitles[i] = isoLabels.get(i).getLabelName();
-                    }
+            // 2. Save parameters to file
+            String outputDir = analysisParams.getResult();
+            if (outputDir != null && !outputDir.trim().isEmpty()) {
+                consolePanel.appendConsoleText("Saving parameters to file...\n");
+                boolean paramsSaved = parameterIO.saveAnalysisParameters(outputDir, analysisParams);
+                if (!paramsSaved) {
+                    consolePanel.appendConsoleText("WARNING: Failed to save parameters to file. Analysis will continue.\n");
+                    LOGGER.warn("Failed to save analysis parameters to file: {}", outputDir);
+                } else {
+                    consolePanel.appendConsoleText("✓ Parameters saved to: " + outputDir + "/mag_pfind_analysis_parameters.json\n");
+                    LOGGER.info("Successfully saved analysis parameters to: {}", outputDir);
                 }
+                
+                // Also save as last used parameters
+                boolean lastParamsSaved = parameterIO.saveLastUsedParameters(analysisParams);
+                if (lastParamsSaved) {
+                    consolePanel.appendConsoleText("✓ Last used parameters saved\n");
+                    LOGGER.info("Successfully saved last used parameters");
+                } else {
+                    consolePanel.appendConsoleText("WARNING: Failed to save last used parameters\n");
+                    LOGGER.warn("Failed to save last used parameters");
+                }
+                
+                // Save to preferences
+                boolean prefsSaved = parameterIO.savePreferences(analysisParams);
+                if (prefsSaved) {
+                    consolePanel.appendConsoleText("✓ Preferences saved\n");
+                    LOGGER.info("Successfully saved preferences");
+                } else {
+                    consolePanel.appendConsoleText("WARNING: Failed to save preferences\n");
+                    LOGGER.warn("Failed to save preferences");
+                }
+            } else {
+                consolePanel.appendConsoleText("WARNING: No output directory specified, skipping parameter save\n");
+                LOGGER.warn("No output directory specified, skipping parameter save");
             }
             
-            // 4. Collect metadata information
-            ObservableList<MetaPilotDdaIgcMaxQuantPanel.MetadataRow> metadataRows = metadataPanel.getMetadataTableData();
-            int metaTypeCount = metadataPanel.getMetadataColumnCount();
-            String[][] metaInfo = new String[metadataRows.size()][Math.max(3, metaTypeCount)]; // At least 3 columns
-            for (int i = 0; i < metadataRows.size(); i++) {
-                MetaPilotDdaIgcMaxQuantPanel.MetadataRow row = metadataRows.get(i);
-                metaInfo[i][0] = row.getAge() != null ? row.getAge() : "";
-                metaInfo[i][1] = row.getGender() != null ? row.getGender() : "";
-                metaInfo[i][2] = row.getCondition() != null ? row.getCondition() : "";
-                // Add more metadata fields as needed
-            }
+            // 3. Create MetaResourceParameters (load from config file)
+            consolePanel.appendConsoleText("Loading resource parameters from config...\n");
+            MetaResourceIO resourceIO = new MetaResourceIO();
+            MetaResourceParameters mrp = resourceIO.loadParameters();
+            consolePanel.appendConsoleText("✓ Resource parameters loaded from config file\n");
             
-            // 5. Create MetaData object
-            MetaData metaData = new MetaData(rawFiles, expNames, fractions, replicates, 
-                                           new String[0]); // Empty label titles initially
-            metaData.setLabelTitle(labelTitles);
-            metaData.setMetaInfo(metaInfo);
+            // 4. Create progress bars and status label
+            consolePanel.appendConsoleText("Setting up progress tracking...\n");
+            ProgressBar overallBar = new ProgressBar();
+            ProgressBar currentBar = new ProgressBar();
+            Label statusLabel = new Label("Ready to start analysis...");
+            consolePanel.appendConsoleText("✓ Progress bars and status label initialized\n");
             
-            // 6. Collect parameters for MetaBaseParameter constructor
-            String workflowType = "MAG pFind";
-            String microDb = selectedMagDb.getCatalogueID();
-            boolean appendHostDb = appendHostDBCheckBox.isSelected();
-            String hostDB = appendHostDb ? hostDBField.getText() : "";
-            String result = outputDir;
-            int coreCount = threadsSpinner.getValue() != null ? threadsSpinner.getValue() : 4;
-            boolean isMetaWorkflow = true;
+            // 5. Set status label in parameters
+            analysisParams.setStatusLabel(statusLabel);
+            consolePanel.appendConsoleText("✓ Status label set in parameters\n");
             
-            // 7. Create MetaBaseParameter with required constructor parameters
-            MetaBaseParameter metaBasePar = new MetaBaseParameter(workflowType, metaData, result, 
-                                                                  microDb, appendHostDb, hostDB, 
-                                                                  "", coreCount, coreCount, isMetaWorkflow);
+            // 6. Create and run DDAMagPfindTask with DDAMagPfindParameters directly
+            consolePanel.appendConsoleText("Creating MAG pFind task...\n");
+            DDAMagPfindTask task = new DDAMagPfindTask(analysisParams, mrp, overallBar, currentBar);
+            consolePanel.appendConsoleText("✓ Task created successfully\n");
             
-            // 8. Collect parameters for MetaParameterMag constructor
-            String[] fixMods = new String[0];  // TODO: Get from modifications panel
-            String[] variMods = new String[0]; // TODO: Get from modifications panel
-            String enzyme = enzymeComboBox.getValue() != null ? enzymeComboBox.getValue() : "Trypsin";
-            int missCleavages = missedCleavagesSpinner.getValue() != null ? missedCleavagesSpinner.getValue() : 2;
-            int digestMode = 1; // Default digest mode
-            String quanMode = "Label-Free";
-            if (quantModeGroup.getSelectedToggle() != null) {
-                RadioButton selected = (RadioButton) quantModeGroup.getSelectedToggle();
-                quanMode = selected.getText();
-            }
-            
-            // 9. Create MetaParameterMag with proper constructor
-            String magDbVersion = "";
-            if (selectedMagDb.getVersionList() != null && !selectedMagDb.getVersionList().isEmpty()) {
-                // Get the latest version from the version list
-                magDbVersion = selectedMagDb.getVersionList().get(0).getCatalogueVersion();
-            }
-            MetaParameterMag metaParameterMag = new MetaParameterMag(metaBasePar, fixMods, variMods, enzyme,
-                    missCleavages, digestMode, quanMode, new MaxquantModification[0], null, false, 
-                    new double[0][0], selectedMagDb.getCatalogueID(), magDbVersion);
-            
-            // 10. Create MetaResourceParameters (may need to be loaded from config)
-            MetaResourceParameters mrp = new MetaResourceParameters();
-            // TODO: Load MRP from configuration if needed
-            
-            // 11. Create progress bars
-            JavaFXProgressBar overallBar = new JavaFXProgressBar(0, 100, 0);
-            JavaFXProgressBar currentBar = new JavaFXProgressBar(0, 100, 0);
-            
-            // 12. Create and run DDAMagPfindTask
-            DDAMagPfindTask task = new DDAMagPfindTask(metaBasePar, mrp, overallBar, currentBar);
-            
-            // 13. Set up task callbacks
+            // 7. Set up task callbacks
+            consolePanel.appendConsoleText("Setting up task callbacks...\n");
             task.messageProperty().addListener((obs, oldMsg, newMsg) -> {
                 Platform.runLater(() -> {
                     if (newMsg != null) {
                         consolePanel.appendConsoleText("Current Task: " + newMsg + "\n");
+                        statusLabel.setText(newMsg);
                     }
                 });
             });
             
+            // Set up task completion callback to enable View Report button
             task.setOnSucceeded(e -> {
                 Platform.runLater(() -> {
-                    // Check if the task actually succeeded by examining the result
-                    try {
-                        Boolean taskResult = task.get();
-                        if (taskResult != null && taskResult) {
-                            consolePanel.appendConsoleText("Analysis completed successfully!\n");
-                        } else {
-                            consolePanel.appendConsoleText("Analysis completed but may not have been fully successful.\n");
-                        }
-                    } catch (Exception ex) {
-                        consolePanel.appendConsoleText("Analysis failed: " + ex.getMessage() + "\n");
-                    }
+                    consolePanel.appendConsoleText("✓ Analysis completed successfully!\n");
+                    consolePanel.enableViewReportButton();
+                    consolePanel.setButtonsEnabled(true, false, true);
                 });
             });
             
             task.setOnFailed(e -> {
                 Platform.runLater(() -> {
-                    Throwable exception = task.getException();
-                    consolePanel.appendConsoleText("Analysis failed: " + 
-                        (exception != null ? exception.getMessage() : "Unknown error") + "\n");
+                    consolePanel.appendConsoleText("✗ Analysis failed. Check console output for details.\n");
+                    consolePanel.setButtonsEnabled(true, false, false);
                 });
             });
             
-            // 14. Run task in background thread
+            consolePanel.appendConsoleText("✓ Task callbacks configured\n");
+            
+            // 8. Run task in background thread
+            consolePanel.appendConsoleText("Starting task execution...\n");
             Thread taskThread = new Thread(task);
             taskThread.setDaemon(true);
             taskThread.start();
             
-            consolePanel.appendConsoleText("Analysis task started successfully.\n");
+            consolePanel.appendConsoleText("✓ Analysis task started successfully.\n");
+            LOGGER.info("MAG pFind analysis task started successfully");
             
         } catch (Exception e) {
-            consolePanel.appendConsoleText("ERROR: Failed to start analysis: " + e.getMessage() + "\n");
+            String errorMsg = "ERROR: Failed to start analysis: " + e.getMessage();
+            consolePanel.appendConsoleText(errorMsg + "\n");
+            LOGGER.error("Failed to start MAG pFind analysis", e);
             e.printStackTrace();
         }
     }
@@ -693,6 +689,45 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
     private void stopAnalysis() {
         consolePanel.appendConsoleText("Stopping MAG pFind analysis...\n");
         System.out.println("DEBUG: stopAnalysis called");
+    }
+
+    private void viewReport() {
+        try {
+            consolePanel.appendConsoleText("Opening report in default browser...\n");
+            
+            // Get the result directory from the current parameters
+            DDAMagPfindParameters currentParams = collectParametersFromUI();
+            if (currentParams == null || currentParams.getResult() == null) {
+                consolePanel.appendConsoleText("ERROR: No result directory available. Please run analysis first.\n");
+                return;
+            }
+            
+            // Look for the main index.html file in the report directory
+            File reportDir = new File(currentParams.getResult(), "report");
+            File indexFile = new File(reportDir, "index.html");
+            
+            if (!indexFile.exists()) {
+                consolePanel.appendConsoleText("ERROR: Main report index.html not found in " + reportDir.getAbsolutePath() + "\n");
+                consolePanel.appendConsoleText("Please ensure the analysis has completed successfully.\n");
+                return;
+            }
+            
+            consolePanel.appendConsoleText("Opening main report: index.html\n");
+            
+            // Open the file in the default browser
+            if (java.awt.Desktop.isDesktopSupported()) {
+                java.awt.Desktop.getDesktop().browse(indexFile.toURI());
+                consolePanel.appendConsoleText("✓ Report opened in default browser\n");
+            } else {
+                consolePanel.appendConsoleText("ERROR: Desktop not supported. Please open manually: " + indexFile.getAbsolutePath() + "\n");
+            }
+            
+        } catch (Exception e) {
+            String errorMsg = "ERROR: Failed to open report: " + e.getMessage();
+            consolePanel.appendConsoleText(errorMsg + "\n");
+            System.err.println("Failed to open report: " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 
     private void updateMetadataTableFromIOPanel() {
@@ -741,6 +776,7 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
             e.printStackTrace();
         }
     }
+    
 
     private void updateParameterView() {
         if (consolePanel == null) {
@@ -753,13 +789,19 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
         
         // Database settings
         sb.append("Database Settings:\n");
-        MagDbItem selectedDb = magDatabaseComboBox != null ? magDatabaseComboBox.getValue() : null;
-        if (selectedDb != null) {
-            sb.append("  MAG Database: ").append(selectedDb.getCatalogueID()).append("\n");
-        }
-        sb.append("  Append Host DB: ").append(appendHostDBCheckBox != null ? appendHostDBCheckBox.isSelected() : false).append("\n");
-        if (appendHostDBCheckBox != null && appendHostDBCheckBox.isSelected() && hostDBField != null && !hostDBField.getText().isEmpty()) {
-            sb.append("  Host Database: ").append(hostDBField.getText()).append("\n");
+        if (magDatabasePanel != null) {
+            MagDbItem selectedDb = magDatabasePanel.getSelectedMagDatabase();
+            if (selectedDb != null) {
+                sb.append("  MAG Database: ").append(selectedDb.getCatalogueID()).append("\n");
+            }
+            MagVersion selectedVersion = magDatabasePanel.getSelectedMagVersion();
+            if (selectedVersion != null) {
+                sb.append("  MAG Version: ").append(selectedVersion.getCatalogueVersion()).append("\n");
+            }
+            sb.append("  Append Host DB: ").append(magDatabasePanel.isAppendHostDb()).append("\n");
+            if (magDatabasePanel.isAppendHostDb() && magDatabasePanel.getHostDatabase() != null && !magDatabasePanel.getHostDatabase().isEmpty()) {
+                sb.append("  Host Database: ").append(magDatabasePanel.getHostDatabase()).append("\n");
+            }
         }
         sb.append("\n");
         
@@ -806,19 +848,629 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
         
         // Modifications
         sb.append("Modifications:\n");
-        if (modificationsPanel != null) {
-            sb.append("  Fixed: ").append(modificationsPanel.getFixedModifications().toString()).append("\n");
-            sb.append("  Variable: ").append(modificationsPanel.getVariableModifications().toString()).append("\n");
-        }
+        sb.append("  Fixed: ").append(pfindModificationsPanel.getFixedModifications().toString()).append("\n");
+        sb.append("  Variable: ").append(pfindModificationsPanel.getVariableModifications().toString()).append("\n");
         sb.append("\n");
         
         consolePanel.setParameterText(sb.toString());
     }
 
-    // Load test MAG databases for debugging
-    private void loadTestMagDatabases() {
-        System.out.println("DEBUG: Loading test MAG databases...");
-        MagDbItem[] testItems = createTestMagDbItems();
-        setAvailableMagDatabases(testItems);
+
+    
+    private static final Logger LOGGER = LoggerFactory.getLogger(MetaPilotDdaMagPfindPanel.class);
+    
+    /**
+     * Collect all parameters from the UI into a parameters object
+     */
+    private DDAMagPfindParameters collectParametersFromUI() {
+        try {
+            LOGGER.info("Starting parameter collection from UI for MAG pFind workflow");
+            
+            // Validate inputs first
+            LOGGER.info("Validating UI inputs...");
+            if (!validateInputs()) {
+                LOGGER.error("Input validation failed");
+                return null;
+            }
+            LOGGER.info("Input validation passed");
+            
+            // Collect experiment data from ioPanel
+            LOGGER.info("Collecting experiment data from IO panel...");
+            ObservableList<ExperimentRow> fileRows = ioPanel.getExperimentData();
+            LOGGER.info("Found {} experiment rows", fileRows.size());
+            
+            if (fileRows.isEmpty()) {
+                LOGGER.error("No experiment data found in IO panel");
+                return null;
+            }
+            
+            String[] rawFiles = new String[fileRows.size()];
+            String[] expNames = new String[fileRows.size()];
+            int[] fractions = new int[fileRows.size()];
+            int[] replicates = new int[fileRows.size()];
+            
+            for (int i = 0; i < fileRows.size(); i++) {
+                ExperimentRow row = fileRows.get(i);
+                rawFiles[i] = row.getFilePath();
+                expNames[i] = row.getExperimentName();
+                fractions[i] = 1; // Default fraction
+                replicates[i] = 1; // Default replicate
+                LOGGER.debug("Experiment {}: file={}, name={}", i, rawFiles[i], expNames[i]);
+            }
+            
+            // Create MetaData object
+            LOGGER.info("Creating MetaData object...");
+            MetaData metaData = new MetaData(rawFiles, expNames, fractions, replicates);
+            LOGGER.info("MetaData created successfully with {} raw files", rawFiles.length);
+            
+            // Collect basic parameters
+            LOGGER.info("Collecting basic parameters...");
+            String result = ioPanel.getOutputDirectory();
+            LOGGER.info("Output directory: {}", result);
+            
+            MagDbItem selectedMagDb = magDatabasePanel.getSelectedMagDatabase();
+            String microDb = selectedMagDb != null ? selectedMagDb.getCatalogueID() : "";
+            LOGGER.info("Selected MAG database: {}", microDb);
+            
+            boolean appendHostDb = magDatabasePanel.isAppendHostDb();
+            LOGGER.info("Append host DB: {}", appendHostDb);
+            
+            String hostDB = appendHostDb ? magDatabasePanel.getHostDatabase() : "";
+            LOGGER.info("Host database: {}", hostDB);
+            
+            String enzyme = enzymeComboBox.getValue() != null ? enzymeComboBox.getValue() : "Trypsin";
+            LOGGER.info("Enzyme: {}", enzyme);
+            
+            int missCleavages = missedCleavagesSpinner.getValue() != null ? missedCleavagesSpinner.getValue() : 2;
+            LOGGER.info("Missed cleavages: {}", missCleavages);
+            
+            String digestMode = digestionModeComboBox.getValue() != null ? digestionModeComboBox.getValue() : "Specific";
+            LOGGER.info("Digestion mode: {}", digestMode);
+            
+            int threadCount = threadsSpinner.getValue() != null ? threadsSpinner.getValue() : 4;
+            LOGGER.info("Thread count: {}", threadCount);
+            
+            String ms2ScanMode = ms2ScanModeComboBox.getValue() != null ? ms2ScanModeComboBox.getValue() : "HCD-FTMS";
+            LOGGER.info("MS2 scan mode: {}", ms2ScanMode);
+            
+            boolean reduceDb = generateSampleSpecificDBCheckBox != null ? generateSampleSpecificDBCheckBox.isSelected() : false;
+            LOGGER.info("Generate sample-specific DB: {}", reduceDb);
+            
+            boolean spectraCluster = spectraClusteringCheckBox != null ? spectraClusteringCheckBox.isSelected() : false;
+            LOGGER.info("Spectra clustering: {}", spectraCluster);
+            
+            // Collect isobaric labeling information
+            LOGGER.info("Collecting isobaric labeling information...");
+            String[] labelTitles = new String[0];
+            if (quantModeGroup != null && quantModeGroup.getSelectedToggle() != null) {
+                RadioButton selected = (RadioButton) quantModeGroup.getSelectedToggle();
+                LOGGER.info("Quantitative mode: {}", selected.getText());
+                
+                if (selected.getText().contains("Isobaric") && isobaricPanel != null && isobaricPanel.hasLabels()) {
+                    ObservableList<IsobaricLabelingPanel.IsobaricLabelRow> isoLabels = isobaricPanel.getIsobaricTableData();
+                    labelTitles = new String[isoLabels.size()];
+                    for (int i = 0; i < isoLabels.size(); i++) {
+                        labelTitles[i] = isoLabels.get(i).getLabelName();
+                    }
+                    LOGGER.info("Found {} isobaric labels", labelTitles.length);
+                }
+            }
+            
+            // Set label titles in metadata
+            metaData.setLabelTitle(labelTitles);
+            
+            // Collect metadata information
+            LOGGER.info("Collecting metadata information...");
+            ObservableList<MetaPilotDdaIgcMaxQuantPanel.MetadataRow> metadataRows = metadataPanel != null ? metadataPanel.getMetadataTableData() : null;
+            int metaTypeCount = metadataPanel != null ? metadataPanel.getMetadataColumnCount() : 0;
+            LOGGER.info("Metadata rows: {}, columns: {}", metadataRows != null ? metadataRows.size() : 0, metaTypeCount);
+            
+            String[][] metaInfo = new String[metadataRows != null ? metadataRows.size() : 0][Math.max(3, metaTypeCount)];
+            if (metadataRows != null) {
+                for (int i = 0; i < metadataRows.size(); i++) {
+                    MetaPilotDdaIgcMaxQuantPanel.MetadataRow row = metadataRows.get(i);
+                    metaInfo[i][0] = row.getAge() != null ? row.getAge() : "";
+                    metaInfo[i][1] = row.getGender() != null ? row.getGender() : "";
+                    metaInfo[i][2] = row.getCondition() != null ? row.getCondition() : "";
+                    // Add more metadata fields as needed
+                }
+            }
+            metaData.setMetaInfo(metaInfo);
+            
+            // Create DDAMagPfindParameters with required constructor parameters
+            LOGGER.info("Creating DDAMagPfindParameters object...");
+            DDAMagPfindParameters analysisParams = new DDAMagPfindParameters(
+                MetaPilotApp.WorkflowType.DDA_MAG_PFIND.getAnalysisType(),
+                metaData,
+                result,
+                microDb,
+                appendHostDb,
+                hostDB,
+                ms2ScanMode,
+                threadCount
+            );
+            LOGGER.info("DDAMagPfindParameters object created successfully");
+            
+            // Set additional parameters
+            LOGGER.info("Setting additional parameters...");
+            analysisParams.setEnzyme(enzyme);
+            analysisParams.setMissCleavages(missCleavages);
+            analysisParams.setDigestMode(digestMode);
+            analysisParams.setReduceDb(reduceDb);
+            analysisParams.setSpectraCluster(spectraCluster);
+            
+            // Get MAG database version
+            String magDbVersion = "";
+            if (selectedMagDb != null && selectedMagDb.getVersionList() != null && !selectedMagDb.getVersionList().isEmpty()) {
+                magDbVersion = selectedMagDb.getVersionList().get(0).getCatalogueVersion();
+            }
+            LOGGER.info("MAG database version: {}", magDbVersion);
+            
+            // Set MAG-specific fields
+            analysisParams.setMagDbCatalogueId(microDb);
+            analysisParams.setMagDbVersion(magDbVersion);
+            
+            // Set the used version on the MagDbItem
+            MagVersion selectedVersion = magDatabasePanel.getSelectedMagVersion();
+            if (selectedVersion != null && selectedMagDb != null) {
+                selectedMagDb.setUsedVersion(selectedVersion);
+                LOGGER.info("Set used version on MagDbItem: {}", selectedVersion.getCatalogueVersion());
+            }
+            
+            analysisParams.setMagDbItem(selectedMagDb); // Store the complete MagDbItem
+            
+            // Get quantitative mode
+            String quanMode = "Label-Free";
+            if (quantModeGroup != null && quantModeGroup.getSelectedToggle() != null) {
+                RadioButton selected = (RadioButton) quantModeGroup.getSelectedToggle();
+                quanMode = selected.getText();
+            }
+            LOGGER.info("Quantitative mode: {}", quanMode);
+            
+            // Set modifications
+            analysisParams.setFixedModifications(new ArrayList<>(pfindModificationsPanel.getFixedModifications()));
+            analysisParams.setVariableModifications(new ArrayList<>(pfindModificationsPanel.getVariableModifications()));
+            LOGGER.info("Modifications set - Fixed: {}, Variable: {}", 
+                pfindModificationsPanel.getFixedModifications().size(), pfindModificationsPanel.getVariableModifications().size());
+            
+            // Set quantitative mode
+            analysisParams.setQuantitativeMode(quanMode);
+            
+            // Set isobaric labeling
+            analysisParams.setIsobaricType(quanMode.contains("Isobaric") ? quanMode : "");
+            
+            // Set isotopic labeling
+            analysisParams.setLightLabels(new ArrayList<>()); // TODO: Get from isotopic labeling panel
+            analysisParams.setMediumLabels(new ArrayList<>()); // TODO: Get from isotopic labeling panel
+            analysisParams.setHeavyLabels(new ArrayList<>()); // TODO: Get from isotopic labeling panel
+            
+            // Set experiment data
+            analysisParams.setExperimentData(new ArrayList<>(fileRows));
+            
+            // Set metadata table data
+            if (metadataRows != null) {
+                analysisParams.setMetadataTableData(new ArrayList<>(metadataRows));
+            }
+            
+            LOGGER.info("Successfully collected parameters from UI for MAG pFind workflow");
+            return analysisParams;
+            
+        } catch (Exception e) {
+            LOGGER.error("Failed to collect parameters from UI: " + e.getMessage(), e);
+            return null;
+        }
+    }
+    
+    /**
+     * Convert digestion mode string to integer representation
+     */
+    private int getDigestModeInt(String digestMode) {
+        switch (digestMode) {
+            case "Specific": return 1;
+            case "Semi free N-term": return 2;
+            case "Semi free C-term": return 3;
+            case "Semi specific": return 4;
+            case "Unspecific": return 5;
+            case "None": return 6;
+            default: return 1;
+        }
+    }
+    
+    /**
+     * Validate inputs before starting analysis
+     */
+    private boolean validateInputs() {
+        LOGGER.info("Starting input validation for MAG pFind workflow");
+        
+        // Check experiment data
+        if (ioPanel == null) {
+            LOGGER.error("IO panel is null");
+            showError("Validation Error", "IO panel is not initialized.");
+            return false;
+        }
+        
+        if (ioPanel.getExperimentData().isEmpty()) {
+            LOGGER.error("No experiment data found in IO panel");
+            showError("Validation Error", "Please add at least one experiment.");
+            return false;
+        }
+        LOGGER.info("Experiment data validation passed: {} experiments found", ioPanel.getExperimentData().size());
+        
+        // Check output directory
+        String outputDir = ioPanel.getOutputDirectory();
+        if (outputDir == null || outputDir.trim().isEmpty()) {
+            LOGGER.error("Output directory is empty or null");
+            showError("Validation Error", "Please select an output directory.");
+            return false;
+        }
+        LOGGER.info("Output directory validation passed: {}", outputDir);
+        
+        // Check MAG database selection using reusable component
+        if (magDatabasePanel == null) {
+            LOGGER.error("MAG database panel is null");
+            showError("Validation Error", "MAG database panel is not initialized.");
+            return false;
+        }
+        
+        if (!magDatabasePanel.validateSelection()) {
+            String errorMsg = magDatabasePanel.getValidationErrorMessage();
+            LOGGER.error("MAG database validation failed: {}", errorMsg);
+            showError("Validation Error", errorMsg);
+            return false;
+        }
+        
+        MagDbItem selectedMagDb = magDatabasePanel.getSelectedMagDatabase();
+        MagVersion selectedVersion = magDatabasePanel.getSelectedMagVersion();
+        LOGGER.info("MAG database validation passed: {} (version: {})", 
+            selectedMagDb.getCatalogueID(), selectedVersion.getCatalogueVersion());
+        
+        // Check enzyme selection
+        if (enzymeComboBox == null) {
+            LOGGER.error("Enzyme combo box is null");
+            showError("Validation Error", "Enzyme selection is not initialized.");
+            return false;
+        }
+        
+        String selectedEnzyme = enzymeComboBox.getValue();
+        if (selectedEnzyme == null) {
+            LOGGER.error("No enzyme selected");
+            showError("Validation Error", "Please select an enzyme.");
+            return false;
+        }
+        LOGGER.info("Enzyme validation passed: {}", selectedEnzyme);
+        
+        LOGGER.info("All input validation checks passed successfully");
+        return true;
+    }
+    
+    /**
+     * Show error dialog
+     */
+    private void showError(String title, String content) {
+        Platform.runLater(() -> {
+            Alert alert = new Alert(Alert.AlertType.ERROR);
+            alert.setTitle(title);
+            alert.setHeaderText(null);
+            alert.setContentText(content);
+            alert.showAndWait();
+        });
+    }
+    
+    /**
+     * Save parameters to a JSON file
+     */
+    private boolean saveParametersToFile(MetaParameterMag parameters, String outputDir) {
+        try {
+            if (parameters == null || outputDir == null || outputDir.trim().isEmpty()) {
+                LOGGER.warn("Cannot save parameters: parameters or output directory is null/empty");
+                return false;
+            }
+            
+            File outputFile = new File(outputDir, "mag_pfind_parameters.json");
+            JSONObject json = new JSONObject();
+            
+            // Header information
+            json.put("workflow", MetaPilotApp.WorkflowType.DDA_MAG_PFIND.getAnalysisType());
+            json.put("version", "1.0");
+            json.put("generated_at", new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()));
+            
+            // Basic parameters
+            json.put("output_directory", outputDir);
+            json.put("mag_database", parameters.getMagDb());
+            json.put("mag_database_version", parameters.getMagDbVersion());
+            json.put("append_host_db", parameters.isAppendHostDb());
+            json.put("host_database", parameters.getHostDB());
+            
+            // Enzyme settings
+            json.put("enzyme", parameters.getEnzyme());
+            json.put("missed_cleavages", parameters.getMissCleavages());
+            json.put("digestion_mode", parameters.getDigestMode());
+            
+            // Additional parameters
+            json.put("threads", parameters.getThreadCount());
+            json.put("ms2_scan_mode", parameters.getMs2ScanMode());
+            json.put("generate_sample_specific_db", parameters.isReduceDb());
+            
+            // Quantitative mode
+            json.put("quantitative_mode", parameters.getQuanMode());
+            
+            // Modifications
+            JSONArray fixedMods = new JSONArray();
+            if (parameters.getFixMods() != null) {
+                for (String mod : parameters.getFixMods()) {
+                    fixedMods.put(mod);
+                }
+            }
+            json.put("fixed_modifications", fixedMods);
+            
+            JSONArray varMods = new JSONArray();
+            if (parameters.getVariMods() != null) {
+                for (String mod : parameters.getVariMods()) {
+                    varMods.put(mod);
+                }
+            }
+            json.put("variable_modifications", varMods);
+            
+            // Experiment data
+            if (parameters.getMetadata() != null) {
+                JSONArray experiments = new JSONArray();
+                String[] rawFiles = parameters.getMetadata().getRawFiles();
+                String[] expNames = parameters.getMetadata().getExpNames();
+                if (rawFiles != null && expNames != null) {
+                    for (int i = 0; i < rawFiles.length; i++) {
+                        JSONObject exp = new JSONObject();
+                        exp.put("raw_file", rawFiles[i]);
+                        exp.put("experiment_name", i < expNames.length ? expNames[i] : "");
+                        experiments.put(exp);
+                    }
+                }
+                json.put("experiments", experiments);
+            }
+            
+            // Write to file
+            try (FileWriter writer = new FileWriter(outputFile)) {
+                writer.write(json.toString(2)); // Pretty print with 2 spaces
+            }
+            
+            LOGGER.info("Successfully saved MAG pFind parameters to: " + outputFile.getAbsolutePath());
+            return true;
+            
+        } catch (Exception e) {
+            LOGGER.error("Failed to save parameters to file: " + e.getMessage(), e);
+            return false;
+        }
+    }
+    
+    /**
+     * Load last used parameters and apply them to the UI
+     */
+    private void loadLastUsedParameters() {
+        try {
+            DDAMagPfindParameters params = (DDAMagPfindParameters) parameterIO.loadLastUsedParameters();
+            if (params != null) {
+                applyParametersToUI(params);
+                LOGGER.info("Loaded last used parameters for DDA MAG pFind workflow");
+                
+                // Also apply experiment data to the IO panel if available
+                if (params.getExperimentData() != null && !params.getExperimentData().isEmpty()) {
+                    ioPanel.setExperimentData(params.getExperimentData());
+                    LOGGER.info("Applied {} experiment rows to IO panel", params.getExperimentData().size());
+                }
+                
+                // Apply output directory if available
+                if (params.getResult() != null && !params.getResult().trim().isEmpty()) {
+                    ioPanel.setOutputDirectory(params.getResult());
+                    LOGGER.info("Applied output directory: {}", params.getResult());
+                }
+                
+                // Update metadata table after loading parameters
+                Platform.runLater(() -> {
+                    updateMetadataTable();
+                    updateParameterView();
+                });
+            } else {
+                LOGGER.warn("No parameters loaded, using defaults");
+            }
+        } catch (Exception e) {
+            LOGGER.warn("Failed to load last used MAG pFind parameters: " + e.getMessage(), e);
+            // Continue with default UI state
+        }
+    }
+    
+    /**
+     * Apply parameters to the UI components
+     */
+    private void applyParametersToUI(DDAMagPfindParameters params) {
+        if (params == null) return;
+        
+        // Apply metadata to IO panel if available
+        if (params.getMetadata() != null) {
+            MetaData metadata = params.getMetadata();
+            String[] rawFiles = metadata.getRawFiles();
+            String[] expNames = metadata.getExpNames();
+            
+            if (rawFiles != null && expNames != null && rawFiles.length > 0) {
+                ObservableList<MetaPilotIOPanelFX.ExperimentRow> experimentRows = FXCollections.observableArrayList();
+                for (int i = 0; i < rawFiles.length; i++) {
+                    if (rawFiles[i] != null && !rawFiles[i].trim().isEmpty()) {
+                        experimentRows.add(new MetaPilotIOPanelFX.ExperimentRow(rawFiles[i], expNames[i]));
+                    }
+                }
+                ioPanel.setExperimentData(experimentRows);
+                LOGGER.info("Applied metadata with {} raw files to IO panel", rawFiles.length);
+            }
+        }
+        
+        // Apply basic settings that don't depend on file paths
+        if (params.getEnzyme() != null && enzymeComboBox != null) {
+            enzymeComboBox.setValue(params.getEnzyme());
+        }
+        if (missedCleavagesSpinner != null) {
+            missedCleavagesSpinner.getValueFactory().setValue(params.getMissCleavages());
+        }
+        if (params.getDigestModeString() != null && digestionModeComboBox != null) {
+            digestionModeComboBox.setValue(params.getDigestModeString());
+        }
+        if (threadsSpinner != null) {
+            threadsSpinner.getValueFactory().setValue(params.getThreadCount());
+        }
+        if (params.getMs2ScanMode() != null && ms2ScanModeComboBox != null) {
+            ms2ScanModeComboBox.setValue(params.getMs2ScanMode());
+        }
+        if (generateSampleSpecificDBCheckBox != null) {
+            generateSampleSpecificDBCheckBox.setSelected(params.isReduceDb());
+        }
+        if (spectraClusteringCheckBox != null) {
+            spectraClusteringCheckBox.setSelected(params.isSpectraCluster());
+        }
+        
+        // Apply database settings using reusable component
+        if (magDatabasePanel != null) {
+            if (params.getMagDbCatalogueId() != null) {
+                // Find and select the matching MAG database
+                for (MagDbItem item : magDatabasePanel.getAvailableMagDatabases()) {
+                    if (item.getCatalogueID().equals(params.getMagDbCatalogueId())) {
+                        magDatabasePanel.setSelectedMagDatabase(item);
+                        
+                        // Also apply version selection if available
+                        if (params.getMagDbVersion() != null) {
+                            for (MagVersion version : magDatabasePanel.getSelectedMagDatabase().getVersionList()) {
+                                if (version.getCatalogueVersion().equals(params.getMagDbVersion())) {
+                                    magDatabasePanel.setSelectedMagVersion(version);
+                                    LOGGER.info("Applied version selection: {}", version.getCatalogueVersion());
+                                    break;
+                                }
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+            magDatabasePanel.setAppendHostDb(params.isAppendHostDb());
+            if (params.getHostDB() != null) {
+                magDatabasePanel.setHostDatabase(params.getHostDB());
+            }
+        }
+        
+        // Apply modifications
+        if (pfindModificationsPanel != null) {
+            pfindModificationsPanel.setFixedModifications(params.getFixedModifications());
+            pfindModificationsPanel.setVariableModifications(params.getVariableModifications());
+            LOGGER.info("Applied modifications to pFind modifications panel");
+        }
+        
+        // Apply quantitative mode settings
+        if (params.getQuantitativeMode() != null && quantModeGroup != null) {
+            String mode = params.getQuantitativeMode();
+            if (mode.contains("Isobaric")) {
+                // Find and select the isobaric radio button
+                for (Toggle toggle : quantModeGroup.getToggles()) {
+                    if (toggle instanceof RadioButton && ((RadioButton) toggle).getText().contains("Isobaric")) {
+                        quantModeGroup.selectToggle(toggle);
+                        break;
+                    }
+                }
+            } else {
+                // Find and select the label-free radio button
+                for (Toggle toggle : quantModeGroup.getToggles()) {
+                    if (toggle instanceof RadioButton && ((RadioButton) toggle).getText().contains("Label-free")) {
+                        quantModeGroup.selectToggle(toggle);
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // Apply isobaric type if available
+        if (params.getIsobaricType() != null && isobaricPanel != null) {
+            isobaricPanel.setSelectedIsobaricType(params.getIsobaricType());
+            LOGGER.info("Applied isobaric type: {}", params.getIsobaricType());
+        }
+        
+        // Apply isobaric table data if available
+        if (params.getIsobaricTableData() != null && !params.getIsobaricTableData().isEmpty() && isobaricPanel != null) {
+            isobaricPanel.setIsobaricTableData(params.getIsobaricTableData());
+            LOGGER.info("Applied {} isobaric table rows", params.getIsobaricTableData().size());
+        }
+        
+        // Apply metadata table data if available
+        if (params.getMetadataTableData() != null && !params.getMetadataTableData().isEmpty() && metadataPanel != null) {
+            metadataPanel.setMetadataTableData(params.getMetadataTableData());
+            LOGGER.info("Applied {} metadata table rows", params.getMetadataTableData().size());
+        }
+        
+        // Update parameter view after applying parameters
+        Platform.runLater(() -> updateParameterView());
+    }
+    
+    /**
+     * Load parameters from a specific analysis result directory
+     */
+    public void loadAnalysisParameters(String resultDirectory) {
+        try {
+            DDAMagPfindParameters params = (DDAMagPfindParameters) parameterIO.loadAnalysisParameters(resultDirectory);
+            if (params != null) {
+                applyParametersToUI(params);
+                showError("Success", "Loaded MAG pFind analysis parameters from " + resultDirectory);
+                LOGGER.info("Loaded MAG pFind analysis parameters from {}", resultDirectory);
+            } else {
+                showError("Warning", "No parameters found in " + resultDirectory);
+                LOGGER.warn("No parameters found in {}", resultDirectory);
+            }
+        } catch (Exception e) {
+            showError("Error", "Failed to load MAG pFind analysis parameters: " + e.getMessage());
+            LOGGER.error("Failed to load MAG pFind analysis parameters from " + resultDirectory, e);
+        }
+    }
+
+    private void setupWindowCloseHandler() {
+        Platform.runLater(() -> {
+            try {
+                // Get the current scene and window
+                if (getScene() != null) {
+                    javafx.stage.Window window = getScene().getWindow();
+                    if (window != null) {
+                        window.setOnCloseRequest(event -> {
+                            try {
+                                consolePanel.appendConsoleText("Saving parameters on window close...\n");
+                                DDAMagPfindParameters currentParams = collectParametersFromUI();
+                                if (currentParams != null) {
+                                    boolean saved = parameterIO.saveLastUsedParameters(currentParams);
+                                    if (saved) {
+                                        consolePanel.appendConsoleText("✓ Parameters saved to config folder: last_used_mag_pfind_parameters.json\n");
+                                        LOGGER.info("Successfully saved parameters on window close to config folder");
+                                    } else {
+                                        consolePanel.appendConsoleText("WARNING: Failed to save parameters to config folder\n");
+                                        LOGGER.warn("Failed to save parameters to config folder on window close");
+                                    }
+                                    
+                                    // Also save preferences
+                                    boolean prefsSaved = parameterIO.savePreferences(currentParams);
+                                    if (prefsSaved) {
+                                        consolePanel.appendConsoleText("✓ Preferences saved\n");
+                                    } else {
+                                        consolePanel.appendConsoleText("WARNING: Failed to save preferences\n");
+                                    }
+                                } else {
+                                    consolePanel.appendConsoleText("WARNING: No parameters to save on window close\n");
+                                    LOGGER.warn("No parameters to save on window close");
+                                }
+                            } catch (Exception e) {
+                                String errorMsg = "ERROR: Failed to save parameters on window close: " + e.getMessage();
+                                consolePanel.appendConsoleText(errorMsg + "\n");
+                                LOGGER.error("Failed to save parameters on window close", e);
+                            }
+                        });
+                        LOGGER.info("Window close handler set up successfully");
+                    } else {
+                        LOGGER.warn("Window is null, cannot set close handler");
+                    }
+                } else {
+                    LOGGER.warn("Scene is null, cannot set close handler");
+                }
+            } catch (Exception e) {
+                LOGGER.error("Failed to set up window close handler", e);
+            }
+        });
     }
 } 

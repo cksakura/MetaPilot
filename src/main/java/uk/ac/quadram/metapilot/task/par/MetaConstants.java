@@ -116,17 +116,17 @@ public class MetaConstants {
 	/**
 	 * Quantification mode: label free
 	 */
-	public static String labelFree = "Label free";
+	public static String labelFree = "Label-free";
 
 	/**
 	 * Quantification mode: isotopic labeling
 	 */
-	public static String isotopicLabel = "Isotopic labeling";
+	public static String isotopicLabel = "Isotopic-labeling";
 
 	/**
 	 * Quantification mode: isobaric labeling
 	 */
-	public static String isobaricLabel = "Isobaric labeling";
+	public static String isobaricLabel = "Isobaric-labeling";
 
 	/**
 	 * Peptide-to-taxon database: Built-in

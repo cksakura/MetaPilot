@@ -12,48 +12,28 @@ import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.scene.paint.Color;
 import javafx.scene.control.cell.PropertyValueFactory;
-import javafx.scene.control.cell.TextFieldTableCell;
-import javafx.scene.control.cell.CheckBoxTableCell;
-import javafx.util.converter.DefaultStringConverter;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
-import javafx.beans.property.SimpleBooleanProperty;
-import javafx.beans.property.BooleanProperty;
 import javafx.concurrent.Task;
-import javafx.scene.control.Alert.AlertType;
-import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
-import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX.ExperimentRow;
+import uk.ac.quadram.metapilot.task.common.gui.MagDatabaseSettingsPanel;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
-import uk.ac.quadram.metapilot.task.par.MetaConstants;
-import uk.ac.quadram.metapilot.task.MetaLabWorkflowType;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
-import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
+import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagVersion;
 import uk.ac.quadram.metapilot.task.mag.par.MetaParameterMag;
-import javafx.animation.KeyFrame;
-import javafx.animation.Timeline;
-import javafx.util.Duration;
-import java.lang.management.ManagementFactory;
-import java.lang.management.OperatingSystemMXBean;
-import java.lang.management.MemoryMXBean;
-import java.lang.management.MemoryUsage;
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import uk.ac.quadram.metapilot.task.dia.par.DiaParameterIO;
+import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
 import java.io.File;
-import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
-import java.util.HashMap;
+import java.io.IOException;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
+import java.nio.file.*;
+import java.nio.file.StandardOpenOption;
 
 public class MetaPilotDiaRealTimePanel extends VBox {
-    // UI Components - Database specific for MAG
-    private ComboBox<MagDbItem> magDatabaseComboBox;
+    // UI Components - Database
+    private MagDatabaseSettingsPanel magDatabasePanel;
     private TextArea consoleOutput;
     private TextArea parameterView;
     private ProgressBar overallProgressBar;
@@ -88,11 +68,13 @@ public class MetaPilotDiaRealTimePanel extends VBox {
     private Label statusTimeLabel;
     private Label statusCpuLabel;
     private Label statusMemLabel;
-    private Timeline statusTimeline;
-    private long taskStartTimeMillis;
 
-    // MAG database items
-    private ObservableList<MagDbItem> availableMagDatabases = FXCollections.observableArrayList();
+    // Parameter I/O
+    private DiaParameterIO parameterIO;
+    private MetaParameterDia currentAnalysisParameters;
+    
+    // Resource parameters
+    private MetaResourceParameters resourceParams;
 
     // Monitoring status
     private boolean isMonitoring = false;
@@ -100,34 +82,47 @@ public class MetaPilotDiaRealTimePanel extends VBox {
     private int targetFileCount = 0;
 
     public MetaPilotDiaRealTimePanel() {
+        // Initialize parameter IO instance
+        parameterIO = new DiaParameterIO();
         initializeUI();
     }
 
     public MetaPilotDiaRealTimePanel(MetaParameterMag metaParameterMag) {
-        // Initialize MAG databases from parameter
+        // Initialize parameter IO instance
+        parameterIO = new DiaParameterIO();
+        
+        initializeUI();
+        
+        // Initialize MAG databases from parameter after UI is initialized
         if (metaParameterMag != null) {
             MagDbItem[] magDbItems = metaParameterMag.getAvailableMagDbItem();
             if (magDbItems != null) {
-                for (MagDbItem item : magDbItems) {
-                    availableMagDatabases.add(item);
-                }
+                setAvailableMagDatabases(magDbItems);
             }
         }
+    }
+    
+    public MetaPilotDiaRealTimePanel(MagDbItem[] magDbItems, MetaResourceParameters resourceParams) {
+        // Initialize parameter IO instance
+        parameterIO = new DiaParameterIO();
+        this.resourceParams = resourceParams;
         initializeUI();
+        // Set MAG databases after UI is initialized
+        setAvailableMagDatabases(magDbItems);
+        // Load last used parameters after UI and databases are initialized
+        loadLastUsedParameters();
     }
 
     // Load available MAG databases
     public void setAvailableMagDatabases(MagDbItem[] magDbItems) {
-        availableMagDatabases.clear();
-        if (magDbItems != null) {
-            for (MagDbItem item : magDbItems) {
-                availableMagDatabases.add(item);
-            }
-        }
-        if (magDatabaseComboBox != null && !availableMagDatabases.isEmpty()) {
-            magDatabaseComboBox.setValue(availableMagDatabases.get(0));
+        if (magDatabasePanel != null) {
+            magDatabasePanel.setAvailableMagDatabases(magDbItems);
             // Update the panels with the selected MAG database
-            updatePanelsWithMagDb(availableMagDatabases.get(0));
+            if (magDbItems != null && magDbItems.length > 0) {
+                updatePanelsWithMagDb(magDbItems[0]);
+            }
+        } else {
+            System.out.println("DEBUG: magDatabasePanel is null - UI not initialized yet");
         }
     }
 
@@ -139,6 +134,17 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         setPrefWidth(1600);
         setPrefHeight(900);
 
+        // Initialize reusable components
+        magDatabasePanel = new MagDatabaseSettingsPanel();
+        magDatabasePanel.setParameterUpdateCallback(() -> {
+            updateParameterView();
+            // Update panels when database selection changes
+            MagDbItem selectedMagDb = magDatabasePanel.getSelectedMagDatabase();
+            if (selectedMagDb != null) {
+                updatePanelsWithMagDb(selectedMagDb);
+            }
+        });
+
         // Create tab pane with responsive sizing
         TabPane tabPane = new TabPane();
         tabPane.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
@@ -146,7 +152,7 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         tabPane.setMinHeight(780);
         VBox.setVgrow(tabPane, Priority.ALWAYS);
 
-        // Create tabs - removed Database and Combine tabs
+        // Create tabs: Parameters, Monitor (removed I/O tab for real-time workflow)
         Tab parametersTab = new Tab("Parameters");
         parametersTab.setContent(createParametersTab());
 
@@ -155,9 +161,38 @@ public class MetaPilotDiaRealTimePanel extends VBox {
 
         tabPane.getTabs().addAll(parametersTab, monitorTab);
 
+        // Add tab change listener for parameter updates and auto-save
+        tabPane.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, newTab) -> {
+            if (newTab == parametersTab) {
+                // Update parameter view when switching to Parameters tab
+                updateParameterView();
+            } else if (newTab == monitorTab) {
+                // Update parameter view and auto-save when switching to Monitor tab
+                updateParameterView();
+                
+                // Save current parameters when Monitor tab is selected
+                try {
+                    MetaParameterDia currentParams = collectParametersFromUI();
+                    if (currentParams != null) {
+                        boolean saved = parameterIO.saveLastUsedParameters(currentParams);
+                        if (saved) {
+                            System.out.println("DEBUG: Auto-saved parameters when switching to Monitor tab");
+                        }
+                    }
+                } catch (Exception e) {
+                    System.err.println("WARNING: Failed to auto-save parameters: " + e.getMessage());
+                }
+            }
+        });
+
         // Add tab pane to main panel
         getChildren().add(tabPane);
+        
+        // Initialize parameter view
+        updateParameterView();
     }
+
+    // Create IO tab (same as DIA Normal Panel)
 
     // Processing Row class for result table
     public static class ProcessingRow {
@@ -208,13 +243,19 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         tabContent.setMinWidth(960);
         tabContent.setMinHeight(760);
 
+        // Add database settings at the top
+        tabContent.getChildren().addAll(
+            createSectionTitle("Database Settings"),
+            magDatabasePanel
+        );
+
         // Create main grid layout for parameters with 2-column responsive sizing
         GridPane mainGrid = new GridPane();
         mainGrid.setHgap(15);
         mainGrid.setVgap(15);
         mainGrid.setPadding(new Insets(10));
         mainGrid.setMinWidth(940);
-        mainGrid.setMinHeight(740);
+        mainGrid.setMinHeight(600); // Reduced height since database settings are now above
         VBox.setVgrow(mainGrid, Priority.ALWAYS);
 
         // Column constraints for 2-column layout
@@ -228,7 +269,7 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         col2.setHgrow(Priority.ALWAYS);
         mainGrid.getColumnConstraints().addAll(col1, col2);
 
-        // Row constraints - only 2 rows now (no metadata)
+        // Row constraints - 2 rows: settings and panels
         RowConstraints row1 = new RowConstraints();
         row1.setMinHeight(60);
         row1.setVgrow(Priority.NEVER);
@@ -237,7 +278,7 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         row2.setMinHeight(400);
         mainGrid.getRowConstraints().addAll(row1, row2);
 
-        // Database & Thread Count Settings (spans both columns)
+        // Thread Count Settings (spans both columns)
         VBox settingsSection = createThreadCountSection();
         mainGrid.add(settingsSection, 0, 0, 2, 1);
 
@@ -475,7 +516,7 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         resultTable.setMinHeight(150);
         resultTable.setPrefHeight(200);
         resultTable.setMaxHeight(Double.MAX_VALUE);
-        resultTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        resultTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         VBox.setVgrow(resultTable, Priority.ALWAYS);
 
         // File Name column
@@ -514,7 +555,13 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         round4Col.setMinWidth(80);
         round4Col.setPrefWidth(100);
 
-        resultTable.getColumns().addAll(fileCol, round1Col, modelCol, round2Col, round3Col, round4Col);
+        resultTable.getColumns().clear();
+        resultTable.getColumns().add(fileCol);
+        resultTable.getColumns().add(round1Col);
+        resultTable.getColumns().add(modelCol);
+        resultTable.getColumns().add(round2Col);
+        resultTable.getColumns().add(round3Col);
+        resultTable.getColumns().add(round4Col);
 
         section.getChildren().addAll(titleLabel, resultTable);
         return section;
@@ -685,32 +732,62 @@ public class MetaPilotDiaRealTimePanel extends VBox {
     }
 
     private void startMonitoringTask() {
-        // Create background task for monitoring
+        // Create background task for real file monitoring using WatchService
         Task<Void> monitorTask = new Task<Void>() {
             @Override
             protected Void call() throws Exception {
-                while (isMonitoring) {
-                    // Mock monitoring - in real implementation, this would:
-                    // 1. Watch the monitor folder for new .raw files
-                    // 2. Process new files automatically
-                    // 3. Update progress tables
-                    // 4. Check stop conditions
+                try {
+                    // Set up WatchService to monitor the folder for new files
+                    WatchService watchService = FileSystems.getDefault().newWatchService();
+                    Path monitorPath = Paths.get(monitorFolderField.getText());
+                    monitorPath.register(watchService, StandardWatchEventKinds.ENTRY_CREATE);
                     
-                    Thread.sleep(2000); // Check every 2 seconds
+                    consoleOutput.appendText("File monitoring started. Watching folder: " + monitorPath + "\n");
                     
-                    // Mock finding a new file occasionally
-                    if (Math.random() < 0.3 && processedFileCount < 20) {
-                        String newFile = "sample_" + String.format("%03d", processedFileCount + 1) + ".raw";
+                    // Process any existing files in the folder first
+                    File[] existingFiles = monitorPath.toFile().listFiles();
+                    if (existingFiles != null && existingFiles.length > 0) {
+                        consoleOutput.appendText("Found " + existingFiles.length + " existing files, processing...\n");
+                        for (File file : existingFiles) {
+                            if (isValidRawFile(file.getName())) {
+                                processNewFile(file);
+                            }
+                        }
+                    }
+                    
+                    // Watch for new files
+                    while (isMonitoring && !isCancelled()) {
+                        WatchKey key;
+                        try {
+                            key = watchService.take();
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            break;
+                        }
                         
-                        Platform.runLater(() -> {
-                            monitorFilesList.getItems().add(newFile);
-                            ProcessingRow newRow = new ProcessingRow(newFile);
-                            resultData.add(newRow);
-                            consoleOutput.appendText("New file detected: " + newFile + "\n");
-                            processFileInBackground(newRow);
-                        });
+                        for (WatchEvent<?> event : key.pollEvents()) {
+                            WatchEvent.Kind<?> kind = event.kind();
+                            if (kind == StandardWatchEventKinds.OVERFLOW) {
+                                continue;
+                            }
+                            
+                            @SuppressWarnings("unchecked")
+                            WatchEvent<Path> ev = (WatchEvent<Path>) event;
+                            Path filename = ev.context();
+                            Path filePath = monitorPath.resolve(filename);
+                            
+                            if (Files.isRegularFile(filePath) && isValidRawFile(filename.toString())) {
+                                consoleOutput.appendText("New file detected: " + filename + "\n");
+                                
+                                // Wait for file to be completely written before processing
+                                waitForFileCompletionAndProcess(filePath);
+                            }
+                        }
                         
-                        processedFileCount++;
+                        boolean valid = key.reset();
+                        if (!valid) {
+                            break;
+                        }
                         
                         // Check stop conditions
                         if (targetFileCount > 0 && processedFileCount >= targetFileCount) {
@@ -721,12 +798,105 @@ public class MetaPilotDiaRealTimePanel extends VBox {
                             break;
                         }
                     }
+                    
+                    watchService.close();
+                    consoleOutput.appendText("File monitoring stopped.\n");
+                    
+                } catch (IOException e) {
+                    consoleOutput.appendText("Error in file monitoring: " + e.getMessage() + "\n");
+                    e.printStackTrace();
                 }
+                
                 return null;
             }
         };
         
         new Thread(monitorTask).start();
+    }
+    
+    /**
+     * Check if a file is a valid raw file for processing
+     */
+    private boolean isValidRawFile(String fileName) {
+        String lowerName = fileName.toLowerCase();
+        return lowerName.endsWith(".raw") || lowerName.endsWith(".d") || 
+               lowerName.endsWith(".dia") || lowerName.endsWith(".d");
+    }
+    
+    /**
+     * Process a new file that was detected
+     */
+    private void processNewFile(File file) {
+        String fileName = file.getName();
+        String baseFileName = getBaseFileName(fileName);
+        
+        Platform.runLater(() -> {
+            monitorFilesList.getItems().add(baseFileName);
+            ProcessingRow newRow = new ProcessingRow(baseFileName);
+            resultData.add(newRow);
+            consoleOutput.appendText("Processing file: " + baseFileName + "\n");
+            processFileInBackground(newRow);
+        });
+        
+        processedFileCount++;
+    }
+    
+    /**
+     * Get the base file name without extension
+     */
+    private String getBaseFileName(String fileName) {
+        String lowerName = fileName.toLowerCase();
+        if (lowerName.endsWith(".raw")) {
+            return fileName.substring(0, fileName.length() - 4);
+        } else if (lowerName.endsWith(".d")) {
+            return fileName.substring(0, fileName.length() - 2);
+        } else if (lowerName.endsWith(".dia")) {
+            if (lowerName.endsWith(".raw.dia")) {
+                return fileName.substring(0, fileName.length() - 8);
+            } else if (lowerName.endsWith(".raw.d")) {
+                return fileName.substring(0, fileName.length() - 6);
+            } else {
+                return fileName.substring(0, fileName.length() - 4);
+            }
+        }
+        return fileName;
+    }
+    
+    /**
+     * Wait for file to be completely written before processing
+     * Based on MetaDiaMonitorTask.waitForFileCompletionAndProcess()
+     */
+    private void waitForFileCompletionAndProcess(Path filePath) {
+        try {
+            long previousSize = -1;
+            while (true) {
+                // Check the file size at regular intervals
+                long currentSize = Files.size(filePath);
+                if (currentSize == previousSize) {
+                    // Try to acquire an exclusive lock to see if any other process is still writing
+                    try (FileChannel fileChannel = FileChannel.open(filePath, StandardOpenOption.WRITE)) {
+                        FileLock lock = fileChannel.tryLock();
+                        if (lock != null) {
+                            lock.release(); // Release the lock immediately
+                            break; // File is not in use
+                        }
+                    } catch (Exception e) {
+                        // The file is still in use or another process is writing to it
+                        consoleOutput.appendText("File " + filePath.getFileName() + " is still being written, waiting...\n");
+                    }
+                }
+                previousSize = currentSize;
+                Thread.sleep(1000); // Wait for 1 second before checking again
+            }
+            
+            // File is ready for processing
+            processNewFile(filePath.toFile());
+            
+        } catch (IOException | InterruptedException e) {
+            consoleOutput.appendText("Error waiting for file completion: " + e.getMessage() + "\n");
+            e.printStackTrace();
+            Thread.currentThread().interrupt();
+        }
     }
 
     private void processFileInBackground(ProcessingRow row) {
@@ -789,33 +959,17 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         section.setPadding(new Insets(10));
         section.setStyle("-fx-background-color: #f0f8ff; -fx-background-radius: 5;");
 
-        Label titleLabel = createSectionTitle("Database & Performance Settings");
+        Label titleLabel = createSectionTitle("Performance Settings");
 
         GridPane settingsGrid = new GridPane();
         settingsGrid.setHgap(20);
         settingsGrid.setVgap(10);
         settingsGrid.setAlignment(Pos.CENTER_LEFT);
 
-        // Database selection (left side)
-        Label dbLabel = new Label("MAG Database:");
-        dbLabel.setStyle("-fx-font-weight: bold;");
-        settingsGrid.add(dbLabel, 0, 0);
-
-        magDatabaseComboBox = new ComboBox<>(availableMagDatabases);
-        magDatabaseComboBox.setPromptText("Select MAG database");
-        magDatabaseComboBox.setPrefWidth(300);
-        magDatabaseComboBox.setOnAction(e -> {
-            updateParameterView();
-            if (magDatabaseComboBox.getValue() != null) {
-                updatePanelsWithMagDb(magDatabaseComboBox.getValue());
-            }
-        });
-        settingsGrid.add(magDatabaseComboBox, 1, 0);
-
-        // Threads selection (right side)
+        // Threads selection only (database settings are in I/O tab)
         Label threadsLabel = new Label("Number of Threads:");
         threadsLabel.setStyle("-fx-font-weight: bold;");
-        settingsGrid.add(threadsLabel, 2, 0);
+        settingsGrid.add(threadsLabel, 0, 0);
 
         threadsComboBox = new ComboBox<>();
         for (int i = 1; i <= Runtime.getRuntime().availableProcessors(); i++) {
@@ -825,7 +979,7 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         threadsComboBox.setMinWidth(100);
         threadsComboBox.setPrefWidth(120);
         threadsComboBox.setOnAction(e -> updateParameterView());
-        settingsGrid.add(threadsComboBox, 3, 0);
+        settingsGrid.add(threadsComboBox, 1, 0);
 
         section.getChildren().addAll(titleLabel, settingsGrid);
         return section;
@@ -839,9 +993,32 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         StringBuilder sb = new StringBuilder();
         sb.append("=== DIA Real-time Analysis Parameters ===\n\n");
 
+        // Real-time monitoring settings (no input/output needed)
+        sb.append("Real-time Monitoring Settings:\n");
+        sb.append("  Monitor Folder: ").append(monitorFolderField != null ? monitorFolderField.getText() : "Not set").append("\n");
+        sb.append("  Result Folder: ").append(resultFolderField != null ? resultFolderField.getText() : "Not set").append("\n");
+        sb.append("\n");
+
         // Database settings
         sb.append("Database Settings:\n");
-        sb.append("  MAG Database: ").append(magDatabaseComboBox != null ? magDatabaseComboBox.getValue() != null ? magDatabaseComboBox.getValue().getCatalogueID() : "" : "").append("\n");
+        if (magDatabasePanel != null) {
+            MagDbItem selectedDb = magDatabasePanel.getSelectedMagDatabase();
+            if (selectedDb != null) {
+                sb.append("  MAG Database: ").append(selectedDb.getCatalogueID()).append("\n");
+            } else {
+                sb.append("  MAG Database: Not selected\n");
+            }
+            MagVersion selectedVersion = magDatabasePanel.getSelectedMagVersion();
+            if (selectedVersion != null) {
+                sb.append("  MAG Version: ").append(selectedVersion.getCatalogueVersion()).append("\n");
+            }
+            sb.append("  Append Host DB: ").append(magDatabasePanel.isAppendHostDb()).append("\n");
+            if (magDatabasePanel.isAppendHostDb() && magDatabasePanel.getHostDatabase() != null && !magDatabasePanel.getHostDatabase().isEmpty()) {
+                sb.append("  Host Database: ").append(magDatabasePanel.getHostDatabase()).append("\n");
+            }
+        } else {
+            sb.append("  MAG Database: Database panel not available\n");
+        }
         sb.append("\n");
 
         // Monitoring settings
@@ -869,6 +1046,8 @@ public class MetaPilotDiaRealTimePanel extends VBox {
             } else {
                 sb.append("  No libraries selected\n");
             }
+        } else {
+            sb.append("  Library panel not available\n");
         }
         sb.append("\n");
 
@@ -883,6 +1062,8 @@ public class MetaPilotDiaRealTimePanel extends VBox {
             } else {
                 sb.append("  No models selected (models are optional)\n");
             }
+        } else {
+            sb.append("  Model panel not available\n");
         }
         sb.append("\n");
 
@@ -910,6 +1091,205 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         }
         if (modelGenerationPanel != null) {
             modelGenerationPanel.setMagDbItem(magDbItem);
+        }
+    }
+
+    /**
+     * Collect parameters from UI for real-time monitoring
+     */
+    private MetaParameterDia collectParametersFromUI() {
+        try {
+            // For real-time monitoring, we may not have raw files yet
+            // So we create minimal parameters for configuration
+            
+            // Create minimal MetaData (empty experiments for real-time monitoring)
+            MetaData metaData = new MetaData(new String[0], new String[0], new int[0], new int[0]);
+            
+            // Get result directory from monitor settings
+            String result = resultFolderField != null ? resultFolderField.getText() : "";
+            
+            // Get MAG database information
+            MagDbItem selectedMagDb = null;
+            if (magDatabasePanel != null) {
+                selectedMagDb = magDatabasePanel.getSelectedMagDatabase();
+            }
+            if (selectedMagDb == null) {
+                System.err.println("No MAG database selected");
+                return null;
+            }
+            
+            MagVersion selectedVersion = null;
+            if (magDatabasePanel != null) {
+                selectedVersion = magDatabasePanel.getSelectedMagVersion();
+            }
+            if (selectedVersion == null) {
+                System.err.println("No MAG database version selected");
+                return null;
+            }
+            
+            // Set the version on the MagDbItem
+            selectedMagDb.setUsedVersion(selectedVersion);
+            
+            // Get host database settings
+            boolean appendHostDb = magDatabasePanel != null ? magDatabasePanel.isAppendHostDb() : false;
+            String hostDB = magDatabasePanel != null ? magDatabasePanel.getHostDatabase() : "";
+            
+            // Get thread count
+            int threadCount = threadsComboBox != null ? threadsComboBox.getValue() : 4;
+            
+            // Create MetaBaseParameter
+            MetaBaseParameter metaBasePar = new MetaBaseParameter(
+                uk.ac.quadram.metapilot.task.MetaLabWorkflowType.DiaNNMAGRT.name(), // Workflow type
+                metaData,
+                result,
+                selectedMagDb.getCurrentFile() != null ? selectedMagDb.getCurrentFile().getAbsolutePath() : "", // MicroDb path
+                appendHostDb,
+                hostDB,
+                "DIA", // MS2 scan mode (default for DIA)
+                1, // Core count
+                threadCount,
+                true // Meta workflow
+            );
+            
+            // Get library information
+            String[] library = new String[0];
+            if (libraryGenerationPanel != null) {
+                String[] selectedLibs = libraryGenerationPanel.getSelectedLibraryNames();
+                if (selectedLibs != null && selectedLibs.length > 0) {
+                    library = selectedLibs;
+                }
+            }
+            
+            // Get model information
+            String[] models = new String[0];
+            if (modelGenerationPanel != null) {
+                String[] selectedModels = modelGenerationPanel.getSelectedModelNames();
+                if (selectedModels != null && selectedModels.length > 0) {
+                    models = selectedModels;
+                }
+            }
+            
+            // For real-time monitoring, assume library search mode (first mode)
+            boolean librarySearch = true;
+            boolean selfModelSearch = false;
+            boolean useModel = models.length > 0;
+            
+            // Create MetaParameterDia
+            MetaParameterDia metaParameterDia = new MetaParameterDia(
+                metaBasePar,
+                selectedMagDb,
+                librarySearch,
+                selfModelSearch,
+                library,
+                useModel,
+                models
+            );
+            
+            return metaParameterDia;
+            
+        } catch (Exception e) {
+            System.err.println("Error generating MetaParameterDia: " + e.getMessage());
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    /**
+     * Load last used parameters and apply them to the UI
+     */
+    private void loadLastUsedParameters() {
+        System.out.println("DEBUG: loadLastUsedParameters() called for DIA Real-time panel");
+        try {
+            MetaParameterDia params = (MetaParameterDia) parameterIO.loadLastUsedParameters();
+            if (params != null) {
+                System.out.println("DEBUG: Successfully loaded parameters from file");
+                applyParametersToUI(params);
+                System.out.println("DEBUG: Applied parameters to UI successfully");
+            } else {
+                System.out.println("DEBUG: No parameters loaded from file, using defaults");
+            }
+        } catch (Exception e) {
+            System.err.println("WARNING: Failed to load last used DIA parameters: " + e.getMessage());
+            e.printStackTrace();
+            // Continue with default UI state
+        }
+    }
+    
+    /**
+     * Apply parameters to the UI components
+     */
+    private void applyParametersToUI(MetaParameterDia params) {
+        if (params == null) {
+            System.out.println("DEBUG: applyParametersToUI called with null params");
+            return;
+        }
+        
+        System.out.println("DEBUG: applyParametersToUI called with valid params");
+        
+        // Apply result directory to monitor settings if available
+        if (params.getResult() != null && !params.getResult().trim().isEmpty()) {
+            if (resultFolderField != null) {
+                resultFolderField.setText(params.getResult());
+                System.out.println("DEBUG: Applied result directory: " + params.getResult());
+            }
+        }
+        
+        // Apply thread count
+        if (threadsComboBox != null) {
+            threadsComboBox.setValue(params.getThreadCount());
+        }
+        
+        // Apply MAG database settings
+        if (params.getMagDbItem() != null && magDatabasePanel != null) {
+            MagDbItem magDbItem = params.getMagDbItem();
+            // Find and select the matching MAG database
+            for (MagDbItem item : magDatabasePanel.getAvailableMagDatabases()) {
+                if (item.getCatalogueID().equals(magDbItem.getCatalogueID()) && 
+                    item.getIdentifier().equals(magDbItem.getIdentifier())) {
+                    magDatabasePanel.setSelectedMagDatabase(item);
+                    
+                    // Also apply version selection if available
+                    if (magDbItem.getUsedVersion() != null) {
+                        for (MagVersion version : item.getVersionList()) {
+                            if (version.getCatalogueVersion().equals(magDbItem.getUsedVersion().getCatalogueVersion())) {
+                                magDatabasePanel.setSelectedMagVersion(version);
+                                System.out.println("DEBUG: Applied version selection: " + version.getCatalogueVersion());
+                                break;
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
+            magDatabasePanel.setAppendHostDb(params.isAppendHostDb());
+            if (params.getHostDB() != null) {
+                magDatabasePanel.setHostDatabase(params.getHostDB());
+            }
+        }
+        
+        // Update parameter view after applying parameters
+        Platform.runLater(() -> updateParameterView());
+    }
+    
+    /**
+     * Save current parameters to file
+     */
+    public void saveCurrentParameters() {
+        try {
+            MetaParameterDia currentParams = collectParametersFromUI();
+            if (currentParams != null) {
+                boolean saved = parameterIO.saveLastUsedParameters(currentParams);
+                if (saved) {
+                    System.out.println("DEBUG: Successfully saved current parameters to last_used_dia_parameters.json");
+                } else {
+                    System.err.println("WARNING: Failed to save current parameters");
+                }
+            } else {
+                System.err.println("WARNING: No parameters to save - validation failed");
+            }
+        } catch (Exception e) {
+            System.err.println("ERROR: Failed to save current parameters: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 } 

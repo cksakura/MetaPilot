@@ -22,7 +22,7 @@ import uk.ac.quadram.metapilot.dbSearch.dbReducer.DBReducerTask;
 import uk.ac.quadram.metapilot.dbSearch.pfind.PFindPSM;
 import uk.ac.quadram.metapilot.dbSearch.pfind.PFindPsmReader;
 import uk.ac.quadram.metapilot.dbSearch.pfind.PFindTask;
-import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
+import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.spectra.cluster.ClusterTask;
@@ -45,7 +45,7 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 	private boolean useDBReducer = false;
 	private double psmFdr = 0.01;
 
-	public MetaDbReducerTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar) {
+	public MetaDbReducerTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar) {
 		super(metaPar, mrp, progressBar);
 		
 		LOGGER.info("{}: MetaDbReducerTask constructor called", taskName);
@@ -156,7 +156,7 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 	 */
 	protected void cluster() {
 
-		progressBar.setString(taskName + ": spectra clustering...");
+		updateMessage(taskName + ": spectra clustering...");
 
 		LOGGER.info(taskName + ": spectra cluster started");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": spectra cluster started");
@@ -239,7 +239,7 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 		LOGGER.info(taskName + ": spectra cluster finished");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": spectra cluster finished");
 
-		setProgress(30);
+		updateProgress(30, 100);
 	}
 
 	/**
@@ -249,7 +249,7 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 	 */
 	protected File[] clusterSearch() {
 
-		progressBar.setString(taskName + ": searching clustered spectra against the original database");
+		updateMessage(taskName + ": searching clustered spectra against the original database");
 
 		LOGGER.info(taskName + ": searching clustered spectra against the original database started");
 		System.out.println(format.format(new Date()) + "\t" + taskName
@@ -326,7 +326,7 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 
 			PFindTask.cleanPFindResultFolder(dbcFile, true);
 
-			setProgress(35);
+			updateProgress(35, 100);
 
 			return new File[] { reducedDbFile };
 
@@ -377,7 +377,7 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 
 			PFindTask.cleanPFindResultFolder(pSpecResult.getParentFile(), true);
 
-			setProgress(35);
+			updateProgress(35, 100);
 
 			return new File[] { pSpecResult };
 		}
@@ -387,7 +387,7 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 	protected File[] metaProIQ() {
 		// TODO Auto-generated method stub
 
-		progressBar.setString(taskName + ": searching clustered spectra in original database");
+		updateMessage(taskName + ": searching clustered spectra in original database");
 
 		LOGGER.info(taskName + ": MetaProIQ started");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": MetaProIQ started");
@@ -730,7 +730,7 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 
 		System.out.println(format.format(new Date()) + "\t" + taskName + ":");
 
-		setProgress(30);
+		updateProgress(30, 100);
 
 		return secondResults;
 	}

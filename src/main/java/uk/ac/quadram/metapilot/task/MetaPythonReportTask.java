@@ -89,7 +89,6 @@ public class MetaPythonReportTask extends Task<Boolean> {
     private final ExecutorService executor;
     private final List<ReportTaskInfo> reportTasks;
     private final List<File> outputFiles;
-    private final int threadCount;
     private final MetaResourceParameters resourceParameters;
 
     /**
@@ -108,7 +107,6 @@ public class MetaPythonReportTask extends Task<Boolean> {
      * @param resourceParameters Resource parameters containing Python executable path
      */
     public MetaPythonReportTask(int threadCount, MetaResourceParameters resourceParameters) {
-        this.threadCount = threadCount;
         this.resourceParameters = resourceParameters;
         this.executor = Executors.newFixedThreadPool(threadCount);
         this.reportTasks = new ArrayList<>();
@@ -118,7 +116,9 @@ public class MetaPythonReportTask extends Task<Boolean> {
         this.pythonExecutable = resolvePythonExecutable();
         
         LOGGER.info("{}: Initialized with {} threads, Python: {}", TASK_NAME, threadCount, pythonExecutable);
+        LOGGER.info("{}: Python availability check: {}", TASK_NAME, isPythonAvailable());
         System.out.println(FORMAT.format(new Date()) + "\t" + TASK_NAME + ": Initialized with " + threadCount + " threads, Python: " + pythonExecutable);
+        System.out.println(FORMAT.format(new Date()) + "\t" + TASK_NAME + ": Python availability: " + isPythonAvailable());
     }
 
     /**
@@ -255,6 +255,10 @@ public class MetaPythonReportTask extends Task<Boolean> {
             // Execute Python script
             ProcessBuilder processBuilder = new ProcessBuilder(command);
             processBuilder.redirectErrorStream(true);
+            processBuilder.directory(new File(System.getProperty("user.dir"))); // Set working directory
+
+            LOGGER.info("{}: Executing Python command: {}", TASK_NAME, String.join(" ", command));
+            System.out.println(FORMAT.format(new Date()) + "\t" + TASK_NAME + ": Executing Python command: " + String.join(" ", command));
 
             Process process = processBuilder.start();
 
@@ -285,6 +289,19 @@ public class MetaPythonReportTask extends Task<Boolean> {
     }
 
     /**
+     * Escapes a path for use in Python string literals.
+     * 
+     * @param path The path to escape
+     * @return Escaped path safe for Python
+     */
+    private String escapePathForPython(String path) {
+        if (path == null) return "";
+        // Replace backslashes with forward slashes for cross-platform compatibility
+        // and escape any single quotes that might be in the path
+        return path.replace("\\", "/").replace("'", "\\'");
+    }
+
+    /**
      * Builds the Python command for report generation.
      * 
      * @param taskInfo Task information
@@ -296,22 +313,26 @@ public class MetaPythonReportTask extends Task<Boolean> {
         command.add(pythonExecutable);
         command.add("-c");
         
+        // Load data and metadata - properly escape paths for Python
+        String inputPath = escapePathForPython(taskInfo.inputFile.getAbsolutePath());
+        String outputPath = escapePathForPython(taskInfo.outputFile.getAbsolutePath());
+        String outputDir = escapePathForPython(taskInfo.outputFile.getParent());
+        
+        LOGGER.info("{}: Processing paths - Input: {}, Output: {}, OutputDir: {}", TASK_NAME, inputPath, outputPath, outputDir);
+        
         // Python script to execute
         StringBuilder pythonScript = new StringBuilder();
-        pythonScript.append("import sys; sys.path.append('src/main/python'); ");
+        pythonScript.append("import sys, os; ");
+        pythonScript.append("sys.path.append(os.path.join(os.getcwd(), 'src', 'main', 'python')); ");
         pythonScript.append("from report_generation.metapilot_report_generator import MetaPilotReportGenerator; ");
         pythonScript.append("import pandas as pd; import numpy as np; ");
-        pythonScript.append("rg = MetaPilotReportGenerator('").append(taskInfo.outputFile.getParent()).append("'); ");
-        
-        // Load data and metadata
-        String inputPath = taskInfo.inputFile.getAbsolutePath().replace("\\", "/");
-        String outputPath = taskInfo.outputFile.getAbsolutePath().replace("\\", "/");
+        pythonScript.append("rg = MetaPilotReportGenerator('").append(outputDir).append("'); ");
         
         pythonScript.append("df = pd.read_csv('").append(inputPath).append("', sep='\\t'); ");
         
         // Load metadata if available
         if (taskInfo.metaFile != null && taskInfo.metaFile.exists()) {
-            String metaPath = taskInfo.metaFile.getAbsolutePath().replace("\\", "/");
+            String metaPath = escapePathForPython(taskInfo.metaFile.getAbsolutePath());
             pythonScript.append("metadata = rg.load_metadata('").append(metaPath).append("'); ");
         } else {
             pythonScript.append("metadata = None; ");
@@ -347,7 +368,10 @@ public class MetaPythonReportTask extends Task<Boolean> {
                 throw new IllegalArgumentException("Unsupported report type: " + taskInfo.reportType);
         }
         
-        command.add(pythonScript.toString());
+        String finalScript = pythonScript.toString();
+        command.add(finalScript);
+        
+        LOGGER.info("{}: Generated Python script: {}", TASK_NAME, finalScript);
         
         return command;
     }
@@ -396,9 +420,11 @@ public class MetaPythonReportTask extends Task<Boolean> {
         try {
             // Get Python path from resource parameters
             String pythonPath = resourceParameters.getToolPath(MetaResourceParameters.ToolType.PYTHON);
+            LOGGER.info("{}: Retrieved Python path from MetaResourceParameters: '{}'", TASK_NAME, pythonPath);
             
             if (pythonPath != null && !pythonPath.trim().isEmpty()) {
                 File pythonFile = new File(pythonPath);
+                LOGGER.info("{}: Checking Python file existence: {} -> {}", TASK_NAME, pythonPath, pythonFile.exists());
                 if (pythonFile.exists()) {
                     LOGGER.info("{}: Using bundled Python executable: {}", TASK_NAME, pythonPath);
                     return pythonPath;

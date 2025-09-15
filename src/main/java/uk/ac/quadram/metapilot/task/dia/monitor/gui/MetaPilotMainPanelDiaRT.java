@@ -46,6 +46,7 @@ import javax.swing.table.TableColumn;
 
 import org.apache.commons.io.FileUtils;
 
+import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.core.model.ConsoleTextArea;
 import uk.ac.quadram.metapilot.dbSearch.deepDetect.DeepDetectParameter;
 import uk.ac.quadram.metapilot.dbSearch.deepDetect.DeepDetectTask;
@@ -368,7 +369,7 @@ public class MetaPilotMainPanelDiaRT extends MetaPilotMainPanelDia {
 			}
 
 			createLibButton.setEnabled(false);
-			pepLibPanel.getProgressBar().setIndeterminate(true);
+			pepLibPanel.getProgressBar().setProgress(ProgressBar.INDETERMINATE_PROGRESS);
 
 			diaPar.setResult(libFile.getAbsolutePath());
 			diaPar.setThreadCount(threadComboBox.getItemAt(threadComboBox.getSelectedIndex()));
@@ -488,7 +489,7 @@ public class MetaPilotMainPanelDiaRT extends MetaPilotMainPanelDia {
 			}
 
 			createModelButton.setEnabled(false);
-			modelPanel.getProgressBar().setIndeterminate(true);
+			modelPanel.getProgressBar().setProgress(ProgressBar.INDETERMINATE_PROGRESS);
 
 			diaPar.setThreadCount(threadComboBox.getItemAt(threadComboBox.getSelectedIndex()));
 			diaPar.setResult(modelFile.getAbsolutePath());
@@ -505,10 +506,10 @@ public class MetaPilotMainPanelDiaRT extends MetaPilotMainPanelDia {
 
 					setCursor(null);
 					createModelButton.setEnabled(true);
-					modelPanel.getProgressBar().setIndeterminate(false);
+					modelPanel.getProgressBar().setProgress(ProgressBar.INDETERMINATE_PROGRESS);
 
 					if (diaModelTask.isCancelled()) {
-						modelPanel.getProgressBar().setString("Task stopped");
+						updateMessage("Task stopped");
 						return;
 					}
 
@@ -519,9 +520,9 @@ public class MetaPilotMainPanelDiaRT extends MetaPilotMainPanelDia {
 						finish = get();
 
 						if (finish) {
-							modelPanel.getProgressBar().setValue(100);
+							modelPanel.getProgressBar().setProgress(100);
 							modelPanel.update();
-							modelPanel.getProgressBar().setString("finished");
+							updateMessage("finished");
 							JOptionPane.showMessageDialog(MetaPilotMainPanelDiaRT.this, "Task finished", "Finish",
 									JOptionPane.INFORMATION_MESSAGE);
 						} else {

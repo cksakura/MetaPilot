@@ -11,13 +11,11 @@ import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.scene.paint.Color;
 import javafx.scene.control.cell.PropertyValueFactory;
-import javafx.scene.control.cell.CheckBoxTableCell;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.BooleanProperty;
 import javafx.concurrent.Task;
-import javafx.scene.control.Alert.AlertType;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagPepLib;
 import java.io.File;
@@ -25,6 +23,11 @@ import java.util.Optional;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.util.Duration;
+import uk.ac.quadram.metapilot.task.dia.DiaLibCreateTask;
+import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
+import uk.ac.quadram.metapilot.task.mag.MagDbConfigIO;
+import java.util.ArrayList;
 
 public class DiaLibraryGenerationPanel extends VBox {
     
@@ -51,12 +54,22 @@ public class DiaLibraryGenerationPanel extends VBox {
     private ProgressBar libraryProgressBar;
     private Label progressLabel;
     
+    // Step tracking for clear progress indication
+    private int currentStep = 0;
+    private int totalSteps = 4;
+    
     // Callback interface for parameter updates
     public interface ParameterUpdateCallback {
         void onParametersChanged();
     }
     
     private ParameterUpdateCallback parameterCallback;
+    
+    // Required parameters for DiaLibCreateTask
+    private MetaParameterDia metaParameter;
+    private MetaResourceParameters resourceParameters;
+    private File configFile;
+    private MetaPilotDiaNormalPanel parentPanel;
 
     public DiaLibraryGenerationPanel() {
         initializeUI();
@@ -65,6 +78,45 @@ public class DiaLibraryGenerationPanel extends VBox {
     public DiaLibraryGenerationPanel(TextArea consoleOutput) {
         this.consoleOutput = consoleOutput;
         initializeUI();
+    }
+    
+    public DiaLibraryGenerationPanel(MetaParameterDia metaParameter, MetaResourceParameters resourceParameters, File configFile) {
+        this.metaParameter = metaParameter;
+        this.resourceParameters = resourceParameters;
+        this.configFile = configFile;
+        
+        // CRITICAL: Initialize MagDbItem from metaParameter immediately
+        if (metaParameter != null && metaParameter.getMagDbItem() != null) {
+            this.currentMagDbItem = metaParameter.getMagDbItem();
+            System.out.println("DEBUG: DiaLibraryGenerationPanel constructor - initialized MagDbItem: " + currentMagDbItem.getCatalogueID());
+        } else {
+            System.err.println("ERROR: DiaLibraryGenerationPanel constructor - MetaParameterDia or MagDbItem is null!");
+        }
+        
+        initializeUI();
+        
+        // Load available libraries after UI is initialized
+        loadAvailableLibraries();
+    }
+    
+    public DiaLibraryGenerationPanel(MetaParameterDia metaParameter, MetaResourceParameters resourceParameters, File configFile, TextArea consoleOutput) {
+        this.metaParameter = metaParameter;
+        this.resourceParameters = resourceParameters;
+        this.configFile = configFile;
+        this.consoleOutput = consoleOutput;
+        
+        // CRITICAL: Initialize MagDbItem from metaParameter immediately
+        if (metaParameter != null && metaParameter.getMagDbItem() != null) {
+            this.currentMagDbItem = metaParameter.getMagDbItem();
+            System.out.println("DEBUG: DiaLibraryGenerationPanel constructor - initialized MagDbItem: " + currentMagDbItem.getCatalogueID());
+        } else {
+            System.err.println("ERROR: DiaLibraryGenerationPanel constructor - MetaParameterDia or MagDbItem is null!");
+        }
+        
+        initializeUI();
+        
+        // Load available libraries after UI is initialized
+        loadAvailableLibraries();
     }
     
     public void setParameterUpdateCallback(ParameterUpdateCallback callback) {
@@ -79,6 +131,26 @@ public class DiaLibraryGenerationPanel extends VBox {
         this.currentMagDbItem = magDbItem;
         loadAvailableLibraries();
     }
+    
+    public void setMetaParameter(MetaParameterDia metaParameter) {
+        this.metaParameter = metaParameter;
+    }
+    
+    public void setResourceParameters(MetaResourceParameters resourceParameters) {
+        this.resourceParameters = resourceParameters;
+    }
+    
+    public void setConfigFile(File configFile) {
+        this.configFile = configFile;
+    }
+    
+    public void setParentPanel(MetaPilotDiaNormalPanel parentPanel) {
+        this.parentPanel = parentPanel;
+    }
+    
+    public void updateMetaParameter(MetaParameterDia metaParameter) {
+        this.metaParameter = metaParameter;
+    }
 
     private void initializeUI() {
         setSpacing(10);
@@ -90,7 +162,7 @@ public class DiaLibraryGenerationPanel extends VBox {
         Label titleLabel = createSectionTitle("Spectral Library Generation");
         
         // Input type selection
-        VBox inputTypeBox = createInputTypeSelection();
+        HBox inputTypeBox = createInputTypeSelection();
         
         // File selection
         HBox fileBox = createFileSelection();
@@ -111,8 +183,8 @@ public class DiaLibraryGenerationPanel extends VBox {
             generationBox, tableSection, progressSection);
     }
     
-    private VBox createInputTypeSelection() {
-        VBox inputTypeBox = new VBox(8);
+    private HBox createInputTypeSelection() {
+        HBox inputTypeBox = new HBox(8);
         Label inputLabel = new Label("Input Type for Library Generation:");
         inputLabel.setStyle("-fx-font-weight: bold;");
         
@@ -126,11 +198,12 @@ public class DiaLibraryGenerationPanel extends VBox {
         proteinDbRadio.setToggleGroup(inputTypeGroup);
         libraryRadio.setSelected(true); // Default selection
         
-        // Show/hide enzyme parameters based on input type
+        // Enable/disable enzyme parameters based on input type
         inputTypeGroup.selectedToggleProperty().addListener((obs, oldToggle, newToggle) -> {
-            boolean showEnzyme = newToggle == proteinDbRadio;
-            enzymeBox.setVisible(showEnzyme);
-            enzymeBox.setManaged(showEnzyme);
+            boolean enableEnzyme = newToggle == proteinDbRadio;
+            enzymeComboBox.setDisable(!enableEnzyme);
+            missCleavageComboBox.setDisable(!enableEnzyme);
+            keepProteinNamesCheckBox.setDisable(!enableEnzyme);
         });
         
         inputTypeBox.getChildren().addAll(inputLabel, libraryRadio, peptideListRadio, proteinDbRadio);
@@ -165,17 +238,15 @@ public class DiaLibraryGenerationPanel extends VBox {
         // Enzyme name
         Label enzymeNameLabel = new Label("Enzyme:");
         enzymeComboBox = new ComboBox<>(FXCollections.observableArrayList(
-            "Trypsin", "Trypsin/P", "Lys-C", "Arg-C", "Asp-N", "Glu-C", "Pepsin"));
-        enzymeComboBox.setValue("Trypsin");
+            "Trypsin/P", "Trypsin", "Lys-C", "Chymotrypsin", "AspN", "GluC"));
+        enzymeComboBox.setValue("Trypsin/P");
         enzymeComboBox.setPrefWidth(120);
         
         // Miss cleavage
         Label missCleavageLabel = new Label("Max Miss Cleavages:");
         missCleavageComboBox = new ComboBox<>();
-        for (int i = 0; i <= 5; i++) {
-            missCleavageComboBox.getItems().add(i);
-        }
-        missCleavageComboBox.setValue(2);
+        missCleavageComboBox.getItems().addAll(0, 1, 2);
+        missCleavageComboBox.setValue(1);
         missCleavageComboBox.setPrefWidth(80);
         
         enzymeGrid.add(enzymeNameLabel, 0, 0);
@@ -192,9 +263,14 @@ public class DiaLibraryGenerationPanel extends VBox {
         
         enzymeBox.getChildren().addAll(enzymeTitle, enzymeGrid, keepProteinNamesCheckBox, keepNamesHint);
         
-        // Initially hide enzyme parameters
-        enzymeBox.setVisible(false);
-        enzymeBox.setManaged(false);
+        // Enzyme parameters are always visible but initially disabled
+        enzymeBox.setVisible(true);
+        enzymeBox.setManaged(true);
+        
+        // Initially disable enzyme parameters since "Existing Library File" is selected by default
+        enzymeComboBox.setDisable(true);
+        missCleavageComboBox.setDisable(true);
+        keepProteinNamesCheckBox.setDisable(true);
         
         return enzymeBox;
     }
@@ -231,7 +307,10 @@ public class DiaLibraryGenerationPanel extends VBox {
         Button deleteButton = new Button("Delete Selected");
         deleteButton.setOnAction(e -> deleteSelectedLibrary());
         
-        headerBox.getChildren().addAll(availableLabel, checkAvailableButton, deleteButton);
+        Button testSelectButton = new Button("Test Select First");
+        testSelectButton.setOnAction(e -> testSelectFirstLibrary());
+        
+        headerBox.getChildren().addAll(availableLabel, checkAvailableButton, deleteButton, testSelectButton);
         
         // Table
         libraryTable = new TableView<>(libraryData);
@@ -239,14 +318,41 @@ public class DiaLibraryGenerationPanel extends VBox {
         libraryTable.setPrefHeight(150);
         libraryTable.setMaxHeight(Double.MAX_VALUE);
         libraryTable.setEditable(true);
-        libraryTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        libraryTable.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
         VBox.setVgrow(libraryTable, Priority.ALWAYS);
 
         // Use column (checkbox)
         TableColumn<LibraryRow, Boolean> useCol = new TableColumn<>("Use");
         useCol.setCellValueFactory(new PropertyValueFactory<>("use"));
-        useCol.setCellFactory(CheckBoxTableCell.forTableColumn(useCol));
-        useCol.setOnEditCommit(e -> notifyParameterUpdate());
+        useCol.setCellFactory(column -> {
+            return new TableCell<LibraryRow, Boolean>() {
+                private final CheckBox checkBox = new CheckBox();
+                
+                {
+                    checkBox.setOnAction(e -> {
+                        LibraryRow row = getTableRow().getItem();
+                        if (row != null) {
+                            boolean newValue = checkBox.isSelected();
+                            System.out.println("DEBUG: Checkbox clicked - " + row.getLibName() + " -> " + newValue);
+                            row.setUse(newValue);
+                            notifyParameterUpdate();
+                        }
+                    });
+                }
+                
+                @Override
+                protected void updateItem(Boolean item, boolean empty) {
+                    super.updateItem(item, empty);
+                    if (empty || getTableRow() == null || getTableRow().getItem() == null) {
+                        setGraphic(null);
+                    } else {
+                        LibraryRow row = getTableRow().getItem();
+                        checkBox.setSelected(row.getUse());
+                        setGraphic(checkBox);
+                    }
+                }
+            };
+        });
         useCol.setMinWidth(40);
         useCol.setPrefWidth(50);
 
@@ -274,7 +380,9 @@ public class DiaLibraryGenerationPanel extends VBox {
         missCol.setMinWidth(80);
         missCol.setPrefWidth(100);
 
-        libraryTable.getColumns().addAll(useCol, nameCol, pepCountCol, proteaseCol, missCol);
+        @SuppressWarnings("unchecked")
+        TableColumn<LibraryRow, ?>[] columns = new TableColumn[] {useCol, nameCol, pepCountCol, proteaseCol, missCol};
+        libraryTable.getColumns().addAll(columns);
         
         tableSection.getChildren().addAll(headerBox, libraryTable);
         return tableSection;
@@ -284,34 +392,35 @@ public class DiaLibraryGenerationPanel extends VBox {
         VBox progressSection = new VBox(8);
         progressSection.setPadding(new Insets(10));
         progressSection.setStyle("-fx-background-color: #f8f8f8; -fx-background-radius: 5;");
-        progressSection.setMinHeight(120);
-        progressSection.setMaxHeight(150);
-
-//        Label progressTitle = new Label("Generation Progress:");
-//        progressTitle.setStyle("-fx-font-weight: bold;");
-
-//        progressLabel = new Label("Ready to generate library");
-//        progressLabel.setStyle("-fx-font-size: 11px;");
+        progressSection.setMinHeight(200); // Increased minimum height
+        progressSection.setPrefHeight(400); // Set preferred height to make it bigger
+        VBox.setVgrow(progressSection, Priority.ALWAYS); // Allow it to grow and fill space
 
         libraryProgressBar = new ProgressBar(0);
         libraryProgressBar.setMaxWidth(Double.MAX_VALUE);
-        libraryProgressBar.setPrefHeight(20);
+        libraryProgressBar.setPrefHeight(25); // Made progress bar taller
+        libraryProgressBar.setStyle("-fx-accent: #4CAF50;"); // Green color for progress
+
+        // Progress label to show current step
+        progressLabel = new Label("Ready to generate library");
+        progressLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 12px; -fx-text-fill: #333333;");
+        progressLabel.setMaxWidth(Double.MAX_VALUE);
 
         Label consoleTitle = new Label("Console Output:");
-        consoleTitle.setStyle("-fx-font-weight: bold; -fx-font-size: 11px;");
+        consoleTitle.setStyle("-fx-font-weight: bold; -fx-font-size: 14px;"); // Larger title font
 
         // Create internal console if external one not provided
         if (consoleOutput == null) {
             consoleOutput = new TextArea();
         }
         consoleOutput.setEditable(false);
-        consoleOutput.setPrefHeight(200);
-        consoleOutput.setMaxHeight(300);
-        consoleOutput.setStyle("-fx-font-family: monospace; -fx-font-size: 10px;");
-        VBox.setVgrow(consoleOutput, Priority.ALWAYS);
+        consoleOutput.setPrefHeight(300); // Set preferred height to make console bigger
+        consoleOutput.setMinHeight(200); // Set minimum height
+        consoleOutput.setStyle("-fx-font-family: 'Courier New', monospace; -fx-font-size: 12px;"); // Larger, more readable font
+        VBox.setVgrow(consoleOutput, Priority.ALWAYS); // Allow console to grow and fill space
 
         progressSection.getChildren().addAll(
-            libraryProgressBar, consoleTitle, consoleOutput
+            progressLabel, libraryProgressBar, consoleTitle, consoleOutput
         );
         
         return progressSection;
@@ -388,118 +497,213 @@ public class DiaLibraryGenerationPanel extends VBox {
             showError("Name Required", "Please enter a library name.");
             return;
         }
+
+        // Check if MetaParameterDia is available
+        if (metaParameter == null) {
+            System.out.println("DEBUG: MetaParameterDia is null, attempting to generate from parent panel...");
+            
+            // Try to get it from the parent panel
+            if (parentPanel != null) {
+                System.out.println("DEBUG: Using parent panel to generate MetaParameterDia");
+                metaParameter = parentPanel.collectParametersFromUI();
+                System.out.println("DEBUG: MetaParameterDia generated: " + (metaParameter != null));
+            }
+            
+            if (metaParameter == null) {
+                System.out.println("DEBUG: MetaParameterDia is still null after all attempts");
+                showError("Configuration Error", "MetaParameterDia is not available. Please ensure all required parameters are set in the main panel.");
+                return;
+            } else {
+                System.out.println("DEBUG: MetaParameterDia successfully obtained");
+            }
+        }
         
-        // Mock library generation process
-        Task<Void> generateTask = new Task<Void>() {
-            @Override
-            protected Void call() throws Exception {
-                Platform.runLater(() -> {
-                    libraryProgressBar.setProgress(0);
-                    progressLabel.setText("Starting library generation...");
-                    if (consoleOutput != null) {
-                        consoleOutput.appendText("Starting library generation: " + libraryName + "\n");
+        if (resourceParameters == null) {
+            showError("Configuration Error", "MetaResourceParameters is not set. Please configure the panel properly.");
+            return;
+        }
+        
+        if (currentMagDbItem == null) {
+            showError("Database Error", "MAG database item is not set. Please select a database first.");
+            return;
+        }
+        
+        // Determine build type based on selected input type
+        RadioButton selected = (RadioButton) inputTypeGroup.getSelectedToggle();
+        String sourceType = selected.getText();
+        int buildType;
+        
+        if (sourceType.contains("Library")) {
+            buildType = DiaLibCreateTask.fromLibrary;
+        } else if (sourceType.contains("Protein")) {
+            buildType = DiaLibCreateTask.fromProtein;
+        } else if (sourceType.contains("Peptide")) {
+            buildType = DiaLibCreateTask.fromPeptide;
+        } else {
+            showError("Invalid Input Type", "Please select a valid input type.");
+            return;
+        }
+        
+        // Prepare parameters for DiaLibCreateTask
+        ArrayList<String> pathList = new ArrayList<>();
+        if (buildType == DiaLibCreateTask.fromProtein) {
+            // For protein database, we need enzyme, library name, and miss cleavages
+            pathList.add(enzymeComboBox.getValue());
+            pathList.add(libraryName);
+            pathList.add(String.valueOf(missCleavageComboBox.getValue()));
+        } else {
+            // For library and peptide files, we still need enzyme parameters for consistency
+            pathList.add(enzymeComboBox.getValue());
+            pathList.add(libraryName);
+            pathList.add(String.valueOf(missCleavageComboBox.getValue()));
+        }
+        
+        // Create and run the real DiaLibCreateTask
+        DiaLibCreateTask libCreateTask = new DiaLibCreateTask(
+            metaParameter, 
+            resourceParameters, 
+            libraryProgressBar, 
+            inputFile, 
+            pathList, 
+            buildType
+        );
+        
+        // Set up task event handlers
+        libCreateTask.setOnRunning(e -> {
+            Platform.runLater(() -> {
+                // Initialize progress tracking
+                currentStep = 0;
+                updateProgressStep(0, "Starting library generation...");
+                
+                if (consoleOutput != null) {
+                    consoleOutput.appendText("=== Library Generation Started ===\n");
+                    consoleOutput.appendText("Library name: " + libraryName + "\n");
+                    consoleOutput.appendText("Input file: " + inputFile + "\n");
+                    consoleOutput.appendText("Build type: " + sourceType + "\n");
+                    if (buildType == DiaLibCreateTask.fromProtein) {
+                        consoleOutput.appendText("Enzyme: " + enzymeComboBox.getValue() + "\n");
+                        consoleOutput.appendText("Max miss cleavages: " + missCleavageComboBox.getValue() + "\n");
                     }
-                });
+                    consoleOutput.appendText("Progress: Step 1/4 - Initializing...\n");
+                }
+            });
+        });
+        
+        libCreateTask.setOnSucceeded(e -> {
+            Platform.runLater(() -> {
+                // Complete progress tracking
+                updateProgressStep(totalSteps, "Library generation completed successfully!");
+                libraryProgressBar.setProgress(1.0);
                 
-                RadioButton selected = (RadioButton) inputTypeGroup.getSelectedToggle();
-                String sourceType = selected.getText();
-                
-                // Step 1: Input validation and parsing
-                Platform.runLater(() -> {
-                    libraryProgressBar.setProgress(0.1);
-                    progressLabel.setText("Validating input file...");
-                    if (consoleOutput != null) {
-                        consoleOutput.appendText("Validating input file: " + inputFile + "\n");
-                        consoleOutput.appendText("Source type: " + sourceType + "\n");
-                    }
-                });
-                Thread.sleep(1000);
-                
-                if (sourceType.contains("Protein")) {
-                    Platform.runLater(() -> {
-                        libraryProgressBar.setProgress(0.2);
-                        progressLabel.setText("Configuring enzyme parameters...");
-                        if (consoleOutput != null) {
-                            consoleOutput.appendText("Using enzyme: " + enzymeComboBox.getValue() + "\n");
-                            consoleOutput.appendText("Max miss cleavages: " + missCleavageComboBox.getValue() + "\n");
-                            consoleOutput.appendText("Keep protein names: " + keepProteinNamesCheckBox.isSelected() + "\n");
-                        }
-                    });
-                    Thread.sleep(500);
+                if (consoleOutput != null) {
+                    consoleOutput.appendText("=== Library Generation Completed ===\n");
+                    consoleOutput.appendText("✓ Library '" + libraryName + "' generated successfully!\n");
+                    consoleOutput.appendText("✓ Library has been added to the MAG database.\n");
+                    consoleOutput.appendText("✓ All steps completed (4/4)\n");
                 }
                 
-                // Step 2: Processing input
-                Platform.runLater(() -> {
-                    libraryProgressBar.setProgress(0.4);
-                    progressLabel.setText("Processing input data...");
-                    if (consoleOutput != null) {
-                        consoleOutput.appendText("Reading and processing input data...\n");
-                    }
-                });
-                Thread.sleep(1500);
-                
-                // Step 3: Generating library
-                Platform.runLater(() -> {
-                    libraryProgressBar.setProgress(0.7);
-                    progressLabel.setText("Generating spectral library...");
-                    if (consoleOutput != null) {
-                        consoleOutput.appendText("Building spectral library database...\n");
-                    }
-                });
-                Thread.sleep(1000);
-                
-                // Step 4: Finalizing
-                Platform.runLater(() -> {
-                    libraryProgressBar.setProgress(0.9);
-                    progressLabel.setText("Finalizing and saving...");
-                    if (consoleOutput != null) {
-                        consoleOutput.appendText("Writing library to disk...\n");
-                    }
-                });
-                Thread.sleep(500);
-                
-                Platform.runLater(() -> {
-                    libraryProgressBar.setProgress(1.0);
-                    progressLabel.setText("Library generation completed successfully!");
-                    if (consoleOutput != null) {
-                        consoleOutput.appendText("Library generation completed: " + libraryName + "\n");
-                        consoleOutput.appendText("Adding library to MAGDB configuration...\n");
-                    }
-                    
-                    // Add to MAG database (mock implementation)
-                    if (currentMagDbItem != null) {
-                        // Mock values - in real implementation, these would be calculated
-                        int pepCount = (int)(Math.random() * 5000) + 1000;
-                        String protease = enzymeComboBox.getValue();
-                        int miss = missCleavageComboBox.getValue();
+                // Update the configuration file with the new library information
+                if (configFile != null && currentMagDbItem != null) {
+                    try {
+                        // Determine if this is a MGnify or local MAG database
+                        boolean isMgnify = currentMagDbItem.getCatalogueID().startsWith("MGYG") || 
+                                          currentMagDbItem.getCatalogueID().contains("mgnify") ||
+                                          currentMagDbItem.getCatalogueID().contains("MGnify");
                         
-                        currentMagDbItem.addPepLib(libraryName, pepCount, protease, miss);
-                        loadAvailableLibraries();
+                        // Update the configuration file with the updated MagDbItem
+                        MagDbConfigIO.updateMagDbItem(currentMagDbItem, isMgnify, configFile);
                         
                         if (consoleOutput != null) {
-                            consoleOutput.appendText("Library added with " + pepCount + " peptides\n");
+                            consoleOutput.appendText("Configuration file updated successfully.\n");
                         }
+                        
+                    } catch (Exception ex) {
+                        if (consoleOutput != null) {
+                            consoleOutput.appendText("Warning: Failed to update configuration file: " + ex.getMessage() + "\n");
+                        }
+                        System.err.println("Failed to update MAG database configuration: " + ex.getMessage());
+                    }
+                } else {
+                    if (consoleOutput != null) {
+                        consoleOutput.appendText("Warning: Configuration file or MAG database item not set. Configuration not updated.\n");
+                    }
+                }
+                
+                // Refresh the library table
+                loadAvailableLibraries();
+                notifyParameterUpdate();
+                
+                // Clear input fields
+                inputFileField.clear();
+                libraryNameField.clear();
+                
+                // Reset progress after a delay
+                Timeline resetTimeline = new Timeline(new KeyFrame(Duration.seconds(3), ev -> {
+                    libraryProgressBar.setProgress(0);
+                }));
+                resetTimeline.play();
+            });
+        });
+        
+        libCreateTask.setOnFailed(e -> {
+            Platform.runLater(() -> {
+                // Reset progress tracking on failure
+                updateProgressStep(0, "Library generation failed!");
+                libraryProgressBar.setProgress(0);
+                
+                Throwable exception = libCreateTask.getException();
+                String errorMessage = exception != null ? exception.getMessage() : "Unknown error occurred";
+                
+                if (consoleOutput != null) {
+                    consoleOutput.appendText("=== Library Generation Failed ===\n");
+                    consoleOutput.appendText("✗ Error at step " + (currentStep + 1) + "/" + totalSteps + "\n");
+                    consoleOutput.appendText("✗ Error message: " + errorMessage + "\n");
+                    consoleOutput.appendText("✗ Please check the error details and try again.\n");
+                }
+                
+                showError("Library Generation Failed", 
+                    "Failed to generate library at step " + (currentStep + 1) + "/" + totalSteps + ": " + errorMessage);
+            });
+        });
+        
+        libCreateTask.setOnCancelled(e -> {
+            Platform.runLater(() -> {
+                // Reset progress tracking on cancellation
+                updateProgressStep(0, "Library generation was cancelled");
+                libraryProgressBar.setProgress(0);
+                
+                if (consoleOutput != null) {
+                    consoleOutput.appendText("=== Library Generation Cancelled ===\n");
+                    consoleOutput.appendText("⚠ Library generation was cancelled by user.\n");
+                    consoleOutput.appendText("⚠ Progress: " + currentStep + "/" + totalSteps + " steps completed.\n");
+                }
+            });
+        });
+        
+        // Set up progress monitoring from the task
+        libCreateTask.messageProperty().addListener((obs, oldMsg, newMsg) -> {
+            if (newMsg != null && !newMsg.isEmpty()) {
+                Platform.runLater(() -> {
+                    // Parse progress messages and update step tracking
+                    if (newMsg.contains("Initializing") || newMsg.contains("Starting")) {
+                        updateProgressStep(1, "Step 1/4: " + newMsg);
+                    } else if (newMsg.contains("Processing") || newMsg.contains("Reading")) {
+                        updateProgressStep(2, "Step 2/4: " + newMsg);
+                    } else if (newMsg.contains("Building") || newMsg.contains("Creating")) {
+                        updateProgressStep(3, "Step 3/4: " + newMsg);
+                    } else if (newMsg.contains("Finalizing") || newMsg.contains("Completing")) {
+                        updateProgressStep(4, "Step 4/4: " + newMsg);
                     }
                     
-                    notifyParameterUpdate();
-                    
-                    // Clear input fields and reset progress
-                    inputFileField.clear();
-                    libraryNameField.clear();
-                    
-                    // Reset progress after a delay
-                    Timeline resetTimeline = new Timeline(new KeyFrame(Duration.seconds(3), e -> {
-                        libraryProgressBar.setProgress(0);
-                        progressLabel.setText("Ready to generate library");
-                    }));
-                    resetTimeline.play();
+                    if (consoleOutput != null) {
+                        consoleOutput.appendText("Progress: " + newMsg + "\n");
+                    }
                 });
-                
-                return null;
             }
-        };
+        });
         
-        new Thread(generateTask).start();
+        // Start the task
+        new Thread(libCreateTask).start();
     }
     
     private void checkAvailableLibraries() {
@@ -513,20 +717,115 @@ public class DiaLibraryGenerationPanel extends VBox {
             protected Void call() throws Exception {
                 Platform.runLater(() -> {
                     if (consoleOutput != null) {
-                        consoleOutput.appendText("Checking for available libraries in MAG database folder...\n");
+                        consoleOutput.appendText("Scanning for available libraries in MAG database folder...\n");
                     }
                 });
                 
-                // Mock implementation - in real implementation, this would scan the libraries folder
-                // and call currentMagDbItem.addPepLibFromFile(file) for each found library
-                Thread.sleep(1000);
-                
-                Platform.runLater(() -> {
-                    if (consoleOutput != null) {
-                        consoleOutput.appendText("Library scan completed.\n");
+                try {
+                    // Get the MAG database folder
+                    File magDbFolder = currentMagDbItem.getCurrentFile();
+                    if (magDbFolder == null || !magDbFolder.exists()) {
+                        Platform.runLater(() -> {
+                            if (consoleOutput != null) {
+                                consoleOutput.appendText("ERROR: MAG database folder not found: " + 
+                                    (magDbFolder != null ? magDbFolder.getAbsolutePath() : "null") + "\n");
+                            }
+                        });
+                        return null;
                     }
-                    loadAvailableLibraries();
-                });
+                    
+                    // Check the libraries folder
+                    File librariesFolder = new File(magDbFolder, "libraries");
+                    if (!librariesFolder.exists()) {
+                        Platform.runLater(() -> {
+                            if (consoleOutput != null) {
+                                consoleOutput.appendText("No libraries folder found at: " + librariesFolder.getAbsolutePath() + "\n");
+                            }
+                        });
+                        return null;
+                    }
+                    
+                    Platform.runLater(() -> {
+                        if (consoleOutput != null) {
+                            consoleOutput.appendText("Scanning libraries folder: " + librariesFolder.getAbsolutePath() + "\n");
+                        }
+                    });
+                    
+                    // Scan for library folders
+                    File[] libraryFolders = librariesFolder.listFiles(File::isDirectory);
+                    if (libraryFolders == null || libraryFolders.length == 0) {
+                        Platform.runLater(() -> {
+                            if (consoleOutput != null) {
+                                consoleOutput.appendText("No library folders found in libraries directory.\n");
+                            }
+                        });
+                        return null;
+                    }
+                    
+                    final int[] foundLibraries = {0};
+                    for (File libraryFolder : libraryFolders) {
+                        String libraryName = libraryFolder.getName();
+                        
+                        // Look for .speclib file in the library folder
+                        File speclibFile = new File(libraryFolder, libraryName + ".speclib");
+                        File tsvFile = new File(libraryFolder, libraryName + ".tsv");
+                        File parquetFile = new File(libraryFolder, libraryName + ".parquet");
+                        
+                        // Check if any of the expected library files exist
+                        if (speclibFile.exists() || tsvFile.exists() || parquetFile.exists()) {
+                            Platform.runLater(() -> {
+                                if (consoleOutput != null) {
+                                    consoleOutput.appendText("Found library: " + libraryName + 
+                                        " (speclib: " + speclibFile.exists() + 
+                                        ", tsv: " + tsvFile.exists() + 
+                                        ", parquet: " + parquetFile.exists() + ")\n");
+                                }
+                            });
+                            
+                            // Add the library to the MagDbItem
+                            System.out.println("DEBUG: Attempting to add library from folder: " + libraryFolder.getAbsolutePath());
+                            
+                            // Check if the required info file exists
+                            File infoFile = new File(libraryFolder, libraryName + "_info.txt");
+                            System.out.println("DEBUG: Looking for info file: " + infoFile.getAbsolutePath() + " (exists: " + infoFile.exists() + ")");
+                            
+                            if (infoFile.exists()) {
+                                currentMagDbItem.addPepLibFromFile(libraryFolder);
+                                System.out.println("DEBUG: Successfully added library via addPepLibFromFile()");
+                            } else {
+                                // Create a basic library entry without the info file
+                                // We'll use placeholder values since we don't have the info file
+                                System.out.println("DEBUG: Info file not found, creating basic library entry");
+                                currentMagDbItem.addPepLib(libraryName, 0, "Trypsin/P", 1);
+                                System.out.println("DEBUG: Successfully added library via addPepLib() with placeholder values");
+                            }
+                            
+                            foundLibraries[0]++;
+                        } else {
+                            Platform.runLater(() -> {
+                                if (consoleOutput != null) {
+                                    consoleOutput.appendText("Skipping folder (no library files): " + libraryName + "\n");
+                                }
+                            });
+                        }
+                    }
+                    
+                    Platform.runLater(() -> {
+                        if (consoleOutput != null) {
+                            consoleOutput.appendText("Library scan completed. Found " + foundLibraries[0] + " libraries.\n");
+                        }
+                        loadAvailableLibraries();
+                    });
+                    
+                } catch (Exception e) {
+                    Platform.runLater(() -> {
+                        if (consoleOutput != null) {
+                            consoleOutput.appendText("ERROR during library scan: " + e.getMessage() + "\n");
+                        }
+                    });
+                    System.err.println("Error scanning libraries: " + e.getMessage());
+                    e.printStackTrace();
+                }
                 
                 return null;
             }
@@ -589,8 +888,20 @@ public class DiaLibraryGenerationPanel extends VBox {
         libraryData.clear();
         if (currentMagDbItem != null) {
             MagPepLib[] magPepLibs = currentMagDbItem.getMagPepLibs();
+            System.out.println("DEBUG: Loading libraries from MagDbItem " + currentMagDbItem.getCatalogueID() + " - found " + magPepLibs.length + " libraries");
+            
             for (MagPepLib pepLib : magPepLibs) {
                 libraryData.add(new LibraryRow(false, pepLib));
+                System.out.println("DEBUG: Added library to table: " + pepLib.getLibName() + " (" + pepLib.getPepCount() + " peptides)");
+            }
+            
+            if (consoleOutput != null) {
+                consoleOutput.appendText("Loaded " + magPepLibs.length + " libraries from MAG database.\n");
+            }
+        } else {
+            System.out.println("DEBUG: Cannot load libraries - currentMagDbItem is null");
+            if (consoleOutput != null) {
+                consoleOutput.appendText("No MAG database selected - cannot load libraries.\n");
             }
         }
     }
@@ -625,9 +936,73 @@ public class DiaLibraryGenerationPanel extends VBox {
     }
     
     public String[] getSelectedLibraryNames() {
-        return libraryData.stream()
+        System.out.println("DEBUG: getSelectedLibraryNames() called");
+        System.out.println("DEBUG: Total libraries in table: " + libraryData.size());
+        
+        String[] selectedLibs = libraryData.stream()
             .filter(LibraryRow::getUse)
             .map(LibraryRow::getLibName)
             .toArray(String[]::new);
+            
+        System.out.println("DEBUG: Selected libraries count: " + selectedLibs.length);
+        for (int i = 0; i < selectedLibs.length; i++) {
+            System.out.println("DEBUG: Selected library " + i + ": " + selectedLibs[i]);
+        }
+        
+        // Also debug all libraries and their selection status
+        for (int i = 0; i < libraryData.size(); i++) {
+            LibraryRow row = libraryData.get(i);
+            System.out.println("DEBUG: Library " + i + ": " + row.getLibName() + " (selected: " + row.getUse() + ")");
+        }
+        
+        return selectedLibs;
+    }
+    
+    /**
+     * Public method to refresh the library table from the MagDbItem
+     * This can be called externally to update the table when libraries are added/removed
+     */
+    public void refreshLibraryTable() {
+        System.out.println("DEBUG: Refreshing library table");
+        loadAvailableLibraries();
+    }
+    
+    /**
+     * Test method to manually select the first library for debugging
+     */
+    public void testSelectFirstLibrary() {
+        if (libraryData.size() > 0) {
+            LibraryRow firstRow = libraryData.get(0);
+            firstRow.setUse(true);
+            System.out.println("DEBUG: Manually selected first library: " + firstRow.getLibName());
+            notifyParameterUpdate();
+        } else {
+            System.out.println("DEBUG: No libraries available to select");
+        }
+    }
+    
+    
+    /**
+     * Update progress step with clear indication
+     */
+    private void updateProgressStep(int step, String message) {
+        currentStep = step;
+        double progress = (double) step / totalSteps;
+        libraryProgressBar.setProgress(progress);
+        
+        if (progressLabel != null) {
+            if (step == 0) {
+                progressLabel.setText("Ready to generate library");
+                progressLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 12px; -fx-text-fill: #333333;");
+            } else if (step <= totalSteps) {
+                progressLabel.setText("Step " + step + "/" + totalSteps + ": " + message);
+                progressLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 12px; -fx-text-fill: #0066CC;");
+            } else {
+                progressLabel.setText("✓ " + message);
+                progressLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 12px; -fx-text-fill: #009900;");
+            }
+        }
+        
+        System.out.println("DEBUG: Progress updated - Step " + step + "/" + totalSteps + ": " + message);
     }
 } 

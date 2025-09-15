@@ -48,7 +48,7 @@ public class DDAIgcMaxQuantParameters extends MetaBaseParameter {
 
 	// Default constructor with sensible defaults
 	public DDAIgcMaxQuantParameters() {
-		super("DDA_IGC_MAXQUANT", new MetaData(), "", "", false, "", MetaConstants.FTMS, 1, 1, true);
+		super(uk.ac.quadram.metapilot.MetaPilotApp.WorkflowType.DDA_IGC_MAXQUANT.getAnalysisType(), new MetaData(), "", "", false, "", MetaConstants.FTMS, 1, 1, true);
 
 		// Initialize with default values
 		setMs2ScanMode(MetaConstants.HCD_FTMS);

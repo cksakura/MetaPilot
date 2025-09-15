@@ -5,71 +5,71 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
-import javafx.stage.FileChooser;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.scene.paint.Color;
 import javafx.scene.control.cell.PropertyValueFactory;
-import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.scene.control.cell.CheckBoxTableCell;
-import javafx.util.converter.DefaultStringConverter;
+import javafx.scene.control.Hyperlink;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.BooleanProperty;
 import javafx.concurrent.Task;
-import javafx.scene.control.Alert.AlertType;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
-import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX.ExperimentRow;
+import uk.ac.quadram.metapilot.task.common.gui.MagDatabaseSettingsPanel;
+import uk.ac.quadram.metapilot.task.common.gui.MetadataConfigurationPanel;
+import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
-import uk.ac.quadram.metapilot.task.par.MetaConstants;
-import uk.ac.quadram.metapilot.task.MetaLabWorkflowType;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
-import uk.ac.quadram.metapilot.task.mag.par.MetaParameterMag;
-import javafx.animation.KeyFrame;
-import javafx.animation.Timeline;
-import javafx.util.Duration;
-import java.lang.management.ManagementFactory;
-import java.lang.management.OperatingSystemMXBean;
-import java.lang.management.MemoryMXBean;
-import java.lang.management.MemoryUsage;
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import uk.ac.quadram.metapilot.task.dia.par.DiaTargetParameterIO;
+import uk.ac.quadram.metapilot.task.dia.target.par.MetaParameterDiaTg;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.HashSet;
+import java.util.Arrays;
 import java.io.File;
-import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
-import java.util.HashMap;
+import java.net.URI;
+import java.awt.Desktop;
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.PrintWriter;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.lang.management.ManagementFactory;
+import com.sun.management.OperatingSystemMXBean;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNTask;
+import uk.ac.quadram.metapilot.dbSearch.diann.DiannParameter;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
+import uk.ac.quadram.metapilot.task.dia.MetaDiaTask;
 
 public class MetaPilotDiaTargetPanel extends VBox {
     // UI Components - Database specific for MAG (like DIA workflows)
     private MetaPilotIOPanelFX ioPanel;
-    private ComboBox<MagDbItem> magDatabaseComboBox;
-    private TextArea consoleOutput;
-    private TextArea parameterView;
-    private ProgressBar overallProgressBar;
-    private ProgressBar currentTaskProgressBar;
-    private Label currentTaskLabel;
-    private Button startButton;
-    private Button stopButton;
+    private MagDatabaseSettingsPanel magDatabasePanel;
+    private DiaTargetDBGenerationPanel dbGenerationPanel;
+    private ConsolePanel consolePanel;
 
     // DIA Target-specific components
     private ComboBox<Integer> threadsComboBox;
 
     // Library Generation Panel Components
     private ComboBox<Float> peptideDetectabilityComboBox;
-    private CheckBox libraryPathCheckBox;
+    private ComboBox<Float> thresholdComboBox; // Alias for peptideDetectabilityComboBox
     private TextField libraryPathTextField;
+    private TextField libraryFilePathTextField;
     private Button testThresholdButton;
     private Button createLibraryButton;
     private TextArea libraryConsoleOutput;
@@ -89,49 +89,58 @@ public class MetaPilotDiaTargetPanel extends VBox {
     private Button deselectAllFunctionButton;
 
     // Metadata configuration components
-    private TableView<MetaPilotDdaIgcMaxQuantPanel.MetadataRow> metadataTable;
-    private ObservableList<MetaPilotDdaIgcMaxQuantPanel.MetadataRow> metadataTableData = FXCollections.observableArrayList();
-    private ComboBox<String> metadataColumnComboBox;
-    private Button addMetadataColumnButton;
-    private Button removeMetadataColumnButton;
+    private MetadataConfigurationPanel metadataPanel;
 
-    // Status panel fields
-    private Label statusTimeLabel;
-    private Label statusCpuLabel;
-    private Label statusMemLabel;
-    private Timeline statusTimeline;
-    private long taskStartTimeMillis;
+    // Parameter I/O
+    private DiaTargetParameterIO parameterIO;
+    private MetaParameterDiaTg currentAnalysisParameters;
+    
+    // Task management (following MetaPilotDiaNormalPanel pattern)
+    private MetaDiaTask metaDiaTask;
+    private ExecutorService taskExecutor;
+    private MetaResourceParameters resourceParams;
+    
+    // Function types for database queries (same as MetaDiaTargetDBTask.FUNCTIONS)
+    private static final String[] FUNCTION_TYPES = new String[] { 
+        "GOs", "EC", "KEGG_ko", "KEGG_Pathway", "KEGG_Module",
+        "KEGG_Reaction", "KEGG_rclass", "BRITE", "KEGG_TC", "CAZy" 
+    };
+    
+    // Taxonomic levels for database queries
+    private static final String[] TAXONOMIC_LEVELS = new String[] { 
+        "genome_name", "superkingdom", "phylum", "class", 
+        "order_name", "family", "genus", "species" 
+    };
+    
+    
+    // Date formatter for logging
+    private SimpleDateFormat format = new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss");
 
-    // MAG database items
-    private ObservableList<MagDbItem> availableMagDatabases = FXCollections.observableArrayList();
-
-    public MetaPilotDiaTargetPanel() {
+    public MetaPilotDiaTargetPanel(MagDbItem[] magDbItems, MetaResourceParameters resourceParams) {
+        // Initialize parameter IO instance
+        parameterIO = new DiaTargetParameterIO();
+        this.resourceParams = resourceParams;
         initializeUI();
-    }
-
-    public MetaPilotDiaTargetPanel(MetaParameterMag metaParameterMag) {
-        // Initialize MAG databases from parameter
-        if (metaParameterMag != null) {
-            MagDbItem[] magDbItems = metaParameterMag.getAvailableMagDbItem();
-            if (magDbItems != null) {
-                for (MagDbItem item : magDbItems) {
-                    availableMagDatabases.add(item);
-                }
-            }
-        }
-        initializeUI();
+        // Set MAG databases after UI is initialized
+        setAvailableMagDatabases(magDbItems);
+        // Load last used parameters after UI and databases are initialized
+        loadLastUsedParameters();
     }
 
     // Load available MAG databases
     public void setAvailableMagDatabases(MagDbItem[] magDbItems) {
-        availableMagDatabases.clear();
-        if (magDbItems != null) {
-            for (MagDbItem item : magDbItems) {
-                availableMagDatabases.add(item);
+        if (magDatabasePanel != null) {
+            magDatabasePanel.setAvailableMagDatabases(magDbItems);
+            // Update the database generation panel with the selected MAG database
+            if (magDbItems != null && magDbItems.length > 0 && dbGenerationPanel != null) {
+                MagDbItem firstDb = magDbItems[0];
+                MagDbItem.MagVersion firstVersion = firstDb.getVersionList() != null && !firstDb.getVersionList().isEmpty() 
+                    ? firstDb.getVersionList().get(0) : null;
+                dbGenerationPanel.setMagDbItemWithVersion(firstDb, firstVersion);
+                // Also set the resource parameters and parent panel
+                dbGenerationPanel.setResourceParameters(resourceParams);
+                dbGenerationPanel.setParentPanel(this);
             }
-        }
-        if (magDatabaseComboBox != null && !availableMagDatabases.isEmpty()) {
-            magDatabaseComboBox.setValue(availableMagDatabases.get(0));
         }
     }
 
@@ -158,19 +167,60 @@ public class MetaPilotDiaTargetPanel extends VBox {
         paramTab.setContent(createParametersTab());
 
         Tab consoleTab = new Tab("Console");
-        consoleTab.setContent(createConsoleTab());
+        consoleTab.setContent(consolePanel);
 
         tabPane.getTabs().addAll(ioTab, paramTab, consoleTab);
 
-        // Add tab change listener to update metadata when Parameters tab is selected
+        // Add tab change listener for parameter updates and auto-save
         tabPane.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, newTab) -> {
             if (newTab == paramTab) {
+                // Update metadata table when switching to Parameters tab
                 updateMetadataTableFromIOPanel();
+                // Update parameter view
+                updateParameterView();
+            } else if (newTab == consoleTab) {
+                // Update parameter view and auto-save when switching to Console tab
+                updateParameterView();
+                
+                // Save current parameters when Console tab is selected
+                System.out.println("DEBUG: Auto-save triggered when switching to Console tab");
+                try {
+                    System.out.println("DEBUG: Attempting to collect parameters for auto-save...");
+                    MetaParameterDiaTg currentParams = collectParametersFromUI();
+                    System.out.println("DEBUG: collectParametersFromUI() for auto-save returned: " + (currentParams != null ? "SUCCESS" : "NULL"));
+                    
+                    if (currentParams == null) {
+                        System.out.println("DEBUG: Full validation failed, trying fallback for auto-save...");
+                        // If full validation fails (e.g., no raw files), use minimal validation for auto-save
+                        currentParams = collectParametersFromUIForAutoSave();
+                        System.out.println("DEBUG: collectParametersFromUIForAutoSave() returned: " + (currentParams != null ? "SUCCESS" : "NULL"));
+                    }
+                    
+                    if (currentParams != null) {
+                        System.out.println("DEBUG: Attempting auto-save...");
+                        boolean saved = parameterIO.saveLastUsedParameters(currentParams);
+                        System.out.println("DEBUG: Auto-save result: " + saved);
+                        if (saved) {
+                            System.out.println("DEBUG: Auto-saved parameters when switching to Console tab");
+                        } else {
+                            System.err.println("WARNING: Failed to save parameters to file during auto-save");
+                        }
+                    } else {
+                        System.err.println("WARNING: No parameters to auto-save - both collection methods returned null");
+                    }
+                } catch (Exception e) {
+                    System.err.println("WARNING: Failed to auto-save parameters: " + e.getMessage());
+                    System.err.println("DEBUG: Auto-save exception type: " + e.getClass().getSimpleName());
+                    e.printStackTrace();
+                }
             }
         });
 
         // Add tab pane to main panel
         getChildren().add(tabPane);
+        
+        // Initialize parameter view
+        updateParameterView();
     }
 
     // Create IO tab (same as MAG workflows)
@@ -178,32 +228,45 @@ public class MetaPilotDiaTargetPanel extends VBox {
         VBox tabContent = new VBox(10);
         tabContent.setPadding(new Insets(10));
         ioPanel = new MetaPilotIOPanelFX();
-        VBox databaseSection = createDatabaseSection();
+        magDatabasePanel = new MagDatabaseSettingsPanel(false); // false = don't show host database options for DIA
+        magDatabasePanel.setParameterUpdateCallback(() -> {
+            updateParameterView();
+            // Update database generation panel when database selection changes
+            if (dbGenerationPanel != null) {
+                MagDbItem selectedDb = magDatabasePanel.getSelectedMagDatabase();
+                MagDbItem.MagVersion selectedVersion = magDatabasePanel.getSelectedMagVersion();
+                dbGenerationPanel.setMagDbItemWithVersion(selectedDb, selectedVersion);
+                dbGenerationPanel.setResourceParameters(resourceParams);
+                dbGenerationPanel.setParentPanel(this);
+            }
+        });
+        dbGenerationPanel = new DiaTargetDBGenerationPanel();
+        dbGenerationPanel.setParameterUpdateCallback(() -> updateParameterView());
+        // Set initial database if available
+        if (magDatabasePanel != null && magDatabasePanel.getSelectedMagDatabase() != null) {
+            MagDbItem selectedDb = magDatabasePanel.getSelectedMagDatabase();
+            MagDbItem.MagVersion selectedVersion = magDatabasePanel.getSelectedMagVersion();
+            dbGenerationPanel.setMagDbItemWithVersion(selectedDb, selectedVersion);
+            dbGenerationPanel.setResourceParameters(resourceParams);
+            dbGenerationPanel.setParentPanel(this);
+        }
+        
+        // Initialize console panel
+        consolePanel = new ConsolePanel();
+        consolePanel.setStartCallback(this::startAnalysis);
+        consolePanel.setStopCallback(this::stopAnalysis);
+        consolePanel.setViewReportCallback(this::viewReport);
         tabContent.getChildren().addAll(
             createSectionTitle("Input/Output Settings"),
             ioPanel,
             createSectionTitle("Database Settings"),
-            databaseSection
+            magDatabasePanel,
+            createSectionTitle("Taxa-Function Database Generation"),
+            dbGenerationPanel
         );
         return tabContent;
     }
 
-    private VBox createDatabaseSection() {
-        VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #f8f8f8; -fx-border-color: #cccccc; -fx-border-radius: 5; -fx-border-width: 1;");
-        
-        // MAG Database ComboBox (not file browser)
-        HBox magDBBox = new HBox(10);
-        magDatabaseComboBox = new ComboBox<>(availableMagDatabases);
-        magDatabaseComboBox.setPromptText("Select MAG database");
-        magDatabaseComboBox.setPrefWidth(400);
-        magDatabaseComboBox.setOnAction(e -> updateParameterView());
-        magDBBox.getChildren().addAll(new Label("MAG Database:"), magDatabaseComboBox);
-        
-        section.getChildren().add(magDBBox);
-        return section;
-    }
 
     private VBox createParametersTab() {
         VBox tabContent = new VBox(10);
@@ -261,9 +324,10 @@ public class MetaPilotDiaTargetPanel extends VBox {
         mainGrid.add(librarySection, 0, 2);
         GridPane.setVgrow(librarySection, Priority.ALWAYS);
 
-        VBox metadataSection = createMetadataConfigurationSection();
-        mainGrid.add(metadataSection, 1, 2);
-        GridPane.setVgrow(metadataSection, Priority.ALWAYS);
+        // Create reusable metadata configuration panel
+        metadataPanel = new MetadataConfigurationPanel();
+        mainGrid.add(metadataPanel, 1, 2);
+        GridPane.setVgrow(metadataPanel, Priority.ALWAYS);
         
         tabContent.getChildren().add(mainGrid);
         return tabContent;
@@ -304,6 +368,10 @@ public class MetaPilotDiaTargetPanel extends VBox {
 
         Label titleLabel = createSectionTitle("Library Generation");
 
+        // Threshold selection and buttons in one row
+        HBox thresholdAndButtonsBox = new HBox(15);
+        thresholdAndButtonsBox.setAlignment(Pos.CENTER_LEFT);
+
         // Threshold selection
         HBox thresholdBox = new HBox(10);
         thresholdBox.setAlignment(Pos.CENTER_LEFT);
@@ -315,49 +383,66 @@ public class MetaPilotDiaTargetPanel extends VBox {
             peptideDetectabilityComboBox.getItems().add(threshold);
         }
         peptideDetectabilityComboBox.setValue(0.50f); // Default to 0.5
+        
+        // Initialize thresholdComboBox to point to the same object
+        thresholdComboBox = peptideDetectabilityComboBox;
         peptideDetectabilityComboBox.setMinWidth(80);
         peptideDetectabilityComboBox.setPrefWidth(100);
         peptideDetectabilityComboBox.setOnAction(e -> updateParameterView());
         thresholdBox.getChildren().addAll(thresholdLabel, peptideDetectabilityComboBox);
 
         // Action buttons
-        HBox buttonBox = new HBox(10);
-        buttonBox.setAlignment(Pos.CENTER_LEFT);
         testThresholdButton = new Button("Get Proper Threshold");
         testThresholdButton.setPrefWidth(150);
-        testThresholdButton.setOnAction(e -> calculateProperThreshold());
+        testThresholdButton.setOnAction(e -> {
+            System.out.println("DEBUG: Get Proper Threshold button clicked");
+            calculateProperThreshold();
+        });
         
         createLibraryButton = new Button("Create Library");
         createLibraryButton.setPrefWidth(120);
         createLibraryButton.setOnAction(e -> createLibrary());
-        buttonBox.getChildren().addAll(testThresholdButton, createLibraryButton);
+        
+        // Add threshold and buttons to the same row
+        thresholdAndButtonsBox.getChildren().addAll(thresholdBox, testThresholdButton, createLibraryButton);
 
-        // Library path
-        HBox pathBox = new HBox(10);
-        pathBox.setAlignment(Pos.CENTER_LEFT);
-        libraryPathCheckBox = new CheckBox("Library Path:");
-        libraryPathCheckBox.setStyle("-fx-font-weight: bold;");
-        libraryPathCheckBox.setSelected(false);
-        libraryPathCheckBox.setDisable(true);
+        // Library name input
+        HBox libraryNameBox = new HBox(10);
+        libraryNameBox.setAlignment(Pos.CENTER_LEFT);
+        Label libraryNameLabel = new Label("Library Name:");
+        libraryNameLabel.setStyle("-fx-font-weight: bold;");
         
         libraryPathTextField = new TextField();
-        libraryPathTextField.setPromptText("Library will be created here");
-        libraryPathTextField.setText("selectedPep.predicted.speclib");
-        libraryPathTextField.setDisable(true);
+        libraryPathTextField.setPromptText("Enter library name (e.g., my_target_library)");
+        libraryPathTextField.setText("target_library");
         libraryPathTextField.setPrefWidth(200);
-        pathBox.getChildren().addAll(libraryPathCheckBox, libraryPathTextField);
+        libraryPathTextField.setOnAction(e -> updateParameterView());
+        libraryNameBox.getChildren().addAll(libraryNameLabel, libraryPathTextField);
+
+        // Library file path display
+        HBox libraryPathBox = new HBox(10);
+        libraryPathBox.setAlignment(Pos.CENTER_LEFT);
+        Label libraryPathLabel = new Label("Library File Path:");
+        libraryPathLabel.setStyle("-fx-font-weight: bold;");
+        
+        libraryFilePathTextField = new TextField();
+        libraryFilePathTextField.setPromptText("Library file path will be shown here after creation");
+        libraryFilePathTextField.setPrefWidth(400);
+        libraryFilePathTextField.setEditable(false); // Read-only field
+        libraryFilePathTextField.setStyle("-fx-background-color: #f0f0f0;"); // Gray background to indicate read-only
+        libraryPathBox.getChildren().addAll(libraryPathLabel, libraryFilePathTextField);
 
         // Console output
         Label consoleLabel = new Label("Progress Output:");
-        consoleLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 11px;");
+        consoleLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 12px;");
         libraryConsoleOutput = new TextArea();
         libraryConsoleOutput.setEditable(false);
-        libraryConsoleOutput.setPrefHeight(80);
-        libraryConsoleOutput.setMaxHeight(120);
-        libraryConsoleOutput.setStyle("-fx-font-family: monospace; -fx-font-size: 10px;");
+        libraryConsoleOutput.setPrefHeight(200);
+        libraryConsoleOutput.setMinHeight(150);
+        libraryConsoleOutput.setStyle("-fx-font-family: monospace; -fx-font-size: 12px;");
         VBox.setVgrow(libraryConsoleOutput, Priority.ALWAYS);
 
-        section.getChildren().addAll(titleLabel, thresholdBox, buttonBox, pathBox, consoleLabel, libraryConsoleOutput);
+        section.getChildren().addAll(titleLabel, thresholdAndButtonsBox, libraryNameBox, libraryPathBox, consoleLabel, libraryConsoleOutput);
         return section;
     }
 
@@ -390,7 +475,7 @@ public class MetaPilotDiaTargetPanel extends VBox {
         taxaTable.setPrefHeight(200);
         taxaTable.setMaxHeight(Double.MAX_VALUE);
         taxaTable.setEditable(true);
-        taxaTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        taxaTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         VBox.setVgrow(taxaTable, Priority.ALWAYS);
 
         // Select column (checkbox)
@@ -402,14 +487,45 @@ public class MetaPilotDiaTargetPanel extends VBox {
         selectCol.setPrefWidth(80);
         selectCol.setSortable(false);
 
-        // Taxa Name column
+        // Taxa Name column with clickable links
         TableColumn<TaxaRow, String> nameCol = new TableColumn<>("Taxonomic Name");
         nameCol.setCellValueFactory(new PropertyValueFactory<>("name"));
+        nameCol.setCellFactory(column -> {
+            return new TableCell<TaxaRow, String>() {
+                private final Hyperlink hyperlink = new Hyperlink();
+                
+                @Override
+                protected void updateItem(String item, boolean empty) {
+                    super.updateItem(item, empty);
+                    
+                    if (empty || item == null) {
+                        setGraphic(null);
+                        setText(null);
+                    } else {
+                        hyperlink.setText(item);
+                        hyperlink.setOnAction(e -> {
+                            // Only create genome links for genome level
+                            String selectedLevel = taxaLevelComboBox.getValue();
+                            if ("Genome".equals(selectedLevel)) {
+                                String url = getGenomeURL(item);
+                                if (url != null) {
+                                    openURL(url);
+                                }
+                            }
+                        });
+                        setGraphic(hyperlink);
+                        setText(null);
+                    }
+                }
+            };
+        });
         nameCol.setMinWidth(200);
         nameCol.setPrefWidth(300);
         nameCol.setSortable(true);
 
-        taxaTable.getColumns().addAll(selectCol, nameCol);
+        taxaTable.getColumns().clear();
+        taxaTable.getColumns().add(selectCol);
+        taxaTable.getColumns().add(nameCol);
 
         // Control buttons
         HBox controlBox = new HBox(10);
@@ -441,8 +557,9 @@ public class MetaPilotDiaTargetPanel extends VBox {
         levelBox.setAlignment(Pos.CENTER_LEFT);
         Label levelLabel = new Label("Functional Level:");
         levelLabel.setStyle("-fx-font-weight: bold;");
-        functionLevelComboBox = new ComboBox<>(FXCollections.observableArrayList(
-            "Choose the functional level", "COG", "KEGG", "Pfam", "GO"));
+        ObservableList<String> functionTypes = FXCollections.observableArrayList("Choose the functional level");
+        functionTypes.addAll(FXCollections.observableArrayList(FUNCTION_TYPES));
+        functionLevelComboBox = new ComboBox<>(functionTypes);
         functionLevelComboBox.setValue("Choose the functional level");
         functionLevelComboBox.setMinWidth(200);
         functionLevelComboBox.setPrefWidth(300);
@@ -455,7 +572,7 @@ public class MetaPilotDiaTargetPanel extends VBox {
         functionTable.setPrefHeight(200);
         functionTable.setMaxHeight(Double.MAX_VALUE);
         functionTable.setEditable(true);
-        functionTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        functionTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         VBox.setVgrow(functionTable, Priority.ALWAYS);
 
         // Select column (checkbox)
@@ -467,14 +584,44 @@ public class MetaPilotDiaTargetPanel extends VBox {
         selectCol.setPrefWidth(80);
         selectCol.setSortable(false);
 
-        // Function Name column
+        // Function Name column with clickable links
         TableColumn<FunctionRow, String> nameCol = new TableColumn<>("Function Name");
         nameCol.setCellValueFactory(new PropertyValueFactory<>("name"));
+        nameCol.setCellFactory(column -> {
+            return new TableCell<FunctionRow, String>() {
+                private final Hyperlink hyperlink = new Hyperlink();
+                
+                @Override
+                protected void updateItem(String item, boolean empty) {
+                    super.updateItem(item, empty);
+                    
+                    if (empty || item == null) {
+                        setGraphic(null);
+                        setText(null);
+                    } else {
+                        hyperlink.setText(item);
+                        hyperlink.setOnAction(e -> {
+                            String selectedFunctionType = functionLevelComboBox.getValue();
+                            if (selectedFunctionType != null && !selectedFunctionType.equals("Choose the functional level")) {
+                                String url = getFunctionURL(selectedFunctionType, item);
+                                if (url != null) {
+                                    openURL(url);
+                                }
+                            }
+                        });
+                        setGraphic(hyperlink);
+                        setText(null);
+                    }
+                }
+            };
+        });
         nameCol.setMinWidth(200);
         nameCol.setPrefWidth(300);
         nameCol.setSortable(true);
 
-        functionTable.getColumns().addAll(selectCol, nameCol);
+        functionTable.getColumns().clear();
+        functionTable.getColumns().add(selectCol);
+        functionTable.getColumns().add(nameCol);
 
         // Control buttons
         HBox controlBox = new HBox(10);
@@ -503,6 +650,7 @@ public class MetaPilotDiaTargetPanel extends VBox {
         }
         
         public boolean getSelected() { return selected.get(); }
+        public boolean isSelected() { return selected.get(); } // Alias for getSelected()
         public void setSelected(boolean value) { selected.set(value); }
         public BooleanProperty selectedProperty() { return selected; }
         
@@ -522,6 +670,7 @@ public class MetaPilotDiaTargetPanel extends VBox {
         }
         
         public boolean getSelected() { return selected.get(); }
+        public boolean isSelected() { return selected.get(); } // Alias for getSelected()
         public void setSelected(boolean value) { selected.set(value); }
         public BooleanProperty selectedProperty() { return selected; }
         
@@ -538,12 +687,82 @@ public class MetaPilotDiaTargetPanel extends VBox {
             return;
         }
         
-        // Mock data for demonstration - in real implementation, this would query the database
-        String[] mockTaxa = {"Bacteria", "Archaea", "Eukaryota", "Viruses"};
-        for (String taxon : mockTaxa) {
+        // Check if database generation panel has the database available
+        if (dbGenerationPanel == null || dbGenerationPanel.getCurrentMagDbItem() == null) {
+            System.err.println("DEBUG: No MAG database available for taxa data loading");
+            return;
+        }
+        
+        MagDbItem magDbItem = dbGenerationPanel.getCurrentMagDbItem();
+        File currentFile = magDbItem.getCurrentFile();
+        if (currentFile == null) {
+            System.err.println("DEBUG: No current file available for MAG database");
+            return;
+        }
+        
+        File sqlDbFile = new File(currentFile, "pro_func.db");
+        if (!sqlDbFile.exists()) {
+            System.err.println("DEBUG: pro_func.db not found at: " + sqlDbFile.getAbsolutePath());
+            return;
+        }
+        
+        // Map UI level names to database column names
+        String[] levelNames = {"Superkingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species", "Genome"};
+        int levelIndex = -1;
+        for (int i = 0; i < levelNames.length; i++) {
+            if (levelNames[i].equals(selectedLevel)) {
+                levelIndex = i;
+                break;
+            }
+        }
+        
+        if (levelIndex == -1) {
+            System.err.println("DEBUG: Invalid taxonomic level: " + selectedLevel);
+            return;
+        }
+        
+        // Query the database
+        String url = "jdbc:sqlite:" + sqlDbFile.getAbsolutePath().replaceAll("\\\\", "/");
+        HashSet<String> taxaSet = new HashSet<>();
+        
+        try (Connection conn = DriverManager.getConnection(url)) {
+            String columnName;
+            String query;
+            
+            if (levelIndex < TAXONOMIC_LEVELS.length - 1) {
+                // Map UI level to database column (TAXONOMIC_LEVELS starts with genome_name, so we need to offset by 1)
+                columnName = TAXONOMIC_LEVELS[levelIndex + 1];
+                query = "SELECT DISTINCT " + columnName + " FROM taxonomy WHERE " + columnName + " IS NOT NULL AND " + columnName + " != ''";
+            } else {
+                // Genome level (last item in levelNames array)
+                columnName = "genome_name";
+                query = "SELECT DISTINCT genome_name FROM taxonomy";
+            }
+            
+            try (PreparedStatement pstmt = conn.prepareStatement(query);
+                 ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    String taxon = rs.getString(columnName);
+                    if (taxon != null && !taxon.trim().isEmpty()) {
+                        taxaSet.add(taxon);
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("ERROR: Failed to query taxa data from database: " + e.getMessage());
+            e.printStackTrace();
+            return;
+        }
+        
+        // Convert to sorted list and add to taxaData
+        String[] sortedTaxa = taxaSet.toArray(new String[0]);
+        Arrays.sort(sortedTaxa);
+        
+        for (String taxon : sortedTaxa) {
             taxaData.add(new TaxaRow(false, taxon));
         }
         
+        System.out.println("DEBUG: Loaded " + taxaData.size() + " taxa from database for level: " + selectedLevel);
         updateParameterView();
     }
 
@@ -555,13 +774,112 @@ public class MetaPilotDiaTargetPanel extends VBox {
             return;
         }
         
-        // Mock data for demonstration - in real implementation, this would query the database
-        String[] mockFunctions = {"Energy metabolism", "Protein synthesis", "DNA replication", "Cell division"};
-        for (String function : mockFunctions) {
+        // Check if database generation panel has the database available
+        if (dbGenerationPanel == null || dbGenerationPanel.getCurrentMagDbItem() == null) {
+            System.err.println("DEBUG: No MAG database available for function data loading");
+            return;
+        }
+        
+        MagDbItem magDbItem = dbGenerationPanel.getCurrentMagDbItem();
+        File currentFile = magDbItem.getCurrentFile();
+        if (currentFile == null) {
+            System.err.println("DEBUG: No current file available for MAG database");
+            return;
+        }
+        
+        File sqlDbFile = new File(currentFile, "pro_func.db");
+        if (!sqlDbFile.exists()) {
+            System.err.println("DEBUG: pro_func.db not found at: " + sqlDbFile.getAbsolutePath());
+            return;
+        }
+        
+        // Query the database for the selected function type
+        String url = "jdbc:sqlite:" + sqlDbFile.getAbsolutePath().replaceAll("\\\\", "/");
+        HashSet<String> functionSet = new HashSet<>();
+        
+        try (Connection conn = DriverManager.getConnection(url)) {
+            String query = "SELECT DISTINCT func_name FROM " + selectedLevel + " WHERE func_name IS NOT NULL AND func_name != ''";
+            
+            try (PreparedStatement pstmt = conn.prepareStatement(query);
+                 ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    String function = rs.getString("func_name");
+                    if (function != null && !function.trim().isEmpty()) {
+                        functionSet.add(function);
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("ERROR: Failed to query function data from database: " + e.getMessage());
+            e.printStackTrace();
+            return;
+        }
+        
+        // Convert to sorted list and add to functionData
+        String[] sortedFunctions = functionSet.toArray(new String[0]);
+        Arrays.sort(sortedFunctions);
+        
+        for (String function : sortedFunctions) {
             functionData.add(new FunctionRow(false, function));
         }
         
+        System.out.println("DEBUG: Loaded " + functionData.size() + " functions from database for type: " + selectedLevel);
         updateParameterView();
+    }
+    
+    /**
+     * Generate URL for function based on function type and name
+     * Based on MetaPilotMainPanelDiaTg.getFunURL method
+     */
+    private String getFunctionURL(String functionType, String functionName) {
+        switch (functionType) {
+            case "GOs":
+                return "https://www.ebi.ac.uk/QuickGO/term/" + functionName;
+            case "EC":
+                return "https://www.genome.jp/dbget-bin/www_bget?ec:" + functionName;
+            case "KEGG_ko":
+                return "https://www.genome.jp/dbget-bin/www_bget?" + functionName;
+            case "KEGG_Pathway":
+                return "https://www.genome.jp/dbget-bin/www_bget?path:" + functionName;
+            case "KEGG_Module":
+                return "https://www.genome.jp/module/ath_" + functionName;
+            case "KEGG_Reaction":
+                return "https://www.genome.jp/dbget-bin/www_bget?rn:" + functionName;
+            case "KEGG_rclass":
+                return "https://www.genome.jp/entry/" + functionName;
+            case "BRITE":
+                return "https://www.genome.jp/entry/" + functionName;
+            case "KEGG_TC":
+                return "https://www.genome.jp/entry/" + functionName;
+            case "CAZy":
+                return "https://www.cazy.org/" + functionName + ".html";
+            default:
+                return null;
+        }
+    }
+    
+    /**
+     * Generate URL for genome based on genome name
+     * Based on MetaPilotMainPanelDiaTg genome URL pattern
+     */
+    private String getGenomeURL(String genomeName) {
+        return "https://www.ebi.ac.uk/metagenomics/genomes/" + genomeName + "#overview";
+    }
+    
+    /**
+     * Open URL in default browser
+     */
+    private void openURL(String url) {
+        try {
+            if (Desktop.isDesktopSupported()) {
+                Desktop.getDesktop().browse(new URI(url));
+            } else {
+                System.err.println("Desktop not supported, cannot open URL: " + url);
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to open URL: " + url + " - " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 
     private void selectAllTaxa(boolean select) {
@@ -587,187 +905,21 @@ public class MetaPilotDiaTargetPanel extends VBox {
         return label;
     }
 
-    // Add remaining missing methods
-    private VBox createConsoleTab() {
-        VBox tabContent = new VBox(10);
-        tabContent.setPadding(new Insets(10));
 
-        // Parameter View
-        VBox paramViewBox = new VBox(5);
-        paramViewBox.getChildren().add(new Label("Parameter View:"));
-        parameterView = new TextArea();
-        parameterView.setEditable(false);
-        parameterView.setPrefHeight(200);
-        parameterView.setStyle("-fx-font-family: monospace;");
-        VBox.setVgrow(parameterView, Priority.ALWAYS);
-        paramViewBox.getChildren().add(parameterView);
-        VBox.setVgrow(paramViewBox, Priority.ALWAYS);
-
-        // Progress Bars
-        VBox progressBox = new VBox(5);
-        currentTaskLabel = new Label("Current Task: None");
-        overallProgressBar = new ProgressBar(0);
-        overallProgressBar.setMaxWidth(Double.MAX_VALUE);
-        currentTaskProgressBar = new ProgressBar(0);
-        currentTaskProgressBar.setMaxWidth(Double.MAX_VALUE);
-        progressBox.getChildren().addAll(
-            currentTaskLabel,
-            new Label("Overall Progress:"),
-            overallProgressBar,
-            new Label("Current Task Progress:"),
-            currentTaskProgressBar
-        );
-
-        // Console Output
-        VBox consoleBox = new VBox(5);
-        consoleBox.getChildren().add(new Label("Console Output:"));
-        consoleOutput = new TextArea();
-        consoleOutput.setEditable(false);
-        consoleOutput.setPrefHeight(250);
-        consoleOutput.setStyle("-fx-font-family: monospace;");
-        VBox.setVgrow(consoleOutput, Priority.ALWAYS);
-        consoleBox.getChildren().add(consoleOutput);
-        VBox.setVgrow(consoleBox, Priority.ALWAYS);
-
-        // Control Buttons
-        HBox controlBox = new HBox(10);
-        startButton = new Button("Start Analysis");
-        stopButton = new Button("Stop");
-        stopButton.setDisable(true);
-        startButton.setOnAction(e -> startAnalysis());
-        stopButton.setOnAction(e -> stopAnalysis());
-        controlBox.getChildren().addAll(startButton, stopButton);
-
-        // Status Panel
-        HBox statusPanel = new HBox(20);
-        statusPanel.setPadding(new Insets(5, 0, 0, 0));
-        statusPanel.setAlignment(Pos.CENTER_LEFT);
-        statusTimeLabel = new Label("Time: 00:00:00");
-        statusCpuLabel = new Label("CPU: 0.0%");
-        statusMemLabel = new Label("Memory: 0 / 0 MB");
-        statusPanel.getChildren().addAll(statusTimeLabel, statusCpuLabel, statusMemLabel);
-
-        tabContent.getChildren().addAll(
-            paramViewBox,
-            progressBox,
-            consoleBox,
-            controlBox,
-            statusPanel
-        );
-        VBox.setVgrow(paramViewBox, Priority.ALWAYS);
-        VBox.setVgrow(consoleBox, Priority.ALWAYS);
-        VBox.setVgrow(tabContent, Priority.ALWAYS);
-
-        return tabContent;
-    }
 
     private void updateMetadataTableFromIOPanel() {
-        if (ioPanel == null || metadataTable == null) {
+        if (ioPanel == null || metadataPanel == null) {
             return;
         }
         
         ObservableList<MetaPilotIOPanelFX.ExperimentRow> experiments = ioPanel.getExperimentData();
-        metadataTableData.clear();
-        for (MetaPilotIOPanelFX.ExperimentRow exp : experiments) {
-            metadataTableData.add(new MetaPilotDdaIgcMaxQuantPanel.MetadataRow(exp.getExperimentName()));
-        }
+        // Update the reusable metadata panel with experiment data
+        metadataPanel.updateMetadataFromIOPanel(experiments);
     }
 
-    private VBox createMetadataConfigurationSection() {
-        VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #fff8f0; -fx-background-radius: 5;");
-        section.setMinHeight(180);
-        VBox.setVgrow(section, Priority.ALWAYS);
-
-        Label titleLabel = createSectionTitle("Metadata Configuration");
-        Label infoLabel = new Label("Configure metadata for DIA Target analysis samples");
-        infoLabel.setStyle("-fx-font-style: italic; -fx-text-fill: #666666; -fx-font-size: 11px;");
-
-        metadataTable = new TableView<>(metadataTableData);
-        metadataTable.setMinHeight(80);
-        metadataTable.setPrefHeight(100);
-        metadataTable.setMaxHeight(Double.MAX_VALUE);
-        metadataTable.setEditable(true);
-        metadataTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
-        VBox.setVgrow(metadataTable, Priority.ALWAYS);
-
-        createMetadataTableColumns();
-
-        // Compact control layout
-        VBox controlContainer = new VBox(5);
-
-        // Row 1: Column selection
-        HBox row1 = new HBox(5);
-        row1.setAlignment(Pos.CENTER_LEFT);
-
-        metadataColumnComboBox = new ComboBox<>(FXCollections.observableArrayList(
-            "Age", "Gender", "Condition", "Treatment", "Time Point", "BMI", "Custom"));
-        metadataColumnComboBox.setMinWidth(80);
-        metadataColumnComboBox.setPrefWidth(100);
-        metadataColumnComboBox.setPromptText("Add column");
-
-        TextField customColumnTextField = new TextField();
-        customColumnTextField.setPromptText("Custom name");
-        customColumnTextField.setMinWidth(80);
-        customColumnTextField.setPrefWidth(100);
-        customColumnTextField.setVisible(false);
-        customColumnTextField.setManaged(false);
-
-        metadataColumnComboBox.setOnAction(e -> {
-            String selected = metadataColumnComboBox.getValue();
-            boolean isCustom = "Custom".equals(selected);
-            customColumnTextField.setVisible(isCustom);
-            customColumnTextField.setManaged(isCustom);
-            if (isCustom) {
-                customColumnTextField.requestFocus();
-            }
-        });
-
-        row1.getChildren().addAll(metadataColumnComboBox, customColumnTextField);
-
-        // Row 2: Action buttons
-        HBox row2 = new HBox(5);
-        row2.setAlignment(Pos.CENTER_LEFT);
-
-        addMetadataColumnButton = new Button("Add Column");
-        addMetadataColumnButton.setPrefWidth(100);
-        addMetadataColumnButton.setOnAction(e -> {
-            String columnName = metadataColumnComboBox.getValue();
-            if ("Custom".equals(columnName)) {
-                String customName = customColumnTextField.getText();
-                if (customName != null && !customName.trim().isEmpty()) {
-                    addMetadataColumnWithProperty(customName.trim(), getPropertyNameForColumn(customName.trim()));
-                    customColumnTextField.clear();
-                }
-            } else if (columnName != null && !columnName.isEmpty()) {
-                addMetadataColumnWithProperty(columnName, getPropertyNameForColumn(columnName));
-            }
-        });
-
-        removeMetadataColumnButton = new Button("Remove Column");
-        removeMetadataColumnButton.setPrefWidth(100);
-        removeMetadataColumnButton.setOnAction(e -> removeMetadataColumn());
-
-        row2.getChildren().addAll(addMetadataColumnButton, removeMetadataColumnButton);
-
-        controlContainer.getChildren().addAll(row1, row2);
-
-        section.getChildren().addAll(titleLabel, infoLabel, metadataTable, controlContainer);
-        return section;
-    }
-
-    private void createMetadataTableColumns() {
-        metadataTable.getColumns().clear();
-        TableColumn<MetaPilotDdaIgcMaxQuantPanel.MetadataRow, String> sampleCol = new TableColumn<>("Sample");
-        sampleCol.setCellValueFactory(new PropertyValueFactory<>("sampleName"));
-        sampleCol.setMinWidth(120);
-        sampleCol.setPrefWidth(150);
-        metadataTable.getColumns().add(sampleCol);
-    }
 
     private void updateParameterView() {
-        if (parameterView == null) {
+        if (consolePanel == null) {
             return;
         }
         
@@ -776,7 +928,18 @@ public class MetaPilotDiaTargetPanel extends VBox {
 
         // Database settings
         sb.append("Database Settings:\n");
-        sb.append("  MAG Database: ").append(magDatabaseComboBox != null ? magDatabaseComboBox.getValue() != null ? magDatabaseComboBox.getValue().getCatalogueID() : "" : "").append("\n");
+        if (magDatabasePanel != null) {
+            MagDbItem selectedDb = magDatabasePanel.getSelectedMagDatabase();
+            if (selectedDb != null) {
+                sb.append("  MAG Database: ").append(selectedDb.getCatalogueID()).append("\n");
+            } else {
+                sb.append("  MAG Database: Not selected\n");
+            }
+            MagDbItem.MagVersion selectedVersion = magDatabasePanel.getSelectedMagVersion();
+            if (selectedVersion != null) {
+                sb.append("  MAG Version: ").append(selectedVersion.getCatalogueVersion()).append("\n");
+            }
+        }
         sb.append("\n");
 
         // Performance settings
@@ -791,8 +954,8 @@ public class MetaPilotDiaTargetPanel extends VBox {
         if (peptideDetectabilityComboBox != null) {
             sb.append("  Peptide Detectability Threshold: ").append(peptideDetectabilityComboBox.getValue()).append("\n");
         }
-        if (libraryPathTextField != null && !libraryPathTextField.getText().isEmpty()) {
-            sb.append("  Library Path: ").append(libraryPathTextField.getText()).append("\n");
+        if (libraryFilePathTextField != null && !libraryFilePathTextField.getText().isEmpty()) {
+            sb.append("  Library Path: ").append(libraryFilePathTextField.getText()).append("\n");
         }
         sb.append("\n");
 
@@ -828,308 +991,1774 @@ public class MetaPilotDiaTargetPanel extends VBox {
         }
         sb.append("\n");
 
-        parameterView.setText(sb.toString());
+        consolePanel.setParameterText(sb.toString());
     }
 
-    private String getPropertyNameForColumn(String columnName) {
-        switch (columnName) {
-            case "Age": return "age";
-            case "Gender": return "gender";
-            case "Condition": return "condition";
-            case "Treatment": return "treatment";
-            case "Time Point": return "timePoint";
-            case "BMI": return "customField1";
-            default: return "customField1";
-        }
-    }
 
-    private void addMetadataColumnWithProperty(String columnName, String propertyName) {
-        TableColumn<MetaPilotDdaIgcMaxQuantPanel.MetadataRow, String> newCol = new TableColumn<>(columnName);
-        newCol.setCellValueFactory(data -> {
-            switch (propertyName) {
-                case "age": return new SimpleStringProperty(data.getValue().getAge());
-                case "gender": return new SimpleStringProperty(data.getValue().getGender());
-                case "condition": return new SimpleStringProperty(data.getValue().getCondition());
-                case "treatment": return new SimpleStringProperty(data.getValue().getTreatment());
-                case "timePoint": return new SimpleStringProperty(data.getValue().getTimePoint());
-                case "customField1": return new SimpleStringProperty(data.getValue().getCustomField1());
-                case "customField2": return new SimpleStringProperty(data.getValue().getCustomField2());
-                case "customField3": return new SimpleStringProperty(data.getValue().getCustomField3());
-                default: return new SimpleStringProperty("");
-            }
-        });
-        newCol.setCellFactory(TextFieldTableCell.forTableColumn());
-        newCol.setOnEditCommit(e -> {
-            switch (propertyName) {
-                case "age": e.getRowValue().setAge(e.getNewValue()); break;
-                case "gender": e.getRowValue().setGender(e.getNewValue()); break;
-                case "condition": e.getRowValue().setCondition(e.getNewValue()); break;
-                case "treatment": e.getRowValue().setTreatment(e.getNewValue()); break;
-                case "timePoint": e.getRowValue().setTimePoint(e.getNewValue()); break;
-                case "customField1": e.getRowValue().setCustomField1(e.getNewValue()); break;
-                case "customField2": e.getRowValue().setCustomField2(e.getNewValue()); break;
-                case "customField3": e.getRowValue().setCustomField3(e.getNewValue()); break;
-            }
-        });
-        newCol.setMinWidth(100);
-        newCol.setPrefWidth(120);
-        metadataTable.getColumns().add(newCol);
-    }
-
-    private void removeMetadataColumn() {
-        TableColumn<MetaPilotDdaIgcMaxQuantPanel.MetadataRow, ?> selectedColumn = 
-            metadataTable.getSelectionModel().getSelectedCells().isEmpty() ? null :
-            metadataTable.getColumns().get(metadataTable.getSelectionModel().getSelectedCells().get(0).getColumn());
-        
-        if (selectedColumn != null && !selectedColumn.getText().equals("Sample")) {
-            metadataTable.getColumns().remove(selectedColumn);
-        }
-    }
 
     private void startAnalysis() {
-        startButton.setDisable(true);
-        stopButton.setDisable(false);
-        consoleOutput.clear();
-        consoleOutput.appendText("Starting DIA Target analysis...\n");
-        System.out.println("DEBUG: startAnalysis called - DIA Target workflow");
+        try {
+            // Validate that a library has been created
+            String resultDir = ioPanel.getOutputDirectory();
+            if (resultDir == null || resultDir.trim().isEmpty()) {
+                showError("Configuration Error", "Output directory not set. Please set output directory in the Input/Output tab.");
+                return;
+            }
+            
+            // Check if library file path is set
+            String libraryFilePath = libraryFilePathTextField != null ? libraryFilePathTextField.getText().trim() : "";
+            if (libraryFilePath.isEmpty()) {
+                showError("Library Error", "No library file path found. Please create a target library first using the 'Create Library' button.");
+                return;
+            }
+            
+            File finalLibFile = new File(libraryFilePath);
+            if (!finalLibFile.exists()) {
+                showError("Library Error", "Target library not found at: " + libraryFilePath + "\nPlease create a target library first using the 'Create Library' button.");
+                return;
+            }
+            
+            // Collect parameters from UI
+            MetaParameterDiaTg targetParams = collectParametersFromUI();
+            if (targetParams == null) {
+                showError("Parameter Error", "Failed to collect parameters from UI. Please check your settings.");
+                return;
+            }
+            
+            targetParams.setLibraryPath(libraryFilePath);
+            
+            // Set the result directory to the library directory for DIA Target workflow
+            targetParams.setDbSearchResultFile(finalLibFile.getParentFile());
+            
+            consolePanel.appendConsoleText("Library search result folder: "+targetParams.getDbSearchResultFile());
+            
+            // Update UI
+            consolePanel.clearConsole();
+            consolePanel.appendConsoleText("Starting DIA Target analysis...\n");
+            consolePanel.appendConsoleText("Using target library: " + finalLibFile.getAbsolutePath() + "\n");
+            consolePanel.appendConsoleText("Library search mode: ENABLED\n");
+            
+            // Reset progress bars
+            consolePanel.getOverallProgressBar().setProgress(0);
+            consolePanel.getCurrentTaskProgressBar().setProgress(0);
+            consolePanel.setCurrentTaskLabel("Current Task: Initializing...");
+            
+            // Create and start MetaDiaTask
+            metaDiaTask = new MetaDiaTask(targetParams, resourceParams, consolePanel.getOverallProgressBar(), consolePanel.getCurrentTaskProgressBar());
+            
+            // Set up task monitoring
+            metaDiaTask.setOnSucceeded(e -> {
+                Platform.runLater(() -> {
+                    consolePanel.appendConsoleText("DIA Target analysis completed successfully!\n");
+                    consolePanel.appendConsoleText("Results saved to: " + resultDir + "\n");
+                });
+            });
+            
+            metaDiaTask.setOnFailed(e -> {
+                Platform.runLater(() -> {
+                    consolePanel.appendConsoleText("DIA Target analysis failed: " + metaDiaTask.getException().getMessage() + "\n");
+                    showError("Analysis Error", "DIA Target analysis failed: " + metaDiaTask.getException().getMessage());
+                });
+            });
+            
+            metaDiaTask.setOnCancelled(e -> {
+                Platform.runLater(() -> {
+                    consolePanel.appendConsoleText("DIA Target analysis was cancelled.\n");
+                });
+            });
+            
+            // Start the task in a background thread
+            if (taskExecutor == null) {
+                taskExecutor = Executors.newSingleThreadExecutor();
+            }
+            taskExecutor.submit(metaDiaTask);
+            
+            System.out.println("DEBUG: DIA Target analysis started with library: " + finalLibFile.getAbsolutePath());
+            
+        } catch (Exception e) {
+            consolePanel.appendConsoleText("ERROR: Failed to start analysis - " + e.getMessage() + "\n");
+            showError("Start Error", "Failed to start DIA Target analysis: " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 
     private void stopAnalysis() {
-        startButton.setDisable(false);
-        stopButton.setDisable(true);
-        consoleOutput.appendText("Stopping DIA Target analysis...\n");
         System.out.println("DEBUG: stopAnalysis called");
-    }
-
-    private void calculateProperThreshold() {
-        // Validate inputs
-        if (!validateSelections()) {
-            return;
+        
+        if (metaDiaTask != null && metaDiaTask.isRunning()) {
+            consolePanel.appendConsoleText("Stopping DIA Target analysis...\n");
+            metaDiaTask.forceStop();
+            consolePanel.appendConsoleText("DIA Target analysis stop requested.\n");
+        } else {
+            consolePanel.appendConsoleText("No running DIA Target analysis to stop.\n");
         }
-        
-        // Disable buttons during calculation
-        testThresholdButton.setDisable(true);
-        createLibraryButton.setDisable(true);
-        libraryConsoleOutput.clear();
-        libraryConsoleOutput.appendText("=== Calculating Proper Peptide Detectability Threshold ===\n");
-        libraryConsoleOutput.appendText("Analyzing selected taxa and functions...\n");
-        
-        // Create background task for threshold calculation
-        Task<Float> task = new Task<Float>() {
-            @Override
-            protected Float call() throws Exception {
-                // Mock calculation - in real implementation, this would query the database
-                // and calculate optimal threshold based on selected taxa and functions
-                
-                Platform.runLater(() -> {
-                    libraryConsoleOutput.appendText("Querying MAG database for selected taxa...\n");
-                });
-                Thread.sleep(1000);
-                
-                Platform.runLater(() -> {
-                    libraryConsoleOutput.appendText("Processing functional annotations...\n");
-                });
-                Thread.sleep(1000);
-                
-                Platform.runLater(() -> {
-                    libraryConsoleOutput.appendText("Calculating peptide detectability distributions...\n");
-                });
-                Thread.sleep(1000);
-                
-                // Mock recommendation: suggest 0.7 as proper threshold
-                Platform.runLater(() -> {
-                    libraryConsoleOutput.appendText("Analysis complete!\n");
-                    libraryConsoleOutput.appendText("Recommended threshold: 0.70\n");
-                    libraryConsoleOutput.appendText("The proper size of a peptide library is from 1,000,000 to 3,000,000 peptides\n");
-                    libraryConsoleOutput.appendText("=== Threshold Calculation Complete ===\n\n");
-                });
-                
-                return 0.70f;
-            }
-            
-            @Override
-            protected void succeeded() {
-                Float recommendedThreshold = getValue();
-                if (recommendedThreshold != null) {
-                    peptideDetectabilityComboBox.setValue(recommendedThreshold);
-                    updateParameterView();
-                }
-                testThresholdButton.setDisable(false);
-                createLibraryButton.setDisable(false);
-            }
-            
-            @Override
-            protected void failed() {
-                libraryConsoleOutput.appendText("ERROR: Failed to calculate threshold - " + getException().getMessage() + "\n");
-                testThresholdButton.setDisable(false);
-                createLibraryButton.setDisable(false);
-            }
-        };
-        
-        new Thread(task).start();
     }
     
-    private void createLibrary() {
-        // Validate inputs
-        if (!validateSelections()) {
-            return;
-        }
-        
-        // Check if library file already exists
-        if (libraryPathCheckBox.isSelected()) {
-            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
-            confirm.setTitle("Overwrite Library");
-            confirm.setHeaderText("Library Already Exists");
-            confirm.setContentText("A library already exists at " + libraryPathTextField.getText() + 
-                                 ". Do you want to overwrite it?");
+    private void viewReport() {
+        try {
+            consolePanel.appendConsoleText("Opening report in default browser...\n");
             
-            Optional<ButtonType> result = confirm.showAndWait();
-            if (result.isEmpty() || result.get() != ButtonType.OK) {
+            // Use the stored parameters from the last analysis
+            if (currentAnalysisParameters == null || currentAnalysisParameters.getResult() == null) {
+                consolePanel.appendConsoleText("ERROR: No analysis parameters available. Please run analysis first.\n");
                 return;
             }
-        }
-        
-        // Disable buttons during library creation
-        testThresholdButton.setDisable(true);
-        createLibraryButton.setDisable(true);
-        libraryConsoleOutput.clear();
-        libraryConsoleOutput.appendText("=== Creating Targeted Peptide Library ===\n");
-        
-        // Create background task for library creation
-        Task<Boolean> task = new Task<Boolean>() {
-            @Override
-            protected Boolean call() throws Exception {
-                // Mock library creation - in real implementation, this would:
-                // 1. Query database for selected taxa/functions
-                // 2. Filter peptides by detectability threshold
-                // 3. Generate spectral library file
-                
-                Platform.runLater(() -> {
-                    libraryConsoleOutput.appendText("Step 1: Querying selected taxa and functions...\n");
-                });
-                Thread.sleep(1500);
-                
-                Platform.runLater(() -> {
-                    libraryConsoleOutput.appendText("Found " + getSelectedTaxaCount() + " taxonomic groups\n");
-                    libraryConsoleOutput.appendText("Found " + getSelectedFunctionCount() + " functional groups\n");
-                    libraryConsoleOutput.appendText("Step 2: Retrieving protein sequences...\n");
-                });
-                Thread.sleep(1500);
-                
-                Platform.runLater(() -> {
-                    libraryConsoleOutput.appendText("Step 3: Generating peptide predictions...\n");
-                });
-                Thread.sleep(1500);
-                
-                Platform.runLater(() -> {
-                    libraryConsoleOutput.appendText("Step 4: Filtering by detectability threshold (" + 
-                                           peptideDetectabilityComboBox.getValue() + ")...\n");
-                });
-                Thread.sleep(1000);
-                
-                Platform.runLater(() -> {
-                    libraryConsoleOutput.appendText("Step 5: Creating spectral library format...\n");
-                });
-                Thread.sleep(1000);
-                
-                Platform.runLater(() -> {
-                    libraryConsoleOutput.appendText("Library created successfully: " + libraryPathTextField.getText() + "\n");
-                    libraryConsoleOutput.appendText("=== Library Generation Complete ===\n");
-                });
-                
-                return true;
-            }
             
-            @Override
-            protected void succeeded() {
-                if (getValue()) {
-                    libraryPathCheckBox.setSelected(true);
-                    Alert success = new Alert(Alert.AlertType.INFORMATION);
-                    success.setTitle("Library Created");
-                    success.setHeaderText("Success");
-                    success.setContentText("Targeted peptide library has been created successfully!");
-                    success.showAndWait();
+            File resultDir = currentAnalysisParameters.getDbSearchResultFile();
+            consolePanel.appendConsoleText("DEBUG: Result path from stored analysis parameters: " + resultDir + "\n");
+            
+            // Look for the main index.html file in the report directory
+            // For DIA analysis, reports are in the analysis-specific subdirectory
+            File reportDir = new File(resultDir, "report");
+            File indexFile = new File(reportDir, "index.html");
+            
+            consolePanel.appendConsoleText("DEBUG: Looking for report in: " + reportDir.getAbsolutePath() + "\n");
+            
+            if (!indexFile.exists()) {
+                consolePanel.appendConsoleText("ERROR: Main report index.html not found in " + reportDir.getAbsolutePath() + "\n");
+                consolePanel.appendConsoleText("Please ensure the analysis has completed successfully.\n");
+                
+                // Try alternative locations
+                File altIndexFile = new File(resultDir, "index.html");
+                if (altIndexFile.exists()) {
+                    consolePanel.appendConsoleText("Found alternative report location: " + altIndexFile.getAbsolutePath() + "\n");
+                    indexFile = altIndexFile;
+                } else {
+                    consolePanel.appendConsoleText("No report found in result directory either.\n");
+                    return;
                 }
-                testThresholdButton.setDisable(false);
-                createLibraryButton.setDisable(false);
             }
             
-            @Override
-            protected void failed() {
-                libraryConsoleOutput.appendText("ERROR: Failed to create library - " + getException().getMessage() + "\n");
-                testThresholdButton.setDisable(false);
-                createLibraryButton.setDisable(false);
+            consolePanel.appendConsoleText("Opening main report: " + indexFile.getName() + "\n");
+            
+            // Open the file in the default browser
+            if (java.awt.Desktop.isDesktopSupported()) {
+                java.awt.Desktop.getDesktop().browse(indexFile.toURI());
+                consolePanel.appendConsoleText("✓ Report opened in default browser\n");
+            } else {
+                consolePanel.appendConsoleText("ERROR: Desktop not supported. Please open manually: " + indexFile.getAbsolutePath() + "\n");
             }
-        };
-        
-        new Thread(task).start();
+            
+        } catch (Exception e) {
+            String errorMsg = "ERROR: Failed to open report: " + e.getMessage();
+            consolePanel.appendConsoleText(errorMsg + "\n");
+            System.err.println("Failed to open report: " + e.getMessage());
+            e.printStackTrace();
+        }
     }
-    
-    private boolean validateSelections() {
-        // Check if taxa are selected
-        if (taxaLevelComboBox.getValue() == null || 
-            taxaLevelComboBox.getValue().equals("Choose the taxonomic level")) {
-            showValidationError("Please specify a taxonomic level and select taxa.");
-            return false;
-        }
-        
-        int selectedTaxa = 0;
-        for (TaxaRow row : taxaData) {
-            if (row.getSelected()) {
-                selectedTaxa++;
+
+
+    /**
+     * Collect parameters from UI for DIA Target analysis
+     */
+    public MetaParameterDiaTg collectParametersFromUI() {
+        try {
+            // Validate inputs first
+            if (!validateInputs()) {
+                System.err.println("Input validation failed - cannot generate MetaParameterDiaTg");
+                return null;
             }
-        }
-        if (selectedTaxa == 0) {
-            showValidationError("Please select at least one taxonomic group.");
-            return false;
-        }
-        
-        // Check if functions are selected
-        if (functionLevelComboBox.getValue() == null || 
-            functionLevelComboBox.getValue().equals("Choose the functional level")) {
-            showValidationError("Please specify a functional level and select functions.");
-            return false;
-        }
-        
-        int selectedFunctions = 0;
-        for (FunctionRow row : functionData) {
-            if (row.getSelected()) {
-                selectedFunctions++;
+            
+            // Collect experiment data from ioPanel
+            ObservableList<MetaPilotIOPanelFX.ExperimentRow> fileRows = ioPanel.getExperimentData();
+            if (fileRows.isEmpty()) {
+                System.err.println("No experiment data found in IO panel");
+                return null;
             }
+            
+            String[] rawFiles = new String[fileRows.size()];
+            String[] expNames = new String[fileRows.size()];
+            int[] fractions = new int[fileRows.size()];
+            int[] replicates = new int[fileRows.size()];
+            
+            for (int i = 0; i < fileRows.size(); i++) {
+                MetaPilotIOPanelFX.ExperimentRow row = fileRows.get(i);
+                rawFiles[i] = row.getFilePath();
+                expNames[i] = row.getExperimentName();
+                fractions[i] = 1; // Default fraction
+                replicates[i] = 1; // Default replicate
+            }
+            
+            // Create MetaData object
+            MetaData metaData = new MetaData(rawFiles, expNames, fractions, replicates);
+            
+            // Collect metadata information from the reusable metadata panel
+            ObservableList<MetaPilotDdaIgcMaxQuantPanel.MetadataRow> metadataRows = metadataPanel.getMetadataTableData();
+            String[][] metaInfo = new String[metadataRows.size()][3];
+            for (int i = 0; i < metadataRows.size(); i++) {
+                MetaPilotDdaIgcMaxQuantPanel.MetadataRow row = metadataRows.get(i);
+                metaInfo[i][0] = row.getAge() != null ? row.getAge() : "";
+                metaInfo[i][1] = row.getGender() != null ? row.getGender() : "";
+                metaInfo[i][2] = row.getCondition() != null ? row.getCondition() : "";
+            }
+            metaData.setMetaInfo(metaInfo);
+            
+            // Get result directory
+            String result = ioPanel.getOutputDirectory();
+            if (result == null || result.trim().isEmpty()) {
+                System.err.println("Result directory not set");
+                return null;
+            }
+            
+            // Get MAG database information
+            MagDbItem selectedMagDb = magDatabasePanel.getSelectedMagDatabase();
+            if (selectedMagDb == null) {
+                System.err.println("No MAG database selected");
+                return null;
+            }
+            
+            // Get thread count
+            int threadCount = threadsComboBox != null ? threadsComboBox.getValue() : 4;
+            
+            // Create MetaBaseParameter
+            MetaBaseParameter metaBasePar = new MetaBaseParameter(
+                uk.ac.quadram.metapilot.task.MetaLabWorkflowType.DiaNNMAGTG.name(), // Workflow type
+                metaData,
+                result,
+                selectedMagDb.getCurrentFile() != null ? selectedMagDb.getCurrentFile().getAbsolutePath() : "", // MicroDb path
+                false, // appendHostDb - not used in DIA Target
+                "", // hostDB - not used in DIA Target
+                "DIA", // MS2 scan mode (default for DIA)
+                1, // Core count
+                threadCount,
+                true // Meta workflow
+            );
+            
+            // Create MetaParameterDiaTarget
+			MetaParameterDiaTg metaParameterDiaTarget = new MetaParameterDiaTg(metaBasePar, selectedMagDb, true, false,
+					new String[0], false, new String[0]);
+            
+            // Set DIA Target specific parameters
+            metaParameterDiaTarget.setTargetLibraryName(
+                libraryPathTextField != null ? libraryPathTextField.getText().trim() : "target_library");
+            
+            // Collect selected taxa
+            if (taxaData != null) {
+                java.util.List<String> selectedTaxaList = new java.util.ArrayList<>();
+                for (TaxaRow row : taxaData) {
+                    if (row.getSelected()) {
+                        selectedTaxaList.add(row.getName());
+                    }
+                }
+                metaParameterDiaTarget.setSelectedTaxa(selectedTaxaList.toArray(new String[0]));
+            }
+            
+            // Collect selected functions
+            if (functionData != null) {
+                java.util.List<String> selectedFunctionsList = new java.util.ArrayList<>();
+                for (FunctionRow row : functionData) {
+                    if (row.getSelected()) {
+                        selectedFunctionsList.add(row.getName());
+                    }
+                }
+                metaParameterDiaTarget.setSelectedFunctions(selectedFunctionsList.toArray(new String[0]));
+            }
+            
+            // Save taxonomic and functional levels
+            if (taxaLevelComboBox != null) {
+                metaParameterDiaTarget.setTaxonomicLevel(taxaLevelComboBox.getValue());
+            }
+            if (functionLevelComboBox != null) {
+                metaParameterDiaTarget.setFunctionalLevel(functionLevelComboBox.getValue());
+            }
+            
+            // Note: metadata info is not stored in MetaParameterDiaTg
+            
+            return metaParameterDiaTarget;
+            
+        } catch (Exception e) {
+            System.err.println("Error generating MetaParameterDiaTg: " + e.getMessage());
+            e.printStackTrace();
+            return null;
         }
-        if (selectedFunctions == 0) {
-            showValidationError("Please select at least one functional group.");
+    }
+
+    /**
+     * Collect parameters from UI for auto-save (lenient validation)
+     */
+    public MetaParameterDiaTg collectParametersFromUIForAutoSave() {
+        try {
+            // Create minimal MetaData even if no experiment data
+            MetaData metaData = new MetaData(new String[0], new String[0], new int[0], new int[0]);
+            
+            // Get result directory (allow empty for auto-save)
+            String result = ioPanel != null ? ioPanel.getOutputDirectory() : "";
+            if (result == null) result = "";
+            
+            // Get MAG database information (allow null for auto-save)
+            MagDbItem selectedMagDb = magDatabasePanel != null ? magDatabasePanel.getSelectedMagDatabase() : null;
+            
+            // Get thread count
+            int threadCount = threadsComboBox != null ? threadsComboBox.getValue() : 4;
+            
+            // Create MetaBaseParameter with minimal data
+            MetaBaseParameter metaBasePar = new MetaBaseParameter(
+                uk.ac.quadram.metapilot.task.MetaLabWorkflowType.DiaNNMAGTG.name(), // Workflow type
+                metaData,
+                result,
+                selectedMagDb != null && selectedMagDb.getCurrentFile() != null ? 
+                    selectedMagDb.getCurrentFile().getAbsolutePath() : "", // MicroDb path
+                false, // appendHostDb - not used in DIA Target
+                "", // hostDB - not used in DIA Target
+                "DIA", // MS2 scan mode (default for DIA)
+                1, // Core count
+                threadCount,
+                true // Meta workflow
+            );
+            
+            // Create MetaParameterDiaTarget
+            MetaParameterDiaTg metaParameterDiaTarget = new MetaParameterDiaTg(metaBasePar, selectedMagDb, false, false, new String[0], false, new String[0]);
+            
+            // Set DIA Target specific parameters (use defaults if UI components are null)
+            metaParameterDiaTarget.setTargetLibraryName(
+                libraryPathTextField != null ? libraryPathTextField.getText().trim() : "target_library");
+            
+            // Collect selected taxa (allow empty for auto-save)
+            if (taxaData != null) {
+                java.util.List<String> selectedTaxaList = new java.util.ArrayList<>();
+                for (TaxaRow row : taxaData) {
+                    if (row.getSelected()) {
+                        selectedTaxaList.add(row.getName());
+                    }
+                }
+                metaParameterDiaTarget.setSelectedTaxa(selectedTaxaList.toArray(new String[0]));
+            }
+            
+            // Collect selected functions (allow empty for auto-save)
+            if (functionData != null) {
+                java.util.List<String> selectedFunctionsList = new java.util.ArrayList<>();
+                for (FunctionRow row : functionData) {
+                    if (row.getSelected()) {
+                        selectedFunctionsList.add(row.getName());
+                    }
+                }
+                metaParameterDiaTarget.setSelectedFunctions(selectedFunctionsList.toArray(new String[0]));
+            }
+            
+            // Set metadata info (allow empty for auto-save)
+            if (metadataPanel != null) {
+                ObservableList<MetaPilotDdaIgcMaxQuantPanel.MetadataRow> metadataRows = metadataPanel.getMetadataTableData();
+                String[][] metaInfo = new String[metadataRows.size()][3];
+                for (int i = 0; i < metadataRows.size(); i++) {
+                    MetaPilotDdaIgcMaxQuantPanel.MetadataRow row = metadataRows.get(i);
+                    metaInfo[i][0] = row.getAge() != null ? row.getAge() : "";
+                    metaInfo[i][1] = row.getGender() != null ? row.getGender() : "";
+                    metaInfo[i][2] = row.getCondition() != null ? row.getCondition() : "";
+                }
+                // Note: metadata info is not stored in MetaParameterDiaTg
+            }
+            
+            // Save taxonomic and functional levels (allow null for auto-save)
+            if (taxaLevelComboBox != null) {
+                metaParameterDiaTarget.setTaxonomicLevel(taxaLevelComboBox.getValue());
+            }
+            if (functionLevelComboBox != null) {
+                metaParameterDiaTarget.setFunctionalLevel(functionLevelComboBox.getValue());
+            }
+            
+            return metaParameterDiaTarget;
+            
+        } catch (Exception e) {
+            System.err.println("Error generating MetaParameterDiaTg for auto-save: " + e.getMessage());
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    /**
+     * Validate inputs before generating parameters
+     */
+    private boolean validateInputs() {
+        // Check if IO panel has experiment data
+        if (ioPanel == null) {
+            System.err.println("IO panel is null");
+            return false;
+        }
+        if (ioPanel.getExperimentData().isEmpty()) {
+            System.err.println("No experiment data found in IO panel");
+            return false;
+        }
+        
+        // Check if result directory is set
+        String outputDir = ioPanel.getOutputDirectory();
+        if (outputDir == null || outputDir.trim().isEmpty()) {
+            System.err.println("Result directory not set");
+            return false;
+        }
+        
+        // Check if MAG database is selected
+        if (magDatabasePanel == null || magDatabasePanel.getSelectedMagDatabase() == null) {
+            System.err.println("No MAG database selected");
             return false;
         }
         
         return true;
     }
+
+    /**
+     * Load last used parameters and apply them to the UI
+     */
+    private void loadLastUsedParameters() {
+        System.out.println("DEBUG: loadLastUsedParameters() called for DIA Target panel");
+        try {
+            MetaParameterDiaTg params = (MetaParameterDiaTg) parameterIO.loadLastUsedParameters();
+            if (params != null) {
+                System.out.println("DEBUG: Successfully loaded parameters from file");
+                applyParametersToUI(params);
+                System.out.println("DEBUG: Applied parameters to UI successfully");
+            } else {
+                System.out.println("DEBUG: No parameters loaded from file, using defaults");
+            }
+        } catch (Exception e) {
+            System.err.println("WARNING: Failed to load last used DIA Target parameters: " + e.getMessage());
+            e.printStackTrace();
+            // Continue with default UI state
+        }
+    }
     
-    private void showValidationError(String message) {
-        Alert alert = new Alert(Alert.AlertType.ERROR);
-        alert.setTitle("Validation Error");
-        alert.setHeaderText("Invalid Selection");
-        alert.setContentText(message);
-        alert.showAndWait();
+    /**
+     * Apply function selections to the current function data
+     * @param selectedFunctionNames Array of function names to select
+     * @return true if at least one function was found and selected, false otherwise
+     */
+    private boolean applyFunctionSelections(String[] selectedFunctionNames) {
+        if (selectedFunctionNames == null || selectedFunctionNames.length == 0) {
+            return false;
+        }
+        
+        final FunctionRow[] firstSelectedFunction = {null};
+        int foundCount = 0;
+        
+        for (String functionName : selectedFunctionNames) {
+            for (FunctionRow row : functionData) {
+                if (row.getName().equals(functionName)) {
+                    row.setSelected(true);
+                    foundCount++;
+                    if (firstSelectedFunction[0] == null) {
+                        firstSelectedFunction[0] = row;
+                    }
+                    break;
+                }
+            }
+        }
+        
+        if (foundCount > 0) {
+            if (functionTable != null) {
+                functionTable.refresh();
+                // Scroll to first selected function
+                if (firstSelectedFunction[0] != null) {
+                    Platform.runLater(() -> {
+                        functionTable.getSelectionModel().select(firstSelectedFunction[0]);
+                        functionTable.scrollTo(firstSelectedFunction[0]);
+                    });
+                }
+            }
+            System.out.println("DEBUG: Applied " + foundCount + " of " + selectedFunctionNames.length + " function selections");
+            return true;
+        }
+        
+        return false;
     }
-
-    private int getSelectedTaxaCount() {
-        int count = 0;
+    
+    /**
+     * Apply taxa selections to the current taxa data
+     * @param selectedTaxaNames Array of taxon names to select
+     * @return true if at least one taxon was found and selected, false otherwise
+     */
+    private boolean applyTaxaSelections(String[] selectedTaxaNames) {
+        if (selectedTaxaNames == null || selectedTaxaNames.length == 0) {
+            return false;
+        }
+        
+        final TaxaRow[] firstSelectedTaxa = {null};
+        int foundCount = 0;
+        
+        for (String taxonName : selectedTaxaNames) {
+            for (TaxaRow row : taxaData) {
+                if (row.getName().equals(taxonName)) {
+                    row.setSelected(true);
+                    foundCount++;
+                    if (firstSelectedTaxa[0] == null) {
+                        firstSelectedTaxa[0] = row;
+                    }
+                    break;
+                }
+            }
+        }
+        
+        if (foundCount > 0) {
+            if (taxaTable != null) {
+                taxaTable.refresh();
+                // Scroll to first selected taxa
+                if (firstSelectedTaxa[0] != null) {
+                    Platform.runLater(() -> {
+                        taxaTable.getSelectionModel().select(firstSelectedTaxa[0]);
+                        taxaTable.scrollTo(firstSelectedTaxa[0]);
+                    });
+                }
+            }
+            System.out.println("DEBUG: Applied " + foundCount + " of " + selectedTaxaNames.length + " taxa selections");
+            return true;
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Apply parameters to the UI components
+     */
+    private void applyParametersToUI(MetaParameterDiaTg params) {
+        if (params == null) {
+            System.out.println("DEBUG: applyParametersToUI called with null params");
+            return;
+        }
+        
+        System.out.println("DEBUG: applyParametersToUI called with valid params");
+        
+        // Apply metadata to IO panel if available
+        if (params.getMetadata() != null && ioPanel != null) {
+            MetaData metadata = params.getMetadata();
+            String[] rawFiles = metadata.getRawFiles();
+            String[] expNames = metadata.getExpNames();
+            
+            if (rawFiles != null && expNames != null && rawFiles.length > 0) {
+                ObservableList<MetaPilotIOPanelFX.ExperimentRow> experimentRows = FXCollections.observableArrayList();
+                for (int i = 0; i < rawFiles.length; i++) {
+                    if (rawFiles[i] != null && !rawFiles[i].trim().isEmpty()) {
+                        experimentRows.add(new MetaPilotIOPanelFX.ExperimentRow(rawFiles[i], expNames[i]));
+                    }
+                }
+                ioPanel.setExperimentData(experimentRows);
+                System.out.println("DEBUG: Applied metadata with " + rawFiles.length + " raw files to IO panel");
+            }
+        }
+        
+        // Apply output directory if available
+        if (params.getResult() != null && !params.getResult().trim().isEmpty()) {
+            if (ioPanel != null) {
+                ioPanel.setOutputDirectory(params.getResult());
+                System.out.println("DEBUG: Applied output directory: " + params.getResult());
+            }
+        }
+        
+        // Apply thread count
+        if (threadsComboBox != null) {
+            threadsComboBox.setValue(params.getThreadCount());
+        }
+        
+        // Check if the saved database matches the currently selected database
+        boolean databaseMatches = false;
+        if (params.getMagDbItem() != null && magDatabasePanel != null) {
+            MagDbItem savedMagDbItem = params.getMagDbItem();
+            MagDbItem currentMagDbItem = magDatabasePanel.getSelectedMagDatabase();
+            
+            // Compare database identifiers
+            if (currentMagDbItem != null && 
+                savedMagDbItem.getCatalogueID().equals(currentMagDbItem.getCatalogueID()) &&
+                savedMagDbItem.getIdentifier().equals(currentMagDbItem.getIdentifier())) {
+                databaseMatches = true;
+                System.out.println("DEBUG: Saved database matches current database: " + savedMagDbItem.getCatalogueID());
+            } else {
+                System.out.println("DEBUG: Saved database differs from current database");
+                System.out.println("  Saved: " + (savedMagDbItem != null ? savedMagDbItem.getCatalogueID() : "null"));
+                System.out.println("  Current: " + (currentMagDbItem != null ? currentMagDbItem.getCatalogueID() : "null"));
+            }
+        }
+        
+        // Apply DIA Target specific parameters
+        // Note: peptideDetectabilityComboBox value is not restored from parameters
+        if (libraryPathTextField != null) {
+            libraryPathTextField.setText(params.getTargetLibraryName() != null ? params.getTargetLibraryName() : "target_library");
+        }
+        if (libraryFilePathTextField != null) {
+            libraryFilePathTextField.setText(""); // Clear the path field
+        }
+        // Library path checkbox is no longer used - library name is always editable
+        // Note: taxonomic and functional level selections are not restored from parameters
+        
+        // Apply taxonomic level first
+        String savedTaxonomicLevel = params.getTaxonomicLevel();
+        if (savedTaxonomicLevel != null && !savedTaxonomicLevel.equals("Choose the taxonomic level")) {
+            if (taxaLevelComboBox != null) {
+                taxaLevelComboBox.setValue(savedTaxonomicLevel);
+                System.out.println("DEBUG: Restored taxonomic level: " + savedTaxonomicLevel);
+            }
+        } else {
+            System.out.println("DEBUG: No taxonomic level in saved parameters, will try to infer from taxa data");
+        }
+        
+        // Apply functional level first
+        String savedFunctionalLevel = params.getFunctionalLevel();
+        if (savedFunctionalLevel != null && !savedFunctionalLevel.equals("Choose the functional level")) {
+            if (functionLevelComboBox != null) {
+                functionLevelComboBox.setValue(savedFunctionalLevel);
+                System.out.println("DEBUG: Restored functional level: " + savedFunctionalLevel);
+            }
+        } else {
+            System.out.println("DEBUG: No functional level in saved parameters, will try to infer from function data");
+        }
+        
+        // Apply selected taxa only if database matches
+        if (databaseMatches && params.getSelectedTaxa() != null && params.getSelectedTaxa().length > 0) {
+            System.out.println("DEBUG: Applying saved taxa selections (database matches)");
+            
+            boolean taxaApplied = false;
+            
+            // Try to load taxa data for the restored taxonomic level first
+            if (savedTaxonomicLevel != null && !savedTaxonomicLevel.equals("Choose the taxonomic level")) {
+                loadTaxaData(); // Load taxa data for the restored level
+                taxaApplied = applyTaxaSelections(params.getSelectedTaxa());
+                if (taxaApplied) {
+                    System.out.println("DEBUG: Successfully applied taxa selections using saved taxonomic level: " + savedTaxonomicLevel);
+                }
+            }
+            
+            // If that didn't work (or no level was saved), try to find the correct level by testing each one
+            if (!taxaApplied) {
+                System.out.println("DEBUG: Trying to find correct taxonomic level for saved taxa...");
+                String[] taxonomicLevels = {"Genus", "Species", "Phylum", "Class", "Order", "Family"};
+                
+                for (String level : taxonomicLevels) {
+                    if (taxaLevelComboBox != null) {
+                        taxaLevelComboBox.setValue(level);
+                        loadTaxaData();
+                        taxaApplied = applyTaxaSelections(params.getSelectedTaxa());
+                        if (taxaApplied) {
+                            System.out.println("DEBUG: Found correct taxonomic level: " + level);
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            if (!taxaApplied) {
+                System.out.println("DEBUG: Could not find taxonomic level that contains the saved taxa");
+            }
+        } else if (!databaseMatches) {
+            System.out.println("DEBUG: Skipping taxa selections (database differs)");
+        }
+        
+        // Apply selected functions only if database matches
+        if (databaseMatches && params.getSelectedFunctions() != null && params.getSelectedFunctions().length > 0) {
+            System.out.println("DEBUG: Applying saved function selections (database matches)");
+            
+            boolean functionsApplied = false;
+            
+            // Try to load function data for the restored functional level first
+            if (savedFunctionalLevel != null && !savedFunctionalLevel.equals("Choose the functional level")) {
+                loadFunctionData(); // Load function data for the restored level
+                functionsApplied = applyFunctionSelections(params.getSelectedFunctions());
+                if (functionsApplied) {
+                    System.out.println("DEBUG: Successfully applied function selections using saved functional level: " + savedFunctionalLevel);
+                }
+            }
+            
+            // If that didn't work (or no level was saved), try to find the correct level by testing each one
+            if (!functionsApplied) {
+                System.out.println("DEBUG: Trying to find correct functional level for saved functions...");
+                String[] functionalLevels = {"EC", "KO", "COG", "CAZy", "PFAM"};
+                
+                for (String level : functionalLevels) {
+                    if (functionLevelComboBox != null) {
+                        functionLevelComboBox.setValue(level);
+                        loadFunctionData();
+                        functionsApplied = applyFunctionSelections(params.getSelectedFunctions());
+                        if (functionsApplied) {
+                            System.out.println("DEBUG: Found correct functional level: " + level);
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            if (!functionsApplied) {
+                System.out.println("DEBUG: Could not find functional level that contains the saved functions");
+            }
+        } else if (!databaseMatches) {
+            System.out.println("DEBUG: Skipping function selections (database differs)");
+        }
+        
+        // Update parameter view after applying parameters
+        Platform.runLater(() -> updateParameterView());
+    }
+    
+    /**
+     * Calculate proper threshold for peptide detectability
+     * Based on MetaPilotMainPanelDiaTg testButton implementation
+     */
+    private void calculateProperThreshold() {
+        System.out.println("DEBUG: calculateProperThreshold() method called");
+        
+        // Update progress output
+        if (libraryConsoleOutput != null) {
+            libraryConsoleOutput.appendText("\n=== Starting Threshold Calculation ===\n");
+            libraryConsoleOutput.appendText("Initializing threshold calculation...\n");
+        }
+        
+        // Check if database generation panel has the database available
+        if (dbGenerationPanel == null || dbGenerationPanel.getCurrentMagDbItem() == null) {
+            System.out.println("DEBUG: Database generation panel or MagDbItem is null");
+            if (libraryConsoleOutput != null) {
+                libraryConsoleOutput.appendText("ERROR: No MAG database available for threshold calculation\n");
+            }
+            showError("Database Error", "No MAG database available for threshold calculation");
+            return;
+        }
+        
+        System.out.println("DEBUG: Database generation panel and MagDbItem are available");
+        
+        MagDbItem magDbItem = dbGenerationPanel.getCurrentMagDbItem();
+        File currentFile = magDbItem.getCurrentFile();
+        if (currentFile == null) {
+            System.out.println("DEBUG: No current file available for MAG database");
+            if (libraryConsoleOutput != null) {
+                libraryConsoleOutput.appendText("ERROR: No current file available for MAG database\n");
+            }
+            showError("Database Error", "No current file available for MAG database");
+            return;
+        }
+        
+        System.out.println("DEBUG: Current file available: " + currentFile.getAbsolutePath());
+        
+        if (libraryConsoleOutput != null) {
+            libraryConsoleOutput.appendText("Database path: " + currentFile.getAbsolutePath() + "\n");
+        }
+        
+        File sqlDbFile = new File(currentFile, "pro_func.db");
+        if (!sqlDbFile.exists()) {
+            System.out.println("DEBUG: SQL functional database not found: " + sqlDbFile.getAbsolutePath());
+            if (libraryConsoleOutput != null) {
+                libraryConsoleOutput.appendText("ERROR: SQL functional database not found: " + sqlDbFile.getAbsolutePath() + "\n");
+            }
+            showError("Database Error", "Please generate the SQL functional database first.");
+            return;
+        }
+        
+        System.out.println("DEBUG: SQL functional database found: " + sqlDbFile.getAbsolutePath());
+        
+        if (libraryConsoleOutput != null) {
+            libraryConsoleOutput.appendText("SQL database found: " + sqlDbFile.getAbsolutePath() + "\n");
+        }
+        
+        // Validate selections - allow only taxa OR function selection
+        System.out.println("DEBUG: Starting validation of user selections");
+        if (libraryConsoleOutput != null) {
+            libraryConsoleOutput.appendText("Validating user selections...\n");
+        }
+        
+        String selectedTaxaLevel = taxaLevelComboBox.getValue();
+        String selectedFunctionType = functionLevelComboBox.getValue();
+        
+        System.out.println("DEBUG: Selected taxonomic level: " + selectedTaxaLevel);
+        System.out.println("DEBUG: Selected function type: " + selectedFunctionType);
+        
+        // Get selected taxa and functions
+        HashSet<String> selectedTaxa = getSelectedTaxa();
+        HashSet<String> selectedFunctions = getSelectedFunctions();
+        
+        System.out.println("DEBUG: Selected taxa count: " + (selectedTaxa != null ? selectedTaxa.size() : "null"));
+        System.out.println("DEBUG: Selected functions count: " + (selectedFunctions != null ? selectedFunctions.size() : "null"));
+        
+        // Check if at least one selection is made
+        boolean hasTaxaSelection = (selectedTaxaLevel != null && !selectedTaxaLevel.equals("Choose the taxonomic level") && 
+                                   selectedTaxa != null && !selectedTaxa.isEmpty());
+        boolean hasFunctionSelection = (selectedFunctionType != null && !selectedFunctionType.equals("Choose the functional level") && 
+                                       selectedFunctions != null && !selectedFunctions.isEmpty());
+        
+        System.out.println("DEBUG: hasTaxaSelection: " + hasTaxaSelection);
+        System.out.println("DEBUG: hasFunctionSelection: " + hasFunctionSelection);
+        
+        // Check if both taxonomic level and functional level are "Choose level" (no filtering at all)
+        boolean noTaxaLevelSelected = (selectedTaxaLevel == null || selectedTaxaLevel.equals("Choose the taxonomic level"));
+        boolean noFunctionLevelSelected = (selectedFunctionType == null || selectedFunctionType.equals("Choose the functional level"));
+        
+        if (noTaxaLevelSelected && noFunctionLevelSelected) {
+            System.out.println("DEBUG: No taxonomic or functional level selected - returning");
+            if (libraryConsoleOutput != null) {
+                libraryConsoleOutput.appendText("ERROR: No taxonomic or functional level selected\n");
+            }
+            showError("Selection Error", "Please select either a taxonomic level or functional level (or both) for threshold calculation.");
+            return;
+        }
+        
+        // Check for invalid taxa selection (taxonomic level chosen but no taxa selected)
+        if (selectedTaxaLevel != null && !selectedTaxaLevel.equals("Choose the taxonomic level") && 
+            (selectedTaxa == null || selectedTaxa.isEmpty())) {
+            if (libraryConsoleOutput != null) {
+                libraryConsoleOutput.appendText("ERROR: Taxonomic level '" + selectedTaxaLevel + "' is selected but no taxa are chosen\n");
+            }
+            showError("Selection Error", "You have selected a taxonomic level (" + selectedTaxaLevel + ") but no taxa are selected. Please select taxa or change the taxonomic level to 'Choose the taxonomic level'.");
+            return;
+        }
+        
+        // Check for invalid function selection (function level chosen but no functions selected)
+        if (selectedFunctionType != null && !selectedFunctionType.equals("Choose the functional level") && 
+            (selectedFunctions == null || selectedFunctions.isEmpty())) {
+            if (libraryConsoleOutput != null) {
+                libraryConsoleOutput.appendText("ERROR: Function level '" + selectedFunctionType + "' is selected but no functions are chosen\n");
+            }
+            showError("Selection Error", "You have selected a functional level (" + selectedFunctionType + ") but no functions are selected. Please select functions or change the functional level to 'Choose the functional level'.");
+            return;
+        }
+        
+        System.out.println("DEBUG: Validation passed, proceeding with threshold calculation");
+        
+        if (libraryConsoleOutput != null) {
+            libraryConsoleOutput.appendText("Selected taxonomic level: " + selectedTaxaLevel + "\n");
+            libraryConsoleOutput.appendText("Selected function type: " + selectedFunctionType + "\n");
+            libraryConsoleOutput.appendText("Selected taxa: " + selectedTaxa.size() + " items\n");
+            libraryConsoleOutput.appendText("Selected functions: " + selectedFunctions.size() + " items\n");
+            libraryConsoleOutput.appendText("Starting threshold calculation...\n");
+        }
+        
+        // Disable buttons during calculation
+        testThresholdButton.setDisable(true);
+        createLibraryButton.setDisable(true);
+        
+        System.out.println("DEBUG: Creating threshold calculation task");
+        
+        // Run calculation in background task
+        Task<Void> task = new Task<Void>() {
+            @Override
+            protected Void call() throws Exception {
+                System.out.println("DEBUG: Task call() method started");
+                try {
+                    // Get genomes from selected taxa
+                    System.out.println("DEBUG: Calling getGenomesFromTaxa");
+                    HashSet<String> taxaGenomeSet = getGenomesFromTaxa(selectedTaxa, selectedTaxaLevel, sqlDbFile);
+                    System.out.println("DEBUG: getGenomesFromTaxa returned " + taxaGenomeSet.size() + " genomes");
+                    
+                    // Get proteins from selected functions
+                    System.out.println("DEBUG: Calling getProteinsFromFunctions");
+                    HashSet<String> funcProSet = getProteinsFromFunctions(selectedFunctions, selectedFunctionType, taxaGenomeSet, sqlDbFile);
+                    System.out.println("DEBUG: getProteinsFromFunctions returned " + funcProSet.size() + " proteins");
+                    
+                    // Check if predicted files exist
+                    System.out.println("DEBUG: Checking if predicted files exist");
+                    File predictedFile = new File(currentFile, "predicted");
+                    System.out.println("DEBUG: Predicted file path: " + predictedFile.getAbsolutePath());
+                    System.out.println("DEBUG: Predicted file exists: " + predictedFile.exists());
+                    if (predictedFile.exists()) {
+                        File[] files = predictedFile.listFiles();
+                        System.out.println("DEBUG: Predicted files count: " + (files != null ? files.length : 0));
+                    }
+                    
+                    if (!predictedFile.exists() || predictedFile.listFiles().length == 0) {
+                        System.out.println("DEBUG: Predicted files not found or empty - returning");
+                        Platform.runLater(() -> showError("Data Error", "Please predict the peptide detectability first."));
+                        return null;
+                    }
+                    
+                    System.out.println("DEBUG: Predicted files found, proceeding with threshold calculation");
+                    
+                    // Process predicted files to calculate threshold
+                    System.out.println("DEBUG: Calling calculateThresholdFromPredictedFiles");
+                    calculateThresholdFromPredictedFiles(predictedFile, taxaGenomeSet, funcProSet);
+                    System.out.println("DEBUG: calculateThresholdFromPredictedFiles completed");
+                    
+                } catch (Exception e) {
+                Platform.runLater(() -> {
+                        if (libraryConsoleOutput != null) {
+                            libraryConsoleOutput.appendText("ERROR: Threshold calculation failed - " + e.getMessage() + "\n");
+                        }
+                        showError("Calculation Error", "Failed to calculate threshold: " + e.getMessage());
+                    });
+                    e.printStackTrace();
+                }
+                return null;
+            }
+            
+            @Override
+            protected void succeeded() {
+                System.out.println("DEBUG: Threshold calculation Task succeeded");
+                Platform.runLater(() -> {
+                if (libraryConsoleOutput != null) {
+                    libraryConsoleOutput.appendText("=== Threshold Calculation Completed ===\n");
+                    libraryConsoleOutput.appendText("Recommended threshold has been updated!\n");
+                }
+                testThresholdButton.setDisable(false);
+                createLibraryButton.setDisable(false);
+                });
+            }
+            
+            @Override
+            protected void failed() {
+                System.out.println("DEBUG: Threshold calculation Task failed");
+                Platform.runLater(() -> {
+                if (libraryConsoleOutput != null) {
+                    libraryConsoleOutput.appendText("=== Threshold Calculation Failed ===\n");
+                }
+                testThresholdButton.setDisable(false);
+                createLibraryButton.setDisable(false);
+                });
+            }
+        };
+        
+        Thread thread = new Thread(task);
+        thread.setDaemon(true);
+        thread.start();
+    }
+    
+    /**
+     * Create peptide library
+     * Based on MetaPilotMainPanelDiaTg createButton implementation
+     */
+    private void createLibrary() {
+        // Update progress output
+        if (libraryConsoleOutput != null) {
+            libraryConsoleOutput.appendText("\n=== Starting Library Creation ===\n");
+            libraryConsoleOutput.appendText("Initializing library creation process...\n");
+        }
+        
+        // Validate Input/Output panel settings first
+        if (ioPanel == null) {
+            if (libraryConsoleOutput != null) {
+                libraryConsoleOutput.appendText("ERROR: Input/Output panel not available\n");
+            }
+            showError("Configuration Error", "Input/Output panel not available");
+            return;
+        }
+        
+        // Check if raw files are set
+        if (libraryConsoleOutput != null) {
+            libraryConsoleOutput.appendText("Validating raw files...\n");
+        }
+        
+        ObservableList<MetaPilotIOPanelFX.ExperimentRow> experiments = ioPanel.getExperimentData();
+        if (experiments == null || experiments.isEmpty()) {
+            if (libraryConsoleOutput != null) {
+                libraryConsoleOutput.appendText("ERROR: No raw files found\n");
+            }
+            showError("Input Error", "Raw files are not found. Please set raw files in the Input/Output tab.");
+            return;
+        }
+        
+        // Check if raw files exist
+        for (MetaPilotIOPanelFX.ExperimentRow exp : experiments) {
+            String rawFile = exp.getFilePath();
+            if (rawFile == null || rawFile.trim().isEmpty()) {
+                if (libraryConsoleOutput != null) {
+                    libraryConsoleOutput.appendText("ERROR: Empty raw file path for experiment: " + exp.getExperimentName() + "\n");
+                }
+                showError("Input Error", "Raw file path is empty for experiment: " + exp.getExperimentName());
+                return;
+            }
+            File file = new File(rawFile);
+            if (!file.exists()) {
+                if (libraryConsoleOutput != null) {
+                    libraryConsoleOutput.appendText("ERROR: Raw file not found: " + rawFile + "\n");
+                }
+                showError("Input Error", "Raw file not found: " + rawFile);
+                return;
+            }
+        }
+        
+        if (libraryConsoleOutput != null) {
+            libraryConsoleOutput.appendText("Found " + experiments.size() + " raw files\n");
+        }
+        
+        // Check if result folder is set
+        if (libraryConsoleOutput != null) {
+            libraryConsoleOutput.appendText("Validating output directory...\n");
+        }
+        
+        String resultDir = ioPanel.getOutputDirectory();
+        if (resultDir == null || resultDir.trim().isEmpty()) {
+            if (libraryConsoleOutput != null) {
+                libraryConsoleOutput.appendText("ERROR: Result folder not set\n");
+            }
+            showError("Output Error", "Result folder is not set. Please set output directory in the Input/Output tab.");
+            return;
+        }
+        
+        if (libraryConsoleOutput != null) {
+            libraryConsoleOutput.appendText("Output directory: " + resultDir + "\n");
+        }
+        
+        // Check if database generation panel has the database available
+        if (dbGenerationPanel == null || dbGenerationPanel.getCurrentMagDbItem() == null) {
+            showError("Database Error", "No MAG database available for library creation");
+            return;
+        }
+        
+        MagDbItem magDbItem = dbGenerationPanel.getCurrentMagDbItem();
+        File currentFile = magDbItem.getCurrentFile();
+        if (currentFile == null) {
+            showError("Database Error", "No current file available for MAG database");
+            return;
+        }
+        
+        File sqlDbFile = new File(currentFile, "pro_func.db");
+        if (!sqlDbFile.exists()) {
+            showError("Database Error", "Please generate the SQL functional database first.");
+            return;
+        }
+        
+        // Validate selections - allow only taxa OR function selection
+        String selectedTaxaLevel = taxaLevelComboBox.getValue();
+        String selectedFunctionType = functionLevelComboBox.getValue();
+        
+        // Get selected taxa and functions
+        HashSet<String> selectedTaxa = getSelectedTaxa();
+        HashSet<String> selectedFunctions = getSelectedFunctions();
+        
+        // Check if at least one selection is made
+        boolean hasTaxaSelection = (selectedTaxaLevel != null && !selectedTaxaLevel.equals("Choose the taxonomic level") && 
+                                   selectedTaxa != null && !selectedTaxa.isEmpty());
+        boolean hasFunctionSelection = (selectedFunctionType != null && !selectedFunctionType.equals("Choose the functional level") && 
+                                       selectedFunctions != null && !selectedFunctions.isEmpty());
+        
+        // Check if both taxonomic level and functional level are "Choose level" (no filtering at all)
+        boolean noTaxaLevelSelected = (selectedTaxaLevel == null || selectedTaxaLevel.equals("Choose the taxonomic level"));
+        boolean noFunctionLevelSelected = (selectedFunctionType == null || selectedFunctionType.equals("Choose the functional level"));
+        
+        if (noTaxaLevelSelected && noFunctionLevelSelected) {
+            if (libraryConsoleOutput != null) {
+                libraryConsoleOutput.appendText("ERROR: No taxonomic or functional level selected\n");
+            }
+            showError("Selection Error", "Please select either a taxonomic level or functional level (or both) for library creation.");
+            return;
+        }
+        
+        // Check for invalid taxa selection (taxonomic level chosen but no taxa selected)
+        if (selectedTaxaLevel != null && !selectedTaxaLevel.equals("Choose the taxonomic level") && 
+            (selectedTaxa == null || selectedTaxa.isEmpty())) {
+            if (libraryConsoleOutput != null) {
+                libraryConsoleOutput.appendText("ERROR: Taxonomic level '" + selectedTaxaLevel + "' is selected but no taxa are chosen\n");
+            }
+            showError("Selection Error", "You have selected a taxonomic level (" + selectedTaxaLevel + ") but no taxa are selected. Please select taxa or change the taxonomic level to 'Choose the taxonomic level'.");
+            return;
+        }
+        
+        // Check for invalid function selection (function level chosen but no functions selected)
+        if (selectedFunctionType != null && !selectedFunctionType.equals("Choose the functional level") && 
+            (selectedFunctions == null || selectedFunctions.isEmpty())) {
+            if (libraryConsoleOutput != null) {
+                libraryConsoleOutput.appendText("ERROR: Function level '" + selectedFunctionType + "' is selected but no functions are chosen\n");
+            }
+            showError("Selection Error", "You have selected a functional level (" + selectedFunctionType + ") but no functions are selected. Please select functions or change the functional level to 'Choose the functional level'.");
+            return;
+        }
+        
+        // Validate library name
+        String libraryName = libraryPathTextField != null ? libraryPathTextField.getText().trim() : "target_library";
+        if (libraryName.isEmpty()) {
+            showError("Invalid Library Name", "Library name cannot be empty. Please enter a valid library name.");
+            return;
+        }
+        
+        // Check for invalid characters in library name
+        if (libraryName.contains("/") || libraryName.contains("\\") || libraryName.contains(":") || 
+            libraryName.contains("*") || libraryName.contains("?") || libraryName.contains("\"") || 
+            libraryName.contains("<") || libraryName.contains(">") || libraryName.contains("|")) {
+            showError("Invalid Library Name", "Library name contains invalid characters. Please use only letters, numbers, underscores, and hyphens.");
+            return;
+        }
+        
+        // Check if library already exists and ask for confirmation
+        File resultFile = new File(resultDir);
+        File libraryDir = new File(resultFile, libraryName);
+        File finalLibFile = new File(libraryDir, libraryName + ".predicted.speclib");
+        
+        if (finalLibFile.exists()) {
+            javafx.scene.control.Alert confirm = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.CONFIRMATION);
+            confirm.setTitle("Library Already Exists");
+            confirm.setHeaderText("Library Found");
+            confirm.setContentText("A library named '" + libraryName + "' already exists in:\n" + 
+                                 finalLibFile.getAbsolutePath() + "\n\n" +
+                                 "What would you like to do?");
+            
+            // Create custom buttons
+            javafx.scene.control.ButtonType useExistingButton = new javafx.scene.control.ButtonType("Use Existing Library");
+            javafx.scene.control.ButtonType overwriteButton = new javafx.scene.control.ButtonType("Overwrite Library");
+            javafx.scene.control.ButtonType cancelButton = new javafx.scene.control.ButtonType("Cancel", javafx.scene.control.ButtonBar.ButtonData.CANCEL_CLOSE);
+            
+            confirm.getButtonTypes().setAll(useExistingButton, overwriteButton, cancelButton);
+            
+            java.util.Optional<javafx.scene.control.ButtonType> result = confirm.showAndWait();
+            
+            if (result.isEmpty() || result.get() == cancelButton) {
+                if (libraryConsoleOutput != null) {
+                    libraryConsoleOutput.appendText("Library creation cancelled by user.\n");
+                }
+                return;
+            } else if (result.get() == useExistingButton) {
+                // Use existing library
+                if (libraryFilePathTextField != null) {
+                    libraryFilePathTextField.setText(finalLibFile.getAbsolutePath());
+                }
+                
+                if (libraryConsoleOutput != null) {
+                    libraryConsoleOutput.appendText("Using existing library: " + finalLibFile.getAbsolutePath() + "\n");
+                }
+                return;
+            }
+            // If overwriteButton is selected, continue with library creation
+        }
+        
+        // Get threshold value
+        float threshold = (float) thresholdComboBox.getValue();
+        
+        if (libraryConsoleOutput != null) {
+            libraryConsoleOutput.appendText("Library name: " + libraryName + "\n");
+            libraryConsoleOutput.appendText("Detectability threshold: " + threshold + "\n");
+            libraryConsoleOutput.appendText("Starting library creation process...\n");
+        }
+        
+        // Disable buttons during creation
+        testThresholdButton.setDisable(true);
+        createLibraryButton.setDisable(true);
+        
+        // Run library creation in background task
+        Task<Void> task = new Task<Void>() {
+            @Override
+            protected Void call() throws Exception {
+                try {
+                Platform.runLater(() -> {
+                        if (libraryConsoleOutput != null) {
+                            libraryConsoleOutput.appendText("Processing selected taxa and functions...\n");
+                        }
+                });
+                    
+                    // Get genomes from selected taxa (if any)
+                    HashSet<String> taxaGenomeSet = getGenomesFromTaxa(selectedTaxa, selectedTaxaLevel, sqlDbFile);
+                
+                Platform.runLater(() -> {
+                        if (libraryConsoleOutput != null) {
+                            if (taxaGenomeSet.isEmpty()) {
+                                libraryConsoleOutput.appendText("No taxonomic filtering applied - using all genomes\n");
+                            } else {
+                                libraryConsoleOutput.appendText("Found " + taxaGenomeSet.size() + " genomes from selected taxa\n");
+                            }
+                        }
+                });
+                    
+                    // Get proteins from selected functions (if any)
+                    HashSet<String> funcProSet = getProteinsFromFunctions(selectedFunctions, selectedFunctionType, taxaGenomeSet, sqlDbFile);
+                
+                Platform.runLater(() -> {
+                        if (libraryConsoleOutput != null) {
+                            if (funcProSet.isEmpty()) {
+                                libraryConsoleOutput.appendText("No functional filtering applied - using all proteins\n");
+                            } else {
+                                libraryConsoleOutput.appendText("Found " + funcProSet.size() + " proteins from selected functions\n");
+                            }
+                        }
+                });
+                
+                    // Check if predicted files exist
+                    File predictedFile = new File(currentFile, "predicted");
+                    if (!predictedFile.exists() || predictedFile.listFiles().length == 0) {
+                Platform.runLater(() -> {
+                            if (libraryConsoleOutput != null) {
+                                libraryConsoleOutput.appendText("ERROR: Predicted peptide files not found\n");
+                            }
+                            showError("Data Error", "Please predict the peptide detectability first.");
+                });
+                        return null;
+                    }
+                
+                Platform.runLater(() -> {
+                        if (libraryConsoleOutput != null) {
+                            libraryConsoleOutput.appendText("Processing predicted peptide files...\n");
+                        }
+                });
+                
+                    // Create library files
+                    String libraryName = libraryPathTextField != null ? libraryPathTextField.getText().trim() : "target_library";
+                    createLibraryFiles(predictedFile, taxaGenomeSet, funcProSet, selectedTaxa, selectedFunctions, threshold, resultDir, libraryName);
+                    
+                } catch (Exception e) {
+                Platform.runLater(() -> {
+                        if (libraryConsoleOutput != null) {
+                            libraryConsoleOutput.appendText("ERROR: Library creation failed - " + e.getMessage() + "\n");
+                        }
+                        showError("Library Creation Error", "Failed to create library: " + e.getMessage());
+                    });
+                    e.printStackTrace();
+                }
+                return null;
+            }
+            
+            @Override
+            protected void succeeded() {
+                System.out.println("DEBUG: Library creation Task succeeded");
+                Platform.runLater(() -> {
+                if (libraryConsoleOutput != null) {
+                    libraryConsoleOutput.appendText("=== Library Creation Completed Successfully ===\n");
+                    libraryConsoleOutput.appendText("Target library is ready for analysis!\n");
+                }
+                testThresholdButton.setDisable(false);
+                createLibraryButton.setDisable(false);
+                });
+            }
+            
+            @Override
+            protected void failed() {
+                System.out.println("DEBUG: Library creation Task failed");
+                Platform.runLater(() -> {
+                if (libraryConsoleOutput != null) {
+                    libraryConsoleOutput.appendText("=== Library Creation Failed ===\n");
+                }
+                testThresholdButton.setDisable(false);
+                createLibraryButton.setDisable(false);
+                });
+            }
+        };
+        
+        Thread thread = new Thread(task);
+        thread.setDaemon(true);
+        thread.start();
+    }
+    
+    /**
+     * Get selected taxa from the taxa table
+     */
+    private HashSet<String> getSelectedTaxa() {
+        HashSet<String> selectedTaxa = new HashSet<>();
         for (TaxaRow row : taxaData) {
-            if (row.getSelected()) {
+            if (row.isSelected()) {
+                selectedTaxa.add(row.getName());
+            }
+        }
+        return selectedTaxa;
+    }
+    
+    /**
+     * Get selected functions from the function table
+     */
+    private HashSet<String> getSelectedFunctions() {
+        HashSet<String> selectedFunctions = new HashSet<>();
+        for (FunctionRow row : functionData) {
+            if (row.isSelected()) {
+                selectedFunctions.add(row.getName());
+            }
+        }
+        return selectedFunctions;
+    }
+    
+    /**
+     * Get genomes from selected taxa using database query
+     */
+    private HashSet<String> getGenomesFromTaxa(HashSet<String> selectedTaxa, String selectedTaxaLevel, File sqlDbFile) throws SQLException {
+        HashSet<String> taxaGenomeSet = new HashSet<>();
+        
+        // If taxonomic level is "Choose the taxonomic level", return all genomes (no taxonomic filtering)
+        if (selectedTaxaLevel == null || selectedTaxaLevel.equals("Choose the taxonomic level")) {
+            Platform.runLater(() -> {
+                if (libraryConsoleOutput != null) {
+                    libraryConsoleOutput.appendText("No taxonomic level selected - using all genomes (no taxonomic filtering)\n");
+                }
+            });
+            // Get all genome names from the database (no filtering)
+            String url = "jdbc:sqlite:" + sqlDbFile.getAbsolutePath().replaceAll("\\\\", "/");
+            try (Connection conn = DriverManager.getConnection(url)) {
+                String query = "SELECT DISTINCT genome_name FROM taxonomy";
+                try (PreparedStatement pstmt = conn.prepareStatement(query);
+                     ResultSet rs = pstmt.executeQuery()) {
+                    while (rs.next()) {
+                        String genomeName = rs.getString("genome_name");
+                        if (genomeName != null && !genomeName.trim().isEmpty()) {
+                            taxaGenomeSet.add(genomeName);
+                        }
+                    }
+                }
+            } catch (SQLException e) {
+                System.err.println("ERROR: Failed to get all genomes from database: " + e.getMessage());
+                e.printStackTrace();
+            }
+            return taxaGenomeSet;
+        }
+        
+        // If taxonomic level is selected but no taxa are chosen, this is an error
+        if (selectedTaxa == null || selectedTaxa.isEmpty()) {
+            throw new IllegalArgumentException("Taxonomic level '" + selectedTaxaLevel + "' is selected but no taxa are chosen. Please select taxa or change the taxonomic level to 'Choose the taxonomic level'.");
+        }
+        
+        String[] levelNames = {"Superkingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species", "Genome"};
+        int levelIndex = -1;
+        for (int i = 0; i < levelNames.length; i++) {
+            if (levelNames[i].equals(selectedTaxaLevel)) {
+                levelIndex = i;
+                break;
+            }
+        }
+        
+        String url = "jdbc:sqlite:" + sqlDbFile.getAbsolutePath().replaceAll("\\\\", "/");
+        
+        if (levelIndex < TAXONOMIC_LEVELS.length - 1) {
+            // Map UI level to database column
+            String columnName = TAXONOMIC_LEVELS[levelIndex + 1];
+            StringBuilder sql = new StringBuilder("SELECT genome_name FROM taxonomy WHERE " + columnName + " IN (");
+            boolean first = true;
+            for (String taxaName : selectedTaxa) {
+                if (!first) {
+                    sql.append(", ");
+                } else {
+                    first = false;
+                }
+                sql.append("'").append(taxaName).append("'");
+            }
+            sql.append(")");
+            
+            try (Connection conn = DriverManager.getConnection(url);
+                 PreparedStatement pstmt = conn.prepareStatement(sql.toString());
+                 ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    taxaGenomeSet.add(rs.getString("genome_name"));
+                }
+            }
+            
+            final HashSet<String> finalTaxaGenomeSet1 = taxaGenomeSet;
+            Platform.runLater(() -> {
+                if (libraryConsoleOutput != null) {
+                    libraryConsoleOutput.appendText(format.format(new Date()) + ":\t" + selectedTaxa.size() + " taxa are selected in "
+                        + columnName + " level, " + finalTaxaGenomeSet1.size() + " genomes will be selected for the following analysis\n");
+                }
+            });
+        } else {
+            // Genome level
+            taxaGenomeSet = selectedTaxa;
+            final HashSet<String> finalTaxaGenomeSet2 = taxaGenomeSet;
+            Platform.runLater(() -> {
+                if (libraryConsoleOutput != null) {
+                    libraryConsoleOutput.appendText(format.format(new Date()) + ":\t" + finalTaxaGenomeSet2.size() + " genomes will be selected for the following analysis\n");
+                }
+            });
+        }
+        
+        return taxaGenomeSet;
+    }
+    
+    /**
+     * Get proteins from selected functions using database query
+     */
+    private HashSet<String> getProteinsFromFunctions(HashSet<String> selectedFunctions, String selectedFunctionType, 
+                                                   HashSet<String> taxaGenomeSet, File sqlDbFile) throws SQLException {
+        HashSet<String> funcProSet = new HashSet<>();
+        
+        // If no functions selected, return all proteins (empty set means no filtering)
+        if (selectedFunctions == null || selectedFunctions.isEmpty()) {
+            Platform.runLater(() -> {
+                if (libraryConsoleOutput != null) {
+                    libraryConsoleOutput.appendText("No functions selected - will use all proteins from selected taxa (no functional filtering)\n");
+                }
+            });
+            return funcProSet; // Empty set means no filtering
+        }
+        
+        String url = "jdbc:sqlite:" + sqlDbFile.getAbsolutePath().replaceAll("\\\\", "/");
+        
+        StringBuilder sql = new StringBuilder("SELECT protein_name FROM " + selectedFunctionType + " WHERE func_name IN (");
+        boolean first = true;
+        for (String funcName : selectedFunctions) {
+            if (!first) {
+                sql.append(", ");
+            } else {
+                first = false;
+            }
+            sql.append("'").append(funcName).append("'");
+        }
+        sql.append(")");
+        
+        try (Connection conn = DriverManager.getConnection(url);
+             PreparedStatement pstmt = conn.prepareStatement(sql.toString());
+             ResultSet rs = pstmt.executeQuery()) {
+            while (rs.next()) {
+                String proName = rs.getString("protein_name");
+                String genomeName = proName.substring(0, proName.indexOf("_"));
+                if (taxaGenomeSet.contains(genomeName)) {
+                    funcProSet.add(proName);
+                }
+            }
+        }
+        
+        Platform.runLater(() -> {
+            if (libraryConsoleOutput != null) {
+                libraryConsoleOutput.appendText(format.format(new Date()) + ":\t" + selectedFunctions.size()
+                    + " functions are selected from the " + selectedFunctionType + " database, " + funcProSet.size()
+                    + " proteins will be selected for the following analysis\n");
+            }
+        });
+        
+        return funcProSet;
+    }
+    
+    /**
+     * Calculate threshold from predicted files
+     */
+    private void calculateThresholdFromPredictedFiles(File predictedFile, HashSet<String> taxaGenomeSet, HashSet<String> funcProSet) throws Exception {
+        System.out.println("DEBUG: calculateThresholdFromPredictedFiles started");
+        System.out.println("DEBUG: taxaGenomeSet size: " + taxaGenomeSet.size());
+        System.out.println("DEBUG: funcProSet size: " + funcProSet.size());
+        
+        long totalMemorySize = ((OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean())
+            .getTotalMemorySize() / 1024 / 1024 / 1024;
+        ExecutorService es = Executors.newFixedThreadPool((int) totalMemorySize / 2);
+        
+        ConcurrentHashMap<String, Float> pepMap = new ConcurrentHashMap<>();
+        for (String genome : taxaGenomeSet) {
+            es.submit(() -> {
+                try (BufferedReader reader = new BufferedReader(
+                        new FileReader(new File(predictedFile, genome + ".predicted.tsv")))) {
+                    String line = reader.readLine(); // Skip header
+                    while ((line = reader.readLine()) != null) {
+                        String[] cs = line.split("\t");
+                        // If funcProSet is empty, include all proteins (no functional filtering)
+                        // If funcProSet is not empty, only include proteins that match selected functions
+                        if (funcProSet.isEmpty() || funcProSet.contains(cs[0])) {
+                            if (pepMap.containsKey(cs[1])) {
+                                float score = Float.parseFloat(cs[2]);
+                                if (score > pepMap.get(cs[1])) {
+                                    pepMap.put(cs[1], score);
+                                }
+                            } else {
+                                pepMap.put(cs[1], Float.parseFloat(cs[2]));
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    System.err.println("Error processing file for genome " + genome + " - " + e.getMessage());
+                }
+                return null;
+            });
+        }
+        es.shutdown();
+        try {
+            es.awaitTermination(2, TimeUnit.HOURS);
+        } catch (InterruptedException e) {
+            System.err.println("Error waiting for file processing threads: " + e.getMessage());
+        }
+        
+        // Calculate detectability distribution
+        int[] detectabilities = new int[101];
+        for (String pep : pepMap.keySet()) {
+            float score = pepMap.get(pep);
+            int id = (int) (score * 100);
+            for (int i = 0; i <= id; i++) {
+                detectabilities[i]++;
+            }
+        }
+        
+        // Find optimal threshold
+        final int[] lowPepThresCount = {-1};
+        final int[] highPepThresCount = {-1};
+        for (int i = 0; i < detectabilities.length; i++) {
+            final int finalI = i;
+            Platform.runLater(() -> {
+                if (libraryConsoleOutput != null) {
+                    libraryConsoleOutput.appendText(format.format(new Date()) + ":\t" + "Peptide detectability: "
+                        + (double) finalI / 100 + "; peptide count: " + detectabilities[finalI] + "\n");
+                }
+            });
+            
+            if (detectabilities[i] < 3000000 && lowPepThresCount[0] == -1) {
+                lowPepThresCount[0] = i;
+            }
+            
+            if (detectabilities[i] < 1000000 && highPepThresCount[0] == -1) {
+                highPepThresCount[0] = i;
+            }
+        }
+        
+        Platform.runLater(() -> {
+            if (libraryConsoleOutput != null) {
+                libraryConsoleOutput.appendText(format.format(new Date()) + ":\t"
+                    + "The proper size of a peptide library is from 1,000,000 to 3,000,000 peptides\n");
+                libraryConsoleOutput.appendText(format.format(new Date()) + ":\t" + "The recommended peptide detectability threshold is:\n");
+            }
+        });
+        
+        // Update threshold combo box
+        Platform.runLater(() -> {
+            if (lowPepThresCount[0] == -1) {
+                if (highPepThresCount[0] == -1) {
+                    if (libraryConsoleOutput != null) {
+                        libraryConsoleOutput.appendText(format.format(new Date()) + ":\t" + "Peptide detectability threshold=1.0\n");
+                    }
+                    thresholdComboBox.setValue(1.0f);
+                }
+            } else {
+                if (highPepThresCount[0] == -1) {
+                    if (libraryConsoleOutput != null) {
+                        libraryConsoleOutput.appendText(format.format(new Date()) + ":\t" + "Peptide detectability threshold>"
+                            + (double) lowPepThresCount[0] / 100 + " and <=1.0\n");
+                    }
+                    thresholdComboBox.setValue((float) lowPepThresCount[0] / 100);
+                } else {
+                    if (highPepThresCount[0] > lowPepThresCount[0]) {
+                        if (libraryConsoleOutput != null) {
+                            libraryConsoleOutput.appendText(format.format(new Date()) + ":\t"
+                                + "Peptide detectability threshold>=" + (double) lowPepThresCount[0] / 100
+                                + " and <=" + (double) highPepThresCount[0] / 100 + "\n");
+                        }
+                    } else {
+                        if (libraryConsoleOutput != null) {
+                            libraryConsoleOutput.appendText(format.format(new Date()) + ":\t"
+                                + "Peptide detectability threshold>=" + (double) lowPepThresCount[0] / 100 + "\n");
+                        }
+                    }
+                    thresholdComboBox.setValue((float) lowPepThresCount[0] / 100);
+                }
+            }
+            
+            // Debug output to show threshold calculation completed
+            System.out.println("DEBUG: Threshold calculation completed successfully");
+            if (libraryConsoleOutput != null) {
+                libraryConsoleOutput.appendText("=== Threshold Calculation Completed Successfully ===\n");
+            }
+        });
+    }
+    
+    /**
+     * Create library files
+     */
+    private void createLibraryFiles(File predictedFile, HashSet<String> taxaGenomeSet, HashSet<String> funcProSet,
+                                  HashSet<String> selectedTaxa, HashSet<String> selectedFunctions, float threshold, String resultDir, String libraryName) throws Exception {
+        long totalMemorySize = ((OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean())
+            .getTotalMemorySize() / 1024 / 1024 / 1024;
+        ExecutorService es = Executors.newFixedThreadPool((int) totalMemorySize / 2);
+        
+        // Debug output
+        Platform.runLater(() -> {
+            if (libraryConsoleOutput != null) {
+                libraryConsoleOutput.appendText("DEBUG: createLibraryFiles called with:\n");
+                libraryConsoleOutput.appendText("  - taxaGenomeSet size: " + taxaGenomeSet.size() + "\n");
+                libraryConsoleOutput.appendText("  - funcProSet size: " + funcProSet.size() + "\n");
+                libraryConsoleOutput.appendText("  - threshold: " + threshold + "\n");
+                libraryConsoleOutput.appendText("  - predictedFile: " + predictedFile.getAbsolutePath() + "\n");
+                libraryConsoleOutput.appendText("  - predictedFile exists: " + predictedFile.exists() + "\n");
+                if (predictedFile.exists()) {
+                    String[] files = predictedFile.list();
+                    libraryConsoleOutput.appendText("  - predicted files count: " + (files != null ? files.length : 0) + "\n");
+                }
+            }
+        });
+        
+        HashSet<String> pepSet = new HashSet<>();
+        for (String genome : taxaGenomeSet) {
+            es.submit(() -> {
+                try {
+                    File genomeFile = new File(predictedFile, genome + ".predicted.tsv");
+                    if (!genomeFile.exists()) {
+                        Platform.runLater(() -> {
+                            if (libraryConsoleOutput != null) {
+                                libraryConsoleOutput.appendText("WARNING: Predicted file not found for genome: " + genome + "\n");
+                            }
+                        });
+                        return null;
+                    }
+                    
+                    final int[] lineCount = {0};
+                    final int[] peptideCount = {0};
+                    try (BufferedReader reader = new BufferedReader(new FileReader(genomeFile))) {
+                        String line = reader.readLine(); // Skip header
+                        while ((line = reader.readLine()) != null) {
+                            lineCount[0]++;
+                            String[] cs = line.split("\t");
+                            // If no functions selected (funcProSet is empty), include all proteins
+                            // Otherwise, only include proteins that match selected functions
+                            if (funcProSet.isEmpty() || funcProSet.contains(cs[0])) {
+                                float score = Float.parseFloat(cs[2]);
+                                if (score > threshold) {
+                                    pepSet.add(cs[1]);
+                                    peptideCount[0]++;
+                                }
+                            }
+                        }
+                    }
+                    
+                    Platform.runLater(() -> {
+                        if (libraryConsoleOutput != null) {
+                            libraryConsoleOutput.appendText("Processed genome " + genome + ": " + lineCount[0] + " lines, " + peptideCount[0] + " peptides above threshold " + threshold + "\n");
+                        }
+                    });
+                    
+                } catch (Exception e) {
+                    Platform.runLater(() -> {
+                        if (libraryConsoleOutput != null) {
+                            libraryConsoleOutput.appendText("ERROR processing file for genome " + genome + " - " + e.getMessage() + "\n");
+                        }
+                    });
+                }
+                return null;
+            });
+        }
+        es.shutdown();
+        try {
+            es.awaitTermination(2, TimeUnit.HOURS);
+        } catch (InterruptedException e) {
+            System.err.println("Error waiting for file processing threads: " + e.getMessage());
+        }
+        
+        // Debug output for final results
+        Platform.runLater(() -> {
+            if (libraryConsoleOutput != null) {
+                libraryConsoleOutput.appendText("DEBUG: Final results:\n");
+                libraryConsoleOutput.appendText("  - Total unique peptides found: " + pepSet.size() + "\n");
+                libraryConsoleOutput.appendText("  - Threshold used: " + threshold + "\n");
+                libraryConsoleOutput.appendText("  - Functional filtering: " + (funcProSet.isEmpty() ? "NONE (using all proteins)" : "Applied to " + funcProSet.size() + " proteins") + "\n");
+            }
+        });
+        
+        // Create output directory with library name
+        File libraryDir = new File(resultDir, libraryName);
+        System.out.println("DEBUG: Library directory path: " + libraryDir.getAbsolutePath());
+        System.out.println("DEBUG: Library directory exists before creation: " + libraryDir.exists());
+        if (!libraryDir.exists()) {
+            boolean created = libraryDir.mkdirs();
+            System.out.println("DEBUG: Library directory created: " + created);
+            System.out.println("DEBUG: Library directory exists after creation: " + libraryDir.exists());
+        } else {
+            System.out.println("DEBUG: Library directory already exists");
+        }
+        
+        // Create library files with library name
+        File fastaFile = new File(libraryDir, libraryName + ".fasta");
+        File infoFile = new File(libraryDir, libraryName + ".info");
+        File libFile = new File(libraryDir, libraryName + ".predicted.speclib");
+        
+        // Write FASTA file
+        System.out.println("DEBUG: Writing FASTA file: " + fastaFile.getAbsolutePath());
+        System.out.println("DEBUG: FASTA file will contain " + pepSet.size() + " peptides");
+        try (PrintWriter writer = new PrintWriter(fastaFile)) {
+        int count = 0;
+            for (String pep : pepSet) {
+                writer.println(">pro" + count + " pro" + count);
+                writer.println(pep);
                 count++;
             }
         }
-        return count;
+        System.out.println("DEBUG: FASTA file written successfully");
+        
+        // Write info file
+        System.out.println("DEBUG: Writing info file: " + infoFile.getAbsolutePath());
+        try (PrintWriter writer = new PrintWriter(infoFile)) {
+            writer.println("Genomes:");
+            for (String genome : taxaGenomeSet) {
+                writer.println(genome);
+            }
+            writer.println("Functions:");
+            for (String func : selectedFunctions) {
+                writer.println(func);
+            }
+            writer.println("Proteins:");
+            for (String pro : funcProSet) {
+                writer.println(pro);
+            }
+            writer.println("Peptide detectability threshold:");
+            writer.print(threshold);
+        }
+        System.out.println("DEBUG: Info file written successfully");
+        
+        // Execute DiaNN task to create spectral library
+        Platform.runLater(() -> {
+            if (libraryConsoleOutput != null) {
+                libraryConsoleOutput.appendText(format.format(new Date()) + ":\tExecuting DiaNN task to create spectral library...\n");
+            }
+        });
+        
+        System.out.println("DEBUG: About to execute DiaNN task");
+        System.out.println("DEBUG: FASTA file: " + fastaFile.getAbsolutePath());
+        System.out.println("DEBUG: Library file: " + libFile.getAbsolutePath());
+        System.out.println("DEBUG: Threads: " + threadsComboBox.getValue());
+        
+        try {
+            DiaNNTask diaNNTask = new DiaNNTask(resourceParams.getToolPath(ToolType.DIANN));
+            DiannParameter diannPar = new DiannParameter();
+            diannPar.setThreads(threadsComboBox.getValue()); // Use selected thread count
+            diaNNTask.addTask(diannPar, fastaFile.getAbsolutePath(), libFile.getAbsolutePath(), false);
+            
+            System.out.println("DEBUG: DiaNN task created, about to run...");
+            diaNNTask.run(2);
+            System.out.println("DEBUG: DiaNN task completed successfully");
+            
+            Platform.runLater(() -> {
+                if (libraryConsoleOutput != null) {
+                    libraryConsoleOutput.appendText(format.format(new Date()) + ":\tLibrary created successfully with " + pepSet.size() + " peptides\n");
+                    libraryConsoleOutput.appendText("FASTA file: " + fastaFile.getAbsolutePath() + "\n");
+                    libraryConsoleOutput.appendText("Info file: " + infoFile.getAbsolutePath() + "\n");
+                    libraryConsoleOutput.appendText("Spectral library: " + libFile.getAbsolutePath() + "\n");
+                }
+            });
+            
+            // Update library file path text field if it exists
+            Platform.runLater(() -> {
+                if (libraryFilePathTextField != null) {
+                    libraryFilePathTextField.setText(libFile.getAbsolutePath());
+                }
+            });
+            
+        } catch (Exception e) {
+            System.err.println("ERROR: Failed to execute DiaNN task: " + e.getMessage());
+            System.err.println("DEBUG: Exception type: " + e.getClass().getName());
+            e.printStackTrace();
+            throw new Exception("DiaNN task execution failed: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Show error dialog
+     */
+    private void showError(String title, String message) {
+        Platform.runLater(() -> {
+            javafx.scene.control.Alert alert = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.ERROR);
+            alert.setTitle(title);
+            alert.setHeaderText(null);
+            alert.setContentText(message);
+            alert.showAndWait();
+        });
+    }
+    
+    /**
+     * Save current parameters to file
+     */
+    public void saveCurrentParameters() {
+        System.out.println("DEBUG: saveCurrentParameters() called");
+        try {
+            System.out.println("DEBUG: Attempting to collect parameters from UI...");
+            MetaParameterDiaTg currentParams = collectParametersFromUI();
+            System.out.println("DEBUG: collectParametersFromUI() returned: " + (currentParams != null ? "SUCCESS" : "NULL"));
+            
+            if (currentParams != null) {
+                System.out.println("DEBUG: Parameters collected successfully, attempting to save...");
+                System.out.println("DEBUG: ParameterIO instance: " + (parameterIO != null ? "EXISTS" : "NULL"));
+                System.out.println("DEBUG: Parameter type: " + currentParams.getClass().getSimpleName());
+                System.out.println("DEBUG: Base parameter: " + (currentParams != null ? "EXISTS" : "NULL"));
+                System.out.println("DEBUG: MAG DB item: " + (currentParams.getMagDbItem() != null ? "EXISTS" : "NULL"));
+                System.out.println("DEBUG: Target library name: " + currentParams.getTargetLibraryName());
+                
+                boolean saved = parameterIO.saveLastUsedParameters(currentParams);
+                System.out.println("DEBUG: saveLastUsedParameters() returned: " + saved);
+                
+                if (saved) {
+                    System.out.println("DEBUG: Successfully saved current parameters to last_used_dia_target_parameters.json");
+                } else {
+                    System.err.println("WARNING: Failed to save current parameters - saveLastUsedParameters returned false");
+                }
+            } else {
+                System.err.println("WARNING: No parameters to save - collectParametersFromUI returned null");
+                System.out.println("DEBUG: Attempting fallback with collectParametersFromUIForAutoSave...");
+                MetaParameterDiaTg fallbackParams = collectParametersFromUIForAutoSave();
+                System.out.println("DEBUG: collectParametersFromUIForAutoSave() returned: " + (fallbackParams != null ? "SUCCESS" : "NULL"));
+                
+                if (fallbackParams != null) {
+                    System.out.println("DEBUG: Attempting to save fallback parameters...");
+                    boolean saved = parameterIO.saveLastUsedParameters(fallbackParams);
+                    System.out.println("DEBUG: Fallback save returned: " + saved);
+                    if (saved) {
+                        System.out.println("DEBUG: Successfully saved fallback parameters");
+                    } else {
+                        System.err.println("WARNING: Failed to save fallback parameters");
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("ERROR: Failed to save current parameters: " + e.getMessage());
+            System.err.println("DEBUG: Exception type: " + e.getClass().getSimpleName());
+            e.printStackTrace();
+        }
     }
 
-    private int getSelectedFunctionCount() {
-        int count = 0;
-        for (FunctionRow row : functionData) {
-            if (row.getSelected()) {
-                count++;
-            }
-        }
-        return count;
-    }
+
 } 

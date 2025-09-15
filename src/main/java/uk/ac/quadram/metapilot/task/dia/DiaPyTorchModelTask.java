@@ -1,6 +1,5 @@
 package uk.ac.quadram.metapilot.task.dia;
 
-import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -22,8 +21,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.Map;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.apache.logging.log4j.LogManager;
@@ -31,7 +28,7 @@ import org.apache.logging.log4j.Logger;
 
 import uk.ac.quadram.metapilot.core.math.MathTool;
 import uk.ac.quadram.metapilot.core.tools.FormatTool;
-import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
+import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.MetaAbstractTask;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
@@ -46,72 +43,96 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 
 	private MagDbItem magDbItem;
 	private String filePath;
+	private String modelName;
+	private String modelType;
 	private HashMap<String, Double> pepIntenMap;
-	private int trainPepCount = 0;
 	private File modelFolderFile;
 	private boolean addModel;
 	private int threadCount;
 	private Process process;
 	private String pythonExe;
-	private String prismdir;
-	private String result;
-	private String resultName;
-	private String mslfile;
-	private String intensityFile;
-	private String fastadb;
-	private boolean model = false;
 
-	public DiaPyTorchModelTask(MetaParameterDia metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
+
+	public DiaPyTorchModelTask(MetaParameterDia metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
 			String filePath) {
 		super(metaPar, mrp, progressBar, null);
 		// TODO Auto-generated constructor stub
-		this.magDbItem = metaPar.getUsedMagDbItem();
+		this.magDbItem = metaPar.getMagDbItem();
 		this.filePath = filePath;
-		this.addModel = true;
+		this.modelType = "PyTorch";
 		this.threadCount = metaPar.getThreadCount();
+		this.addModel = true;
 	}
 
-	public DiaPyTorchModelTask(MetaParameterDia metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
+	public DiaPyTorchModelTask(MetaParameterDia metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
 			String filePath, File modelFolderFile) {
 		super(metaPar, mrp, progressBar, null);
 		// TODO Auto-generated constructor stub
-		this.magDbItem = metaPar.getUsedMagDbItem();
+		this.magDbItem = metaPar.getMagDbItem();
 		this.filePath = filePath;
+		this.modelType = "PyTorch";
 		this.modelFolderFile = modelFolderFile;
-		this.addModel = false;
 		this.threadCount = metaPar.getThreadCount();
+		this.addModel = false;
 	}
 
-	public DiaPyTorchModelTask(MetaParameterDia metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
+	public DiaPyTorchModelTask(MetaParameterDia metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
 			HashMap<String, Double> pepIntenMap) {
 		super(metaPar, mrp, progressBar, null);
 		// TODO Auto-generated constructor stub
-		this.magDbItem = metaPar.getUsedMagDbItem();
+		this.magDbItem = metaPar.getMagDbItem();
 		this.pepIntenMap = pepIntenMap;
-		this.addModel = true;
+		this.modelType = "PyTorch";
 		this.threadCount = metaPar.getThreadCount();
+		this.addModel = true;
 	}
 
-	public DiaPyTorchModelTask(MetaParameterDia metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
+	public DiaPyTorchModelTask(MetaParameterDia metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
 			HashMap<String, Double> pepIntenMap, File modelFolderFile) {
 		super(metaPar, mrp, progressBar, null);
 		// TODO Auto-generated constructor stub
-		this.magDbItem = metaPar.getUsedMagDbItem();
+		this.magDbItem = metaPar.getMagDbItem();
 		this.pepIntenMap = pepIntenMap;
+		this.modelType = "PyTorch";
 		this.modelFolderFile = modelFolderFile;
-		this.addModel = false;
 		this.threadCount = metaPar.getThreadCount();
+		this.addModel = false;
 	}
 
-	public DiaPyTorchModelTask(MetaParameterDia metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
+	public DiaPyTorchModelTask(MetaParameterDia metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
 			HashMap<String, Double> pepIntenMap, File modelFolderFile, int threadCount) {
 		super(metaPar, mrp, progressBar, null);
 		// TODO Auto-generated constructor stub
-		this.magDbItem = metaPar.getUsedMagDbItem();
+		this.magDbItem = metaPar.getMagDbItem();
 		this.pepIntenMap = pepIntenMap;
+		this.modelType = "PyTorch";
 		this.modelFolderFile = modelFolderFile;
-		this.addModel = false;
 		this.threadCount = threadCount;
+		this.addModel = false;
+	}
+
+	// Overloads including model name/type for compatibility with legacy workflow
+	public DiaPyTorchModelTask(MetaParameterDia metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
+			String filePath, String modelName, String modelType) {
+		super(metaPar, mrp, progressBar, null);
+		this.magDbItem = metaPar.getMagDbItem();
+		this.filePath = filePath;
+		this.modelName = modelName;
+		this.modelType = modelType;
+		this.threadCount = metaPar.getThreadCount();
+		this.addModel = true;
+	}
+
+	public DiaPyTorchModelTask(MetaParameterDia metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
+			String filePath, String modelName, String modelType, File modelFolderFile) {
+		super(metaPar, mrp, progressBar, null);
+		this.magDbItem = metaPar.getMagDbItem();
+		this.filePath = filePath;
+		this.modelName = modelName;
+		this.modelType = modelType;
+		this.modelFolderFile = modelFolderFile;
+		this.threadCount = metaPar.getThreadCount();
+		this.addModel = false;
 	}
 
 	public void forceStop() {
@@ -126,152 +147,160 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 
 	@Override
 	protected Boolean call() throws Exception {
-		// Update progress at start
 		updateProgress(0, 100);
-		updateMessage("Starting model training...");
+		updateMessage("Preparing data tables...");
 
-		if (model) {
-			// code for model training
-			LOGGER.info("Training Prism model from the file " + intensityFile);
-			System.out.println("Training Prism model from the file " + intensityFile);
-
-			String outputFile = result;
-
-			ProcessBuilder builder = new ProcessBuilder(this.pythonExe, prismdir + "\\bin\\rt-process.py",
-					intensityFile, fastadb, outputFile, "MO");
-
-			builder.directory(new File(prismdir));
-
-			Map<String, String> env = builder.environment();
-
-			System.out.println("Training the model, it may take a few minutes or even hours...");
-
-			builder.redirectErrorStream(true);
-			this.process = builder.start();
-
-			InputStream is = process.getInputStream();
-			InputStreamReader isr = new InputStreamReader(is);
-			BufferedReader br = new BufferedReader(isr);
-
-			String line;
-			Pattern p = Pattern.compile(".*loss = .*");
-			double epoch = Double.NaN;
-
-			while ((line = br.readLine()) != null) {
-				System.out.println(line);
-				Matcher m = p.matcher(line);
-
-				if (m.matches()) {
-					String result = m.group();
-					int pos = result.indexOf("loss = ") + "loss = ".length();
-					String strValue = result.substring(pos, result.indexOf(",", pos)).trim();
-					try {
-						double loss = Double.parseDouble(strValue);
-						if (Double.isNaN(epoch)) {
-							epoch = 1.0;
-						}
-
-						// Update progress based on epoch (assuming 50 epochs total)
-						updateProgress(Math.min(epoch * 2, 100), 100);
-						updateMessage("Training model: Epoch " + (int) epoch + " - Loss: " + loss);
-
-						epoch++;
-					} catch (NumberFormatException e) {
-						LOGGER.info(e);
-					}
-				}
-			}
-
-			br.close();
-			isr.close();
-			is.close();
-
-			if (0 != process.waitFor()) {
-				System.out.println("Error in training model");
-				LOGGER.error("Error in training model");
-				updateMessage("Error in training model");
-				return false;
-			}
-
-			// Update progress for successful completion
-			updateProgress(100, 100);
-			updateMessage("Model training completed successfully");
-
-			return true;
-
-		} else {
-			// code for prediction
-			LOGGER.info("Using Prism to predict the spectra in " + mslfile);
-			System.out.println("Using Prism to predict the spectra in " + mslfile);
-
-			String cmd = this.pythonExe + " " + prismdir + "\\bin\\rt-prediction.py " + mslfile + " " + result + " "
-					+ fastadb;
-			System.out.println(cmd);
-
-			ProcessBuilder builder = new ProcessBuilder(this.pythonExe, prismdir + "\\bin\\rt-prediction.py", mslfile,
-					result, fastadb);
-
-			builder.directory(new File(prismdir));
-
-			Map<String, String> env = builder.environment();
-
-			System.out.println("Predicting, it may take a few minutes or even hours...");
-
-			builder.redirectErrorStream(true);
-			this.process = builder.start();
-
-			InputStream is = process.getInputStream();
-			InputStreamReader isr = new InputStreamReader(is);
-			BufferedReader br = new BufferedReader(isr);
-
-			String line;
-			long totalPeptides = 0;
-			long processedPeptides = 0;
-			Pattern p = Pattern.compile(".*\\speps\\s.*");
-
-			while ((line = br.readLine()) != null) {
-				System.out.println(line);
-				Matcher m = p.matcher(line);
-
-				if (m.matches()) {
-					String result = m.group();
-					int pos = result.indexOf("peps") - 1;
-					String strValue = result.substring(result.lastIndexOf(" ", pos), pos).trim();
-					try {
-						long pepCount = Long.parseLong(strValue);
-						if (totalPeptides == 0) {
-							totalPeptides = pepCount;
-						} else {
-							processedPeptides = pepCount;
-							// Update progress based on processed peptides
-							double progress = (double) processedPeptides / totalPeptides * 100.0;
-							updateProgress(progress, 100);
-							updateMessage(
-									"Predicting spectra: " + processedPeptides + " / " + totalPeptides + " peptides");
-						}
-					} catch (NumberFormatException e) {
-						LOGGER.info(e);
-					}
-				}
-			}
-
-			br.close();
-			isr.close();
-			is.close();
-
-			if (0 != process.waitFor()) {
-				System.out.println("Error in predicting");
-				LOGGER.error("Error in predicting");
-				updateMessage("Error in predicting spectra");
-				return false;
-			}
-
-			// Update progress for successful completion
-			updateProgress(100, 100);
-			updateMessage("Prediction completed successfully");
-
-			return true;
+		// Resolve Python executable
+		this.pythonExe = mrp != null ? mrp.getToolPath(uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType.PYTHON) : null;
+		if (this.pythonExe == null || this.pythonExe.trim().isEmpty()) {
+			LOGGER.error(taskName + ": Python path is not configured");
+			updateMessage("Python not configured");
+			return false;
 		}
+
+		// Determine MAG DB current folder and model folder
+		File currentDbFolder = magDbItem != null ? magDbItem.getCurrentFile() : null;
+		if (currentDbFolder == null || !currentDbFolder.exists()) {
+			LOGGER.error(taskName + ": MAG DB current folder is missing");
+			updateMessage("MAG DB not set");
+			return false;
+		}
+		File predictPepFolder = new File(currentDbFolder, "predicted");
+		if (!predictPepFolder.exists()) {
+			LOGGER.error(taskName + ": no predicted peptide folder found at " + predictPepFolder);
+			updateMessage("Predicted peptides not found");
+			return false;
+		}
+
+		if (this.modelFolderFile == null) {
+			File totalModelDir = new File(currentDbFolder, "models");
+			if (!totalModelDir.exists()) {
+				totalModelDir.mkdirs();
+			}
+			// Prefer user-specified model name when available for folder name
+			String folderName = (modelName != null && modelName.trim().length() > 0) ? modelName : "PyTorch";
+			this.modelFolderFile = new File(totalModelDir, folderName);
+		}
+		if (!this.modelFolderFile.exists()) {
+			this.modelFolderFile.mkdirs();
+		}
+
+		// Prepare input tables (reuse SQL if DB exists)
+		File sqlDbFile = new File(currentDbFolder, currentDbFolder.getParentFile().getName() + ".db");
+		File trainFile = new File(modelFolderFile, "trainData.tsv");
+		File predDataFile = new File(modelFolderFile, "predictionData.tsv");
+
+		if (!(trainFile.exists() && trainFile.length() > 0 && predDataFile.exists() && predDataFile.length() > 0)) {
+			int prepared = sqlDbFile.exists() ?
+					prepareFilesSQL(sqlDbFile, predictPepFolder, modelFolderFile) :
+					prepareFiles(predictPepFolder, new File(currentDbFolder, "genomes-all_metadata.tsv"),
+							new File(currentDbFolder, "eggNOG"), modelFolderFile);
+			if (prepared <= 0) {
+				LOGGER.error(taskName + ": preparing data tables failed");
+				updateMessage("Failed to prepare data tables");
+				return false;
+			}
+		}
+
+		updateProgress(30, 100);
+		updateMessage("Training and predicting with PyTorch model...");
+
+		// Run the PyTorch script and wait for completion
+		boolean ran = runPyTorch(modelFolderFile, this.pythonExe);
+		if (!ran) {
+			updateMessage("PyTorch model run failed");
+			return false;
+		}
+
+		updateProgress(80, 100);
+		updateMessage("Calculating peptide rank...");
+		int pepCount = getPepRank(currentDbFolder, modelFolderFile);
+		if (pepCount <= 0) {
+			LOGGER.error(taskName + ": peptide rank calculation failed");
+			updateMessage("Peptide rank failed");
+			return false;
+		}
+
+		// Rename pytorch_predictions.tsv to {modelName}_pytorch_predictions.tsv for MetaDiaTask compatibility
+		updateMessage("Renaming pytorch predictions file...");
+		renamePytorchPredictionsFile(modelFolderFile);
+
+		// If requested, register model summary into MAG DB config (align with legacy behavior)
+		try {
+			if (addModel && magDbItem != null) {
+				// Read actual values from pytorch_model_results.txt
+				int trainSize = 0;
+				double corr = 0.0;
+				double med = 0.0; // Keep as placeholder since it's not in the new format
+				
+				File resultsFile = new File(modelFolderFile, "pytorch_model_results.txt");
+				if (resultsFile.exists()) {
+					try (BufferedReader reader = new BufferedReader(new FileReader(resultsFile))) {
+						String line;
+						boolean inDatasetSizes = false;
+						while ((line = reader.readLine()) != null) {
+							line = line.trim();
+							
+							// Check for Dataset Sizes section
+							if (line.equals("Dataset Sizes:")) {
+								inDatasetSizes = true;
+								continue;
+							}
+							
+							// Parse Training samples
+							if (inDatasetSizes && line.startsWith("Training samples:")) {
+								try {
+									trainSize = Integer.parseInt(line.substring("Training samples:".length()).trim());
+								} catch (NumberFormatException e) {
+									LOGGER.warn(taskName + ": Could not parse training samples from: " + line);
+								}
+							}
+							
+							// Parse Correlation from metrics section
+							if (line.startsWith("Correlation:")) {
+								try {
+									corr = Double.parseDouble(line.substring("Correlation:".length()).trim());
+								} catch (NumberFormatException e) {
+									LOGGER.warn(taskName + ": Could not parse correlation from: " + line);
+								}
+							}
+						}
+					} catch (IOException e) {
+						LOGGER.warn(taskName + ": Could not read results file: " + resultsFile, e);
+					}
+				}
+				
+				// Fallback to counting lines if results file not found or parsing failed
+				if (trainSize == 0) {
+					trainSize = countLines(new File(modelFolderFile, "trainData.tsv")) - 1;
+				}
+				
+				int dataSize = countLines(new File(modelFolderFile, "predictionData.tsv")) - 1;
+				String name = (modelName != null && modelName.trim().length() > 0) ? modelName : modelFolderFile.getName();
+				magDbItem.addModel(name, trainSize, dataSize, corr, med);
+				
+				LOGGER.info(taskName + ": Registered model - Name: " + name + ", TrainSize: " + trainSize + 
+					", DataSize: " + dataSize + ", Correlation: " + corr);
+			}
+		} catch (Exception e) {
+			LOGGER.warn(taskName + ": Model registration failed", e);
+			// Non-fatal; model registration failure should not break task success
+		}
+
+		updateProgress(100, 100);
+		updateMessage("PyTorch modeling completed");
+		return true;
+	}
+
+	private int countLines(File f) {
+		int count = 0;
+		if (f == null || !f.exists()) return 0;
+		try (BufferedReader br = new BufferedReader(new FileReader(f))) {
+			while (br.readLine() != null) count++;
+		} catch (IOException e) {
+			return 0;
+		}
+		return count;
 	}
 
 	private int prepareFiles(File predictPepFolder, File taxDbFile, File funcFolder, File modelFolder) {
@@ -2008,7 +2037,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 
 		} else {
 			try {
-
+				// Ensure the PyTorch script is available in the model folder
 				try (InputStream inputStream = DiaPyTorchModelTask.class.getResourceAsStream("pytorch_model.py");
 						BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
 					if (inputStream == null) {
@@ -2026,56 +2055,70 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 					inputStream.close();
 					writer.close();
 				} catch (IOException e) {
-					// TODO Auto-generated catch block
 					LOGGER.info(taskName + ": error in writing the pytorch_model.py file");
 					System.out.println(format.format(new Date()) + "\t" + taskName
 							+ ": error in writing the pytorch_model.py file");
 				}
 
-				File batFile = new File(pythonFile.getParent(), pythonFile.getName() + ".bat");
-				PrintWriter batWriter = new PrintWriter(batFile);
-
-				File pythonExeFile = new File(python);
-
-				StringBuilder sb = new StringBuilder();
-				sb.append(pythonExeFile.getAbsolutePath()).append(" ");
-				sb.append(pythonFile.getAbsolutePath());
-
-				batWriter.println("@echo off");
-				batWriter.println(pythonFile.getAbsolutePath().split(":")[0] + ":");
-				batWriter.println("cd /d \"" + pythonFile.getParent() + "\"");
-				batWriter.println("start /B " + sb);
-
-				batWriter.println("if errorlevel 1 (");
-				batWriter.println("\techo Error: Failed to start the application.");
-				batWriter.println(") else (");
-				batWriter.println("\techo Application started successfully.");
-				batWriter.println(")");
-				batWriter.print("exit");
-				batWriter.close();
-
-				String[] args = { "cmd.exe", "/c", "start", batFile.getAbsolutePath() };
-				ProcessBuilder pb = new ProcessBuilder(args);
+				// Run python synchronously in model folder
+				ProcessBuilder pb = new ProcessBuilder(python, pythonFile.getAbsolutePath());
+				pb.directory(modelFolder);
+				pb.redirectErrorStream(true);
 				Process p = pb.start();
-				BufferedInputStream in = new BufferedInputStream(p.getInputStream());
-				BufferedReader inBr = new BufferedReader(new InputStreamReader(in));
-				String lineStr = null;
+				BufferedReader inBr = new BufferedReader(new InputStreamReader(p.getInputStream()));
+				String lineStr;
+				Pattern lossPattern = Pattern.compile(".*loss.*", Pattern.CASE_INSENSITIVE);
+				Pattern errorPattern = Pattern.compile(".*(error|Error|ERROR|exception|Exception|EXCEPTION|traceback|Traceback|TRACEBACK|ModuleNotFoundError|ImportError).*", Pattern.CASE_INSENSITIVE);
+				double prog = 30.0;
+				boolean hasError = false;
+				StringBuilder errorOutput = new StringBuilder();
+				
 				while ((lineStr = inBr.readLine()) != null) {
 					System.out.println(lineStr);
+					updateMessage("PyTorch: " + lineStr);
+					
+					// Check for errors and highlight them
+					if (errorPattern.matcher(lineStr).matches()) {
+						hasError = true;
+						errorOutput.append(lineStr).append("\n");
+						System.err.println("*** PYTHON ERROR DETECTED: " + lineStr);
+						LOGGER.error(taskName + ": Python error - " + lineStr);
+					}
+					
+					if (lossPattern.matcher(lineStr).matches()) {
+						prog = Math.min(prog + 1.0, 95.0);
+						updateProgress(prog, 100);
+					}
 				}
-
-				if (p.waitFor() != 0) {
-					if (p.exitValue() == 1)
-						System.err.println("false");
-				}
+				int code = p.waitFor();
 				inBr.close();
-				in.close();
+				
+				if (code != 0) {
+					String errorMsg = "PyTorch process exited with code " + code;
+					if (hasError) {
+						errorMsg += "\nPython errors detected:\n" + errorOutput.toString();
+					}
+					LOGGER.error(taskName + ": " + errorMsg);
+					System.err.println("*** PYTHON PROCESS FAILED: " + errorMsg);
+					updateMessage("Python execution failed - check console for details");
+				}
 			} catch (Exception e) {
 				LOGGER.error(taskName + ": error in building the peptide intensity model by deep learning", e);
 				System.err.println(format.format(new Date()) + "\t" + taskName
 						+ ": error in building the peptide intensity model by deep learning");
 			}
 		}
+	}
+
+	private boolean runPyTorch(File modelFolder, String python) {
+		File predictAllFile = new File(modelFolder, "pytorch_predictions.tsv");
+		if (predictAllFile.exists() && predictAllFile.length() > 0) {
+			LOGGER.info(taskName + ": found existing predictions: " + predictAllFile);
+			return true;
+		}
+		buildModel(modelFolder, python);
+		// After buildModel returns, check output
+		return predictAllFile.exists() && predictAllFile.length() > 0;
 	}
 
 	@SuppressWarnings("unused")
@@ -2167,7 +2210,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 		}
 
 		ExecutorService executor = Executors.newFixedThreadPool(threadCount);
-		File outputFile = new File(projectFile, "pep_rank.tsv");
+		File outputFile = new File(projectFile, projectFile.getName() + "_pep_rank.tsv");
 		BufferedWriter[] writer = { null };
 		try {
 			writer[0] = new BufferedWriter(new FileWriter(outputFile, true));
@@ -2353,7 +2396,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 		}
 
 		DecimalFormat df4 = FormatTool.getDF4();
-		File outputFile = new File(projectFile, "pep_rank.tsv");
+		File outputFile = new File(projectFile, projectFile.getName() + "_pep_rank.tsv");
 		try {
 			PrintWriter writer = new PrintWriter(outputFile);
 			for (int i = 0; i < peptideContents.length; i++) {
@@ -2429,5 +2472,27 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 	protected Logger getLogger() {
 		// TODO Auto-generated method stub
 		return LOGGER;
+	}
+
+	private void renamePytorchPredictionsFile(File modelFolder) {
+		try {
+			File pytorchPredictionsFile = new File(modelFolder, "pytorch_predictions.tsv");
+			File namedPytorchPredictionsFile = new File(modelFolder, modelFolder.getName() + "_pytorch_predictions.tsv");
+			
+			if (!pytorchPredictionsFile.exists()) {
+				LOGGER.warn(taskName + ": pytorch_predictions.tsv not found, cannot rename");
+				return;
+			}
+			
+			// Rename pytorch_predictions.tsv to {modelName}_pytorch_predictions.tsv
+			if (pytorchPredictionsFile.renameTo(namedPytorchPredictionsFile)) {
+				LOGGER.info(taskName + ": Renamed pytorch_predictions.tsv to " + modelFolder.getName() + "_pytorch_predictions.tsv");
+			} else {
+				LOGGER.warn(taskName + ": Failed to rename pytorch_predictions.tsv to " + modelFolder.getName() + "_pytorch_predictions.tsv");
+			}
+			
+		} catch (Exception e) {
+			LOGGER.error(taskName + ": Error renaming pytorch_predictions.tsv file", e);
+		}
 	}
 }

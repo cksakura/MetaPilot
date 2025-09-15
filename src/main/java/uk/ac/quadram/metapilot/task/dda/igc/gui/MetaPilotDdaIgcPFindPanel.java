@@ -19,7 +19,9 @@ import javafx.scene.control.Alert.AlertType;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
 import uk.ac.quadram.metapilot.task.common.gui.IsobaricLabelingPanel;
 import uk.ac.quadram.metapilot.task.common.gui.TaxonomicAnalysisPanel;
+import uk.ac.quadram.metapilot.task.common.gui.DdaIgcInputOutputPanel;
 import uk.ac.quadram.metapilot.task.par.MetaData;
+import uk.ac.quadram.metapilot.MetaPilotApp;
 import uk.ac.quadram.metapilot.core.mod.IsobaricTag;
 import uk.ac.quadram.metapilot.task.dda.igc.DDAIgcPFindTask;
 import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcPFindParameters;
@@ -38,7 +40,6 @@ import java.util.ArrayList;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.io.File;
-import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -46,12 +47,7 @@ import org.apache.logging.log4j.Logger;
 public class MetaPilotDdaIgcPFindPanel extends VBox {
     private static final Logger LOGGER = LogManager.getLogger(MetaPilotDdaIgcPFindPanel.class);
     // UI Components (similar to MaxQuant panel)
-    private MetaPilotIOPanelFX ioPanel;
-    private TextField microbiomeDBField;
-    private TextField hostDBField;
-    private CheckBox appendHostDBCheckBox;
-    private Button browseMicrobiomeDBButton;
-    private Button browseHostDBButton;
+    private DdaIgcInputOutputPanel ioPanel;
     private TextArea consoleOutput;
     private TextArea parameterView;
     private ProgressBar overallProgressBar;
@@ -109,17 +105,35 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
     private Label statusMemLabel;
     private Timeline statusTimeline;
     private long taskStartTimeMillis;
-
+    
+    // Add parameter IO instance
+    private DDAIgcPFindParameterIO parameterIO;
+    
     public MetaPilotDdaIgcPFindPanel() {
+        // Initialize parameter IO instance
+        parameterIO = new DDAIgcPFindParameterIO();
+        
         loadEnzymesFromIni();
         loadModificationsFromIni();
         loadIsobaricBaseTypes();
+        
+        // Initialize unified IO panel
+        ioPanel = new DdaIgcInputOutputPanel(this::updateParameterView);
         
         // Initialize taxonomic analysis panel
         taxonomicAnalysisPanel = new TaxonomicAnalysisPanel(this::updateParameterView);
         
         initializeUI();
-        loadLastUsedParameters();
+        
+        // Note: Parameters are only saved when starting analysis or explicitly requested
+        
+        // Load parameters after UI is fully initialized
+        Platform.runLater(() -> {
+            loadLastUsedParameters();
+            
+            // Add window close event handler to save parameters
+            setupWindowCloseHandler();
+        });
     }
 
     private void initializeUI() {
@@ -159,8 +173,8 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
                 try {
                     DDAIgcPFindParameters currentParams = collectParametersFromUI();
                     if (currentParams != null) {
-                        DDAIgcPFindParameterIO.saveLastUsedParameters(currentParams);
-                        DDAIgcPFindParameterIO.savePreferences(currentParams);
+                        parameterIO.saveLastUsedParameters(currentParams);
+                        parameterIO.savePreferences(currentParams);
                         LOGGER.info("Saved current parameters when Console tab was selected");
                     }
                 } catch (Exception e) {
@@ -177,69 +191,11 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
     private VBox createIOTab() {
         VBox tabContent = new VBox(10);
         tabContent.setPadding(new Insets(10));
-        ioPanel = new MetaPilotIOPanelFX();
-        VBox databaseSection = createDatabaseSection();
-        tabContent.getChildren().addAll(
-            createSectionTitle("Input/Output Settings"),
-            ioPanel,
-            createSectionTitle("Database Settings"),
-            databaseSection
-        );
+        
+        // Add unified IO Panel (includes both file selection and database settings)
+        tabContent.getChildren().add(ioPanel);
+        
         return tabContent;
-    }
-    private VBox createDatabaseSection() {
-        VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #f8f8f8; -fx-border-color: #cccccc; -fx-border-radius: 5; -fx-border-width: 1;");
-        HBox microbiomeDBBox = new HBox(10);
-        microbiomeDBField = new TextField();
-        microbiomeDBField.setPromptText("Select microbiome database file");
-        microbiomeDBField.setPrefWidth(400);
-        browseMicrobiomeDBButton = new Button("Browse");
-        browseMicrobiomeDBButton.setOnAction(e -> browseMicrobiomeDatabase());
-        microbiomeDBBox.getChildren().addAll(new Label("Microbiome Database:"), microbiomeDBField, browseMicrobiomeDBButton);
-        HBox appendHostBox = new HBox(10);
-        appendHostDBCheckBox = new CheckBox("Append Host Database");
-        appendHostDBCheckBox.setOnAction(e -> updateHostDBVisibility());
-        appendHostBox.getChildren().add(appendHostDBCheckBox);
-        HBox hostDBBox = new HBox(10);
-        hostDBField = new TextField();
-        hostDBField.setPromptText("Select host database file");
-        hostDBField.setPrefWidth(400);
-        hostDBField.setDisable(true);
-        browseHostDBButton = new Button("Browse");
-        browseHostDBButton.setDisable(true);
-        browseHostDBButton.setOnAction(e -> browseHostDatabase());
-        hostDBBox.getChildren().addAll(new Label("Host Database:"), hostDBField, browseHostDBButton);
-        section.getChildren().addAll(microbiomeDBBox, appendHostBox, hostDBBox);
-        return section;
-    }
-    private void updateHostDBVisibility() {
-        boolean selected = appendHostDBCheckBox.isSelected();
-        hostDBField.setDisable(!selected);
-        browseHostDBButton.setDisable(!selected);
-    }
-    private void browseMicrobiomeDatabase() {
-        FileChooser chooser = new FileChooser();
-        chooser.setTitle("Select Microbiome Database File");
-        chooser.getExtensionFilters().add(
-            new FileChooser.ExtensionFilter("FASTA Files", "*.fasta", "*.fa")
-        );
-        File file = chooser.showOpenDialog(getScene().getWindow());
-        if (file != null) {
-            microbiomeDBField.setText(file.getAbsolutePath());
-        }
-    }
-    private void browseHostDatabase() {
-        FileChooser chooser = new FileChooser();
-        chooser.setTitle("Select Host Database File");
-        chooser.getExtensionFilters().add(
-            new FileChooser.ExtensionFilter("FASTA Files", "*.fasta", "*.fa")
-        );
-        File file = chooser.showOpenDialog(getScene().getWindow());
-        if (file != null) {
-            hostDBField.setText(file.getAbsolutePath());
-        }
     }
     private VBox createParametersTab() {
         VBox tabContent = new VBox(10);
@@ -433,7 +389,7 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
         stopButton.setDisable(true);
         // TODO: Implement startAnalysis() and stopAnalysis() for pFind workflow
         startButton.setOnAction(e -> { startAnalysis(); });
-        stopButton.setOnAction(e -> {/* stopAnalysis(); */});
+        stopButton.setOnAction(e -> stopAnalysis());
         
         // Debug button for testing metadata flow
 //        Button testButton = new Button("Test Metadata");
@@ -798,7 +754,7 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
     }
     private void updateMetadataTable() {
         metadataTableData.clear();
-        ObservableList<MetaPilotIOPanelFX.ExperimentRow> fileRows = ioPanel.getExperimentData();
+        ObservableList<MetaPilotIOPanelFX.ExperimentRow> fileRows = ioPanel.getIoPanel().getExperimentData();
         if (fileRows.isEmpty()) return;
         createMetadataTableColumns();
         if (quantModeGroup.getSelectedToggle() != null) {
@@ -950,7 +906,7 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
         parameterView.setText("Starting analysis...\n" + parameterView.getText());
 
         // Gather parameters from UI
-        ObservableList<MetaPilotIOPanelFX.ExperimentRow> fileRows = ioPanel.getExperimentData();
+        ObservableList<MetaPilotIOPanelFX.ExperimentRow> fileRows = ioPanel.getIoPanel().getExperimentData();
         if (fileRows.isEmpty()) {
             showAlert("Error", "No files selected for analysis.");
             return;
@@ -981,16 +937,16 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
             LOGGER.warn("Parameters metadata is null!");
         }
         
-        String outputDir = ioPanel.getOutputDirectory();
+        String outputDir = ioPanel.getIoPanel().getOutputDirectory();
         if (outputDir != null && !outputDir.trim().isEmpty()) {
             // Save analysis-specific parameters
-            DDAIgcPFindParameterIO.saveAnalysisParameters(outputDir, analysisParams);
+            parameterIO.saveAnalysisParameters(outputDir, analysisParams);
             
             // Save as last used parameters
-            DDAIgcPFindParameterIO.saveLastUsedParameters(analysisParams);
+            parameterIO.saveLastUsedParameters(analysisParams);
             
             // Also save to preferences for quick defaults
-            DDAIgcPFindParameterIO.savePreferences(analysisParams);
+            parameterIO.savePreferences(analysisParams);
             
             LOGGER.info("Saved pFind analysis parameters to {}/analysis_parameters_pfind.json", outputDir);
         }
@@ -1004,15 +960,15 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
         uk.ac.quadram.metapilot.resources.MetaResourceParameters mrp = (new uk.ac.quadram.metapilot.resources.MetaResourceIO()).loadParameters();
 
         // Progress bars
-        JavaFXProgressBar overallBar = new JavaFXProgressBar(0, 100, 0);
-        JavaFXProgressBar currentBar = new JavaFXProgressBar(0, 100, 0);
+        ProgressBar overallBar = new ProgressBar();
+        ProgressBar currentBar = new ProgressBar();
 
         // Create and run the DDAIgcPFindTask
         LOGGER.info("Creating DDAIgcPFindTask with analysisParams: {}", analysisParams);
         DDAIgcPFindTask task = new DDAIgcPFindTask(analysisParams, mrp, overallBar, currentBar);
         // Bind progress and messages
-        overallProgressBar.progressProperty().bind(overallBar.getProgressBar().progressProperty());
-        currentTaskProgressBar.progressProperty().bind(currentBar.getProgressBar().progressProperty());
+        overallProgressBar.progressProperty().bind(overallBar.progressProperty());
+        currentTaskProgressBar.progressProperty().bind(currentBar.progressProperty());
         task.messageProperty().addListener((obs, oldMsg, newMsg) -> {
             Platform.runLater(() -> {
                 if (newMsg != null && !newMsg.isEmpty()) {
@@ -1112,19 +1068,24 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
      * Collect all parameters from the UI into a parameters object
      */
     private DDAIgcPFindParameters collectParametersFromUI() {
-        DDAIgcPFindParameters params = new DDAIgcPFindParameters();
-        
-        // Input/Output settings
-        params.setResult(ioPanel.getOutputDirectory());
-        params.setMicroDb(microbiomeDBField.getText());
-        params.setAppendHostDb(appendHostDBCheckBox.isSelected());
-        params.setHostDB(hostDBField.getText());
-        params.setExperimentData(new ArrayList<>(ioPanel.getExperimentData()));
-        
-        // Create and set MetaData object from experiment data
-        ObservableList<MetaPilotIOPanelFX.ExperimentRow> fileRows = ioPanel.getExperimentData();
+        // Collect required parameters for DDAIgcPFindParameters constructor
+        String result = ioPanel.getIoPanel().getOutputDirectory();
+        String microDb = ioPanel.getMicrobiomeDBPath();
+        boolean appendHostDb = ioPanel.isHostDBEnabled();
+        String hostDb = ioPanel.getHostDBPath();
+        String enzyme = enzymeComboBox.getValue();
+        int missCleavages = missedCleavagesSpinner.getValue();
+        String digestMode = digestionModeComboBox.getValue();
+        int threadCount = threadsSpinner.getValue();
+        String ms2ScanMode = ms2ScanModeComboBox.getValue();
+        boolean reduceDb = generateSampleSpecificDBCheckBox.isSelected();
+        boolean spectraCluster = spectraClusteringCheckBox.isSelected();
+
+        // Create MetaData object from experiment data
+        ObservableList<MetaPilotIOPanelFX.ExperimentRow> fileRows = ioPanel.getIoPanel().getExperimentData();
         LOGGER.info("collectParametersFromUI: Found {} experiment rows", fileRows.size());
         
+        MetaData metaData;
         if (!fileRows.isEmpty()) {
             String[] rawFiles = new String[fileRows.size()];
             String[] expNames = new String[fileRows.size()];
@@ -1141,27 +1102,37 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
             }
             
             LOGGER.info("collectParametersFromUI: Creating MetaData with {} raw files", rawFiles.length);
-            MetaData metaData = new MetaData(rawFiles, expNames, fractions, replicates);
+            metaData = new MetaData(rawFiles, expNames, fractions, replicates);
             LOGGER.info("collectParametersFromUI: MetaData created: {}", metaData);
             LOGGER.info("collectParametersFromUI: MetaData.getRawFiles(): {}", metaData.getRawFiles());
-            
-            params.setMetadata(metaData);
-            LOGGER.info("collectParametersFromUI: Set metadata on params, now params.getMetadata(): {}", params.getMetadata());
-            LOGGER.info("Set metadata with {} raw files for pFind workflow", rawFiles.length);
         } else {
-            LOGGER.warn("No experiment data available, metadata will be empty");
+            LOGGER.warn("No experiment data available, creating empty MetaData");
+            metaData = new MetaData();
         }
+
+        // Create DDAIgcPFindParameters using the correct constructor
+        DDAIgcPFindParameters params = new DDAIgcPFindParameters(
+            MetaPilotApp.WorkflowType.DDA_IGC_PFIND.getAnalysisType(),
+            metaData,
+            result,
+            microDb,
+            appendHostDb,
+            hostDb,
+            ms2ScanMode,
+            threadCount
+        );
+        
+        // Set additional parameters that aren't in the constructor
+        params.setExperimentData(new ArrayList<>(fileRows));
         
         // Enzyme settings
-        params.setEnzyme(enzymeComboBox.getValue());
-        params.setMissCleavages(missedCleavagesSpinner.getValue());
-        params.setDigestMode(digestionModeComboBox.getValue());
+        params.setEnzyme(enzyme);
+        params.setMissCleavages(missCleavages);
+        params.setDigestMode(digestMode);
         
         // Additional parameters
-        params.setThreadCount(threadsSpinner.getValue());
-        params.setMs2ScanMode(ms2ScanModeComboBox.getValue());
-        params.setReduceDb(generateSampleSpecificDBCheckBox.isSelected());
-        params.setSpectraCluster(spectraClusteringCheckBox.isSelected());
+        params.setReduceDb(reduceDb);
+        params.setSpectraCluster(spectraCluster);
         
         // Modifications
         params.setFixedModifications(new ArrayList<>(fixedModifications));
@@ -1201,20 +1172,20 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
      */
     private void loadLastUsedParameters() {
         try {
-            DDAIgcPFindParameters params = DDAIgcPFindParameterIO.loadLastUsedParameters();
+            DDAIgcPFindParameters params = (DDAIgcPFindParameters) parameterIO.loadLastUsedParameters();
             if (params != null) {
                 applyParametersToUI(params);
                 LOGGER.info("Loaded last used parameters for DDA IGC pFind workflow");
                 
                 // Also apply experiment data to the IO panel if available
                 if (params.getExperimentData() != null && !params.getExperimentData().isEmpty()) {
-                    ioPanel.setExperimentData(params.getExperimentData());
+                    ioPanel.getIoPanel().setExperimentData(params.getExperimentData());
                     LOGGER.info("Applied {} experiment rows to IO panel", params.getExperimentData().size());
                 }
                 
                 // Apply output directory if available
                 if (params.getResult() != null && !params.getResult().trim().isEmpty()) {
-                    ioPanel.setOutputDirectory(params.getResult());
+                    ioPanel.getIoPanel().setOutputDirectory(params.getResult());
                     LOGGER.info("Applied output directory: {}", params.getResult());
                 }
                 
@@ -1251,7 +1222,7 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
                         experimentRows.add(new MetaPilotIOPanelFX.ExperimentRow(rawFiles[i], expNames[i]));
                     }
                 }
-                ioPanel.setExperimentData(experimentRows);
+                ioPanel.getIoPanel().setExperimentData(experimentRows);
                 LOGGER.info("Applied metadata with {} raw files to IO panel", rawFiles.length);
             }
         }
@@ -1280,14 +1251,14 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
         }
         
         // Apply database settings
-        if (params.getMicroDb() != null && microbiomeDBField != null) {
-            microbiomeDBField.setText(params.getMicroDb());
+        if (params.getMicroDb() != null && ioPanel != null) {
+            ioPanel.setMicrobiomeDBPath(params.getMicroDb());
         }
-        if (appendHostDBCheckBox != null) {
-            appendHostDBCheckBox.setSelected(params.isAppendHostDb());
+        if (ioPanel != null) {
+            ioPanel.setHostDBEnabled(params.isAppendHostDb());
         }
-        if (params.getHostDB() != null && hostDBField != null) {
-            hostDBField.setText(params.getHostDB());
+        if (params.getHostDB() != null && ioPanel != null) {
+            ioPanel.setHostDBPath(params.getHostDB());
         }
         
         // Apply modifications (clear existing and add from params)
@@ -1357,7 +1328,7 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
      */
     public void loadAnalysisParameters(String resultDirectory) {
         try {
-            DDAIgcPFindParameters params = DDAIgcPFindParameterIO.loadAnalysisParameters(resultDirectory);
+            DDAIgcPFindParameters params = (DDAIgcPFindParameters) parameterIO.loadAnalysisParameters(resultDirectory);
             applyParametersToUI(params);
             showAlert("Success", "Loaded pFind analysis parameters from " + resultDirectory);
             LOGGER.info("Loaded pFind analysis parameters from {}", resultDirectory);
@@ -1374,7 +1345,7 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
         LOGGER.info("=== Testing Metadata Flow ===");
         
         // Test 1: Check current experiment data
-        ObservableList<MetaPilotIOPanelFX.ExperimentRow> fileRows = ioPanel.getExperimentData();
+        ObservableList<MetaPilotIOPanelFX.ExperimentRow> fileRows = ioPanel.getIoPanel().getExperimentData();
         LOGGER.info("Test 1: Current experiment data has {} rows", fileRows.size());
         
         // Test 2: Collect parameters and check metadata
@@ -1392,7 +1363,7 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
         // Test 3: Create a task and check if metadata is preserved
         try {
             uk.ac.quadram.metapilot.resources.MetaResourceParameters mrp = (new uk.ac.quadram.metapilot.resources.MetaResourceIO()).loadParameters();
-            JavaFXProgressBar testBar = new JavaFXProgressBar(0, 100, 0);
+            ProgressBar testBar = new ProgressBar();
             
             LOGGER.info("Test 3: Creating test task...");
             DDAIgcPFindTask testTask = new DDAIgcPFindTask(testParams, mrp, testBar, testBar);
@@ -1403,5 +1374,47 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
         }
         
         LOGGER.info("=== Metadata Flow Test Complete ===");
+    }
+    
+    /**
+     * Set up window close handler to save parameters when the window is closed
+     */
+    private void setupWindowCloseHandler() {
+        Platform.runLater(() -> {
+            try {
+                // Get the current scene and window
+                if (getScene() != null) {
+                    javafx.stage.Window window = getScene().getWindow();
+                    if (window != null) {
+                        window.setOnCloseRequest(event -> {
+                            try {
+                                DDAIgcPFindParameters currentParams = collectParametersFromUI();
+                                if (currentParams != null) {
+                                    parameterIO.saveLastUsedParameters(currentParams);
+                                    parameterIO.savePreferences(currentParams);
+                                    LOGGER.info("Saved current parameters when window was closed");
+                                }
+                            } catch (Exception e) {
+                                LOGGER.warn("Failed to save parameters when window was closed: " + e.getMessage(), e);
+                            }
+                        });
+                        LOGGER.info("Window close handler set up successfully");
+                    } else {
+                        LOGGER.warn("Window is null, cannot set close handler");
+                    }
+                } else {
+                    LOGGER.warn("Scene is null, cannot set close handler");
+                }
+            } catch (Exception e) {
+                LOGGER.error("Failed to set up window close handler", e);
+            }
+        });
+    }
+    
+    private void stopAnalysis() {
+        startButton.setDisable(false);
+        stopButton.setDisable(true);
+        consoleOutput.appendText("Stopping pFind analysis...\n");
+        System.out.println("DEBUG: stopAnalysis called");
     }
 } 

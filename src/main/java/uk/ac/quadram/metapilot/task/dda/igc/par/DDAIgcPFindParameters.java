@@ -54,7 +54,7 @@ public class DDAIgcPFindParameters extends MetaBaseParameter {
     
     // Default constructor with sensible defaults for pFind
     public DDAIgcPFindParameters() {
-        super("DDA_IGC_PFIND", new MetaData(), "", "", false, "", MetaConstants.HCD_FTMS, 1, 1, true);
+        super(uk.ac.quadram.metapilot.MetaPilotApp.WorkflowType.DDA_IGC_PFIND.getAnalysisType(), new MetaData(), "", "", false, "", MetaConstants.HCD_FTMS, 1, 1, true);
         
         // Initialize pFind-specific defaults
         setEnzyme("Trypsin_P");

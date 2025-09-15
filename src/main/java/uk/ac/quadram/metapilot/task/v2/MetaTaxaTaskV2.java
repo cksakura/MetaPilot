@@ -23,7 +23,7 @@ import uk.ac.quadram.metapilot.core.taxonomy.Taxon;
 import uk.ac.quadram.metapilot.core.taxonomy.TaxonomyDatabase;
 import uk.ac.quadram.metapilot.core.taxonomy.TaxonomyRanks;
 import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantPepReader;
-import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
+import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.mdb.pep.Pep2TaxaDatabase;
 import uk.ac.quadram.metapilot.mdb.unipept.UnipLCAResult;
 import uk.ac.quadram.metapilot.mdb.unipept.UnipeptRequester;
@@ -54,7 +54,7 @@ public class MetaTaxaTaskV2 extends MetaAbstractTask {
 	private static final String taskName = "Taxonomy analysis";
 	private static final SimpleDateFormat format = new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss");
 
-	public MetaTaxaTaskV2(MetaBaseParameter metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar) {
+	public MetaTaxaTaskV2(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar) {
 		super(metaPar, mrp, progressBar);
 	}
 
@@ -69,7 +69,7 @@ public class MetaTaxaTaskV2 extends MetaAbstractTask {
 		boolean finished1 = false;
 		boolean finished2 = false;
 
-		progressBar.setString(taskName);
+		updateMessage(taskName);
 
 		LOGGER.info(taskName + ": start");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": start");
@@ -96,7 +96,7 @@ public class MetaTaxaTaskV2 extends MetaAbstractTask {
 			finished2 = unipeptCalculate();
 		}
 
-		setProgress(85);
+		updateProgress(85, 100);
 
 		if (finished1 || finished2) {
 

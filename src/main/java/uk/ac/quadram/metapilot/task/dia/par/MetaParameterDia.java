@@ -1,22 +1,52 @@
 package uk.ac.quadram.metapilot.task.dia.par;
 
-import uk.ac.quadram.metapilot.task.mag.par.MetaParameterMag;
+import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 
-public class MetaParameterDia extends MetaParameterMag {
+public class MetaParameterDia extends MetaBaseParameter {
 
+	// DIA-specific fields
 	private boolean librarySearch;
 	private boolean selfModelSearch;
 	private boolean useModel;
 	private String[] library;
 	private String[] models;
 
-	public MetaParameterDia(MetaBaseParameter metaPar, String magDb, String magDbVersion, boolean librarySearch,
+	private MagDbItem magDbItem;
+
+	public MetaParameterDia(MetaBaseParameter metaPar, MagDbItem magDbItem, boolean librarySearch,
 			boolean selfModelSearch, String[] library, boolean useModel, String[] models) {
-		super(metaPar);
-		// TODO Auto-generated constructor stub
-		this.magDb = magDb;
-		this.magDbVersion = magDbVersion;
+		super();
+		// Copy all fields from the base parameter using setters
+		this.setWorkflowType(metaPar.getWorkflowType().toString());
+		this.setMetadata(metaPar.getMetadata());
+		this.setResult(metaPar.getResult());
+		this.setMicroDb(metaPar.getMicroDb());
+		this.setAppendHostDb(metaPar.isAppendHostDb());
+		this.setHostDB(metaPar.getHostDB());
+		this.setCurrentDb(metaPar.getCurrentDb());
+		this.setDbSearchResultFile(metaPar.getDbSearchResultFile());
+		this.setReportDir(metaPar.getReportDir());
+		this.setMetafile(metaPar.getMetafile());
+		this.setMs2ScanMode(metaPar.getMs2ScanMode());
+		this.setCoreCount(metaPar.getCoreCount());
+		this.setThreadCount(metaPar.getThreadCount());
+		this.setMetaWorkflow(metaPar.isMetaWorkflow());
+		this.setMscp(metaPar.getMscp());
+		this.setVariMods(metaPar.getVariMods());
+		this.setFixMods(metaPar.getFixMods());
+		this.setEnzyme(metaPar.getEnzyme());
+		this.setDigestMode(metaPar.getDigestModeString());
+		this.setMissCleavages(metaPar.getMissCleavages());
+		this.setReduceDb(metaPar.isReduceDb());
+		this.setSpectraCluster(metaPar.isSpectraCluster());
+		this.setQuantitativeMode(metaPar.getQuantitativeMode());
+		this.setIsobaricTag(metaPar.getIsobaricTag());
+		this.setIsobaricRefTable(metaPar.getIsobaricRefTable());
+		this.setIsotopicLabels(metaPar.getIsotopicLabels());
+		
+		// Set DIA-specific fields
+		this.magDbItem = magDbItem;
 		this.librarySearch = librarySearch;
 		this.selfModelSearch = selfModelSearch;
 		this.useModel = useModel;
@@ -64,4 +94,13 @@ public class MetaParameterDia extends MetaParameterMag {
 		this.models = models;
 	}
 
+    // Add getter and setter for MagDbItem
+    public MagDbItem getMagDbItem() {
+        return magDbItem;
+    }
+    
+    public void setMagDbItem(MagDbItem magDbItem) {
+        this.magDbItem = magDbItem;
+        this.setMicroDb(magDbItem.getCurrentFile().getAbsolutePath());
+    }
 }

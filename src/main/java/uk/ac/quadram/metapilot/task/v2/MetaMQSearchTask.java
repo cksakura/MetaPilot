@@ -36,7 +36,7 @@ import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantParaHandler;
 import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantPep4Meta;
 import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantPepReader;
 import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantProReader;
-import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
+import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.task.MetaAbstractTask;
@@ -61,8 +61,8 @@ public class MetaMQSearchTask extends MetaAbstractTask {
 	private Logger LOGGER = LogManager.getLogger(MetaMQSearchTask.class);
 	private String taskName = "Closed search";
 
-	public MetaMQSearchTask(MetaParameterMQ metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
-			JavaFXProgressBar secondBar) {
+	public MetaMQSearchTask(MetaParameterMQ metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
+			ProgressBar secondBar) {
 		super(metaPar, mrp, progressBar);
 	}
 
@@ -74,7 +74,7 @@ public class MetaMQSearchTask extends MetaAbstractTask {
 	protected Boolean call() throws Exception {
 		// TODO Auto-generated method stub
 
-		progressBar.setString(taskName);
+		updateMessage(taskName);
 
 		LOGGER.info(taskName + ": started");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": started");
@@ -183,7 +183,7 @@ public class MetaMQSearchTask extends MetaAbstractTask {
 
 				task.run();
 
-				setProgress(60);
+				updateProgress(60, 100);
 
 				LOGGER.info(taskName + ": finished");
 				System.out.println(format.format(new Date()) + "\t" + taskName + ": finished");

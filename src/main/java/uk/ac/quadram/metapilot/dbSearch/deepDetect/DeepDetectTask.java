@@ -29,7 +29,8 @@ import org.apache.logging.log4j.Logger;
 
 import com.sun.management.OperatingSystemMXBean;
 
-import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
+import javafx.scene.control.ProgressBar;
+import javafx.scene.control.TextField;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.task.MetaAbstractTask;
@@ -51,10 +52,11 @@ public class DeepDetectTask extends MetaAbstractTask {
 	private ExecutorService executor;
 	private int threads;
 	private JTextField timeLeft;
+	private TextField javafxTimeLeft;
 
 	private MagDbItem magdb;
 
-	public DeepDetectTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar) {
+	public DeepDetectTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar) {
 		super(metaPar, mrp, progressBar, null);
 		this.deepDetectFile = new File(mrp.getToolPath(ToolType.DEEPDETECT));
 		String path = deepDetectFile.getAbsolutePath();
@@ -70,13 +72,13 @@ public class DeepDetectTask extends MetaAbstractTask {
 		this.batFileList = new ArrayList<File>();
 	}
 
-	public DeepDetectTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
+	public DeepDetectTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
 			HashSet<String> genomeSet) {
 		this(metaPar, mrp, progressBar);
 		this.genomeSet = genomeSet;
 	}
 
-	public DeepDetectTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
+	public DeepDetectTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
 			DeepDetectParameter par, MagDbItem magdb, int threads, JTextField timeLeft) {
 		this(metaPar, mrp, progressBar);
 		this.par = par;
@@ -86,7 +88,7 @@ public class DeepDetectTask extends MetaAbstractTask {
 		this.timeLeft = timeLeft;
 	}
 
-	public DeepDetectTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
+	public DeepDetectTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
 			DeepDetectParameter par, MagDbItem magdb, JProgressBar bar, JTextField timeLeft) {
 		this(metaPar, mrp, progressBar);
 		this.par = par;
@@ -99,7 +101,7 @@ public class DeepDetectTask extends MetaAbstractTask {
 		this.timeLeft = timeLeft;
 	}
 
-	public DeepDetectTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar,
+	public DeepDetectTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
 			DeepDetectParameter par, MagDbItem magdb, int threads, JProgressBar bar, JTextField timeLeft,
 			HashSet<String> genomeSet) {
 		this(metaPar, mrp, progressBar);
@@ -111,10 +113,15 @@ public class DeepDetectTask extends MetaAbstractTask {
 		this.genomeSet = genomeSet;
 	}
 
-	@Override
-	protected void initial() {
-		// TODO Auto-generated method stub
-
+	// JavaFX version constructor
+	public DeepDetectTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
+			DeepDetectParameter par, MagDbItem magdb, int threads, TextField javafxTimeLeft) {
+		this(metaPar, mrp, progressBar);
+		this.par = par;
+		this.magdb = magdb;
+		this.threads = threads;
+		this.executor = Executors.newFixedThreadPool(threads);
+		this.javafxTimeLeft = javafxTimeLeft;
 	}
 
 	/**
@@ -123,13 +130,20 @@ public class DeepDetectTask extends MetaAbstractTask {
 	protected Boolean call() throws Exception {
 		// TODO Auto-generated method stub
 
-		SwingUtilities.invokeLater(new Runnable() {
-			@Override
-			public void run() {
-				timeLeft.setText("Calculating...");
+		if (javafxTimeLeft != null) {
+			javafx.application.Platform.runLater(() -> {
+				javafxTimeLeft.setText("Calculating...");
 				System.out.println(format.format(new Date()) + "\t" + "Peptide detectability predection started");
-			}
-		});
+			});
+		} else if (timeLeft != null) {
+			SwingUtilities.invokeLater(new Runnable() {
+				@Override
+				public void run() {
+					timeLeft.setText("Calculating...");
+					System.out.println(format.format(new Date()) + "\t" + "Peptide detectability predection started");
+				}
+			});
+		}
 
 		File dbfile = magdb.getOriginalDbFolder();
 		File[] files = dbfile.listFiles();
@@ -190,7 +204,7 @@ public class DeepDetectTask extends MetaAbstractTask {
 
 						long start = System.currentTimeMillis();
 
-						String[] args = { "cmd.exe", "/c", "start", "/min", batFile.getAbsolutePath() };
+						String[] args = { "cmd.exe", "/c", batFile.getAbsolutePath() };
 						ProcessBuilder pb = new ProcessBuilder(args);
 						Process p = pb.start();
 
@@ -215,18 +229,27 @@ public class DeepDetectTask extends MetaAbstractTask {
 
 						int completed = completedTasks.incrementAndGet();
 						double progress = (double) completed / (double) totalGenomeCount;
-						int value = (int) (progress * 100);
 						// update the value of the progress bar
-						progressBar.setValue(value);
-						progressBar.setString(completed + "/" + totalGenomeCount);
+						progressBar.setProgress(progress);
+						updateMessage(completed + "/" + totalGenomeCount);
 
 						long end = System.currentTimeMillis();
 						int runOneTask = (int) ((end - start) / 60000);
 						int restTime = (int) ((double) (totalGenomeCount - completed) * runOneTask / (double) threads);
-						if (restTime == 0) {
-							timeLeft.setText("About <1 minutes left");
-						} else {
-							timeLeft.setText("About " + restTime + " minutes left");
+						if (javafxTimeLeft != null) {
+							javafx.application.Platform.runLater(() -> {
+								if (restTime == 0) {
+									javafxTimeLeft.setText("About <1 minutes left");
+								} else {
+									javafxTimeLeft.setText("About " + restTime + " minutes left");
+								}
+							});
+						} else if (timeLeft != null) {
+							if (restTime == 0) {
+								timeLeft.setText("About <1 minutes left");
+							} else {
+								timeLeft.setText("About " + restTime + " minutes left");
+							}
 						}
 						String batName = batFile.getName();
 
@@ -256,6 +279,7 @@ public class DeepDetectTask extends MetaAbstractTask {
 				FileUtils.deleteQuietly(batFile);
 			}
 
+			files = dbfile.listFiles();
 			for (int i = 0; i < files.length; i++) {
 				String name = files[i].getName();
 				if (name.endsWith(".bat")) {
@@ -353,7 +377,7 @@ public class DeepDetectTask extends MetaAbstractTask {
 
 									long start = System.currentTimeMillis();
 
-									String[] args = { "cmd.exe", "/c", "start", "/min", batFile.getAbsolutePath() };
+									String[] args = { "cmd.exe", "/c", batFile.getAbsolutePath() };
 									ProcessBuilder pb = new ProcessBuilder(args);
 									Process p = pb.start();
 
@@ -378,19 +402,28 @@ public class DeepDetectTask extends MetaAbstractTask {
 
 									int completed = completedTasks.incrementAndGet();
 									double progress = (double) completed / (double) totalGenomeCount;
-									int value = (int) (progress * 100);
 									// update the value of the progress bar
-									progressBar.setValue(value);
-									progressBar.setString(completed + "/" + totalGenomeCount);
+									progressBar.setProgress(progress);
+									updateMessage(completed + "/" + totalGenomeCount);
 
 									long end = System.currentTimeMillis();
 									int runOneTask = (int) ((end - start) / 60000);
 									int restTime = (int) ((double) (totalGenomeCount - completed) * runOneTask
 											/ (double) threads);
-									if (restTime == 0) {
-										timeLeft.setText("About <1 minutes left");
-									} else {
-										timeLeft.setText("About " + restTime + " minutes left");
+									if (javafxTimeLeft != null) {
+										javafx.application.Platform.runLater(() -> {
+											if (restTime == 0) {
+												javafxTimeLeft.setText("About <1 minutes left");
+											} else {
+												javafxTimeLeft.setText("About " + restTime + " minutes left");
+											}
+										});
+									} else if (timeLeft != null) {
+										if (restTime == 0) {
+											timeLeft.setText("About <1 minutes left");
+										} else {
+											timeLeft.setText("About " + restTime + " minutes left");
+										}
 									}
 
 								} catch (IOException | InterruptedException e) {
@@ -413,18 +446,25 @@ public class DeepDetectTask extends MetaAbstractTask {
 					FileUtils.deleteQuietly(batFile);
 				}
 
+				files = dbfile.listFiles();
 				for (int i = 0; i < files.length; i++) {
 					String name = files[i].getName();
-					if (name.endsWith(".bat")) {
+					if (name.endsWith(".bat") || name.endsWith(".faa") || name.endsWith(".fasta")) {
 						FileUtils.deleteQuietly(files[i]);
 					}
 				}
 			}
 
-			progressBar.setValue(100);
-			progressBar.setString(totalGenomeCount + "/" + totalGenomeCount);
+			progressBar.setProgress(1.0);
+			updateMessage(totalGenomeCount + "/" + totalGenomeCount);
 
-			timeLeft.setText("Task finished");
+			if (javafxTimeLeft != null) {
+				javafx.application.Platform.runLater(() -> {
+					javafxTimeLeft.setText("Task finished");
+				});
+			} else if (timeLeft != null) {
+				timeLeft.setText("Task finished");
+			}
 
 			this.batFileList = new ArrayList<File>();
 

@@ -63,10 +63,29 @@ public class DiaNNTask {
 	 * @param raws
 	 */
 	public void addTask(DiannParameter par, String[] raws) {
+		addTask(par, raws, null);
+	}
+	
+	/**
+	 * convert raw files to dia files
+	 * 
+	 * @param par
+	 * @param raws
+	 * @param resultDir - directory where batch files should be created (if null, uses raw file directory)
+	 */
+	public void addTask(DiannParameter par, String[] raws, File resultDir) {
 		String cmd = par.generateConvert();
-		File rawFile = (new File(raws[0])).getParentFile();
-		File batFile = new File(rawFile, "convert.bat");
-		File cfgFile = new File(rawFile, "convert.cfg");
+		File targetDir = (resultDir != null) ? resultDir : (new File(raws[0])).getParentFile();
+		File batFile = new File(targetDir, "convert.bat");
+		File cfgFile = new File(targetDir, "convert.cfg");
+
+		LOGGER.info("Creating DiaNN conversion files:");
+		LOGGER.info("  Target directory: {}", targetDir.getAbsolutePath());
+		LOGGER.info("  Batch file: {}", batFile.getAbsolutePath());
+		LOGGER.info("  Config file: {}", cfgFile.getAbsolutePath());
+		LOGGER.info("  DiaNN executable: {}", diaNNFile.getAbsolutePath());
+		LOGGER.info("  Base command: {}", cmd);
+		LOGGER.info("  Raw files to convert: {}", java.util.Arrays.toString(raws));
 
 		try (PrintWriter writer = new PrintWriter(batFile)) {
 			writer.println(headsb);
@@ -632,6 +651,7 @@ public class DiaNNTask {
 					// TODO Auto-generated method stub
 
 					try {
+						LOGGER.info("Executing DiaNN conversion: {}", pari);
 
 						ArrayList<String> commands = new ArrayList<String>();
 						commands.add("cmd.exe");
@@ -643,29 +663,55 @@ public class DiaNNTask {
 						for (String parString : cs) {
 							commands.add(parString);
 						}
+						
+						LOGGER.info("Process command: {}", commands.toString());
+						
 						ProcessBuilder pb = new ProcessBuilder(commands);
 						Process p = pb.start();
+						
+						// Capture both stdout and stderr
 						BufferedInputStream in = new BufferedInputStream(p.getInputStream());
+						BufferedInputStream err = new BufferedInputStream(p.getErrorStream());
 						BufferedReader inBr = new BufferedReader(new InputStreamReader(in));
+						BufferedReader errBr = new BufferedReader(new InputStreamReader(err));
+						
 						String line0 = "";
 						String line1 = "";
 						while ((line1 = inBr.readLine()) != null) {
 							if (!line1.equals(line0)) {
+								LOGGER.info("DiaNN stdout: {}", line1);
 								System.out.println(format.format(new Date()) + "\t" + line1);
 								line0 = line1;
 							}
 						}
-
-						if (p.waitFor() != 0) {
-							if (p.exitValue() == 1)
-								LOGGER.error("false");
+						
+						// Read error stream
+						String errorLine;
+						while ((errorLine = errBr.readLine()) != null) {
+							LOGGER.error("DiaNN stderr: {}", errorLine);
+							System.err.println(format.format(new Date()) + "\tDiaNN ERROR: " + errorLine);
 						}
+
+						int exitCode = p.waitFor();
+						LOGGER.info("DiaNN process completed with exit code: {}", exitCode);
+						
+						if (exitCode != 0) {
+							LOGGER.error("DiaNN conversion failed with exit code: {}", exitCode);
+							System.err.println(format.format(new Date()) + "\tDiaNN conversion failed with exit code: " + exitCode);
+							System.err.println("ERROR: cannot read .raw files, please download and install .NET SDK 8.0.407 or later");
+							System.err.println("https://dotnet.microsoft.com/en-us/download/dotnet/8.0");
+						} else {
+							LOGGER.info("DiaNN conversion completed successfully");
+						}
+						
 						inBr.close();
+						errBr.close();
 						in.close();
+						err.close();
 
 					} catch (IOException | InterruptedException e) {
-						// TODO Auto-generated catch block
-						LOGGER.error(e);
+						LOGGER.error("Error executing DiaNN conversion: {}", e.getMessage(), e);
+						System.err.println(format.format(new Date()) + "\tError executing DiaNN conversion: " + e.getMessage());
 					}
 				}
 			});

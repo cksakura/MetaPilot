@@ -70,6 +70,59 @@ public class MSConvertor {
 		}
 	}
 	
+	public static String d2mzML(String convertCmd, String raw, String resultDir) {
+
+		File file = new File(raw);
+		String rawName = file.getName();
+		rawName = rawName.substring(0, rawName.lastIndexOf("."));
+
+		File batFile = new File(resultDir, rawName + ".bat");
+		File msconvertFile = new File(convertCmd);
+		int id = convertCmd.indexOf(":");
+		if (id < 0) {
+			return null;
+		}
+
+		try {
+
+			PrintWriter writer = new PrintWriter(batFile);
+			writer.println(convertCmd.substring(0, id) + ":");
+			writer.println("cd " + msconvertFile.getParent());
+			writer.println("msconvert.exe " + "\"" + file + "\"" + " --mzML " + "-o " + "\"" + resultDir + "\" "
+					+ tofString + " " + polarityString + " " + scanSumString + " " + titleMakerString);
+			writer.print("exit");
+			writer.close();
+
+			ArrayList<String> list = new ArrayList<String>();
+			list.add("cmd.exe");
+			list.add("/c");
+			list.add("start");
+			list.add(batFile.getAbsolutePath());
+			Process p = Runtime.getRuntime().exec(list.toArray(new String[list.size()]));
+
+			BufferedInputStream in = new BufferedInputStream(p.getInputStream());
+			BufferedReader inBr = new BufferedReader(new InputStreamReader(in));
+			String lineStr;
+			while ((lineStr = inBr.readLine()) != null)
+				System.out.println(lineStr);
+			if (p.waitFor() != 0) {
+				if (p.exitValue() == 1)
+					System.err.println("false");
+			}
+			inBr.close();
+			in.close();
+
+		} catch (Exception e) {
+			e.printStackTrace();
+			return null;
+		}
+
+		String name = file.getName();
+		name = name.substring(0, name.lastIndexOf(".")) + ".mzML";
+		return new File(resultDir, name).getAbsolutePath();
+	}
+	
+	
 	public static void mzml2mgf(String convertCmd, String raw, String resultDir) {
 
 		File file = new File(raw);

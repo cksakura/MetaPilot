@@ -43,7 +43,7 @@ public class MetadataConfigurationPanel extends VBox {
         setSpacing(10);
         setPadding(new Insets(10));
         setStyle("-fx-background-color: #fff8f0; -fx-background-radius: 5;");
-        setMinHeight(200);
+        setMinHeight(240);
         VBox.setVgrow(this, Priority.ALWAYS);
         
         Label titleLabel = createSectionTitle("Metadata Configuration");
@@ -378,5 +378,14 @@ public class MetadataConfigurationPanel extends VBox {
     public int getMetadataColumnCount() {
         // Return number of metadata columns (excluding Sample and Label Type columns)
         return Math.max(0, metadataTable.getColumns().size() - 1); // Subtract 1 for Sample column
+    }
+    
+    // Setter for parameter loading
+    public void setMetadataTableData(List<MetaPilotDdaIgcMaxQuantPanel.MetadataRow> data) {
+        metadataTableData.clear();
+        if (data != null) {
+            metadataTableData.addAll(data);
+        }
+        notifyParameterUpdate();
     }
 } 

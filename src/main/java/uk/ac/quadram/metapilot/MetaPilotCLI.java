@@ -104,8 +104,10 @@ public class MetaPilotCLI {
             
             // Load DDA IGC MaxQuant parameters
             System.out.println("Loading workflow parameters...");
+            uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcMaxQuantParameterIO parameterIO = 
+                new uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcMaxQuantParameterIO();
             uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcMaxQuantParameters parameters = 
-                uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcMaxQuantParameterIO.loadLastUsedParameters();
+                (uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcMaxQuantParameters) parameterIO.loadLastUsedParameters();
             System.out.println("  ✓ Loaded workflow parameters from: " + paramFile);
             
             // Validate parameters

@@ -260,21 +260,36 @@ public class FlashLfqTask {
 				System.out.println(format.format(new Date()) + "\t" + taskName + ": " + lineStr);
 			}
 
-			if (p.waitFor() != 0) {
-				if (p.exitValue() == 1) {
-					LOGGER.info(taskName
-							+ ": try to fix this problem by install the dotNET framework, please download from "
-							+ FlashLfqTask.DOTNET_STRING);
-					System.out.println(format.format(new Date()) + "\t" + taskName
-							+ ": try to fix this problem by install the dotNET framework, please download from "
-							+ FlashLfqTask.DOTNET_STRING);
-				}
+			int exitCode = p.waitFor();
+			if (exitCode != 0) {
+				LOGGER.error(taskName + ": Process exited with code " + exitCode);
+				System.out.println(format.format(new Date()) + "\t" + taskName + ": Process exited with code " + exitCode);
+				
+				// Show .NET framework installation message for any non-zero exit code
+				LOGGER.info(taskName
+						+ ": try to fix this problem by install the dotNET framework, please download from "
+						+ FlashLfqTask.DOTNET_STRING);
+				System.out.println(format.format(new Date()) + "\t" + taskName
+						+ ": try to fix this problem by install the dotNET framework, please download from "
+						+ FlashLfqTask.DOTNET_STRING);
+				
+				inBr.close();
+				in.close();
+				return false;
 			}
 			inBr.close();
 			in.close();
 		} catch (Exception e) {
 			LOGGER.error(taskName + ": error in quantifying PSMs from " + idt, e);
 			System.out.println(format.format(new Date()) + "\t" + taskName + ": error in quantifying PSMs from " + idt);
+			
+			// Show .NET framework installation message for any exception
+			LOGGER.info(taskName
+					+ ": try to fix this problem by install the dotNET framework, please download from "
+					+ FlashLfqTask.DOTNET_STRING);
+			System.out.println(format.format(new Date()) + "\t" + taskName
+					+ ": try to fix this problem by install the dotNET framework, please download from "
+					+ FlashLfqTask.DOTNET_STRING);
 
 			return false;
 		}

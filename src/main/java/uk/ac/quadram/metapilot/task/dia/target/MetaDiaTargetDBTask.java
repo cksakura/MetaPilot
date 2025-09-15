@@ -12,11 +12,11 @@ import java.util.Date;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
+import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.task.MetaAbstractTask;
-import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
+import uk.ac.quadram.metapilot.task.dia.target.par.MetaParameterDiaTg;
 
 public class MetaDiaTargetDBTask extends MetaAbstractTask {
 
@@ -28,37 +28,30 @@ public class MetaDiaTargetDBTask extends MetaAbstractTask {
 			"KEGG_Reaction", "KEGG_rclass", "BRITE", "KEGG_TC", "CAZy" };
 
 	protected static final Logger LOGGER = LogManager.getLogger(MetaDiaTargetDBTask.class);
-	protected static final String taskName = "Create function database";
+	protected static final String taskName = "Create taxa-function database";
 
-	public MetaDiaTargetDBTask(MetaParameterDia metaPar, MetaResourceParameters mrp, JavaFXProgressBar progressBar) {
+	public MetaDiaTargetDBTask(MetaParameterDiaTg metaPar, MetaResourceParameters mrp, ProgressBar progressBar) {
 		super(metaPar, mrp, progressBar);
-		// TODO Auto-generated constructor stub
-
-		// TODO Auto-generated method stub
-		magDbDir = ((MetaParameterDia) this.metaPar).getMicroDb();
-//		String dbFile = magDbDir.replaceAll("\\\\", "/") + "/func2Pro.db";
+		
+		// Get MAG database directory from the parameter
+		magDbDir = metaPar.getMagDbItem().getCurrentFile().getAbsolutePath();
 		this.eggnogDir = magDbDir + "\\eggNOG";
 		this.taxaFile = magDbDir + "\\genomes-all_metadata.tsv";
-//		this.DB_URL = "jdbc:sqlite:" + dbFile;
-	
 	}
 
 	@Override
 	protected String getTaskName() {
-		// TODO Auto-generated method stub
 		return taskName;
 	}
 
 	@Override
 	protected Logger getLogger() {
-		// TODO Auto-generated method stub
 		return LOGGER;
 	}
 
 	@Override
 	protected Boolean call() throws Exception {
-		// TODO Auto-generated method stub
-
+		// Create the Python script for database generation
 		File pythonFile = new File(magDbDir, "profuncSql.py");
 
 		try (InputStream inputStream = MetaDiaTargetDBTask.class.getResourceAsStream("profuncSql.py");
@@ -135,9 +128,9 @@ public class MetaDiaTargetDBTask extends MetaAbstractTask {
 			inBr.close();
 			in.close();
 		} catch (Exception e) {
-			LOGGER.error(taskName + ": error in creating the pro-func SQL database", e);
+			LOGGER.error(taskName + ": error in creating the taxa-function SQL database", e);
 			System.err.println(
-					format.format(new Date()) + "\t" + taskName + ": error in creating the pro-func SQL database");
+					format.format(new Date()) + "\t" + taskName + ": error in creating the taxa-function SQL database");
 			return false;
 		}
 

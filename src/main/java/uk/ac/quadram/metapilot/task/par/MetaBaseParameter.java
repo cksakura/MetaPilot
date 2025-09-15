@@ -60,6 +60,14 @@ public class MetaBaseParameter {
 	public static final int quanResultSeparate = 1;
 	public static final int quanResultAll = 2;
 
+	public MetaBaseParameter() {
+		this.workflowType = "";
+		this.metadata = new MetaData();
+		this.result = "result";
+		this.microDb = "microDb";
+		this.appendHostDb = false;
+	}
+
 	public MetaBaseParameter(String workflowType, MetaData metadata, String result, String microDb,
 			boolean appendHostDb, String hostDB, String ms2ScanMode, int coreCount, int threadCount,
 			boolean isMetaWorkflow) {
