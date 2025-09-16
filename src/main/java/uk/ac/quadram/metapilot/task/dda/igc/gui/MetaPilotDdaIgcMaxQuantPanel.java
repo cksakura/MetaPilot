@@ -101,10 +101,14 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
     private ComboBox<String> metadataColumnComboBox;
     private Button addMetadataColumnButton;
     private Button removeMetadataColumnButton;
+    private Button resetMetadataButton;
     
     
     // Add parameter IO instance
     private DDAIgcMaxQuantParameterIO parameterIO;
+    
+    // Current running task
+    private DDAIgcMaxQuantTask currentTask;
     
     public MetaPilotDdaIgcMaxQuantPanel() {
         // Initialize parameter IO instance
@@ -787,7 +791,13 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
         removeMetadataColumnButton.setPrefWidth(150);
         removeMetadataColumnButton.setOnAction(e -> removeMetadataColumn());
         
-        controlBox.getChildren().addAll(metadataColumnComboBox, customColumnTextField, addMetadataColumnButton, removeMetadataColumnButton);
+        resetMetadataButton = new Button("Reset All");
+        resetMetadataButton.setMinWidth(120);
+        resetMetadataButton.setPrefWidth(150);
+        resetMetadataButton.setStyle("-fx-background-color: #ff6b6b; -fx-text-fill: white;");
+        resetMetadataButton.setOnAction(e -> resetMetadataTable());
+        
+        controlBox.getChildren().addAll(metadataColumnComboBox, customColumnTextField, addMetadataColumnButton, removeMetadataColumnButton, resetMetadataButton);
         
         section.getChildren().addAll(titleLabel, infoLabel, metadataTable, controlBox);
         
@@ -926,6 +936,20 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
         if (metadataTable.getColumns().size() > 1) { // Keep at least the sample column
             metadataTable.getColumns().remove(metadataTable.getColumns().size() - 1);
         }
+    }
+    
+    private void resetMetadataTable() {
+        // Clear all data
+        metadataTableData.clear();
+        
+        // Remove all columns except the Sample column
+        metadataTable.getColumns().clear();
+        
+        // Recreate basic table structure with only Sample column
+        createMetadataTableColumns();
+        
+        // Update parameter view
+        updateParameterView();
     }
     
     private VBox createModificationsSection() {
@@ -1339,27 +1363,39 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
             uk.ac.quadram.metapilot.resources.MetaResourceIO resourceIO = new uk.ac.quadram.metapilot.resources.MetaResourceIO();
             MetaResourceParameters mrp = resourceIO.loadParameters();
             
-            // Create JavaFXProgressBar for overall and current task
-            ProgressBar overallBar = consolePanel.getOverallProgressBar();
-            ProgressBar currentBar = consolePanel.getCurrentTaskProgressBar();
+            // Create separate progress bars for the task
+            ProgressBar taskOverallBar = new ProgressBar();
+            ProgressBar taskCurrentBar = new ProgressBar();
             
-            // Create and run DDAIgcMaxQuantTask with the single parameters object
-            DDAIgcMaxQuantTask task = new DDAIgcMaxQuantTask(analysisParams, mrp, overallBar, currentBar);
+            // Create and run DDAIgcMaxQuantTask with the separate progress bars
+            currentTask = new DDAIgcMaxQuantTask(analysisParams, mrp, taskOverallBar, taskCurrentBar);
+            
+            // Bind task progress bars to UI progress bars
+            consolePanel.getOverallProgressBar().progressProperty().bind(taskOverallBar.progressProperty());
+            consolePanel.getCurrentTaskProgressBar().progressProperty().bind(taskCurrentBar.progressProperty());
             
             // Bind task message to console panel
-            task.messageProperty().addListener((obs, oldMsg, newMsg) -> {
-                Platform.runLater(() -> consolePanel.setCurrentTaskLabel("Current Task: " + newMsg));
+            currentTask.messageProperty().addListener((obs, oldMsg, newMsg) -> {
+                Platform.runLater(() -> {
+                    if (newMsg != null && !newMsg.isEmpty()) {
+                        consolePanel.updateCurrentTaskFromMessage(newMsg);
+                    }
+                });
             });
             
             // Handle task completion
-            task.setOnSucceeded(e -> {
+            currentTask.setOnSucceeded(e -> {
                 Platform.runLater(() -> {
+                    // Unbind progress bars to prevent memory leaks
+                    consolePanel.getOverallProgressBar().progressProperty().unbind();
+                    consolePanel.getCurrentTaskProgressBar().progressProperty().unbind();
+                    
                     consolePanel.setButtonsEnabled(true, false, true);
                     consolePanel.stopStatusTimer();
                     
                     // Check if the task actually succeeded by examining the result
                     try {
-                        Boolean result = task.get();
+                        Boolean result = currentTask.get();
                         if (result != null && result) {
                             showAlert("Success", "Analysis completed successfully.");
                         } else {
@@ -1370,16 +1406,20 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
                     }
                 });
             });
-            task.setOnFailed(e -> {
+            currentTask.setOnFailed(e -> {
                 Platform.runLater(() -> {
+                    // Unbind progress bars to prevent memory leaks
+                    consolePanel.getOverallProgressBar().progressProperty().unbind();
+                    consolePanel.getCurrentTaskProgressBar().progressProperty().unbind();
+                    
                     consolePanel.setButtonsEnabled(true, false, false);
                     consolePanel.stopStatusTimer();
-                    showAlert("Error", "Analysis failed: " + task.getException());
+                    showAlert("Error", "Analysis failed: " + currentTask.getException());
                 });
             });
             
             // Start the task in a new thread
-            Thread t = new Thread(task);
+            Thread t = new Thread(currentTask);
             t.setDaemon(true);
             t.start();
             
@@ -1400,6 +1440,19 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
         
         Optional<ButtonType> result = alert.showAndWait();
         if (result.isPresent() && result.get() == ButtonType.OK) {
+            // Force stop the running task if it exists
+            if (currentTask != null && currentTask.isRunning()) {
+                consolePanel.appendConsoleText("Stopping MaxQuant analysis...\n");
+                currentTask.forceStop();
+                consolePanel.appendConsoleText("MaxQuant analysis stop requested.\n");
+            } else {
+                consolePanel.appendConsoleText("No running MaxQuant analysis to stop.\n");
+            }
+            
+            // Unbind progress bars to prevent memory leaks
+            consolePanel.getOverallProgressBar().progressProperty().unbind();
+            consolePanel.getCurrentTaskProgressBar().progressProperty().unbind();
+            
             consolePanel.setButtonsEnabled(true, false, false);
             consolePanel.stopStatusTimer();
             consolePanel.getOverallProgressBar().setProgress(0);
@@ -1680,7 +1733,15 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
             ExperimentRow row = fileRows.get(i);
             rawFiles[i] = row.getFilePath();
             expNames[i] = row.getExperimentName();
-            fractions[i] = 0; // Default fraction
+            // Get fraction from the IO panel, default to 1 if invalid
+            try {
+                fractions[i] = Integer.parseInt(row.getFraction());
+                if (fractions[i] <= 0) {
+                    fractions[i] = 1; // Ensure positive fraction
+                }
+            } catch (NumberFormatException e) {
+                fractions[i] = 1; // Default to 1 if not a valid integer
+            }
             replicates[i] = 1; // Default replicate
         }
         MetaData metadata = new MetaData(rawFiles, expNames, fractions, replicates);

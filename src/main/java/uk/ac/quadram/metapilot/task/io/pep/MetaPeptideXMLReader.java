@@ -28,7 +28,6 @@ import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragpipePeptide;
 import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantPep4Meta;
 import uk.ac.quadram.metapilot.dbSearch.open.OpenPeptide;
 import uk.ac.quadram.metapilot.dbSearch.pfind.PFindPeptide;
-import uk.ac.quadram.metapilot.dbSearch.xtandem.XTandemPep4Meta;
 import uk.ac.quadram.metapilot.quant.flashLFQ.FlashLfqQuanPeptide;
 import uk.ac.quadram.metapilot.task.io.MetaAlgorithm;
 import uk.ac.quadram.metapilot.task.io.MetaBiomJsonHandler;
@@ -101,8 +100,6 @@ public class MetaPeptideXMLReader {
 
 		if (this.searchEnigne.equals(MetaConstants.maxQuant)) {
 			this.parser = new MaxquantPep4Meta.XmlMQPepElementParser();
-		} else if (searchEnigne.equals(MetaConstants.xTandem)) {
-			this.parser = new XTandemPep4Meta.XmlTandemPepElementParser();
 		} else if (searchEnigne.equals(MetaConstants.openSearch)) {
 			this.parser = new OpenPeptide.XmlOpenPepElementParser();
 		} else if (searchEnigne.equals(MetaConstants.pFind)) {
@@ -294,8 +291,6 @@ public class MetaPeptideXMLReader {
 
 				if (searchEnigne.equals(MetaConstants.maxQuant)) {
 					sb.append(((MaxquantPep4Meta) peptide).getPEP()).append("\t");
-				} else if (searchEnigne.equals(MetaConstants.xTandem)) {
-					sb.append(((XTandemPep4Meta) peptide).getEvalue()).append("\t");
 				}
 
 				Taxon lca = peptide.getLcaId() == Taxon.cellular_organisms.getId() ? Taxon.cellular_organisms

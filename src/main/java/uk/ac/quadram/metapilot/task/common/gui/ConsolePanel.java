@@ -21,6 +21,7 @@ public class ConsolePanel extends VBox {
     private TextArea parameterView;
     private ProgressBar overallProgressBar;
     private ProgressBar currentTaskProgressBar;
+    private ProgressIndicator progressIndicator;
     private Label currentTaskLabel;
     private Button startButton;
     private Button stopButton;
@@ -60,12 +61,23 @@ public class ConsolePanel extends VBox {
         // Progress Bars
         VBox progressBox = new VBox(5);
         currentTaskLabel = new Label("Current Task: None");
+        
+        // Indeterminate progress indicator (spinning wheel)
+        progressIndicator = new ProgressIndicator();
+        progressIndicator.setVisible(false);
+        progressIndicator.setPrefSize(20, 20);
+        
+        // Overall progress bar
         overallProgressBar = new ProgressBar(0);
         overallProgressBar.setMaxWidth(Double.MAX_VALUE);
+        
+        // Current task progress bar
         currentTaskProgressBar = new ProgressBar(0);
         currentTaskProgressBar.setMaxWidth(Double.MAX_VALUE);
+        
         progressBox.getChildren().addAll(
             currentTaskLabel,
+            progressIndicator,
             new Label("Overall Progress:"),
             overallProgressBar,
             new Label("Current Task Progress:"),
@@ -154,12 +166,40 @@ public class ConsolePanel extends VBox {
         }
     }
     
+    public void updateCurrentTaskFromMessage(String message) {
+        if (currentTaskLabel != null && message != null) {
+            // Extract the meaningful part of the message for the current task label
+            String taskText = message;
+            if (message.contains(":")) {
+                // Take everything after the first colon as the task description
+                taskText = message.substring(message.indexOf(":") + 1).trim();
+            }
+            currentTaskLabel.setText("Current Task: " + taskText);
+        }
+    }
+    
     public ProgressBar getOverallProgressBar() {
         return overallProgressBar;
     }
     
     public ProgressBar getCurrentTaskProgressBar() {
         return currentTaskProgressBar;
+    }
+    
+    public void showProgressIndicator() {
+        if (progressIndicator != null) {
+            progressIndicator.setVisible(true);
+        }
+    }
+    
+    public void hideProgressIndicator() {
+        if (progressIndicator != null) {
+            progressIndicator.setVisible(false);
+        }
+    }
+    
+    public ProgressIndicator getProgressIndicator() {
+        return progressIndicator;
     }
     
     public void startStatusTimer() {
@@ -179,12 +219,26 @@ public class ConsolePanel extends VBox {
     public void setButtonsEnabled(boolean startEnabled, boolean stopEnabled) {
         if (startButton != null) startButton.setDisable(!startEnabled);
         if (stopButton != null) stopButton.setDisable(!stopEnabled);
+        
+        // Show/hide progress indicator based on task state
+        if (startEnabled) {
+            hideProgressIndicator();
+        } else {
+            showProgressIndicator();
+        }
     }
     
     public void setButtonsEnabled(boolean startEnabled, boolean stopEnabled, boolean viewReportEnabled) {
         if (startButton != null) startButton.setDisable(!startEnabled);
         if (stopButton != null) stopButton.setDisable(!stopEnabled);
         if (viewReportButton != null) viewReportButton.setDisable(!viewReportEnabled);
+        
+        // Show/hide progress indicator based on task state
+        if (startEnabled) {
+            hideProgressIndicator();
+        } else {
+            showProgressIndicator();
+        }
     }
     
     public void enableViewReportButton() {
@@ -235,8 +289,7 @@ public class ConsolePanel extends VBox {
                     statusCpuLabel.setText(String.format("CPU: %.1f%%", cpuUsage));
                 } else {
                     // Fallback to system CPU load if process CPU load is not available
-                    @SuppressWarnings("deprecation")
-                    double systemCpuUsage = osBean.getSystemCpuLoad() * 100;
+                    double systemCpuUsage = osBean.getCpuLoad() * 100;
                     if (systemCpuUsage >= 0) {
                         statusCpuLabel.setText(String.format("CPU: %.1f%% (system)", systemCpuUsage));
                     } else {

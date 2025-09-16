@@ -12,7 +12,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 
 import uk.ac.quadram.metapilot.core.tools.ResourceLoader;
-import uk.ac.quadram.metapilot.task.mag.par.MetaParameterMag;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 
 public class AlphapeptWorkflow {
@@ -25,7 +25,7 @@ public class AlphapeptWorkflow {
 		this.valueMap = valueMap;
 		this.parentList = parentList;
 	}
-	
+
 	public static AlphapeptWorkflow parse() throws IOException {
 		InputStream stream = ResourceLoader.load(AlphapeptWorkflow.templeteWorkflow);
 		BufferedReader reader = new BufferedReader(new InputStreamReader(stream));
@@ -87,13 +87,13 @@ public class AlphapeptWorkflow {
 		AlphapeptWorkflow workflow = new AlphapeptWorkflow(valueMap, parentList);
 		return workflow;
 	}
-	
-	public void config(MetaParameterMag metaPar, File output, File resultHdfFile) throws IOException {
+
+	public void config(MetaBaseParameter metaPar, File output, File resultHdfFile) throws IOException {
 
 		this.valueMap.get("  results_path:").setValue(resultHdfFile.getAbsolutePath());
 		this.valueMap.get("  fasta_paths:").setValue(metaPar.getCurrentDb());
 		this.valueMap.get("  n_processes:").setValue(String.valueOf(metaPar.getThreadCount()));
-		
+
 		File fastaFile = new File(metaPar.getCurrentDb());
 		String fileName = fastaFile.getName();
 		fileName = fileName.substring(0, fileName.lastIndexOf("."));
@@ -114,7 +114,7 @@ public class AlphapeptWorkflow {
 				break;
 			}
 		}
-		
+
 		this.valueMap.get("  continue_runs:").setValue(String.valueOf(continueSearch));
 		String[] expNames = metaData.getExpNames();
 		int[] fraction = metaData.getFractions();
@@ -157,7 +157,7 @@ public class AlphapeptWorkflow {
 		export(output);
 	}
 
-	public void config(MetaParameterMag metaPar, File singleRawFile, String expName, int fraction, File output,
+	public void config(MetaBaseParameter metaPar, File singleRawFile, String expName, int fraction, File output,
 			File resultHdfFile) throws IOException {
 		this.valueMap.get("  create_database:").setValue("false");
 		this.valueMap.get("  lfq_quantification:").setValue("false");
@@ -188,10 +188,10 @@ public class AlphapeptWorkflow {
 		this.valueMap.get("  sample_group:").setValue("0");
 		this.valueMap.get("  matching_group:").setValue("0");
 		this.valueMap.get("  max_lfq:").setValue("false");
-		
+
 		export(output);
 	}
-	
+
 	private static class AlphapeptWorkflowItem implements Comparable<AlphapeptWorkflowItem> {
 
 		private int id;

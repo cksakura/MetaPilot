@@ -8,11 +8,11 @@ import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantModification;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX.ExperimentRow;
 import uk.ac.quadram.metapilot.task.common.gui.IsobaricLabelingPanel.IsobaricLabelRow;
 import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel.MetadataRow;
+import uk.ac.quadram.metapilot.task.io.par.MetaOpenPar;
 import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.task.par.MetaPep2TaxaPar;
-import uk.ac.quadram.metapilot.task.v2.par.MetaOpenPar;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 
 /**
@@ -189,45 +189,6 @@ public class DDAMagPfindParameters extends MetaBaseParameter {
     public uk.ac.quadram.metapilot.core.mod.IsobaricTag getIsobaricTag() {
         // Return null for now - this needs to be implemented based on the isobaric data
         return null;
-    }
-    
-    /**
-     * Convert to MetaParameterMag for compatibility with existing MAG tasks
-     */
-    public uk.ac.quadram.metapilot.task.mag.par.MetaParameterMag toMetaParameterMag() {
-        // Create MetaBaseParameter first
-        uk.ac.quadram.metapilot.task.par.MetaBaseParameter metaBasePar = new uk.ac.quadram.metapilot.task.par.MetaBaseParameter(
-            getWorkflowType().name(),
-            getMetadata(),
-            getResult(),
-            getMicroDb(),
-            isAppendHostDb(),
-            getHostDB(),
-            getMs2ScanMode(),
-            getCoreCount(),
-            getThreadCount(),
-            isMetaWorkflow()
-        );
-        
-        // Convert digestion mode string to integer
-        int digestModeInt = getDigestModeInt(getDigestModeString());
-        
-        // Create MetaParameterMag
-        return new uk.ac.quadram.metapilot.task.mag.par.MetaParameterMag(
-            metaBasePar,
-            getFixMods(),
-            getVariMods(),
-            getEnzyme(),
-            getMissCleavages(),
-            digestModeInt,
-            getQuantitativeMode(),
-            getIsobaric(),
-            getIsobaricTag(),
-            isCombineLabel(),
-            getIsoCorFactor(),
-            getMagDbCatalogueId(),
-            getMagDbVersion()
-        );
     }
     
     /**

@@ -15,8 +15,8 @@ import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
 import uk.ac.quadram.metapilot.task.common.gui.MetadataConfigurationPanel;
 import uk.ac.quadram.metapilot.task.common.gui.ModificationsPanel;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagFragPipeParameters;
+import uk.ac.quadram.metapilot.task.dda.mag.task.DDAMagFragPipeTask;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagFragPipeParameterIO;
-import uk.ac.quadram.metapilot.task.dda.mag.DDAMagFragPipeTask;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagVersion;
 import uk.ac.quadram.metapilot.task.par.MetaData;
@@ -68,6 +68,9 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
     
     // Store the last used analysis parameters for viewReport
     private DDAMagFragPipeParameters currentAnalysisParams;
+    
+    // Current task reference
+    private DDAMagFragPipeTask currentTask;
     
     // Logger
     private static final Logger LOGGER = LoggerFactory.getLogger(MetaPilotDdaMagFragPipePanel.class);
@@ -637,22 +640,23 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
             
             // 6. Create and run DDAMagFragPipeTask with DDAMagFragPipeParameters directly
             consolePanel.appendConsoleText("Creating MAG FragPipe task...\n");
-            DDAMagFragPipeTask task = new DDAMagFragPipeTask(analysisParams, mrp, overallBar, currentBar);
+            currentTask = new DDAMagFragPipeTask(analysisParams, mrp, overallBar, currentBar);
             consolePanel.appendConsoleText("✓ Task created successfully\n");
             
             // 7. Set up task callbacks
             consolePanel.appendConsoleText("Setting up task callbacks...\n");
-            task.messageProperty().addListener((obs, oldMsg, newMsg) -> {
+            currentTask.messageProperty().addListener((obs, oldMsg, newMsg) -> {
                 Platform.runLater(() -> {
                     if (newMsg != null) {
                         consolePanel.appendConsoleText("Current Task: " + newMsg + "\n");
+                        consolePanel.updateCurrentTaskFromMessage(newMsg);
                         statusLabel.setText(newMsg);
                     }
                 });
             });
             
             // Set up task completion callback to enable View Report button
-            task.setOnSucceeded(e -> {
+            currentTask.setOnSucceeded(e -> {
                 Platform.runLater(() -> {
                     consolePanel.appendConsoleText("✓ Analysis completed successfully!\n");
                     consolePanel.enableViewReportButton();
@@ -660,7 +664,7 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
                 });
             });
             
-            task.setOnFailed(e -> {
+            currentTask.setOnFailed(e -> {
                 Platform.runLater(() -> {
                     consolePanel.appendConsoleText("✗ Analysis failed. Check console output for details.\n");
                     consolePanel.setButtonsEnabled(true, false, false);
@@ -671,7 +675,7 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
             
             // 8. Run task in background thread
             consolePanel.appendConsoleText("Starting task execution...\n");
-            Thread taskThread = new Thread(task);
+            Thread taskThread = new Thread(currentTask);
             taskThread.setDaemon(true);
             taskThread.start();
             
@@ -689,9 +693,14 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
     private void stopAnalysis() {
         consolePanel.appendConsoleText("Stopping FragPipe analysis...\n");
         System.out.println("DEBUG: stopAnalysis called");
-        // TODO: Implement task cancellation functionality
-        consolePanel.appendConsoleText("Analysis stop requested (not yet implemented).\n");
-        LOGGER.warn("Analysis stop requested but not yet implemented");
+        
+        if (currentTask != null && currentTask.isRunning()) {
+            consolePanel.appendConsoleText("Force stopping MAG FragPipe task...\n");
+            currentTask.forceStop();
+            consolePanel.appendConsoleText("MAG FragPipe task stop requested.\n");
+        } else {
+            consolePanel.appendConsoleText("No running MAG FragPipe task to stop.\n");
+        }
     }
     
     private void viewReport() {
@@ -767,9 +776,17 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
                 MetaPilotIOPanelFX.ExperimentRow row = fileRows.get(i);
                 rawFiles[i] = row.getFilePath();
                 expNames[i] = row.getExperimentName();
-                fractions[i] = 1; // Default fraction
+                // Get fraction from the IO panel, default to 1 if invalid
+                try {
+                    fractions[i] = Integer.parseInt(row.getFraction());
+                    if (fractions[i] <= 0) {
+                        fractions[i] = 1; // Ensure positive fraction
+                    }
+                } catch (NumberFormatException e) {
+                    fractions[i] = 1; // Default to 1 if not a valid integer
+                }
                 replicates[i] = 1; // Default replicate
-                LOGGER.debug("Experiment {}: file={}, name={}", i, rawFiles[i], expNames[i]);
+                LOGGER.debug("Experiment {}: file={}, name={}, fraction={}", i, rawFiles[i], expNames[i], fractions[i]);
             }
             
             // Create MetaData object

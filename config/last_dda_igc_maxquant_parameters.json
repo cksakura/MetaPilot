@@ -1,37 +1,73 @@
 {
   "quantitative_mode": {"mode": "Label-free"},
-  "metadata": [{
-    "treatment": "",
-    "condition": "",
-    "gender": "",
-    "custom_field_1": "",
-    "custom_field_2": "",
-    "time_point": "",
-    "label_type": "",
-    "custom_field_3": "",
-    "age": "",
-    "sample_name": "20221208_Ailing_Jumpstart_C"
-  }],
+  "metadata": [
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "Stool1"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "Stool2"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "Stool3"
+    }
+  ],
   "workflow": "DDA_IGC_MAXQUANT",
   "input_output": {
     "host_database": "C:\\Users\\daz25hak\\MetaProAI\\database\\uniprotkb_Human_AND_reviewed_true_AND_m_2025_09_01.fasta",
     "microbiome_database": "C:\\Users\\daz25hak\\MetaProAI\\database\\760MetaHit_139HMP_368PKU_511Bac.uniq.pep.fasta",
-    "output_directory": "Z:\\PRIDE_dataset\\PXD050781\\MetaPilot",
+    "output_directory": "Z:\\PRIDE_dataset\\PXD050781\\DDA_stool\\MetaPilot",
     "append_host_db": true,
-    "experiments": [{
-      "file_path": "Z:\\PRIDE_dataset\\PXD050781\\20221208_Ailing_Jumpstart_C.raw",
-      "experiment_name": "20221208_Ailing_Jumpstart_C"
-    }]
+    "experiments": [
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA_stool\\Haonan_20210924_isotope_mix_Stool1.raw",
+        "experiment_name": "Stool1"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA_stool\\Haonan_20210924_isotope_mix_Stool2.raw",
+        "experiment_name": "Stool2"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA_stool\\Haonan_20210924_isotope_mix_Stool3.raw",
+        "experiment_name": "Stool3"
+      }
+    ]
   },
   "enzyme_settings": {
     "enzyme": "Trypsin",
     "missed_cleavages": 2,
     "digestion_mode": "Specific"
   },
-  "generated_at": "2025-09-11 16:20:53",
+  "generated_at": "2025-09-16 17:38:16",
   "additional_parameters": {
     "generate_sample_specific_db": true,
-    "ms2_scan_mode": "HCD-FTMS",
+    "ms2_scan_mode": "FTMS",
     "spectra_clustering": false,
     "threads": 16
   },

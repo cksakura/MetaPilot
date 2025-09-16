@@ -29,7 +29,6 @@ import uk.ac.quadram.metapilot.core.tools.FormatTool;
 import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantPep4Meta;
 import uk.ac.quadram.metapilot.dbSearch.open.OpenPeptide;
 import uk.ac.quadram.metapilot.dbSearch.pfind.PFindPeptide;
-import uk.ac.quadram.metapilot.dbSearch.xtandem.XTandemPep4Meta;
 import uk.ac.quadram.metapilot.task.io.MetaAlgorithm;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 
@@ -525,56 +524,6 @@ public class MetaPeptideXlsxWriter {
 					cells[id].setCellValue(intensity);
 					id++;
 				}
-
-			} else if (searchEngine.equals(MetaConstants.xTandem)) {
-
-				cells[id] = row.createCell(id);
-				cells[id].setCellValue(peptide.getTotalMS2Count());
-				id++;
-
-				cells[id] = row.createCell(id);
-				cells[id].setCellValue(peptide.getMissCleave());
-				id++;
-
-				cells[id] = row.createCell(id);
-				cells[id].setCellValue(peptide.getScore());
-				id++;
-
-				cells[id] = row.createCell(id);
-				cells[id].setCellValue(((XTandemPep4Meta) peptide).getEvalue());
-				id++;
-
-				Taxon lca = this.taxonMap.get(peptide.getLcaId());
-				cells[id] = row.createCell(id);
-				cells[id].setCellValue(lca.getName());
-				id++;
-
-				cells[id] = row.createCell(id);
-				cells[id].setCellValue(lca.getRank());
-				id++;
-
-				int[] taxIds = lca.getMainParentIds();
-				if (taxIds == null) {
-					for (int i = 0; i < 8; i++) {
-						cells[id] = row.createCell(id);
-						id++;
-					}
-				} else {
-					for (int taxId : taxIds) {
-						cells[id] = row.createCell(id);
-						if (this.taxonMap.containsKey(taxId)) {
-							cells[id].setCellValue(this.taxonMap.get(taxId).getName());
-						}
-						id++;
-					}
-				}
-
-				double[] intensities = peptide.getIntensity();
-				for (double intensity : intensities) {
-					cells[id] = row.createCell(id);
-					cells[id].setCellValue(intensity);
-					id++;
-				}
 			}
 		}
 	}
@@ -641,7 +590,7 @@ public class MetaPeptideXlsxWriter {
 					format.format(new Date()) + "\t" + "Error in writing peptides to " + pepfile[currentFileId]);
 		}
 	}
-	
+
 	public MetaPeptideXlsxWriter(File resultDir, String searchType, String quanType, String[] expNames,
 			int pepCountThres, MetaPeptide[] peps, Taxon[] taxons) {
 
@@ -652,7 +601,7 @@ public class MetaPeptideXlsxWriter {
 		this.pepCountThres = pepCountThres;
 		this.expNames = expNames;
 	}
-	
+
 	public void writeCsv(File resultDir, int pepCountThres) {
 
 		if (this.taxonMap == null) {
@@ -948,46 +897,6 @@ public class MetaPeptideXlsxWriter {
 				writer.println(sb);
 				pepid++;
 
-			} else if (searchEngine.equals(MetaConstants.xTandem)) {
-
-				sb.append("\"").append(pepid).append("\",");
-				sb.append("\"").append(peptide.getSequence()).append("\",");
-				sb.append("\"").append(peptide.getTotalMS2Count()).append("\",");
-				sb.append("\"").append(peptide.getMissCleave()).append("\",");
-				sb.append("\"").append(peptide.getScore()).append("\",");
-				sb.append("\"").append(((XTandemPep4Meta) peptide).getEvalue()).append("\",");
-
-				Taxon lca = this.taxonMap.get(peptide.getLcaId());
-
-				sb.append("\"").append(lca.getName()).append("\",");
-				sb.append("\"").append(lca.getRank()).append("\",");
-
-				int[] taxIds = lca.getMainParentIds();
-				if (taxIds == null) {
-					for (int j = 0; j < TaxonomyRanks.getMainRanks().length; j++) {
-						sb.append("\"\",");
-					}
-				} else {
-					for (int taxId : taxIds) {
-						if (this.taxonMap.containsKey(taxId)) {
-							sb.append("\"").append(this.taxonMap.get(taxId).getName()).append("\",");
-						} else {
-							sb.append("\"\",");
-						}
-					}
-				}
-
-				double[] intensities = peptide.getIntensity();
-				for (double intensity : intensities) {
-					sb.append("\"").append(intensity).append("\",");
-				}
-
-				if (sb.length() > 0) {
-					sb.deleteCharAt(sb.length() - 1);
-				}
-
-				writer.println(sb);
-				pepid++;
 			} else {
 				sb.append("\"").append(pepid).append("\",");
 				sb.append("\"").append(peptide.getSequence()).append("\",");

@@ -24,7 +24,7 @@ import javafx.beans.property.DoubleProperty;
  * Reusable modifications panel for proteomics workflows
  * 
  * This panel provides fixed and variable modification tables that can be used
- * across different workflow panels (MAG/IGC with pFind/FragPipe/Sage).
+ * across different workflow panels (MAG/IGC with FragPipe/Sage).
  */
 public class ModificationsPanel extends HBox {
     

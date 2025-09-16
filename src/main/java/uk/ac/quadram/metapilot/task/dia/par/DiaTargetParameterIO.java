@@ -10,7 +10,6 @@ import org.slf4j.LoggerFactory;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.task.par.BaseParameterIO;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
-import uk.ac.quadram.metapilot.task.dia.target.par.MetaParameterDiaTg;
 
 /**
  * Parameter I/O operations for DIA Target workflow
