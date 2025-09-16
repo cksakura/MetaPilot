@@ -2,10 +2,6 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import numpy as np
-from sklearn.decomposition import PCA
-from sklearn.preprocessing import StandardScaler
-from scipy.cluster.hierarchy import dendrogram, linkage
-from scipy.spatial.distance import pdist
 from .base_generator import BaseReportGenerator
 
 try:
@@ -67,51 +63,41 @@ class ProteinsSummaryGenerator(BaseReportGenerator):
         # Advanced dimensionality reduction analysis
         if len(intensity_cols) >= 2:
             try:
-                # Prepare data
-                intensity_data = proteins_df[intensity_cols].fillna(0)
-                intensity_data = intensity_data.loc[intensity_data.sum(axis=1) > 0]
-                
-                if len(intensity_data) > 0:
-                    log_data = np.log10(intensity_data + 1)
-                    scaler = StandardScaler()
-                    scaled_data = scaler.fit_transform(log_data.T)
-                    
-                    # PCA Analysis
-                    pca = PCA(n_components=min(2, len(intensity_cols)))
-                    pca_result = pca.fit_transform(scaled_data)
-                    
-                    # Color points by groups if available
-                    if groups and group_colors:
-                        colors = [group_colors[group] for group in groups]
-                        for group in set(groups):
-                            group_indices = [i for i, g in enumerate(groups) if g == group]
+                scaled_data, sample_feature = self.prepare_sample_feature_matrices(
+                    proteins_df, intensity_cols, log_transform=True, pseudocount=1.0, standardize=True
+                )
+                if scaled_data is not None:
+                    # PCA
+                    pca, pca_result = self.compute_pca(scaled_data, n_components=2)
+                    if pca_result is not None:
+                        if groups and group_colors:
+                            for group in set(groups):
+                                group_indices = [i for i, g in enumerate(groups) if g == group]
+                                fig.add_trace(go.Scatter(
+                                    x=[pca_result[i, 0] for i in group_indices],
+                                    y=[pca_result[i, 1] for i in group_indices] if pca_result.shape[1] > 1 else [0] * len(group_indices),
+                                    mode='markers+text',
+                                    text=[sample_names[i] for i in group_indices],
+                                    textposition="top center",
+                                    marker=dict(size=12, color=group_colors[group], line=dict(width=2, color='white')),
+                                    name=f'Group {group}',
+                                    showlegend=True
+                                ), row=2, col=1)
+                        else:
                             fig.add_trace(go.Scatter(
-                                x=[pca_result[i, 0] for i in group_indices],
-                                y=[pca_result[i, 1] for i in group_indices] if pca_result.shape[1] > 1 else [0] * len(group_indices),
+                                x=pca_result[:, 0],
+                                y=pca_result[:, 1] if pca_result.shape[1] > 1 else np.zeros(len(pca_result)),
                                 mode='markers+text',
-                                text=[sample_names[i] for i in group_indices],
+                                text=sample_names,
                                 textposition="top center",
-                                marker=dict(size=12, color=group_colors[group], line=dict(width=2, color='white')),
-                                name=f'Group {group}',
-                                showlegend=True
+                                marker=dict(size=12, color=self.colors['tertiary'], line=dict(width=2, color='white')),
+                                name='Samples'
                             ), row=2, col=1)
-                    else:
-                        fig.add_trace(go.Scatter(
-                            x=pca_result[:, 0],
-                            y=pca_result[:, 1] if pca_result.shape[1] > 1 else np.zeros(len(pca_result)),
-                            mode='markers+text',
-                            text=sample_names,
-                            textposition="top center",
-                            marker=dict(size=12, color=self.colors['tertiary'], line=dict(width=2, color='white')),
-                            name='Samples'
-                        ), row=2, col=1)
-                    
-                    # UMAP Analysis (if available)
-                    if UMAP_AVAILABLE and len(scaled_data) > 3:
-                        try:
-                            umap_reducer = UMAP(n_components=2, random_state=42)
-                            umap_result = umap_reducer.fit_transform(scaled_data)
-                            
+
+                    # UMAP (if available)
+                    if scaled_data.shape[0] > 3:
+                        _, umap_result = self.compute_umap(scaled_data, n_components=2, random_state=42)
+                        if umap_result is not None:
                             if groups and group_colors:
                                 for group in set(groups):
                                     group_indices = [i for i, g in enumerate(groups) if g == group]
@@ -132,29 +118,20 @@ class ProteinsSummaryGenerator(BaseReportGenerator):
                                     marker=dict(size=12, color=self.colors['success'], line=dict(width=2, color='white')),
                                     name='UMAP'
                                 ), row=2, col=2)
-                        except Exception as e:
-                            fig.add_annotation(text=f"UMAP failed: {str(e)[:30]}...", 
-                                             xref="x4", yref="y4", x=0.5, y=0.5, showarrow=False, row=2, col=2)
-                    
-                    # Hierarchical Clustering
-                    distance_matrix = pdist(log_data.T, metric='euclidean')
-                    linkage_matrix = linkage(distance_matrix, method='ward')
-                    dendro = dendrogram(linkage_matrix, labels=sample_names, no_plot=True)
-                    
-                    icoord = np.array(dendro['icoord'])
-                    dcoord = np.array(dendro['dcoord'])
-                    
-                    for i in range(len(icoord)):
-                        fig.add_trace(go.Scatter(
-                            x=[icoord[i][0], icoord[i][1], icoord[i][2], icoord[i][3]],
-                            y=[dcoord[i][0], dcoord[i][1], dcoord[i][2], dcoord[i][3]],
-                            mode='lines', line=dict(color=self.colors['success'], width=2),
-                            showlegend=False
-                        ), row=3, col=1)
-                        
+
+                    # Hierarchical clustering
+                    icoord, dcoord = self.compute_dendrogram_coords(scaled_data)
+                    if icoord is not None and dcoord is not None:
+                        for i in range(len(icoord)):
+                            fig.add_trace(go.Scatter(
+                                x=[icoord[i][0], icoord[i][1], icoord[i][2], icoord[i][3]],
+                                y=[dcoord[i][0], dcoord[i][1], dcoord[i][2], dcoord[i][3]],
+                                mode='lines', line=dict(color=self.colors['success'], width=2),
+                                showlegend=False
+                            ), row=3, col=1)
             except Exception as e:
-                fig.add_annotation(text=f"Analysis failed: {str(e)[:50]}...", 
-                                 xref="x3", yref="y3", x=0.5, y=0.5, showarrow=False, row=2, col=1)
+                fig.add_annotation(text=f"Analysis failed: {str(e)[:50]}...",
+                                   xref="x3", yref="y3", x=0.5, y=0.5, showarrow=False, row=2, col=1)
 
         # PSM and Intensity distributions
         psm_cols = ['Number of PSMs', 'PSMs', 'MS/MS count']
