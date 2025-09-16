@@ -1,11 +1,7 @@
 package uk.ac.quadram.metapilot.task.dda.igc.par;
 
 import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 
 import org.apache.logging.log4j.LogManager;

@@ -139,15 +139,22 @@ public class MetaConstants {
 	public static String unipept = "Unipept";
 
 	public static String humanGutProDb = "Human gut microbiome protein sequence database";
-
-	public static String humanGutProDbLink = "ftp://ftp.cngb.org/pub/SciRAID/Microbiome/humanGut_9.9M/GeneCatalog/IGC.pep.gz";
+	public static String humanGutProDbLink = "https://ftp.cngb.org/pub/SciRAID/Microbiome/humanGut_9.9M/GeneCatalog/IGC.pep.gz";
 
 	public static long humanGutProDbLength = 1717986920L;
 
 	public static String mouseGutProDb = "Mouse gut microbiome protein sequence database";
+	public static String mouseGutProDbLink = "https://ftp.cngb.org/pub/SciRAID/Microbiome/mouse/GeneCatalog/mouseGut_2.6M.GeneCatalog.pep.gz";
 
-	public static String mouseGutProDbLink = "ftp://parrot.genomics.cn/gigadb/pub/10.5524/100001_101000/100114/Genecatalog/184sample_2.6M.GeneSet.pep.gz";
+	public static String humanSkinProDb = "Human skin microbiome protein sequence database";
+	public static String humanSkinProDbLink = "https://ftp.cngb.org/pub/SciRAID/Microbiome/humanSkin_10.9M/GeneCatalog/IHSMGC.pep.gz";
 
+	public static String pigGutProDb = "Pig gut microbiome protein sequence database";
+	public static String pigGutProDbLink = "https://ftp.cngb.org/pub/SciRAID/Microbiome/pig/GeneCatalog/pigGut_7.7M.GeneSet.pep.gz";
+
+	public static String ratGutProDb = "Rat gut microbiome protein sequence database";
+	public static String ratGutProDbLink = "https://ftp.cngb.org/pub/SciRAID/Microbiome/rat/GeneCatalog/rat_geneset.pep.gz";	
+	
 	public static long mouseGutProDbLength = 440401920L;
 
 	public static String pep2TaxDb = "Taxonomy analysis database";

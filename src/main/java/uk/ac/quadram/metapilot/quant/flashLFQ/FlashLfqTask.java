@@ -13,6 +13,7 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashSet;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -35,6 +36,12 @@ public class FlashLfqTask {
 	private boolean mbr;
 	private boolean nor;
 	private int thr;
+	
+	// Task state management
+	private volatile boolean isRunning = false;
+	private volatile boolean isCancelled = false;
+	private volatile boolean isDone = false;
+	private Process flashLFQProcess = null;
 
 	protected Logger LOGGER = LogManager.getLogger(FlashLfqTask.class);
 	protected String taskName = "Label free quantification";
@@ -61,22 +68,45 @@ public class FlashLfqTask {
 	}
 
 	public boolean run(MetaData metadata, String idt, String rep, boolean mbr, boolean nor) {
-
+		// Reset task state
+		isRunning = true;
+		isCancelled = false;
+		isDone = false;
+		
 		this.metadata = metadata;
 		this.idt = idt;
 		this.rep = rep;
 		this.mbr = mbr;
 		this.nor = nor;
 
-		if (!this.exportExpDesign()) {
+		try {
+			if (!this.exportExpDesign()) {
+				isDone = true;
+				isRunning = false;
+				return false;
+			}
+
+			if (isCancelled) {
+				isDone = true;
+				isRunning = false;
+				return false;
+			}
+
+			if (!this.flashLFQ()) {
+				isDone = true;
+				isRunning = false;
+				return false;
+			}
+
+			isDone = true;
+			isRunning = false;
+			return true;
+		} catch (Exception e) {
+			LOGGER.error(taskName + ": Unexpected error during execution", e);
+			isDone = true;
+			isRunning = false;
 			return false;
 		}
-
-		if (!this.flashLFQ()) {
-			return false;
-		}
-
-		return true;
 	}
 
 	/**
@@ -250,17 +280,27 @@ public class FlashLfqTask {
 			LOGGER.info(taskName + ": " + sb);
 
 			ProcessBuilder pb = new ProcessBuilder(args);
-			Process p = pb.start();
+			flashLFQProcess = pb.start();
 
-			BufferedInputStream in = new BufferedInputStream(p.getInputStream());
+			BufferedInputStream in = new BufferedInputStream(flashLFQProcess.getInputStream());
 			BufferedReader inBr = new BufferedReader(new InputStreamReader(in));
 			String lineStr;
 			while ((lineStr = inBr.readLine()) != null) {
+				// Check for cancellation during execution
+				if (isCancelled) {
+					LOGGER.info(taskName + ": Task cancelled, terminating FlashLFQ process");
+					System.out.println(format.format(new Date()) + "\t" + taskName + ": Task cancelled, terminating FlashLFQ process");
+					flashLFQProcess.destroyForcibly();
+					inBr.close();
+					in.close();
+					return false;
+				}
+				
 				LOGGER.info(lineStr);
 				System.out.println(format.format(new Date()) + "\t" + taskName + ": " + lineStr);
 			}
 
-			int exitCode = p.waitFor();
+			int exitCode = flashLFQProcess.waitFor();
 			if (exitCode != 0) {
 				LOGGER.error(taskName + ": Process exited with code " + exitCode);
 				System.out.println(format.format(new Date()) + "\t" + taskName + ": Process exited with code " + exitCode);
@@ -346,6 +386,57 @@ public class FlashLfqTask {
 		}
 
 		writer.close();
+	}
+
+	/**
+	 * Check if the task is done (completed, failed, or cancelled)
+	 * @return true if the task has finished execution
+	 */
+	public boolean isDone() {
+		return isDone;
+	}
+	
+	/**
+	 * Check if the task is currently running
+	 * @return true if the task is currently executing
+	 */
+	public boolean isRunning() {
+		return isRunning;
+	}
+	
+	/**
+	 * Cancel the running task
+	 * This will terminate the FlashLFQ process if it's running
+	 */
+	public void cancel() {
+		if (isRunning && !isCancelled) {
+			LOGGER.info(taskName + ": Cancellation requested");
+			System.out.println(format.format(new Date()) + "\t" + taskName + ": Cancellation requested");
+			
+			isCancelled = true;
+			
+			// Terminate the FlashLFQ process if it's running
+			if (flashLFQProcess != null && flashLFQProcess.isAlive()) {
+				LOGGER.info(taskName + ": Terminating FlashLFQ process");
+				System.out.println(format.format(new Date()) + "\t" + taskName + ": Terminating FlashLFQ process");
+				
+				flashLFQProcess.destroyForcibly();
+				
+				try {
+					// Wait a bit for the process to terminate
+					if (!flashLFQProcess.waitFor(5, TimeUnit.SECONDS)) {
+						LOGGER.warn(taskName + ": FlashLFQ process did not terminate gracefully within 5 seconds");
+						System.out.println(format.format(new Date()) + "\t" + taskName + ": FlashLFQ process did not terminate gracefully within 5 seconds");
+					}
+				} catch (InterruptedException e) {
+					LOGGER.warn(taskName + ": Interrupted while waiting for process termination", e);
+					Thread.currentThread().interrupt();
+				}
+			}
+			
+			isDone = true;
+			isRunning = false;
+		}
 	}
 
 }

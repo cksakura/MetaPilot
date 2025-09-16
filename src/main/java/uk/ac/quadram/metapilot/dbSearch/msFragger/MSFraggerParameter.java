@@ -11,14 +11,7 @@ import java.io.PrintWriter;
 import java.util.Arrays;
 import java.util.HashMap;
 
-import uk.ac.quadram.metapilot.core.aminoacid.Aminoacid;
-import uk.ac.quadram.metapilot.core.aminoacid.Aminoacids;
 import uk.ac.quadram.metapilot.core.enzyme.Enzyme;
-import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantModification;
-import uk.ac.quadram.metapilot.task.par.MetaConstants;
-import uk.ac.quadram.metapilot.task.v1.par.MetaParameterV1;
-import uk.ac.quadram.metapilot.task.v2.par.MetaSourcesV2;
-import uk.ac.quadram.metapilot.task.v2.par.MetaParameterMQ;
 
 /**
  * @author Kai Cheng
@@ -98,132 +91,6 @@ public class MSFraggerParameter {
 
 		MSFraggerParameter parameter = new MSFraggerParameter(valueMap);
 		return parameter;
-	}
-
-	public void config(MetaParameterV1 parameter) {
-		setDatabase(parameter.getDatabase());
-		setThread(parameter.getThreadCount());
-		if (parameter.getInstruType() == high_high) {
-			this.setFragmentMassTol(20, 1);
-		} else if (parameter.getInstruType() == high_low) {
-			this.setFragmentMassTol(0.5, 0);
-		}
-	}
-
-	public File config(MetaParameterMQ metaPar, MetaSourcesV2 advPar) throws IOException {
-
-		setThread(metaPar.getThreadCount());
-
-		if (metaPar.getMs2ScanMode().equals(MetaConstants.FTMS)) {
-			setFragmentMassTol(20, 1);
-		} else {
-			setFragmentMassTol(0.5, 0);
-		}
-
-		setDatabase(metaPar.getCurrentDb());
-		String digestMode = metaPar.getDigestModeString();
-		int termini = 2;
-
-		if (digestMode.equals("Specific")) {
-			termini = 2;
-		} else if (digestMode.equals("Unspecific")) {
-			termini = 0;
-		} else {
-			termini = 1;
-		}
-/*
-		setEnzyme(metaPar.getEnzyme(), termini, metaPar.getMissCleavages());
-
-		this.variModMap = new HashMap<String, String>();
-		MaxquantModification[] varimods = metaPar.getVariMods();
-
-		HashMap<String, String> modmap = new HashMap<String, String>();
-		for (int i = 0; i < varimods.length; i++) {
-
-			String mass = String.valueOf(varimods[i].getMonomass());
-			String[] sites = varimods[i].getSites();
-			String position = varimods[i].getPosition();
-
-			for (int j = 0; j < sites.length; j++) {
-				String value = sites[j];
-				if (sites[j].equals("-")) {
-					if (position.equals("anyNterm")) {
-						value = "n^";
-					} else if (position.equals("anyCterm")) {
-						value = "c^";
-					} else if (position.equals("proteinNterm")) {
-						value = "[^";
-					} else if (position.equals("proteinCterm")) {
-						value = "]^";
-					}
-				}
-
-				if (modmap.containsKey(mass)) {
-					modmap.put(mass, modmap.get(mass) + value);
-				} else {
-					modmap.put(mass, value);
-				}
-			}
-		}
-
-		String[] keys = modmap.keySet().toArray(new String[modmap.size()]);
-		for (int i = 0; i < keys.length; i++) {
-			variModMap.put("variable_mod_0" + (i + 1), keys[i] + " " + modmap.get(keys[i]));
-			if (i == 6) {
-				break;
-			}
-		}
-
-		MaxquantModification[] fixedmods = metaPar.getFixMods();
-		for (int i = 0; i < fixedmods.length; i++) {
-
-			String mass = String.valueOf(fixedmods[i].getMonomass());
-
-			String[] sites = fixedmods[i].getSites();
-			String position = fixedmods[i].getPosition();
-
-			for (int j = 0; j < sites.length; j++) {
-				if (sites[j].equals("-")) {
-					if (position.equals("anyNterm")) {
-						valueMap.get("add_Nterm_peptide").setValue(mass);
-					} else if (position.equals("anyCterm")) {
-						valueMap.get("add_Cterm_peptide").setValue(mass);
-					} else if (position.equals("proteinNterm")) {
-						valueMap.get("add_Nterm_protein").setValue(mass);
-					} else if (position.equals("proteinCterm")) {
-						valueMap.get("add_Cterm_protein").setValue(mass);
-					}
-				} else {
-					Aminoacid aminoacid = Aminoacids.getAminoacid(sites[j].charAt(0));
-					char aa = aminoacid.getOneLetter();
-					if (aa == 'B' || aa == 'O' || aa == 'U' || aa == 'J' || aa == 'X' || aa == 'Z') {
-						valueMap.get("add_" + aa + "_user_amino_acid").setValue(mass);
-					} else {
-						valueMap.get("add_" + aa + "_" + aminoacid.getName()).setValue(mass);
-					}
-				}
-			}
-		}
-*/
-		if (metaPar.isOpenSearch()) {
-
-//			setPrecursorMassTol(500, 0, 10, 1);
-
-			File output = new File(metaPar.getDbSearchResultFile(), "open_fragger.params");
-			export(output);
-
-			return output;
-
-		} else {
-
-//			setPrecursorMassTol(10, 1, 10, 1);
-
-			File output = new File(metaPar.getDbSearchResultFile(), "closed_fragger.params");
-			export(output);
-
-			return output;
-
-		}
 	}
 
 	public static String getDefaultPath() {

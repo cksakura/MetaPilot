@@ -3,16 +3,20 @@
   "input_output": {
     "host_database": "C:\\Users\\daz25hak\\MetaProAI\\database\\uniprotkb_Human_AND_reviewed_true_AND_m_2025_09_01.fasta",
     "mag_database": "human-gut",
-    "output_directory": "U:\\datasets\\CAMPI2\\MetaPilot_mag_fragpipe",
+    "output_directory": "Z:\\PRIDE_dataset\\PXD050781\\DDA_stool\\MetaPilot",
     "append_host_db": true,
     "experiments": [
       {
-        "file_path": "U:\\datasets\\CAMPI2\\20230815_CAMPI2_CEA_F_M1_R1_QE3_2ug_1D_DirectLoad_RP180grad.raw",
-        "experiment_name": "M1"
+        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA_stool\\Haonan_20210924_isotope_mix_Stool1.raw",
+        "experiment_name": "Stool1"
       },
       {
-        "file_path": "U:\\datasets\\CAMPI2\\20230815_CAMPI2_CEA_F_M2_R1_QE3_2ug_1D_DirectLoad_RP180grad.raw",
-        "experiment_name": "M2"
+        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA_stool\\Haonan_20210924_isotope_mix_Stool2.raw",
+        "experiment_name": "Stool2"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA_stool\\Haonan_20210924_isotope_mix_Stool3.raw",
+        "experiment_name": "Stool3"
       }
     ]
   },
@@ -21,13 +25,13 @@
     "missed_cleavages": 2,
     "digestion_mode": "Specific"
   },
-  "generated_at": "2025-09-11 16:13:05",
+  "generated_at": "2025-09-16 16:45:23",
   "fragpipe_workflow_configured": true,
   "additional_parameters": {
     "generate_sample_specific_db": true,
     "ms2_scan_mode": "HCD-FTMS",
     "spectra_clustering": false,
-    "threads": 12
+    "threads": 20
   },
   "description": "Last used parameters",
   "version": "1.0"

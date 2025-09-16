@@ -31,6 +31,7 @@ public class MetadataConfigurationPanel extends VBox {
     private TextField customColumnTextField;
     private Button addMetadataColumnButton;
     private Button removeMetadataColumnButton;
+    private Button resetMetadataButton;
     
     // Callback for parameter updates
     private Runnable parameterUpdateCallback;
@@ -97,11 +98,18 @@ public class MetadataConfigurationPanel extends VBox {
         removeMetadataColumnButton.setPrefWidth(150);
         removeMetadataColumnButton.setOnAction(e -> removeMetadataColumn());
         
+        resetMetadataButton = new Button("Reset All");
+        resetMetadataButton.setMinWidth(120);
+        resetMetadataButton.setPrefWidth(150);
+        resetMetadataButton.setStyle("-fx-background-color: #ff6b6b; -fx-text-fill: white;");
+        resetMetadataButton.setOnAction(e -> resetMetadataTable());
+        
         controlBox.getChildren().addAll(
             metadataColumnComboBox, 
             customColumnTextField, 
             addMetadataColumnButton, 
-            removeMetadataColumnButton
+            removeMetadataColumnButton,
+            resetMetadataButton
         );
         
         getChildren().addAll(titleLabel, infoLabel, metadataTable, controlBox);
@@ -386,6 +394,23 @@ public class MetadataConfigurationPanel extends VBox {
         if (data != null) {
             metadataTableData.addAll(data);
         }
+        notifyParameterUpdate();
+    }
+    
+    /**
+     * Resets the metadata table to its default state (only Sample column)
+     */
+    private void resetMetadataTable() {
+        // Clear all data
+        metadataTableData.clear();
+        
+        // Remove all columns except the Sample column
+        metadataTable.getColumns().clear();
+        
+        // Recreate basic table structure with only Sample column
+        createBasicMetadataTableColumns();
+        
+        // Notify that parameters have changed
         notifyParameterUpdate();
     }
 } 

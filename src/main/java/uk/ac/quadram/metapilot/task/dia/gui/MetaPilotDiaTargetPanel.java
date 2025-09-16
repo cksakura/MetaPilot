@@ -28,7 +28,8 @@ import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.dia.par.DiaTargetParameterIO;
-import uk.ac.quadram.metapilot.task.dia.target.par.MetaParameterDiaTg;
+import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaTg;
+
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -1175,7 +1176,15 @@ public class MetaPilotDiaTargetPanel extends VBox {
                 MetaPilotIOPanelFX.ExperimentRow row = fileRows.get(i);
                 rawFiles[i] = row.getFilePath();
                 expNames[i] = row.getExperimentName();
-                fractions[i] = 1; // Default fraction
+                // Get fraction from the IO panel, default to 1 if invalid
+                try {
+                    fractions[i] = Integer.parseInt(row.getFraction());
+                    if (fractions[i] <= 0) {
+                        fractions[i] = 1; // Ensure positive fraction
+                    }
+                } catch (NumberFormatException e) {
+                    fractions[i] = 1; // Default to 1 if not a valid integer
+                }
                 replicates[i] = 1; // Default replicate
             }
             
