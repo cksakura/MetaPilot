@@ -38,6 +38,7 @@ import java.io.File;
 public class MetaPilotDiaRealTimePanel extends VBox {
     // UI Components - Database
     private MagDatabaseSettingsPanel magDatabasePanel;
+    private TextArea consoleOutput;
     private ConsolePanel consolePanel;
 
     // Real-time monitoring components
@@ -743,8 +744,8 @@ public class MetaPilotDiaRealTimePanel extends VBox {
             combineTask = new MetaDiaCombineTask(
                 combineParams,
                 resourceParams,
-                overallProgressBar,
-                currentTaskProgressBar,
+                consolePanel.getOverallProgressBar(),
+                consolePanel.getCurrentTaskProgressBar(),
                 rawResultFileMap
             );
             
@@ -833,8 +834,8 @@ public class MetaPilotDiaRealTimePanel extends VBox {
             monitorTask = new MetaDiaMonitorTask(
                 rtParams,
                 resourceParams,
-                overallProgressBar,
-                currentTaskProgressBar,
+                consolePanel.getOverallProgressBar(),
+                consolePanel.getCurrentTaskProgressBar(),
                 rtParams.getMonitorFolder(),
                 rtParams.getResultFolder(),
                 swingResultTableModel,
