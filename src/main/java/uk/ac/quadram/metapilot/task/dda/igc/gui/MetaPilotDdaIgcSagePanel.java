@@ -23,6 +23,7 @@ import uk.ac.quadram.metapilot.task.common.gui.IsobaricLabelingPanel;
 import uk.ac.quadram.metapilot.task.common.gui.TaxonomicAnalysisPanel;
 import uk.ac.quadram.metapilot.task.common.gui.DdaIgcInputOutputPanel;
 import uk.ac.quadram.metapilot.task.common.gui.ModificationsPanel;
+import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
@@ -30,6 +31,7 @@ import uk.ac.quadram.metapilot.task.MetaLabWorkflowType;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.core.mod.IsobaricTag;
 import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel;
+import uk.ac.quadram.metapilot.task.io.par.MaxQuantModIO;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.util.Duration;
@@ -48,19 +50,13 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.io.File;
 import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
-import uk.ac.quadram.metapilot.task.v2.par.MaxQuantModIO;
+
 import java.util.HashMap;
 
 public class MetaPilotDdaIgcSagePanel extends VBox {
     // UI Components (similar to pFind panel)
     private DdaIgcInputOutputPanel ioPanel;
-    private TextArea consoleOutput;
-    private TextArea parameterView;
-    private ProgressBar overallProgressBar;
-    private ProgressBar currentTaskProgressBar;
-    private Label currentTaskLabel;
-    private Button startButton;
-    private Button stopButton;
+    private ConsolePanel consolePanel;
     private ToggleGroup quantModeGroup;
 
     // Parameter Panel Components
@@ -95,13 +91,8 @@ public class MetaPilotDdaIgcSagePanel extends VBox {
     private ComboBox<String> metadataColumnComboBox;
     private Button addMetadataColumnButton;
     private Button removeMetadataColumnButton;
+    private Button resetMetadataButton;
 
-    // Status panel fields
-    private Label statusTimeLabel;
-    private Label statusCpuLabel;
-    private Label statusMemLabel;
-    private Timeline statusTimeline;
-    private long taskStartTimeMillis;
 
     public MetaPilotDdaIgcSagePanel() {
         loadEnzymesFromIni();
@@ -112,6 +103,12 @@ public class MetaPilotDdaIgcSagePanel extends VBox {
         
         // Initialize taxonomic analysis panel
         taxonomicAnalysisPanel = new TaxonomicAnalysisPanel(this::updateParameterView);
+        
+        // Initialize console panel
+        consolePanel = new ConsolePanel();
+        consolePanel.setStartCallback(this::startAnalysis);
+        consolePanel.setStopCallback(this::stopAnalysis);
+        consolePanel.setViewReportCallback(this::viewReport);
         
         initializeUI();
     }
@@ -139,7 +136,7 @@ public class MetaPilotDdaIgcSagePanel extends VBox {
         paramTab.setContent(createParametersTab());
 
         Tab consoleTab = new Tab("Console");
-        consoleTab.setContent(createConsoleTab());
+        consoleTab.setContent(consolePanel);
 
         tabPane.getTabs().addAll(ioTab, paramTab, consoleTab);
 
@@ -529,79 +526,6 @@ public class MetaPilotDdaIgcSagePanel extends VBox {
         }
     }
 
-    // Add remaining missing methods
-    private VBox createConsoleTab() {
-        VBox tabContent = new VBox(10);
-        tabContent.setPadding(new Insets(10));
-
-        // Parameter View
-        VBox paramViewBox = new VBox(5);
-        paramViewBox.getChildren().add(new Label("Parameter View:"));
-        parameterView = new TextArea();
-        parameterView.setEditable(false);
-        parameterView.setPrefHeight(200);
-        parameterView.setStyle("-fx-font-family: monospace;");
-        VBox.setVgrow(parameterView, Priority.ALWAYS);
-        paramViewBox.getChildren().add(parameterView);
-        VBox.setVgrow(paramViewBox, Priority.ALWAYS);
-
-        // Progress Bars
-        VBox progressBox = new VBox(5);
-        currentTaskLabel = new Label("Current Task: None");
-        overallProgressBar = new ProgressBar(0);
-        overallProgressBar.setMaxWidth(Double.MAX_VALUE);
-        currentTaskProgressBar = new ProgressBar(0);
-        currentTaskProgressBar.setMaxWidth(Double.MAX_VALUE);
-        progressBox.getChildren().addAll(
-            currentTaskLabel,
-            new Label("Overall Progress:"),
-            overallProgressBar,
-            new Label("Current Task Progress:"),
-            currentTaskProgressBar
-        );
-
-        // Console Output
-        VBox consoleBox = new VBox(5);
-        consoleBox.getChildren().add(new Label("Console Output:"));
-        consoleOutput = new TextArea();
-        consoleOutput.setEditable(false);
-        consoleOutput.setPrefHeight(250);
-        consoleOutput.setStyle("-fx-font-family: monospace;");
-        VBox.setVgrow(consoleOutput, Priority.ALWAYS);
-        consoleBox.getChildren().add(consoleOutput);
-        VBox.setVgrow(consoleBox, Priority.ALWAYS);
-
-        // Control Buttons
-        HBox controlBox = new HBox(10);
-        startButton = new Button("Start Analysis");
-        stopButton = new Button("Stop");
-        stopButton.setDisable(true);
-        startButton.setOnAction(e -> startAnalysis());
-        stopButton.setOnAction(e -> stopAnalysis());
-        controlBox.getChildren().addAll(startButton, stopButton);
-
-        // Status Panel
-        HBox statusPanel = new HBox(20);
-        statusPanel.setPadding(new Insets(5, 0, 0, 0));
-        statusPanel.setAlignment(Pos.CENTER_LEFT);
-        statusTimeLabel = new Label("Time: 00:00:00");
-        statusCpuLabel = new Label("CPU: 0.0%");
-        statusMemLabel = new Label("Memory: 0 / 0 MB");
-        statusPanel.getChildren().addAll(statusTimeLabel, statusCpuLabel, statusMemLabel);
-
-        tabContent.getChildren().addAll(
-            paramViewBox,
-            progressBox,
-            consoleBox,
-            controlBox,
-            statusPanel
-        );
-        VBox.setVgrow(paramViewBox, Priority.ALWAYS);
-        VBox.setVgrow(consoleBox, Priority.ALWAYS);
-        VBox.setVgrow(tabContent, Priority.ALWAYS);
-
-        return tabContent;
-    }
 
     private void updateMetadataTableFromIOPanel() {
         if (ioPanel == null || metadataTable == null) {
@@ -681,12 +605,19 @@ public class MetaPilotDdaIgcSagePanel extends VBox {
         removeMetadataColumnButton.setMinWidth(120);
         removeMetadataColumnButton.setPrefWidth(150);
         removeMetadataColumnButton.setOnAction(e -> removeMetadataColumn());
+        
+        resetMetadataButton = new Button("Reset All");
+        resetMetadataButton.setMinWidth(120);
+        resetMetadataButton.setPrefWidth(150);
+        resetMetadataButton.setStyle("-fx-background-color: #ff6b6b; -fx-text-fill: white;");
+        resetMetadataButton.setOnAction(e -> resetMetadataTable());
 
         controlBox.getChildren().addAll(
             metadataColumnComboBox, 
             customColumnTextField, 
             addMetadataColumnButton, 
-            removeMetadataColumnButton
+            removeMetadataColumnButton,
+            resetMetadataButton
         );
 
         section.getChildren().addAll(titleLabel, infoLabel, metadataTable, controlBox);
@@ -715,7 +646,7 @@ public class MetaPilotDdaIgcSagePanel extends VBox {
     }
 
     private void updateParameterView() {
-        if (parameterView == null) {
+        if (consolePanel == null) {
             return;
         }
         
@@ -799,7 +730,10 @@ public class MetaPilotDdaIgcSagePanel extends VBox {
         // Taxonomic analysis
         sb.append("\n").append(taxonomicAnalysisPanel.getTaxonomicSummary());
 
-        parameterView.setText(sb.toString());
+        // Update the console panel's parameter view
+        if (consolePanel != null) {
+            consolePanel.setParameterText(sb.toString());
+        }
     }
 
     private void updateMetadataTable() {
@@ -889,20 +823,82 @@ public class MetaPilotDdaIgcSagePanel extends VBox {
             metadataTable.getColumns().remove(selectedColumn);
         }
     }
+    
+    private void resetMetadataTable() {
+        // Clear all data
+        metadataTableData.clear();
+        
+        // Remove all columns except the Sample column
+        metadataTable.getColumns().clear();
+        
+        // Recreate basic table structure with only Sample column
+        createMetadataTableColumns();
+        
+        // Update parameter view
+        updateParameterView();
+    }
 
     private void startAnalysis() {
-        startButton.setDisable(true);
-        stopButton.setDisable(false);
-        consoleOutput.clear();
-        consoleOutput.appendText("Starting Sage analysis...\n");
+        if (consolePanel != null) {
+            consolePanel.clearConsole();
+            consolePanel.appendConsoleText("Starting Sage analysis...\n");
+        }
         System.out.println("DEBUG: startAnalysis called - Sage workflow");
     }
 
     private void stopAnalysis() {
-        startButton.setDisable(false);
-        stopButton.setDisable(true);
-        consoleOutput.appendText("Stopping Sage analysis...\n");
+        if (consolePanel != null) {
+            consolePanel.appendConsoleText("Stopping Sage analysis...\n");
+        }
         System.out.println("DEBUG: stopAnalysis called");
+    }
+    
+    private void viewReport() {
+        if (consolePanel != null) {
+            consolePanel.appendConsoleText("Opening report in default browser...\n");
+        }
+        
+        // Get the output directory from the IO panel
+        String outputDir = ioPanel.getIoPanel().getOutputDirectory();
+        if (outputDir == null || outputDir.trim().isEmpty()) {
+            if (consolePanel != null) {
+                consolePanel.appendConsoleText("ERROR: No output directory specified.\n");
+            }
+            return;
+        }
+        
+        java.io.File reportDir = new java.io.File(outputDir);
+        if (!reportDir.exists()) {
+            if (consolePanel != null) {
+                consolePanel.appendConsoleText("ERROR: Report directory does not exist: " + outputDir + "\n");
+            }
+            return;
+        }
+        
+        java.io.File indexFile = new java.io.File(reportDir, "index.html");
+        if (!indexFile.exists()) {
+            if (consolePanel != null) {
+                consolePanel.appendConsoleText("ERROR: Report index.html not found in " + outputDir + "\n");
+            }
+            return;
+        }
+        
+        try {
+            if (java.awt.Desktop.isDesktopSupported()) {
+                java.awt.Desktop.getDesktop().browse(indexFile.toURI());
+                if (consolePanel != null) {
+                    consolePanel.appendConsoleText("✓ Report opened in default browser\n");
+                }
+            } else {
+                if (consolePanel != null) {
+                    consolePanel.appendConsoleText("ERROR: Desktop not supported. Please open manually: " + indexFile.getAbsolutePath() + "\n");
+                }
+            }
+        } catch (Exception e) {
+            if (consolePanel != null) {
+                consolePanel.appendConsoleText("ERROR: Failed to open report: " + e.getMessage() + "\n");
+            }
+        }
     }
     
     private boolean validateInputs() {

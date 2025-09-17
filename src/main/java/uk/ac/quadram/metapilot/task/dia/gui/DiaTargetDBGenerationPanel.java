@@ -13,8 +13,8 @@ import java.io.File;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.util.Duration;
-import uk.ac.quadram.metapilot.task.dia.target.MetaDiaTargetDBTask;
-import uk.ac.quadram.metapilot.task.dia.target.par.MetaParameterDiaTg;
+import uk.ac.quadram.metapilot.task.dia.MetaDiaTargetDBTask;
+import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaTg;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 
 public class DiaTargetDBGenerationPanel extends VBox {

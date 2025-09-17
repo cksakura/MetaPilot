@@ -49,6 +49,7 @@ public class MagDbConfigIO {
 		} catch (FileNotFoundException e) {
 			// TODO Auto-generated catch block
 			LOGGER.error("Error in reading MetaLab parameter file " + json, e);
+			return null;
 		}
 
 		StringBuilder sb = new StringBuilder();
@@ -182,7 +183,7 @@ public class MagDbConfigIO {
 					magDbItem.addVersion(catalogueVersion, speciesCount, date, localAvailable, dbName, funcName,
 							taxaName);
 				}
-				
+
 				if (obji.has("models")) {
 					JSONArray modelArray = obji.getJSONArray("models");
 					for (int j = 0; j < modelArray.length(); j++) {
@@ -224,28 +225,24 @@ public class MagDbConfigIO {
 	}
 
 	public static void exportBlank(File out) {
+		try (PrintWriter writer = new PrintWriter(out)) {
+			JSONWriter jw = new JSONWriter(writer);
+			jw.object();
 
-		PrintWriter writer = null;
-		try {
-			writer = new PrintWriter(out);
+			jw.key(MGnify).array();
+
+			jw.endArray();
+
+			jw.key(localMAGs).array();
+			jw.endArray();
+
+			jw.endObject();
+
+			writer.close();
 		} catch (FileNotFoundException e) {
 			// TODO Auto-generated catch block
 			LOGGER.error("Error in exporting MetaLab parameter to " + out, e);
 		}
-
-		JSONWriter jw = new JSONWriter(writer);
-		jw.object();
-
-		jw.key(MGnify).array();
-
-		jw.endArray();
-
-		jw.key(localMAGs).array();
-		jw.endArray();
-
-		jw.endObject();
-
-		writer.close();
 	}
 
 	public static void export(MagDbItem[][] magDbItems, String out) {
@@ -254,150 +251,148 @@ public class MagDbConfigIO {
 
 	public static void export(MagDbItem[][] magDbItems, File out) {
 
-		PrintWriter writer = null;
-		try {
-			writer = new PrintWriter(out);
+		try (PrintWriter writer = new PrintWriter(out)) {
+			JSONWriter jw = new JSONWriter(writer);
+			jw.object();
+
+			jw.key(MGnify).array();
+			for (int i = 0; i < magDbItems[0].length; i++) {
+				jw.object();
+				jw.key("catalogueID").value(magDbItems[0][i].getCatalogueID());
+				jw.key("identifier").value(magDbItems[0][i].getIdentifier());
+				jw.key("repository").value(magDbItems[0][i].getRepositoryFile());
+
+				jw.key("versionlist").array();
+				ArrayList<MagVersion> versionList = magDbItems[0][i].getVersionList();
+				for (int j = 0; j < versionList.size(); j++) {
+					MagVersion ver = versionList.get(j);
+					jw.object();
+					jw.key("version").value(ver.getCatalogueVersion());
+					jw.key("speciesCount").value(ver.getSpeciesCount());
+					jw.key("date").value(sdf.format(ver.getDate()));
+					jw.key("localAvailable").value(ver.isLocalAvailable());
+					jw.key("dbName").value(ver.getDbName());
+					jw.key("funcName").value(ver.getFuncName());
+					jw.key("taxaName").value(ver.getTaxName());
+					jw.endObject();
+				}
+				jw.endArray();
+
+				jw.key("MGYG").array();
+				HashMap<String, ArrayList<String>> mgygMap = magDbItems[0][i].getMgygNameMap();
+				for (String parent : mgygMap.keySet()) {
+					ArrayList<String> childList = mgygMap.get(parent);
+					jw.object();
+					jw.key("parent").value(parent);
+
+					jw.key("children").array();
+					for (String child : childList) {
+						jw.object();
+						jw.key("child").value(child);
+						jw.endObject();
+					}
+					jw.endArray();
+					jw.endObject();
+				}
+				jw.endArray();
+
+				MagModel[] magModels = magDbItems[0][i].getMagModels();
+				jw.key("models").array();
+				for (MagModel magModel : magModels) {
+					jw.object();
+					jw.key("modelName").value(magModel.getModelName());
+					jw.key("trainSize").value(magModel.getTrainSize());
+					jw.key("modelSize").value(magModel.getModelSize());
+					jw.key("corr").value(magModel.getCorr());
+					jw.key("med").value(magModel.getMed());
+					jw.endObject();
+				}
+				jw.endArray();
+
+				MagPepLib[] magPepLibs = magDbItems[0][i].getMagPepLibs();
+				jw.key("pepLibs").array();
+				for (MagPepLib magPepLib : magPepLibs) {
+					jw.object();
+					jw.key("pepLibName").value(magPepLib.getLibName());
+					jw.key("pepCount").value(magPepLib.getPepCount());
+					jw.key("protease").value(magPepLib.getProtease());
+					jw.key("miss").value(magPepLib.getMiss());
+					jw.endObject();
+				}
+				jw.endArray();
+
+				jw.endObject();
+			}
+			jw.endArray();
+
+			jw.key(localMAGs).array();
+			for (int i = 0; i < magDbItems[1].length; i++) {
+				jw.object();
+				jw.key("catalogueID").value(magDbItems[1][i].getCatalogueID());
+				jw.key("identifier").value(magDbItems[1][i].getIdentifier());
+				jw.key("repository").value(magDbItems[1][i].getRepositoryFile());
+
+				jw.key("versionlist").array();
+				ArrayList<MagVersion> versionList = magDbItems[1][i].getVersionList();
+				for (int j = 0; j < versionList.size(); j++) {
+					MagVersion ver = versionList.get(j);
+					jw.object();
+					jw.key("version").value(ver.getCatalogueVersion());
+					jw.key("speciesCount").value(ver.getSpeciesCount());
+					jw.key("date").value(sdf.format(ver.getDate()));
+					jw.key("localAvailable").value(ver.isLocalAvailable());
+					jw.key("dbName").value(ver.getDbName());
+					jw.key("funcName").value(ver.getFuncName());
+					jw.key("taxaName").value(ver.getTaxName());
+					jw.endObject();
+				}
+				jw.endArray();
+
+				MagModel[] magModels = magDbItems[1][i].getMagModels();
+				jw.key("models").array();
+				for (MagModel magModel : magModels) {
+					jw.object();
+					jw.key("modelName").value(magModel.getModelName());
+					jw.key("trainSize").value(magModel.getTrainSize());
+					jw.key("modelSize").value(magModel.getModelSize());
+					jw.key("corr").value(magModel.getCorr());
+					jw.key("med").value(magModel.getMed());
+					jw.endObject();
+				}
+				jw.endArray();
+
+				MagPepLib[] magPepLibs = magDbItems[1][i].getMagPepLibs();
+				jw.key("pepLibs").array();
+				for (MagPepLib magPepLib : magPepLibs) {
+					jw.object();
+					jw.key("pepLibName").value(magPepLib.getLibName());
+					jw.key("pepCount").value(magPepLib.getPepCount());
+					jw.key("protease").value(magPepLib.getProtease());
+					jw.key("miss").value(magPepLib.getMiss());
+					jw.endObject();
+				}
+				jw.endArray();
+
+				jw.endObject();
+			}
+			jw.endArray();
+
+			jw.endObject();
+
+			writer.close();
 		} catch (FileNotFoundException e) {
 			// TODO Auto-generated catch block
 			LOGGER.error("Error in exporting MetaLab parameter to " + out, e);
 		}
-
-		JSONWriter jw = new JSONWriter(writer);
-		jw.object();
-
-		jw.key(MGnify).array();
-		for (int i = 0; i < magDbItems[0].length; i++) {
-			jw.object();
-			jw.key("catalogueID").value(magDbItems[0][i].getCatalogueID());
-			jw.key("identifier").value(magDbItems[0][i].getIdentifier());
-			jw.key("repository").value(magDbItems[0][i].getRepositoryFile());
-
-			jw.key("versionlist").array();
-			ArrayList<MagVersion> versionList = magDbItems[0][i].getVersionList();
-			for (int j = 0; j < versionList.size(); j++) {
-				MagVersion ver = versionList.get(j);
-				jw.object();
-				jw.key("version").value(ver.getCatalogueVersion());
-				jw.key("speciesCount").value(ver.getSpeciesCount());
-				jw.key("date").value(sdf.format(ver.getDate()));
-				jw.key("localAvailable").value(ver.isLocalAvailable());
-				jw.key("dbName").value(ver.getDbName());
-				jw.key("funcName").value(ver.getFuncName());
-				jw.key("taxaName").value(ver.getTaxName());
-				jw.endObject();
-			}
-			jw.endArray();
-
-			jw.key("MGYG").array();
-			HashMap<String, ArrayList<String>> mgygMap = magDbItems[0][i].getMgygNameMap();
-			for (String parent : mgygMap.keySet()) {
-				ArrayList<String> childList = mgygMap.get(parent);
-				jw.object();
-				jw.key("parent").value(parent);
-
-				jw.key("children").array();
-				for (String child : childList) {
-					jw.object();
-					jw.key("child").value(child);
-					jw.endObject();
-				}
-				jw.endArray();
-				jw.endObject();
-			}
-			jw.endArray();
-
-			MagModel[] magModels = magDbItems[0][i].getMagModels();
-			jw.key("models").array();
-			for (MagModel magModel : magModels) {
-				jw.object();
-				jw.key("modelName").value(magModel.getModelName());
-				jw.key("trainSize").value(magModel.getTrainSize());
-				jw.key("modelSize").value(magModel.getModelSize());
-				jw.key("corr").value(magModel.getCorr());
-				jw.key("med").value(magModel.getMed());
-				jw.endObject();
-			}
-			jw.endArray();
-
-			MagPepLib[] magPepLibs = magDbItems[0][i].getMagPepLibs();
-			jw.key("pepLibs").array();
-			for (MagPepLib magPepLib : magPepLibs) {
-				jw.object();
-				jw.key("pepLibName").value(magPepLib.getLibName());
-				jw.key("pepCount").value(magPepLib.getPepCount());
-				jw.key("protease").value(magPepLib.getProtease());
-				jw.key("miss").value(magPepLib.getMiss());
-				jw.endObject();
-			}
-			jw.endArray();
-
-			jw.endObject();
-		}
-		jw.endArray();
-
-		jw.key(localMAGs).array();
-		for (int i = 0; i < magDbItems[1].length; i++) {
-			jw.object();
-			jw.key("catalogueID").value(magDbItems[1][i].getCatalogueID());
-			jw.key("identifier").value(magDbItems[1][i].getIdentifier());
-			jw.key("repository").value(magDbItems[1][i].getRepositoryFile());
-
-			jw.key("versionlist").array();
-			ArrayList<MagVersion> versionList = magDbItems[1][i].getVersionList();
-			for (int j = 0; j < versionList.size(); j++) {
-				MagVersion ver = versionList.get(j);
-				jw.object();
-				jw.key("version").value(ver.getCatalogueVersion());
-				jw.key("speciesCount").value(ver.getSpeciesCount());
-				jw.key("date").value(sdf.format(ver.getDate()));
-				jw.key("localAvailable").value(ver.isLocalAvailable());
-				jw.key("dbName").value(ver.getDbName());
-				jw.key("funcName").value(ver.getFuncName());
-				jw.key("taxaName").value(ver.getTaxName());
-				jw.endObject();
-			}
-			jw.endArray();
-			
-			MagModel[] magModels = magDbItems[1][i].getMagModels();
-			jw.key("models").array();
-			for (MagModel magModel : magModels) {
-				jw.object();
-				jw.key("modelName").value(magModel.getModelName());
-				jw.key("trainSize").value(magModel.getTrainSize());
-				jw.key("modelSize").value(magModel.getModelSize());
-				jw.key("corr").value(magModel.getCorr());
-				jw.key("med").value(magModel.getMed());
-				jw.endObject();
-			}
-			jw.endArray();
-
-			MagPepLib[] magPepLibs = magDbItems[1][i].getMagPepLibs();
-			jw.key("pepLibs").array();
-			for (MagPepLib magPepLib : magPepLibs) {
-				jw.object();
-				jw.key("pepLibName").value(magPepLib.getLibName());
-				jw.key("pepCount").value(magPepLib.getPepCount());
-				jw.key("protease").value(magPepLib.getProtease());
-				jw.key("miss").value(magPepLib.getMiss());
-				jw.endObject();
-			}
-			jw.endArray();
-			
-			jw.endObject();
-		}
-		jw.endArray();
-
-		jw.endObject();
-
-		writer.close();
 	}
-	
+
 	/**
-	 * Update a single MagDbItem in the JSON configuration file
-	 * This method is more efficient than exporting the entire array when only one item needs to be updated
+	 * Update a single MagDbItem in the JSON configuration file This method is more
+	 * efficient than exporting the entire array when only one item needs to be
+	 * updated
 	 * 
-	 * @param magDbItem The MagDbItem to update
-	 * @param isMgnify True if the item is from MGnify, false if it's a local MAG
+	 * @param magDbItem  The MagDbItem to update
+	 * @param isMgnify   True if the item is from MGnify, false if it's a local MAG
 	 * @param configFile The configuration file to update
 	 */
 	public static void updateMagDbItem(MagDbItem magDbItem, boolean isMgnify, File configFile) {
@@ -405,17 +400,17 @@ public class MagDbConfigIO {
 			LOGGER.error("Configuration file does not exist: " + configFile);
 			return;
 		}
-		
+
 		try {
 			// Parse the existing configuration
 			MagDbItem[][] existingItems = parse(configFile);
-			
+
 			// Find and update the specific item
 			boolean found = false;
 			if (isMgnify && existingItems[0] != null) {
 				for (int i = 0; i < existingItems[0].length; i++) {
-					if (existingItems[0][i].getCatalogueID().equals(magDbItem.getCatalogueID()) &&
-						existingItems[0][i].getIdentifier().equals(magDbItem.getIdentifier())) {
+					if (existingItems[0][i].getCatalogueID().equals(magDbItem.getCatalogueID())
+							&& existingItems[0][i].getIdentifier().equals(magDbItem.getIdentifier())) {
 						// Update the item with new data
 						existingItems[0][i] = magDbItem;
 						found = true;
@@ -424,8 +419,8 @@ public class MagDbConfigIO {
 				}
 			} else if (!isMgnify && existingItems[1] != null) {
 				for (int i = 0; i < existingItems[1].length; i++) {
-					if (existingItems[1][i].getCatalogueID().equals(magDbItem.getCatalogueID()) &&
-						existingItems[1][i].getIdentifier().equals(magDbItem.getIdentifier())) {
+					if (existingItems[1][i].getCatalogueID().equals(magDbItem.getCatalogueID())
+							&& existingItems[1][i].getIdentifier().equals(magDbItem.getIdentifier())) {
 						// Update the item with new data
 						existingItems[1][i] = magDbItem;
 						found = true;
@@ -433,37 +428,41 @@ public class MagDbConfigIO {
 					}
 				}
 			}
-			
+
 			if (!found) {
-				LOGGER.warn("MagDbItem not found for update: " + magDbItem.getCatalogueID() + " - " + magDbItem.getIdentifier());
+				LOGGER.warn("MagDbItem not found for update: " + magDbItem.getCatalogueID() + " - "
+						+ magDbItem.getIdentifier());
 				return;
 			}
-			
+
 			// Export the updated configuration
 			export(existingItems, configFile);
-			LOGGER.info("Successfully updated MagDbItem: " + magDbItem.getCatalogueID() + " - " + magDbItem.getIdentifier());
-			
+			LOGGER.info("Successfully updated MagDbItem: " + magDbItem.getCatalogueID() + " - "
+					+ magDbItem.getIdentifier());
+
 		} catch (Exception e) {
 			LOGGER.error("Error updating MagDbItem in configuration file: " + configFile, e);
 		}
 	}
-	
+
 	/**
-	 * Update a single MagDbItem in the JSON configuration file (String path version)
+	 * Update a single MagDbItem in the JSON configuration file (String path
+	 * version)
 	 * 
-	 * @param magDbItem The MagDbItem to update
-	 * @param isMgnify True if the item is from MGnify, false if it's a local MAG
+	 * @param magDbItem      The MagDbItem to update
+	 * @param isMgnify       True if the item is from MGnify, false if it's a local
+	 *                       MAG
 	 * @param configFilePath The path to the configuration file to update
 	 */
 	public static void updateMagDbItem(MagDbItem magDbItem, boolean isMgnify, String configFilePath) {
 		updateMagDbItem(magDbItem, isMgnify, new File(configFilePath));
 	}
-	
+
 	/**
 	 * Add a new MagDbItem to the JSON configuration file
 	 * 
-	 * @param magDbItem The new MagDbItem to add
-	 * @param isMgnify True if the item is from MGnify, false if it's a local MAG
+	 * @param magDbItem  The new MagDbItem to add
+	 * @param isMgnify   True if the item is from MGnify, false if it's a local MAG
 	 * @param configFile The configuration file to update
 	 */
 	public static void addMagDbItem(MagDbItem magDbItem, boolean isMgnify, File configFile) {
@@ -471,15 +470,15 @@ public class MagDbConfigIO {
 			LOGGER.error("Configuration file does not exist: " + configFile);
 			return;
 		}
-		
+
 		try {
 			// Parse the existing configuration
 			MagDbItem[][] existingItems = parse(configFile);
-			
+
 			// Add the new item to the appropriate array
 			if (isMgnify) {
 				if (existingItems[0] == null) {
-					existingItems[0] = new MagDbItem[]{magDbItem};
+					existingItems[0] = new MagDbItem[] { magDbItem };
 				} else {
 					MagDbItem[] newArray = new MagDbItem[existingItems[0].length + 1];
 					System.arraycopy(existingItems[0], 0, newArray, 0, existingItems[0].length);
@@ -488,7 +487,7 @@ public class MagDbConfigIO {
 				}
 			} else {
 				if (existingItems[1] == null) {
-					existingItems[1] = new MagDbItem[]{magDbItem};
+					existingItems[1] = new MagDbItem[] { magDbItem };
 				} else {
 					MagDbItem[] newArray = new MagDbItem[existingItems[1].length + 1];
 					System.arraycopy(existingItems[1], 0, newArray, 0, existingItems[1].length);
@@ -496,63 +495,27 @@ public class MagDbConfigIO {
 					existingItems[1] = newArray;
 				}
 			}
-			
+
 			// Export the updated configuration
 			export(existingItems, configFile);
-			LOGGER.info("Successfully added new MagDbItem: " + magDbItem.getCatalogueID() + " - " + magDbItem.getIdentifier());
-			
+			LOGGER.info("Successfully added new MagDbItem: " + magDbItem.getCatalogueID() + " - "
+					+ magDbItem.getIdentifier());
+
 		} catch (Exception e) {
 			LOGGER.error("Error adding MagDbItem to configuration file: " + configFile, e);
 		}
 	}
-	
+
 	/**
 	 * Add a new MagDbItem to the JSON configuration file (String path version)
 	 * 
-	 * @param magDbItem The new MagDbItem to add
-	 * @param isMgnify True if the item is from MGnify, false if it's a local MAG
+	 * @param magDbItem      The new MagDbItem to add
+	 * @param isMgnify       True if the item is from MGnify, false if it's a local
+	 *                       MAG
 	 * @param configFilePath The path to the configuration file to update
 	 */
 	public static void addMagDbItem(MagDbItem magDbItem, boolean isMgnify, String configFilePath) {
 		addMagDbItem(magDbItem, isMgnify, new File(configFilePath));
 	}
-	
-	public static void main(String[] args) {
-		/*
-		try (BufferedReader br = new BufferedReader(new InputStreamReader(
-				new FileInputStream("C:\\Users\\kchen2\\Downloads\\MAGDB_1_1.json"), StandardCharsets.UTF_8))) {
-			PrintWriter writer = new PrintWriter(new OutputStreamWriter(
-	                new FileOutputStream("C:\\Users\\kchen2\\Downloads\\test.json"), StandardCharsets.UTF_8));
-			String sCurrentLine;
-			while ((sCurrentLine = br.readLine()) != null) {
-				writer.println(sCurrentLine);
-			}
-			br.close();
-			writer.close();
-		} catch (IOException e) {
 
-		}
-		*/
-		
-		MagDbItem[][] items =  MagDbConfigIO.parse("C:\\Users\\kchen2\\Downloads\\MAGDB_1_1.json");
-//		System.out.println(items[0].length+"\t"+items[1].length);
-		
-		for(int i=0;i<items[0].length;i++) {
-//			System.out.println(items[0][i].getCatalogueID());
-			if (items[0][i].getCatalogueID().equals("human-gut")) {
-				
-				MagPepLib[] libs = items[0][i].getMagPepLibs();
-				for (int j = 0; j < libs.length; j++) {
-					String libName = libs[j].getLibName();
-					
-					File infoFile = new File("Z:\\Kai\\Database\\human-gut\\v2.0.2\\libraries\\" + libName,
-							libName + "_info.txt");
-					System.out.println(libName);
-	
-				}
-			}
-		}
-		
-		
-	}
 }

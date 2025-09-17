@@ -16,7 +16,6 @@ import uk.ac.quadram.metapilot.task.common.gui.IsobaricLabelingPanel;
 import uk.ac.quadram.metapilot.task.common.gui.ModificationsPanel;
 import uk.ac.quadram.metapilot.task.common.gui.MagDatabaseSettingsPanel;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
-import uk.ac.quadram.metapilot.task.dda.mag.DDAMagSageTask;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceIO;
@@ -35,6 +34,7 @@ import java.io.File;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagSageParameters;
+import uk.ac.quadram.metapilot.task.dda.mag.task.DDAMagSageTask;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagSageParameterIO;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagVersion;
 
@@ -87,6 +87,9 @@ public class MetaPilotDdaMagSagePanel extends VBox {
     
     // Store the last used analysis parameters for viewReport
     private DDAMagSageParameters currentAnalysisParams;
+    
+    // Current task reference
+    private DDAMagSageTask currentTask;
     
     // Logger
     private static final Logger LOGGER = LoggerFactory.getLogger(MetaPilotDdaMagSagePanel.class);
@@ -699,21 +702,22 @@ public class MetaPilotDdaMagSagePanel extends VBox {
             
             // Create and run DDAMagSageTask
             consolePanel.appendConsoleText("Creating MAG Sage task...\n");
-            DDAMagSageTask task = new DDAMagSageTask(analysisParams, mrp, overallBar, currentBar);
+            currentTask = new DDAMagSageTask(analysisParams, mrp, overallBar, currentBar);
             consolePanel.appendConsoleText("✓ Task created successfully\n");
             
             // Set up task callbacks
             consolePanel.appendConsoleText("Setting up task callbacks...\n");
-            task.messageProperty().addListener((obs, oldMsg, newMsg) -> {
+            currentTask.messageProperty().addListener((obs, oldMsg, newMsg) -> {
                 Platform.runLater(() -> {
                     if (newMsg != null) {
                         consolePanel.appendConsoleText("Current Task: " + newMsg + "\n");
+                        consolePanel.updateCurrentTaskFromMessage(newMsg);
                         statusLabel.setText(newMsg);
                     }
                 });
             });
             
-            task.setOnSucceeded(e -> {
+            currentTask.setOnSucceeded(e -> {
                 Platform.runLater(() -> {
                     consolePanel.appendConsoleText("✓ Analysis completed successfully!\n");
                     consolePanel.enableViewReportButton();
@@ -722,7 +726,7 @@ public class MetaPilotDdaMagSagePanel extends VBox {
                 });
             });
             
-            task.setOnFailed(e -> {
+            currentTask.setOnFailed(e -> {
                 Platform.runLater(() -> {
                     consolePanel.appendConsoleText("✗ Analysis failed. Check console output for details.\n");
                     consolePanel.setButtonsEnabled(true, false, false);
@@ -734,7 +738,7 @@ public class MetaPilotDdaMagSagePanel extends VBox {
             
             // Run task in background thread
             consolePanel.appendConsoleText("Starting task execution...\n");
-            Thread taskThread = new Thread(task);
+            Thread taskThread = new Thread(currentTask);
             taskThread.setDaemon(true);
             taskThread.start();
             
@@ -752,6 +756,14 @@ public class MetaPilotDdaMagSagePanel extends VBox {
     private void stopAnalysis() {
         consolePanel.appendConsoleText("Stopping MAG Sage analysis...\n");
         System.out.println("DEBUG: stopAnalysis called");
+        
+        if (currentTask != null && currentTask.isRunning()) {
+            consolePanel.appendConsoleText("Force stopping MAG Sage task...\n");
+            currentTask.forceStop();
+            consolePanel.appendConsoleText("MAG Sage task stop requested.\n");
+        } else {
+            consolePanel.appendConsoleText("No running MAG Sage task to stop.\n");
+        }
     }
 
     private void viewReport() {
@@ -991,7 +1003,15 @@ public class MetaPilotDdaMagSagePanel extends VBox {
                         ExperimentRow row = fileRows.get(i);
                         rawFiles[i] = row.getFilePath();
                         expNames[i] = row.getExperimentName();
-                        fractions[i] = 1;
+                        // Get fraction from the IO panel, default to 1 if invalid
+                        try {
+                            fractions[i] = Integer.parseInt(row.getFraction());
+                            if (fractions[i] <= 0) {
+                                fractions[i] = 1; // Ensure positive fraction
+                            }
+                        } catch (NumberFormatException e) {
+                            fractions[i] = 1; // Default to 1 if not a valid integer
+                        }
                         replicates[i] = 1;
                     }
                     metaData = new MetaData(rawFiles, expNames, fractions, replicates);
@@ -1160,9 +1180,17 @@ public class MetaPilotDdaMagSagePanel extends VBox {
                 ExperimentRow row = fileRows.get(i);
                 rawFiles[i] = row.getFilePath();
                 expNames[i] = row.getExperimentName();
-                fractions[i] = 1; // Default fraction
+                // Get fraction from the IO panel, default to 1 if invalid
+                try {
+                    fractions[i] = Integer.parseInt(row.getFraction());
+                    if (fractions[i] <= 0) {
+                        fractions[i] = 1; // Ensure positive fraction
+                    }
+                } catch (NumberFormatException e) {
+                    fractions[i] = 1; // Default to 1 if not a valid integer
+                }
                 replicates[i] = 1; // Default replicate
-                LOGGER.debug("Experiment {}: file={}, name={}", i, rawFiles[i], expNames[i]);
+                LOGGER.debug("Experiment {}: file={}, name={}, fraction={}", i, rawFiles[i], expNames[i], fractions[i]);
             }
             
             // Create MetaData object

@@ -722,9 +722,4 @@ public class PFindTask {
 			System.out.println(format.format(new Date()) + "\t" + taskName + ": failed");
 		}
 	}
-	
-	public static void main(String[] args) {
-		PFindTask task = new PFindTask(new File("E:\\Exported\\Resources\\DBReducer\\pFind3\\bin"));
-		task.extract(new String[] {"Z:\\Kai\\Raw_files\\20231214\\20230802_164941_OTOT_293T_500ng_FAIMSDDA_76min_gas4_-43V_-63V_7O5k_AGC400_IT27ms_F2_R4.raw"});
-	}
 }

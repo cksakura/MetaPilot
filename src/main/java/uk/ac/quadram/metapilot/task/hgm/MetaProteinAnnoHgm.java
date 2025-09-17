@@ -7,7 +7,7 @@ import java.util.HashSet;
 import uk.ac.quadram.metapilot.core.function.v2.EnzymeCommission;
 import uk.ac.quadram.metapilot.core.function.v2.GoObo;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
-import uk.ac.quadram.metapilot.task.io.pro.pfind.MetaProteinAnnoEggNog;
+import uk.ac.quadram.metapilot.task.io.pro.MetaProteinAnnoEggNog;
 
 public class MetaProteinAnnoHgm extends MetaProteinAnnoEggNog {
 

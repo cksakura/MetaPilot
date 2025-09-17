@@ -24,10 +24,6 @@ import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
 import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcMaxQuantParameters;
 import uk.ac.quadram.metapilot.task.io.pep.AbstractMetaPeptideReader;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
-import uk.ac.quadram.metapilot.task.par.MetaData;
-import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
-import uk.ac.quadram.metapilot.task.v1.par.MetaParameterV1;
-import uk.ac.quadram.metapilot.task.v2.par.MetaParameterMQ;
 
 /**
  * @author Kai Cheng
@@ -61,36 +57,6 @@ public class MaxquantPepReader extends AbstractMetaPeptideReader {
 
 	private static Logger LOGGER = LogManager.getLogger(MaxquantPepReader.class);
 
-	public MaxquantPepReader(String in, MetaParameterV1 parameter) {
-		this(new File(in), parameter);
-	}
-
-	public MaxquantPepReader(File in, MetaParameterV1 parameter) {
-		super(in);
-		try {
-			this.reader = new BufferedReader(new FileReader(in));
-		} catch (FileNotFoundException e) {
-			// TODO Auto-generated catch block
-			LOGGER.error("Error in reading MaxQuant search result file " + in, e);
-		}
-//		this.parseTitle(parameter);
-	}
-
-	public MaxquantPepReader(String in, MetaParameterMQ parameter) {
-		this(new File(in), parameter);
-	}
-
-	public MaxquantPepReader(File in, MetaParameterMQ parameter) {
-		super(in);
-		try {
-			this.reader = new BufferedReader(new FileReader(in));
-		} catch (FileNotFoundException e) {
-			// TODO Auto-generated catch block
-			LOGGER.error("Error in reading MaxQuant search result file " + in, e);
-		}
-		this.parseTitle(parameter);
-	}
-	
 	public MaxquantPepReader(String in, DDAIgcMaxQuantParameters parameter) {
 		this(new File(in), parameter);
 	}
@@ -136,95 +102,34 @@ public class MaxquantPepReader extends AbstractMetaPeptideReader {
 		String[] paraExps = parameter.getMetadata().getRawFiles();
 		String[][] isotopeLabels = parameter.getIsotopicLabels();
 		int isobaricLabelCount = parameter.getIsobaricTableData().size();
-		int quanResultType = MetaParameterV1.quanResultSeparate;
 		this.quanMode = parameter.getQuantitativeMode();
 
 		ArrayList<String> intensityTitleList = new ArrayList<String>();
 
-		switch (quanResultType) {
-		case MetaParameterV1.quanResultCombine: {
-			if (quanMode.equals(MetaConstants.isotopicLabel)) {
-				if (isotopeLabels[0].length > 0 && isotopeLabels[0][0].length() > 0) {
-					intensityTitleList.add("Intensity L");
-				}
-				if (isotopeLabels[1].length > 0 && isotopeLabels[1][0].length() > 0) {
-					intensityTitleList.add("Intensity M");
-				}
-				if (isotopeLabels[2].length > 0 && isotopeLabels[2][0].length() > 0) {
-					intensityTitleList.add("Intensity H");
+		if (quanMode.equals(MetaConstants.isotopicLabel)) {
+			if (isotopeLabels[0].length > 0 && isotopeLabels[0][0].length() > 0) {
+				for (int i = 0; i < paraExps.length; i++) {
+					intensityTitleList.add("Intensity L " + paraExps[i]);
 				}
 			}
-
-			if (quanMode.equals(MetaConstants.isobaricLabel)) {
-				for (int i = 0; i < isobaricLabelCount; i++) {
-					intensityTitleList.add("Reporter intensity corrected " + (i + 1));
+			if (isotopeLabels[1].length > 0 && isotopeLabels[1][0].length() > 0) {
+				for (int i = 0; i < paraExps.length; i++) {
+					intensityTitleList.add("Intensity M " + paraExps[i]);
 				}
 			}
-
-			break;
+			if (isotopeLabels[2].length > 0 && isotopeLabels[2][0].length() > 0) {
+				for (int i = 0; i < paraExps.length; i++) {
+					intensityTitleList.add("Intensity H " + paraExps[i]);
+				}
+			}
 		}
-		case MetaParameterV1.quanResultSeparate: {
-			if (quanMode.equals(MetaConstants.isotopicLabel)) {
-				if (isotopeLabels[0].length > 0 && isotopeLabels[0][0].length() > 0) {
-					for (int i = 0; i < paraExps.length; i++) {
-						intensityTitleList.add("Intensity L " + paraExps[i]);
-					}
-				}
-				if (isotopeLabels[1].length > 0 && isotopeLabels[1][0].length() > 0) {
-					for (int i = 0; i < paraExps.length; i++) {
-						intensityTitleList.add("Intensity M " + paraExps[i]);
-					}
-				}
-				if (isotopeLabels[2].length > 0 && isotopeLabels[2][0].length() > 0) {
-					for (int i = 0; i < paraExps.length; i++) {
-						intensityTitleList.add("Intensity H " + paraExps[i]);
-					}
+
+		if (quanMode.equals(MetaConstants.isobaricLabel)) {
+			for (int i = 0; i < isobaricLabelCount; i++) {
+				for (int j = 0; j < paraExps.length; j++) {
+					intensityTitleList.add("Reporter intensity corrected " + (i + 1) + " " + paraExps[j]);
 				}
 			}
-
-			if (quanMode.equals(MetaConstants.isobaricLabel)) {
-				for (int i = 0; i < isobaricLabelCount; i++) {
-					for (int j = 0; j < paraExps.length; j++) {
-						intensityTitleList.add("Reporter intensity corrected " + (i + 1) + " " + paraExps[j]);
-					}
-				}
-			}
-
-			break;
-		}
-		case MetaParameterV1.quanResultAll: {
-			if (quanMode.equals(MetaConstants.isotopicLabel)) {
-				if (isotopeLabels[0].length > 0 && isotopeLabels[0][0].length() > 0) {
-					intensityTitleList.add("Intensity L");
-					for (int i = 0; i < paraExps.length; i++) {
-						intensityTitleList.add("Intensity L " + paraExps[i]);
-					}
-				}
-				if (isotopeLabels[1].length > 0 && isotopeLabels[1][0].length() > 0) {
-					intensityTitleList.add("Intensity M");
-					for (int i = 0; i < paraExps.length; i++) {
-						intensityTitleList.add("Intensity M " + paraExps[i]);
-					}
-				}
-				if (isotopeLabels[2].length > 0 && isotopeLabels[2][0].length() > 0) {
-					intensityTitleList.add("Intensity H");
-					for (int i = 0; i < paraExps.length; i++) {
-						intensityTitleList.add("Intensity H " + paraExps[i]);
-					}
-				}
-			}
-
-			if (quanMode.equals(MetaConstants.isobaricLabel)) {
-				for (int i = 0; i < isobaricLabelCount; i++) {
-					intensityTitleList.add("Reporter intensity corrected " + (i + 1));
-					for (int j = 0; j < paraExps.length; j++) {
-						intensityTitleList.add("Reporter intensity corrected " + (i + 1) + " " + paraExps[j]);
-					}
-				}
-			}
-
-			break;
-		}
 		}
 
 		HashMap<String, Integer> lfqIntensityMap = new HashMap<String, Integer>();
@@ -299,220 +204,6 @@ public class MaxquantPepReader extends AbstractMetaPeptideReader {
 			this.intensityTitleIdMap = lfqIntensityMap;
 		} else {
 			this.intensityTitles = intensityTitleList.toArray(new String[intensityTitleList.size()]);
-		}
-
-		if (intensityTitles.length > 0) {
-			hasIntensity = true;
-		}
-	}
-
-	private void parseTitle(MetaParameterMQ parameter) {
-		MetaData metadata = parameter.getMetadata();
-		String[] paraExps = metadata.getExpNames();
-		MaxquantModification[][] isotopeLabels = parameter.getLabels();
-		int isobaricLabelCount = metadata.getLabelTitle().length;
-		int quanResultType = parameter.isCombineLabel() ? MetaBaseParameter.quanResultCombine
-				: MetaBaseParameter.quanResultSeparate;
-		this.quanMode = parameter.getQuanMode();
-
-		ArrayList<String> intensityTitleList = new ArrayList<String>();
-
-		switch (quanResultType) {
-		case MetaBaseParameter.quanResultCombine: {
-			if (quanMode.equals(MetaConstants.isotopicLabel)) {
-				if (isotopeLabels[0].length > 0 && isotopeLabels[0][0] != null) {
-					intensityTitleList.add("Intensity L");
-				}
-				if (isotopeLabels[1].length > 0 && isotopeLabels[1][0] != null) {
-					intensityTitleList.add("Intensity M");
-				}
-				if (isotopeLabels[2].length > 0 && isotopeLabels[2][0] != null) {
-					intensityTitleList.add("Intensity H");
-				}
-			}
-
-			if (quanMode.equals(MetaConstants.isobaricLabel)) {
-				for (int i = 0; i < isobaricLabelCount; i++) {
-					intensityTitleList.add("Reporter intensity corrected " + (i + 1));
-				}
-			}
-
-			break;
-		}
-		case MetaBaseParameter.quanResultSeparate: {
-			if (quanMode.equals(MetaConstants.isotopicLabel)) {
-				if (isotopeLabels[0].length > 0 && isotopeLabels[0][0] != null) {
-					for (int i = 0; i < paraExps.length; i++) {
-						intensityTitleList.add("Intensity L " + paraExps[i]);
-					}
-				}
-				if (isotopeLabels[1].length > 0 && isotopeLabels[1][0] != null) {
-					for (int i = 0; i < paraExps.length; i++) {
-						intensityTitleList.add("Intensity M " + paraExps[i]);
-					}
-				}
-				if (isotopeLabels[2].length > 0 && isotopeLabels[2][0] != null) {
-					for (int i = 0; i < paraExps.length; i++) {
-						intensityTitleList.add("Intensity H " + paraExps[i]);
-					}
-				}
-			}
-
-			if (quanMode.equals(MetaConstants.isobaricLabel)) {
-				for (int i = 0; i < paraExps.length; i++) {
-					for (int j = 0; j < isobaricLabelCount; j++) {
-						intensityTitleList.add("Reporter intensity corrected " + (j + 1) + " " + paraExps[i]);
-					}
-				}
-			}
-
-			break;
-		}
-		case MetaBaseParameter.quanResultAll: {
-			if (quanMode.equals(MetaConstants.isotopicLabel)) {
-				if (isotopeLabels[0].length > 0 && isotopeLabels[0][0] != null) {
-					intensityTitleList.add("Intensity L");
-					for (int i = 0; i < paraExps.length; i++) {
-						intensityTitleList.add("Intensity L " + paraExps[i]);
-					}
-				}
-				if (isotopeLabels[1].length > 0 && isotopeLabels[1][0] != null) {
-					intensityTitleList.add("Intensity M");
-					for (int i = 0; i < paraExps.length; i++) {
-						intensityTitleList.add("Intensity M " + paraExps[i]);
-					}
-				}
-				if (isotopeLabels[2].length > 0 && isotopeLabels[2][0] != null) {
-					intensityTitleList.add("Intensity H");
-					for (int i = 0; i < paraExps.length; i++) {
-						intensityTitleList.add("Intensity H " + paraExps[i]);
-					}
-				}
-			}
-
-			if (quanMode.equals(MetaConstants.isobaricLabel)) {
-				for (int i = 0; i < isobaricLabelCount; i++) {
-					intensityTitleList.add("Reporter intensity corrected " + (i + 1));
-					for (int j = 0; j < paraExps.length; j++) {
-						intensityTitleList.add("Reporter intensity corrected " + (i + 1) + " " + paraExps[j]);
-					}
-				}
-			}
-
-			break;
-		}
-		}
-
-		HashMap<String, Integer> lfqIntensityMap = new HashMap<String, Integer>();
-		ArrayList<String> lfqIntensityList = new ArrayList<String>();
-		if (quanMode.equals(MetaConstants.labelFree)) {
-			intensityTitleIdMap = new HashMap<String, Integer>();
-			for (int i = 0; i < paraExps.length; i++) {
-				intensityTitleList.add("Intensity " + paraExps[i]);
-				intensityTitleIdMap.put("Intensity " + paraExps[i], -1);
-
-				lfqIntensityList.add("LFQ intensity " + paraExps[i]);
-				lfqIntensityMap.put("LFQ intensity " + paraExps[i], -1);
-			}
-		} else {
-			intensityTitleIdMap = new HashMap<String, Integer>();
-			for (String intensityTitle : intensityTitleList) {
-				intensityTitleIdMap.put(intensityTitle, -1);
-			}
-		}
-
-		boolean hasLFQ = false;
-		String line = null;
-		try {
-			line = reader.readLine();
-			title = line.split("\t");
-			for (int i = 0; i < title.length; i++) {
-				if (title[i].equals("Sequence") || title[i].substring(1).equals("Sequence")) {
-					sequenceId = i;
-				} else if (title[i].equals("Charges")) {
-					chargeId = i;
-				} else if (title[i].equals("Length")) {
-					lengthId = i;
-				} else if (title[i].equals("Missed cleavages")) {
-					missCleaveId = i;
-				} else if (title[i].equals("Mass")) {
-					massId = i;
-				} else if (title[i].equals("Proteins")) {
-					proteinId = i;
-				} else if (title[i].equals("PEP")) {
-					pepId = i;
-				} else if (title[i].equals("Score")) {
-					scoreId = i;
-				} else if (title[i].equals("MS/MS Count")) {
-					ms2CountId = i;
-				} else if (title[i].equals("Reverse")) {
-					revId = i;
-				} else if (title[i].equals("Potential contaminant")) {
-					contamId = i;
-				} else if (title[i].equals("T: Sequence")) {
-					if (sequenceId == -1) {
-						sequenceId = i;
-					}
-				} else {
-					if (intensityTitleIdMap.containsKey(title[i])) {
-						intensityTitleIdMap.put(title[i], i);
-					}
-					if (lfqIntensityMap.containsKey(title[i])) {
-						hasLFQ = true;
-						lfqIntensityMap.put(title[i], i);
-					}
-				}
-			}
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			LOGGER.error("Error in reading MaxQuant search result file " + super.getFile(), e);
-		}
-
-		if (quanMode.equals(MetaConstants.labelFree) && hasLFQ) {
-			this.intensityTitles = lfqIntensityList.toArray(new String[intensityTitleList.size()]);
-			this.intensityTitleIdMap = lfqIntensityMap;
-
-		} else if (quanMode.equals(MetaConstants.isobaricLabel) && parameter.getIsobaricTag() != null) {
-
-			String[] expNames = metadata.getExpNames();
-			String[] labelTitle = metadata.getLabelTitle();
-			String[] labelExpNames = metadata.getLabelExpNames();
-
-			HashMap<String, String> map = new HashMap<String, String>();
-
-			for (int i = 0; i < expNames.length; i++) {
-				for (int j = 0; j < labelTitle.length; j++) {
-					map.put("Reporter intensity corrected " + (j + 1) + " " + expNames[i],
-							labelExpNames[i * labelTitle.length + j]);
-				}
-			}
-
-			ArrayList<String> templist = new ArrayList<String>();
-			ArrayList<String> isolist = new ArrayList<String>();
-			for (int i = 0; i < intensityTitleList.size(); i++) {
-				String titlei = intensityTitleList.get(i);
-				if (intensityTitleIdMap.get(titlei) > -1) {
-					if (map.containsKey(titlei)) {
-						templist.add(titlei);
-						isolist.add("Intensity " + map.get(titlei));
-					} else {
-						templist.add(titlei);
-						isolist.add(titlei);
-					}
-				}
-			}
-			this.intensityTitles = templist.toArray(new String[templist.size()]);
-			this.isoIntensityTitles = isolist.toArray(new String[isolist.size()]);
-
-		} else {
-			ArrayList<String> templist = new ArrayList<String>();
-			for (int i = 0; i < intensityTitleList.size(); i++) {
-				String titlei = intensityTitleList.get(i);
-				if (intensityTitleIdMap.get(titlei) > -1) {
-					templist.add(titlei);
-				}
-			}
-			this.intensityTitles = templist.toArray(new String[templist.size()]);
 		}
 
 		if (intensityTitles.length > 0) {

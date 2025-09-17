@@ -5,6 +5,7 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
@@ -12,9 +13,12 @@ import java.io.PrintWriter;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
@@ -29,7 +33,6 @@ import org.dom4j.io.XMLWriter;
 
 import uk.ac.quadram.metapilot.core.math.MathTool;
 import uk.ac.quadram.metapilot.core.mod.IsobaricTag;
-import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantParaHandler;
 import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantPep4Meta;
 import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantPepReader;
 import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantProReader;
@@ -39,19 +42,25 @@ import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.task.MetaPilotTask;
 import uk.ac.quadram.metapilot.task.MetaPythonReportCopyTask;
 import uk.ac.quadram.metapilot.task.MetaPythonReportTask;
-
+import uk.ac.quadram.metapilot.task.dda.MetaDbReducerTask;
 import uk.ac.quadram.metapilot.task.dda.PFindSpectraConvertTask;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
 import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcMaxQuantParameters;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.par.MetaData;
-import uk.ac.quadram.metapilot.task.pfind.MetaDbReducerTask;
 
 public class DDAIgcMaxQuantTask extends MetaPilotTask {
 
 	private static final Logger LOGGER = LogManager.getLogger(DDAIgcMaxQuantTask.class);
 	private static final String taskName = "DDA IGC database searching by MaxQuant workflow";
+	// Fields to track running subtasks
+	private PFindSpectraConvertTask spectraConvertTask;
+	private MetaDbReducerTask dbReducerTask;
+	private MetaPythonReportCopyTask reportCopyTask;
+	private MetaPythonReportTask reportTask;
+	private Thread reportCopyThread;
+	private Thread reportThread;
 
 	public DDAIgcMaxQuantTask(DDAIgcMaxQuantParameters metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
 			ProgressBar secondBar) {
@@ -60,7 +69,42 @@ public class DDAIgcMaxQuantTask extends MetaPilotTask {
 
 	@Override
 	public void forceStop() {
+		LOGGER.info(getTaskName() + ": Force stop requested");
+		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Force stop requested");
 
+		// Cancel spectra conversion task if running
+		if (spectraConvertTask != null && !spectraConvertTask.isDone()) {
+			LOGGER.info(getTaskName() + ": Cancelling spectra conversion task");
+			spectraConvertTask.cancel(true);
+		}
+
+		// Cancel database reduction task if running
+		if (dbReducerTask != null && !dbReducerTask.isDone()) {
+			LOGGER.info(getTaskName() + ": Cancelling database reduction task");
+			dbReducerTask.cancel(true);
+		}
+
+		// Cancel report copy task if running
+		if (reportCopyTask != null && reportCopyThread != null && reportCopyThread.isAlive()) {
+			LOGGER.info(getTaskName() + ": Stopping report copy task");
+			// MetaPythonReportCopyTask doesn't have forceStop method, but we can interrupt
+			// the thread
+			reportCopyThread.interrupt();
+		}
+
+		// Cancel report generation task if running
+		if (reportTask != null && reportThread != null && reportThread.isAlive()) {
+			LOGGER.info(getTaskName() + ": Stopping report generation task");
+			// MetaPythonReportTask doesn't have forceStop method, but we can interrupt the
+			// thread
+			reportThread.interrupt();
+		}
+
+		// Cancel this task itself
+		this.cancel(true);
+
+		LOGGER.info(getTaskName() + ": Force stop completed");
+		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Force stop completed");
 	}
 
 	@Override
@@ -77,10 +121,11 @@ public class DDAIgcMaxQuantTask extends MetaPilotTask {
 	protected Boolean call() throws Exception {
 
 		updateMessage(taskName);
+		updateProgress(0, 100);
 
 		LOGGER.info(taskName + ": started");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": started");
-		
+
 		// Log detailed parameter information
 		LOGGER.info("Workflow parameters:");
 		LOGGER.info("  Result directory: " + metaPar.getResult());
@@ -92,26 +137,28 @@ public class DDAIgcMaxQuantTask extends MetaPilotTask {
 			LOGGER.info("  Raw files count: " + (rawFiles != null ? rawFiles.length : 0));
 			if (rawFiles != null) {
 				for (int i = 0; i < rawFiles.length; i++) {
-					LOGGER.info("    Raw file " + (i+1) + ": " + rawFiles[i]);
+					LOGGER.info("    Raw file " + (i + 1) + ": " + rawFiles[i]);
 				}
 			}
 		}
-		
+
 		// Log resource information
 		LOGGER.info("Resource parameters:");
 		LOGGER.info("  MaxQuant path: " + mrp.getToolPath(MetaResourceParameters.ToolType.MAXQUANT));
 		LOGGER.info("  pFind path: " + mrp.getToolPath(MetaResourceParameters.ToolType.PFIND));
 		LOGGER.info("  DBReducer path: " + mrp.getToolPath(MetaResourceParameters.ToolType.DBREDUCER));
-		
+
 		if (metaPar.isReduceDb()) {
 			LOGGER.info("Database reduction is enabled - starting spectra conversion and database reduction");
-			
+
 			// Step 1: Spectra Conversion
+			updateProgress(5, 100);
+			updateMessage("Starting spectra format conversion...");
 			LOGGER.info("Step 1: Starting spectra format conversion...");
-			PFindSpectraConvertTask spTask = new PFindSpectraConvertTask(metaPar, mrp, progressBar);
-			spTask.execute();
+			spectraConvertTask = new PFindSpectraConvertTask(metaPar, mrp, secondBar);
+			spectraConvertTask.execute();
 			try {
-				boolean convert = spTask.get(); // Wait for completion and get result
+				boolean convert = spectraConvertTask.get(); // Wait for completion and get result
 				if (!convert) {
 					LOGGER.error(getTaskName() + ": error in spectra format conversion");
 					System.err.println(
@@ -121,16 +168,23 @@ public class DDAIgcMaxQuantTask extends MetaPilotTask {
 				LOGGER.info("Step 1: Spectra format conversion completed successfully");
 			} catch (InterruptedException | ExecutionException e) {
 				LOGGER.error(getTaskName() + ": error in spectra format conversion", e);
-				System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in spectra format conversion: " + e.getMessage());
+				System.err.println(format.format(new Date()) + "\t" + getTaskName()
+						+ ": error in spectra format conversion: " + e.getMessage());
 				return false;
 			}
 
+			// Update progress after spectra conversion
+			updateProgress(20, 100);
+			updateMessage("Spectra conversion completed, starting database reduction...");
+
 			// Step 2: Database Reduction
+			updateProgress(25, 100);
+			updateMessage("Creating sample-specific database...");
 			LOGGER.info("Step 2: Starting sample-specific database generation...");
-			MetaDbReducerTask dbrTask = new MetaDbReducerTask(metaPar, mrp, secondBar);
-			dbrTask.execute();
+			dbReducerTask = new MetaDbReducerTask(metaPar, mrp, secondBar);
+			dbReducerTask.execute();
 			try {
-				boolean dbReduced = dbrTask.get(); // Wait for completion and get result
+				boolean dbReduced = dbReducerTask.get(); // Wait for completion and get result
 				if (!dbReduced) {
 					LOGGER.error(getTaskName() + ": error in sample-specific database generation");
 					System.err.println(format.format(new Date()) + "\t" + getTaskName()
@@ -140,14 +194,23 @@ public class DDAIgcMaxQuantTask extends MetaPilotTask {
 				LOGGER.info("Step 2: Sample-specific database generation completed successfully");
 			} catch (InterruptedException | ExecutionException e) {
 				LOGGER.error(getTaskName() + ": error in sample-specific database generation", e);
-				System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in sample-specific database generation: " + e.getMessage());
+				System.err.println(format.format(new Date()) + "\t" + getTaskName()
+						+ ": error in sample-specific database generation: " + e.getMessage());
 				return false;
 			}
+
+			// Update progress after database reduction
+			updateProgress(40, 100);
+			updateMessage("Database reduction completed, starting MaxQuant search...");
 		} else {
 			LOGGER.info("Database reduction is disabled - skipping spectra conversion and database reduction");
+			updateProgress(40, 100);
+			updateMessage("Starting MaxQuant search...");
 		}
 
 		// Step 3: MaxQuant Search
+		updateProgress(45, 100);
+		updateMessage("Preparing MaxQuant search...");
 		LOGGER.info("Step 3: Preparing MaxQuant search...");
 		File closedSearchFile = new File(metaPar.getResult(), "maxquant_search");
 		if (!closedSearchFile.exists()) {
@@ -164,11 +227,15 @@ public class DDAIgcMaxQuantTask extends MetaPilotTask {
 		LOGGER.info("  MaxQuant executable exists: " + maxquantCmd.exists());
 
 		if (maxquantCmd.exists()) {
+			updateProgress(50, 100);
+			updateMessage("Starting MaxQuant search...");
 			LOGGER.info("Step 3: Starting MaxQuant search...");
 
 			File peptides = maxquantSearch();
 
 			if (peptides != null && peptides.exists()) {
+				updateProgress(60, 100);
+				updateMessage("MaxQuant search completed, generating reports...");
 
 				File combined = peptides.getParentFile();
 
@@ -181,8 +248,10 @@ public class DDAIgcMaxQuantTask extends MetaPilotTask {
 					reportDir.mkdirs();
 				}
 
-				MetaPythonReportCopyTask reportCopyTask = new MetaPythonReportCopyTask(new File(metaPar.getResult()));
-				Thread reportCopyThread = new Thread(reportCopyTask);
+				updateProgress(65, 100);
+				updateMessage("Copying report templates...");
+				reportCopyTask = new MetaPythonReportCopyTask(new File(metaPar.getResult()));
+				reportCopyThread = new Thread(reportCopyTask);
 				reportCopyThread.start();
 				try {
 					reportCopyThread.join();
@@ -207,12 +276,12 @@ public class DDAIgcMaxQuantTask extends MetaPilotTask {
 					reportFolder.mkdirs();
 				}
 
-				MetaPythonReportTask task = new MetaPythonReportTask(metaPar.getThreadCount());
+				reportTask = new MetaPythonReportTask(metaPar.getThreadCount());
 
 				File report_ID_summary = new File(reportFolder, "report_ID_summary.html");
 
 				if (!report_ID_summary.exists() || report_ID_summary.length() == 0) {
-					task.addTask(MetaPythonReportTask.ID_SUMMARY, summary, report_ID_summary);
+					reportTask.addTask(MetaPythonReportTask.ID_SUMMARY, summary, report_ID_summary);
 				}
 
 				File summaryMetaFile = new File(combined, "metainfo.tsv");
@@ -238,9 +307,10 @@ public class DDAIgcMaxQuantTask extends MetaPilotTask {
 					convertPep2Report(peptides, pepReport);
 
 					if (summaryMetaFile.exists()) {
-						task.addTask(MetaPythonReportTask.PEPTIDE, pepReport, report_peptides_summary, summaryMetaFile);
+						reportTask.addTask(MetaPythonReportTask.PEPTIDE, pepReport, report_peptides_summary,
+								summaryMetaFile);
 					} else {
-						task.addTask(MetaPythonReportTask.PEPTIDE, pepReport, report_peptides_summary);
+						reportTask.addTask(MetaPythonReportTask.PEPTIDE, pepReport, report_peptides_summary);
 					}
 				}
 
@@ -252,42 +322,48 @@ public class DDAIgcMaxQuantTask extends MetaPilotTask {
 					convertPro2Report(proteins, proReport);
 
 					if (summaryMetaFile.exists()) {
-						task.addTask(MetaPythonReportTask.PROTEIN, proReport, report_proteinGroups_summary, summaryMetaFile);
+						reportTask.addTask(MetaPythonReportTask.PROTEIN, proReport, report_proteinGroups_summary,
+								summaryMetaFile);
 
 					} else {
-						task.addTask(MetaPythonReportTask.PROTEIN, proReport, report_proteinGroups_summary);
+						reportTask.addTask(MetaPythonReportTask.PROTEIN, proReport, report_proteinGroups_summary);
 					}
 				}
 
-				task.run();
+				updateProgress(70, 100);
+				updateMessage("Generating analysis reports...");
+				reportThread = new Thread(reportTask);
+				reportThread.start();
 
-				updateProgress(60, 100);
+				updateProgress(80, 100);
 
 				// Generate final TSV files from the report files
 				File finalPeptidesFile = new File(metaPar.getResult(), "final_peptides.tsv");
 				File finalProteinsFile = new File(metaPar.getResult(), "final_proteins.tsv");
-				
+
 				// Copy peptides report to final_peptides.tsv if it doesn't exist
 				if (!finalPeptidesFile.exists() || finalPeptidesFile.length() == 0) {
-					File pepReport = new File(peptides.getParentFile(), peptides.getName().replace(".txt", "_report.txt"));
+					File pepReport = new File(peptides.getParentFile(),
+							peptides.getName().replace(".txt", "_report.txt"));
 					if (pepReport.exists() && pepReport.length() > 0) {
 						try {
-							java.nio.file.Files.copy(pepReport.toPath(), finalPeptidesFile.toPath(), 
-								java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+							java.nio.file.Files.copy(pepReport.toPath(), finalPeptidesFile.toPath(),
+									java.nio.file.StandardCopyOption.REPLACE_EXISTING);
 							LOGGER.info(taskName + ": copied peptides report to final_peptides.tsv");
 						} catch (IOException e) {
 							LOGGER.error(taskName + ": failed to copy peptides report to final_peptides.tsv", e);
 						}
 					}
 				}
-				
+
 				// Copy proteins report to final_proteins.tsv if it doesn't exist
 				if (!finalProteinsFile.exists() || finalProteinsFile.length() == 0) {
-					File proReport = new File(proteins.getParentFile(), proteins.getName().replace(".txt", "_report.txt"));
+					File proReport = new File(proteins.getParentFile(),
+							proteins.getName().replace(".txt", "_report.txt"));
 					if (proReport.exists() && proReport.length() > 0) {
 						try {
-							java.nio.file.Files.copy(proReport.toPath(), finalProteinsFile.toPath(), 
-								java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+							java.nio.file.Files.copy(proReport.toPath(), finalProteinsFile.toPath(),
+									java.nio.file.StandardCopyOption.REPLACE_EXISTING);
 							LOGGER.info(taskName + ": copied proteins report to final_proteins.tsv");
 						} catch (IOException e) {
 							LOGGER.error(taskName + ": failed to copy proteins report to final_proteins.tsv", e);
@@ -298,22 +374,34 @@ public class DDAIgcMaxQuantTask extends MetaPilotTask {
 				// Check if the required output files exist and are not empty
 				boolean peptidesExist = finalPeptidesFile.exists() && finalPeptidesFile.length() > 0;
 				boolean proteinsExist = finalProteinsFile.exists() && finalProteinsFile.length() > 0;
-				
+
 				if (!peptidesExist || !proteinsExist) {
 					String missingFiles = "";
-					if (!peptidesExist) missingFiles += "final_peptides.tsv ";
-					if (!proteinsExist) missingFiles += "final_proteins.tsv ";
-					
+					if (!peptidesExist)
+						missingFiles += "final_peptides.tsv ";
+					if (!proteinsExist)
+						missingFiles += "final_proteins.tsv ";
+
 					LOGGER.error(taskName + ": required output files are missing or empty: " + missingFiles.trim());
-					System.err.println(format.format(new Date()) + "\t" + taskName + ": required output files are missing or empty: " + missingFiles.trim());
-					
+					System.err.println(format.format(new Date()) + "\t" + taskName
+							+ ": required output files are missing or empty: " + missingFiles.trim());
+
 					return false;
 				}
 
+				updateProgress(100, 100);
+				updateMessage("Analysis completed successfully!");
 				LOGGER.info(taskName + ": finished - all required output files generated successfully");
-				System.out.println(format.format(new Date()) + "\t" + taskName + ": finished - all required output files generated successfully");
+				System.out.println(format.format(new Date()) + "\t" + taskName
+						+ ": finished - all required output files generated successfully");
 
-				return task.get();
+				try {
+					reportThread.join();
+					return reportTask.get();
+				} catch (InterruptedException e) {
+					LOGGER.error(getTaskName() + ": Report generation interrupted", e);
+					return false;
+				}
 
 			} else {
 				LOGGER.info(taskName + ": MaxQuant search result was not found");
@@ -562,7 +650,7 @@ public class DDAIgcMaxQuantTask extends MetaPilotTask {
 		}
 		int missCleavage = metaPar.getMissCleavages();
 		int digestMode = metaPar.getDigestMode();
-		
+
 		String[][] labels = metaPar.getIsotopicLabels();
 		String[] isobaricLabels = new String[0];
 		IsobaricTag isobaricTag = metaPar.getIsobaricTag();
@@ -587,7 +675,7 @@ public class DDAIgcMaxQuantTask extends MetaPilotTask {
 		int[] fractions = metadata.getFractions();
 
 		int threads = metaPar.getThreadCount();
-		
+
 		// Use reflection to call methods on the mcsp object
 		double closedPsmFdr = 0.01; // Default value
 		double closedProFdr = 0.01; // Default value
@@ -816,7 +904,7 @@ public class DDAIgcMaxQuantTask extends MetaPilotTask {
 							ePg.remove(eLb);
 						}
 
-						if (quanMode.equals(MetaConstants.isotopicLabel) && labels!=null) {
+						if (quanMode.equals(MetaConstants.isotopicLabel) && labels != null) {
 							for (int i = 0; i < labels.length; i++) {
 								if (labels[i].length > 0) {
 									StringBuilder sb = new StringBuilder();
@@ -1044,7 +1132,7 @@ public class DDAIgcMaxQuantTask extends MetaPilotTask {
 						if (eFa.getName().equals("fastaFilePath")) {
 							eFa.setText(fasta);
 						} else if (eFa.getName().equals("identifierParseRule")) {
-							eFa.setText(MaxquantParaHandler.getDatabaseIdentifier(fasta));
+							eFa.setText(getDatabaseIdentifier(fasta));
 						} else if (eFa.getName().equals("descriptionParseRule")) {
 							eFa.setText(">(.*)");
 						} else {
@@ -1198,6 +1286,53 @@ public class DDAIgcMaxQuantTask extends MetaPilotTask {
 		}
 
 		return peptides;
+	}
+
+	public static String getDatabaseIdentifier(String db) {
+
+		String[] identifiers = new String[4];
+		identifiers[0] = ">.*\\|(.*)\\|";
+		identifiers[1] = ">(gi\\|[0-9]*)";
+		identifiers[2] = ">([^ ]*)";
+		identifiers[3] = ">([^\\t]*)";
+
+		Pattern[] patterns = new Pattern[identifiers.length];
+		HashSet<String>[] sets = new HashSet[identifiers.length];
+
+		for (int i = 0; i < sets.length; i++) {
+			patterns[i] = Pattern.compile(identifiers[i]);
+			sets[i] = new HashSet<String>();
+		}
+
+		int procount = 0;
+		BufferedReader reader = null;
+		String line = null;
+		try {
+			reader = new BufferedReader(new FileReader(db));
+			while ((line = reader.readLine()) != null) {
+				if (line.startsWith(">")) {
+					procount++;
+					for (int i = 0; i < patterns.length; i++) {
+						Matcher matcher = patterns[i].matcher(line);
+						if (matcher.find()) {
+							sets[i].add(matcher.group());
+						}
+					}
+				}
+			}
+			reader.close();
+
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+
+		for (int i = 0; i < sets.length; i++) {
+			if (sets[i].size() == procount) {
+				return identifiers[i];
+			}
+		}
+		return ">(.*)";
 	}
 
 	@Override

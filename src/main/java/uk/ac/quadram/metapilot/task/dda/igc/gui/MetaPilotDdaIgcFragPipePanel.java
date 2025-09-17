@@ -17,7 +17,7 @@ import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
 import uk.ac.quadram.metapilot.task.common.gui.TaxonomicAnalysisPanel;
 import uk.ac.quadram.metapilot.task.common.gui.DdaIgcInputOutputPanel;
 import uk.ac.quadram.metapilot.task.common.gui.ModificationsPanel;
-import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel;
+import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -29,13 +29,7 @@ import java.io.File;
 public class MetaPilotDdaIgcFragPipePanel extends VBox {
     // UI Components (similar to pFind panel)
     private DdaIgcInputOutputPanel ioPanel;
-    private TextArea consoleOutput;
-    private TextArea parameterView;
-    private ProgressBar overallProgressBar;
-    private ProgressBar currentTaskProgressBar;
-    private Label currentTaskLabel;
-    private Button startButton;
-    private Button stopButton;
+    private ConsolePanel consolePanel;
 
     // Parameter Panel Components
     private ComboBox<String> enzymeComboBox;
@@ -66,11 +60,8 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
     private ComboBox<String> metadataColumnComboBox;
     private Button addMetadataColumnButton;
     private Button removeMetadataColumnButton;
+    private Button resetMetadataButton;
 
-    // Status panel fields
-    private Label statusTimeLabel;
-    private Label statusCpuLabel;
-    private Label statusMemLabel;
 
     public MetaPilotDdaIgcFragPipePanel() {
         loadEnzymesFromIni();
@@ -81,6 +72,12 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
         
         // Initialize taxonomic analysis panel
         taxonomicAnalysisPanel = new TaxonomicAnalysisPanel(this::updateParameterView);
+        
+        // Initialize console panel
+        consolePanel = new ConsolePanel();
+        consolePanel.setStartCallback(this::startAnalysis);
+        consolePanel.setStopCallback(this::stopAnalysis);
+        consolePanel.setViewReportCallback(this::viewReport);
         
         initializeUI();
     }
@@ -108,7 +105,7 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
         paramTab.setContent(createParametersTab());
 
         Tab consoleTab = new Tab("Console");
-        consoleTab.setContent(createConsoleTab());
+        consoleTab.setContent(consolePanel);
 
         tabPane.getTabs().addAll(ioTab, paramTab, consoleTab);
 
@@ -413,79 +410,6 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
 
 
 
-    // Add remaining missing methods
-    private VBox createConsoleTab() {
-        VBox tabContent = new VBox(10);
-        tabContent.setPadding(new Insets(10));
-
-        // Parameter View
-        VBox paramViewBox = new VBox(5);
-        paramViewBox.getChildren().add(new Label("Parameter View:"));
-        parameterView = new TextArea();
-        parameterView.setEditable(false);
-        parameterView.setPrefHeight(200);
-        parameterView.setStyle("-fx-font-family: monospace;");
-        VBox.setVgrow(parameterView, Priority.ALWAYS);
-        paramViewBox.getChildren().add(parameterView);
-        VBox.setVgrow(paramViewBox, Priority.ALWAYS);
-
-        // Progress Bars
-        VBox progressBox = new VBox(5);
-        currentTaskLabel = new Label("Current Task: None");
-        overallProgressBar = new ProgressBar(0);
-        overallProgressBar.setMaxWidth(Double.MAX_VALUE);
-        currentTaskProgressBar = new ProgressBar(0);
-        currentTaskProgressBar.setMaxWidth(Double.MAX_VALUE);
-        progressBox.getChildren().addAll(
-            currentTaskLabel,
-            new Label("Overall Progress:"),
-            overallProgressBar,
-            new Label("Current Task Progress:"),
-            currentTaskProgressBar
-        );
-
-        // Console Output
-        VBox consoleBox = new VBox(5);
-        consoleBox.getChildren().add(new Label("Console Output:"));
-        consoleOutput = new TextArea();
-        consoleOutput.setEditable(false);
-        consoleOutput.setPrefHeight(250);
-        consoleOutput.setStyle("-fx-font-family: monospace;");
-        VBox.setVgrow(consoleOutput, Priority.ALWAYS);
-        consoleBox.getChildren().add(consoleOutput);
-        VBox.setVgrow(consoleBox, Priority.ALWAYS);
-
-        // Control Buttons
-        HBox controlBox = new HBox(10);
-        startButton = new Button("Start Analysis");
-        stopButton = new Button("Stop");
-        stopButton.setDisable(true);
-        startButton.setOnAction(e -> startAnalysis());
-        stopButton.setOnAction(e -> stopAnalysis());
-        controlBox.getChildren().addAll(startButton, stopButton);
-
-        // Status Panel
-        HBox statusPanel = new HBox(20);
-        statusPanel.setPadding(new Insets(5, 0, 0, 0));
-        statusPanel.setAlignment(Pos.CENTER_LEFT);
-        statusTimeLabel = new Label("Time: 00:00:00");
-        statusCpuLabel = new Label("CPU: 0.0%");
-        statusMemLabel = new Label("Memory: 0 / 0 MB");
-        statusPanel.getChildren().addAll(statusTimeLabel, statusCpuLabel, statusMemLabel);
-
-        tabContent.getChildren().addAll(
-            paramViewBox,
-            progressBox,
-            consoleBox,
-            controlBox,
-            statusPanel
-        );
-        VBox.setVgrow(paramViewBox, Priority.ALWAYS);
-        VBox.setVgrow(consoleBox, Priority.ALWAYS);
-        VBox.setVgrow(tabContent, Priority.ALWAYS);
-
-        return tabContent;
-    }
 
     private void updateMetadataTableFromIOPanel() {
         if (ioPanel == null || metadataTable == null) {
@@ -565,12 +489,19 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
         removeMetadataColumnButton.setMinWidth(120);
         removeMetadataColumnButton.setPrefWidth(150);
         removeMetadataColumnButton.setOnAction(e -> removeMetadataColumn());
+        
+        resetMetadataButton = new Button("Reset All");
+        resetMetadataButton.setMinWidth(120);
+        resetMetadataButton.setPrefWidth(150);
+        resetMetadataButton.setStyle("-fx-background-color: #ff6b6b; -fx-text-fill: white;");
+        resetMetadataButton.setOnAction(e -> resetMetadataTable());
 
         controlBox.getChildren().addAll(
             metadataColumnComboBox, 
             customColumnTextField, 
             addMetadataColumnButton, 
-            removeMetadataColumnButton
+            removeMetadataColumnButton,
+            resetMetadataButton
         );
 
         section.getChildren().addAll(titleLabel, infoLabel, metadataTable, controlBox);
@@ -587,7 +518,7 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
     }
 
     private void updateParameterView() {
-        if (parameterView == null) {
+        if (consolePanel == null) {
             return;
         }
         
@@ -664,7 +595,10 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
         // Taxonomic analysis
         sb.append("\n").append(taxonomicAnalysisPanel.getTaxonomicSummary());
 
-        parameterView.setText(sb.toString());
+        // Update the console panel's parameter view
+        if (consolePanel != null) {
+            consolePanel.setParameterText(sb.toString());
+        }
     }
 
     private void updateMetadataTable() {
@@ -738,20 +672,82 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
             metadataTable.getColumns().remove(selectedColumn);
         }
     }
+    
+    private void resetMetadataTable() {
+        // Clear all data
+        metadataTableData.clear();
+        
+        // Remove all columns except the Sample column
+        metadataTable.getColumns().clear();
+        
+        // Recreate basic table structure with only Sample column
+        createMetadataTableColumns();
+        
+        // Update parameter view
+        updateParameterView();
+    }
 
     private void startAnalysis() {
-        startButton.setDisable(true);
-        stopButton.setDisable(false);
-        consoleOutput.clear();
-        consoleOutput.appendText("Starting FragPipe analysis...\n");
+        if (consolePanel != null) {
+            consolePanel.clearConsole();
+            consolePanel.appendConsoleText("Starting FragPipe analysis...\n");
+        }
         System.out.println("DEBUG: startAnalysis called - FragPipe workflow");
     }
 
     private void stopAnalysis() {
-        startButton.setDisable(false);
-        stopButton.setDisable(true);
-        consoleOutput.appendText("Stopping FragPipe analysis...\n");
+        if (consolePanel != null) {
+            consolePanel.appendConsoleText("Stopping FragPipe analysis...\n");
+        }
         System.out.println("DEBUG: stopAnalysis called");
+    }
+    
+    private void viewReport() {
+        if (consolePanel != null) {
+            consolePanel.appendConsoleText("Opening report in default browser...\n");
+        }
+        
+        // Get the output directory from the IO panel
+        String outputDir = ioPanel.getIoPanel().getOutputDirectory();
+        if (outputDir == null || outputDir.trim().isEmpty()) {
+            if (consolePanel != null) {
+                consolePanel.appendConsoleText("ERROR: No output directory specified.\n");
+            }
+            return;
+        }
+        
+        java.io.File reportDir = new java.io.File(outputDir);
+        if (!reportDir.exists()) {
+            if (consolePanel != null) {
+                consolePanel.appendConsoleText("ERROR: Report directory does not exist: " + outputDir + "\n");
+            }
+            return;
+        }
+        
+        java.io.File indexFile = new java.io.File(reportDir, "index.html");
+        if (!indexFile.exists()) {
+            if (consolePanel != null) {
+                consolePanel.appendConsoleText("ERROR: Report index.html not found in " + outputDir + "\n");
+            }
+            return;
+        }
+        
+        try {
+            if (java.awt.Desktop.isDesktopSupported()) {
+                java.awt.Desktop.getDesktop().browse(indexFile.toURI());
+                if (consolePanel != null) {
+                    consolePanel.appendConsoleText("✓ Report opened in default browser\n");
+                }
+            } else {
+                if (consolePanel != null) {
+                    consolePanel.appendConsoleText("ERROR: Desktop not supported. Please open manually: " + indexFile.getAbsolutePath() + "\n");
+                }
+            }
+        } catch (Exception e) {
+            if (consolePanel != null) {
+                consolePanel.appendConsoleText("ERROR: Failed to open report: " + e.getMessage() + "\n");
+            }
+        }
     }
     
     private boolean validateInputs() {
