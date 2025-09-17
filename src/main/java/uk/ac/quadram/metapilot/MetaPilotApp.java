@@ -22,7 +22,7 @@ import java.util.prefs.Preferences;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagVersion;
 import uk.ac.quadram.metapilot.task.mag.MagDbConfigIO;
-import uk.ac.quadram.metapilot.task.mag.gui.MagDbConfigPanelJavaFX;
+import uk.ac.quadram.metapilot.task.mag.MagDbConfigPanelJavaFX;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceIO;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;

@@ -19,9 +19,9 @@ import uk.ac.quadram.metapilot.core.MGYG.db.ProDbConfig;
 import uk.ac.quadram.metapilot.core.function.v2.EnzymeCommission;
 import uk.ac.quadram.metapilot.core.function.v2.GoObo;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
-import uk.ac.quadram.metapilot.task.io.pro.pfind.MetaProteinAnnoEggNog;
-import uk.ac.quadram.metapilot.task.io.pro.pfind.MetaProteinXMLReader2;
-import uk.ac.quadram.metapilot.task.io.pro.pfind.MetaProteinXMLWriter2;
+import uk.ac.quadram.metapilot.task.io.pro.MetaProteinAnnoEggNog;
+import uk.ac.quadram.metapilot.task.io.pro.MetaProteinXMLReader2;
+import uk.ac.quadram.metapilot.task.io.pro.MetaProteinXMLWriter2;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 
 public class IGCFuncSqliteSearcher {

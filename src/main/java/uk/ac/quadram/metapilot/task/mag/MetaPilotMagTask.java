@@ -28,7 +28,6 @@ import uk.ac.quadram.metapilot.core.prodb.FastaManager;
 import uk.ac.quadram.metapilot.core.taxonomy.TaxonomyRanks;
 import uk.ac.quadram.metapilot.core.tools.FormatTool;
 import uk.ac.quadram.metapilot.dbSearch.pfind.PFindResultReader;
-// JavaFXProgressBar import removed - using javafx.scene.control.ProgressBar directly
 import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
@@ -38,7 +37,7 @@ import uk.ac.quadram.metapilot.task.MetaPythonReportTask;
 import uk.ac.quadram.metapilot.task.io.MetaTreeHandler;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
-import uk.ac.quadram.metapilot.task.io.pro.pfind.MetaProteinXMLWriter2;
+import uk.ac.quadram.metapilot.task.io.pro.MetaProteinXMLWriter2;
 import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 

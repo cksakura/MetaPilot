@@ -211,46 +211,7 @@ public class DDAMagFragPipeParameters extends MetaBaseParameter {
     // FragPipe workflow getters and setters
     public FragpipeWorkflow getFragpipeWorkflow() { return fragpipeWorkflow; }
     public void setFragpipeWorkflow(FragpipeWorkflow fragpipeWorkflow) { this.fragpipeWorkflow = fragpipeWorkflow; }
-    
-    /**
-     * Convert to MetaParameterMag for compatibility with existing MAG tasks
-     */
-    public uk.ac.quadram.metapilot.task.mag.par.MetaParameterMag toMetaParameterMag() {
-        // Create MetaBaseParameter first
-        uk.ac.quadram.metapilot.task.par.MetaBaseParameter metaBasePar = new uk.ac.quadram.metapilot.task.par.MetaBaseParameter(
-            getWorkflowType().name(),
-            getMetadata(),
-            getResult(),
-            getMicroDb(),
-            isAppendHostDb(),
-            getHostDB(),
-            getMs2ScanMode(),
-            getCoreCount(),
-            getThreadCount(),
-            isMetaWorkflow()
-        );
-        
-        // Convert digestion mode string to integer
-        int digestModeInt = getDigestModeInt(getDigestModeString());
-        
-        // Create MetaParameterMag
-        return new uk.ac.quadram.metapilot.task.mag.par.MetaParameterMag(
-            metaBasePar,
-            getFixMods(),
-            getVariMods(),
-            getEnzyme(),
-            getMissCleavages(),
-            digestModeInt,
-            getQuantitativeMode(),
-            getIsobaric(),
-            getIsobaricTag(),
-            isCombineLabel(),
-            getIsoCorFactor(),
-            getMagDbCatalogueId(),
-            getMagDbVersion()
-        );
-    }
-    
+
     /**
      * Convert digestion mode string to integer representation
      */

@@ -103,9 +103,72 @@ public class MetaPilotIOPanelFX extends VBox {
                 updatePatternTable();
             }
         });
-        expCol.setPrefWidth(250);
+        expCol.setPrefWidth(200);
         
-        experimentTable.getColumns().setAll(fileCol, expCol);
+        TableColumn<ExperimentRow, String> fractionCol = new TableColumn<>("Fraction");
+        fractionCol.setCellValueFactory(cellData -> cellData.getValue().fractionProperty());
+        fractionCol.setCellFactory(column -> {
+            TextFieldTableCell<ExperimentRow, String> cell = new TextFieldTableCell<ExperimentRow, String>(new DefaultStringConverter()) {
+                @Override
+                public void startEdit() {
+                    super.startEdit();
+                    TextField textField = (TextField) getGraphic();
+                    if (textField != null) {
+                        // Only allow integer input
+                        textField.textProperty().addListener((obs, oldVal, newVal) -> {
+                            if (newVal != null && !newVal.matches("\\d*")) {
+                                textField.setText(oldVal);
+                            }
+                        });
+                        
+                        // Commit edit when focus is lost (like Swing)
+                        textField.focusedProperty().addListener((obs, wasFocused, isNowFocused) -> {
+                            if (wasFocused && !isNowFocused && isEditing()) {
+                                String text = textField.getText();
+                                // Ensure it's a valid integer, default to 1 if empty or invalid
+                                if (text == null || text.trim().isEmpty()) {
+                                    text = "1";
+                                } else {
+                                    try {
+                                        int value = Integer.parseInt(text);
+                                        if (value <= 0) {
+                                            text = "1"; // Ensure positive integer
+                                        }
+                                    } catch (NumberFormatException e) {
+                                        text = "1"; // Default to 1 if not a valid integer
+                                    }
+                                }
+                                textField.setText(text);
+                                commitEdit(text);
+                            }
+                        });
+                    }
+                }
+            };
+            return cell;
+        });
+        fractionCol.setOnEditCommit(event -> {
+            ExperimentRow row = event.getRowValue();
+            String newValue = event.getNewValue();
+            
+            // Validate and set the fraction value
+            if (newValue == null || newValue.trim().isEmpty()) {
+                newValue = "1";
+            } else {
+                try {
+                    int value = Integer.parseInt(newValue);
+                    if (value <= 0) {
+                        newValue = "1"; // Ensure positive integer
+                    }
+                } catch (NumberFormatException e) {
+                    newValue = "1"; // Default to 1 if not a valid integer
+                }
+            }
+            row.setFraction(newValue);
+        });
+        fractionCol.setPrefWidth(80);
+        
+        experimentTable.getColumns().setAll(fileCol, expCol, fractionCol);
 
         HBox expButtonBox = new HBox(10);
         removeExperimentButton = new Button("Remove Selected");
@@ -524,14 +587,28 @@ public class MetaPilotIOPanelFX extends VBox {
         }
         return expNames;
     }
+    
+    // Method to get fraction values
+    public List<String> getFractionValues() {
+        List<String> fractions = new ArrayList<>();
+        for (ExperimentRow row : experimentData) {
+            String fraction = row.getFraction();
+            if (fraction != null && !fraction.isEmpty()) {
+                fractions.add(fraction);
+            }
+        }
+        return fractions;
+    }
 
     public static class ExperimentRow {
         private final StringProperty filePath;
         private final StringProperty experimentName;
+        private final StringProperty fraction;
 
         public ExperimentRow(String filePath, String experimentName) {
             this.filePath = new SimpleStringProperty(filePath == null ? "" : filePath);
             this.experimentName = new SimpleStringProperty(experimentName == null ? "" : experimentName);
+            this.fraction = new SimpleStringProperty("1"); // Default fraction value
         }
 
         public String getFilePath() { return filePath.get(); }
@@ -543,6 +620,12 @@ public class MetaPilotIOPanelFX extends VBox {
             this.experimentName.set(experimentName == null ? "" : experimentName); 
         }
         public StringProperty experimentNameProperty() { return experimentName; }
+
+        public String getFraction() { return fraction.get(); }
+        public void setFraction(String fraction) { 
+            this.fraction.set(fraction == null ? "1" : fraction); 
+        }
+        public StringProperty fractionProperty() { return fraction; }
     }
     
     public static class PatternRow {

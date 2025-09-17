@@ -6,7 +6,6 @@ import javafx.geometry.Pos;
 import javafx.scene.control.*;
 import javafx.scene.control.Toggle;
 import javafx.scene.layout.*;
-import javafx.stage.FileChooser;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.scene.text.Font;
@@ -20,9 +19,9 @@ import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
 import uk.ac.quadram.metapilot.task.common.gui.IsobaricLabelingPanel;
 import uk.ac.quadram.metapilot.task.common.gui.TaxonomicAnalysisPanel;
 import uk.ac.quadram.metapilot.task.common.gui.DdaIgcInputOutputPanel;
+import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.MetaPilotApp;
-import uk.ac.quadram.metapilot.core.mod.IsobaricTag;
 import uk.ac.quadram.metapilot.task.dda.igc.DDAIgcPFindTask;
 import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcPFindParameters;
 import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcPFindParameterIO;
@@ -39,7 +38,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.io.File;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -48,13 +46,7 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
     private static final Logger LOGGER = LogManager.getLogger(MetaPilotDdaIgcPFindPanel.class);
     // UI Components (similar to MaxQuant panel)
     private DdaIgcInputOutputPanel ioPanel;
-    private TextArea consoleOutput;
-    private TextArea parameterView;
-    private ProgressBar overallProgressBar;
-    private ProgressBar currentTaskProgressBar;
-    private Label currentTaskLabel;
-    private Button startButton;
-    private Button stopButton;
+    private ConsolePanel consolePanel;
     private ToggleGroup quantModeGroup;
 
     // Parameter Panel Components
@@ -80,14 +72,8 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
     private ObservableList<String> modifications = FXCollections.observableArrayList();
     private ObservableList<String> fixedModifications = FXCollections.observableArrayList();
     private ObservableList<String> variableModifications = FXCollections.observableArrayList();
-    // Labeling
-    private ObservableList<String> isobaricModifications = FXCollections.observableArrayList();
-    private ObservableList<String> isobaricBaseTypes = FXCollections.observableArrayList();
-
-    // Isobaric labeling components
-    private ComboBox<String> isobaricTypeComboBox;
-    private TableView<IsobaricLabelingPanel.IsobaricLabelRow> isobaricTable;
-    private ObservableList<IsobaricLabelingPanel.IsobaricLabelRow> isobaricTableData = FXCollections.observableArrayList();
+    // Isobaric labeling panel (reusable component)
+    private IsobaricLabelingPanel isobaricLabelingPanel;
 
     // Taxonomic analysis panel
     private TaxonomicAnalysisPanel taxonomicAnalysisPanel;
@@ -98,13 +84,8 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
     private ComboBox<String> metadataColumnComboBox;
     private Button addMetadataColumnButton;
     private Button removeMetadataColumnButton;
+    private Button resetMetadataButton;
 
-    // Status panel fields
-    private Label statusTimeLabel;
-    private Label statusCpuLabel;
-    private Label statusMemLabel;
-    private Timeline statusTimeline;
-    private long taskStartTimeMillis;
     
     // Add parameter IO instance
     private DDAIgcPFindParameterIO parameterIO;
@@ -115,13 +96,22 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
         
         loadEnzymesFromIni();
         loadModificationsFromIni();
-        loadIsobaricBaseTypes();
+        
+        // Initialize isobaric labeling panel
+        isobaricLabelingPanel = new IsobaricLabelingPanel();
+        isobaricLabelingPanel.setParameterUpdateCallback(this::updateParameterView);
         
         // Initialize unified IO panel
         ioPanel = new DdaIgcInputOutputPanel(this::updateParameterView);
         
         // Initialize taxonomic analysis panel
         taxonomicAnalysisPanel = new TaxonomicAnalysisPanel(this::updateParameterView);
+        
+        // Initialize console panel
+        consolePanel = new ConsolePanel();
+        consolePanel.setStartCallback(this::startAnalysis);
+        consolePanel.setStopCallback(this::stopAnalysis);
+        consolePanel.setViewReportCallback(this::viewReport);
         
         initializeUI();
         
@@ -159,7 +149,7 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
         paramTab.setContent(createParametersTab());
 
         Tab consoleTab = new Tab("Console");
-        consoleTab.setContent(createConsoleTab());
+        consoleTab.setContent(consolePanel);
 
         tabPane.getTabs().addAll(ioTab, paramTab, consoleTab);
 
@@ -269,158 +259,29 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
         labelingStackPane.setMinHeight(200);
         labelingStackPane.setMaxHeight(Double.MAX_VALUE);
         VBox.setVgrow(labelingStackPane, Priority.ALWAYS);
-        VBox isobaricPanel = createCompactIsobaricLabelingPanel();
-        isobaricPanel.setMinHeight(200);
-        isobaricPanel.setPrefHeight(220);
-        isobaricPanel.setMaxHeight(Double.MAX_VALUE);
-        isobaricPanel.setVisible(false);
-        isobaricPanel.setManaged(false);
-        labelingStackPane.getChildren().add(isobaricPanel);
+        
+        // Use the reusable isobaric labeling panel
+        isobaricLabelingPanel.setVisible(false);
+        isobaricLabelingPanel.setManaged(false);
+        labelingStackPane.getChildren().add(isobaricLabelingPanel);
         labelFreeRadio.setOnAction(e -> {
-            isobaricPanel.setVisible(false);
-            isobaricPanel.setManaged(false);
+            isobaricLabelingPanel.setVisible(false);
+            isobaricLabelingPanel.setManaged(false);
             updateParameterView();
             updateMetadataTable();
         });
         isobaricRadio.setOnAction(e -> {
-            isobaricPanel.setVisible(true);
-            isobaricPanel.setManaged(true);
+            isobaricLabelingPanel.setVisible(true);
+            isobaricLabelingPanel.setManaged(true);
             updateParameterView();
             updateMetadataTable();
         });
         section.getChildren().addAll(titleLabel, radioBox, labelingStackPane);
         return section;
     }
-    private VBox createCompactIsobaricLabelingPanel() {
-        VBox panel = new VBox(8);
-        panel.setPadding(new Insets(8));
-        panel.setStyle("-fx-background-color: #f8e8f4; -fx-background-radius: 5;");
-        HBox typeBox = new HBox(10);
-        typeBox.setAlignment(Pos.CENTER_LEFT);
-        Label typeLabel = new Label("Isobaric Type:");
-        typeLabel.setStyle("-fx-font-weight: bold;");
-        isobaricTypeComboBox = new ComboBox<>(isobaricBaseTypes);
-        isobaricTypeComboBox.setMinWidth(200);
-        isobaricTypeComboBox.setPrefWidth(220);
-        isobaricTypeComboBox.setMaxWidth(Double.MAX_VALUE);
-        isobaricTypeComboBox.setOnAction(e -> updateIsobaricTable());
-        HBox.setHgrow(isobaricTypeComboBox, Priority.ALWAYS);
-        typeBox.getChildren().addAll(typeLabel, isobaricTypeComboBox);
-        isobaricTable = new TableView<>(isobaricTableData);
-        isobaricTable.setMinHeight(120);
-        isobaricTable.setPrefHeight(140);
-        isobaricTable.setMaxHeight(Double.MAX_VALUE);
-        isobaricTable.setEditable(true);
-        isobaricTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
-        VBox.setVgrow(isobaricTable, Priority.ALWAYS);
-        TableColumn<IsobaricLabelingPanel.IsobaricLabelRow, String> labelCol = new TableColumn<>("Label");
-        labelCol.setCellValueFactory(new PropertyValueFactory<>("labelName"));
-        labelCol.setMinWidth(120);
-        labelCol.setPrefWidth(150);
-        TableColumn<IsobaricLabelingPanel.IsobaricLabelRow, String> minus2Col = new TableColumn<>("-2");
-        minus2Col.setCellValueFactory(new PropertyValueFactory<>("minus2"));
-        minus2Col.setCellFactory(TextFieldTableCell.forTableColumn(new DefaultStringConverter()));
-        minus2Col.setOnEditCommit(e -> e.getRowValue().setMinus2(e.getNewValue()));
-        minus2Col.setMinWidth(50);
-        minus2Col.setPrefWidth(60);
-        TableColumn<IsobaricLabelingPanel.IsobaricLabelRow, String> minus1Col = new TableColumn<>("-1");
-        minus1Col.setCellValueFactory(new PropertyValueFactory<>("minus1"));
-        minus1Col.setCellFactory(TextFieldTableCell.forTableColumn(new DefaultStringConverter()));
-        minus1Col.setOnEditCommit(e -> e.getRowValue().setMinus1(e.getNewValue()));
-        minus1Col.setMinWidth(50);
-        minus1Col.setPrefWidth(60);
-        TableColumn<IsobaricLabelingPanel.IsobaricLabelRow, String> plus1Col = new TableColumn<>("+1");
-        plus1Col.setCellValueFactory(new PropertyValueFactory<>("plus1"));
-        plus1Col.setCellFactory(TextFieldTableCell.forTableColumn(new DefaultStringConverter()));
-        plus1Col.setOnEditCommit(e -> e.getRowValue().setPlus1(e.getNewValue()));
-        plus1Col.setMinWidth(50);
-        plus1Col.setPrefWidth(60);
-        TableColumn<IsobaricLabelingPanel.IsobaricLabelRow, String> plus2Col = new TableColumn<>("+2");
-        plus2Col.setCellValueFactory(new PropertyValueFactory<>("plus2"));
-        plus2Col.setCellFactory(TextFieldTableCell.forTableColumn(new DefaultStringConverter()));
-        plus2Col.setOnEditCommit(e -> e.getRowValue().setPlus2(e.getNewValue()));
-        plus2Col.setMinWidth(50);
-        plus2Col.setPrefWidth(60);
-        isobaricTable.getColumns().addAll(labelCol, minus2Col, minus1Col, plus1Col, plus2Col);
-        panel.getChildren().addAll(typeBox, isobaricTable);
-        return panel;
-    }
-    private VBox createConsoleTab() {
-        VBox tabContent = new VBox(10);
-        tabContent.setPadding(new Insets(10));
-        // Parameter View
-        VBox paramViewBox = new VBox(5);
-        paramViewBox.getChildren().add(new Label("Parameter View:"));
-        parameterView = new TextArea();
-        parameterView.setEditable(false);
-        parameterView.setPrefHeight(200); // Increased height
-        parameterView.setStyle("-fx-font-family: monospace;");
-        VBox.setVgrow(parameterView, Priority.ALWAYS); // Allow to expand
-        paramViewBox.getChildren().add(parameterView);
-        VBox.setVgrow(paramViewBox, Priority.ALWAYS);
-        // Progress Bars
-        VBox progressBox = new VBox(5);
-        currentTaskLabel = new Label("Current Task: None");
-        overallProgressBar = new ProgressBar(0);
-        overallProgressBar.setMaxWidth(Double.MAX_VALUE);
-        currentTaskProgressBar = new ProgressBar(0);
-        currentTaskProgressBar.setMaxWidth(Double.MAX_VALUE);
-        progressBox.getChildren().addAll(
-            currentTaskLabel,
-            new Label("Overall Progress:"),
-            overallProgressBar,
-            new Label("Current Task Progress:"),
-            currentTaskProgressBar
-        );
-        // Console Output
-        VBox consoleBox = new VBox(5);
-        consoleBox.getChildren().add(new Label("Console Output:"));
-        consoleOutput = new TextArea();
-        consoleOutput.setEditable(false);
-        consoleOutput.setPrefHeight(250); // Increased height
-        consoleOutput.setStyle("-fx-font-family: monospace;");
-        VBox.setVgrow(consoleOutput, Priority.ALWAYS); // Allow to expand
-        consoleBox.getChildren().add(consoleOutput);
-        VBox.setVgrow(consoleBox, Priority.ALWAYS);
-        // Control Buttons
-        HBox controlBox = new HBox(10);
-        startButton = new Button("Start Analysis");
-        stopButton = new Button("Stop");
-        stopButton.setDisable(true);
-        // TODO: Implement startAnalysis() and stopAnalysis() for pFind workflow
-        startButton.setOnAction(e -> { startAnalysis(); });
-        stopButton.setOnAction(e -> stopAnalysis());
-        
-        // Debug button for testing metadata flow
-//        Button testButton = new Button("Test Metadata");
-//       testButton.setOnAction(e -> testMetadataFlow());
-//        testButton.setStyle("-fx-background-color: #ffeb3b; -fx-text-fill: #000;");
-        
-        controlBox.getChildren().addAll(startButton, stopButton);
-        // Status Panel (bottom)
-        HBox statusPanel = new HBox(20);
-        statusPanel.setPadding(new Insets(5, 0, 0, 0));
-        statusPanel.setAlignment(Pos.CENTER_LEFT);
-        statusTimeLabel = new Label("Time: 00:00:00");
-        statusCpuLabel = new Label("CPU: 0.0%");
-        statusMemLabel = new Label("Memory: 0 / 0 MB");
-        statusPanel.getChildren().addAll(statusTimeLabel, statusCpuLabel, statusMemLabel);
-        // Layout: parameterView and consoleOutput fill available space, statusPanel at bottom
-        tabContent.getChildren().addAll(
-            paramViewBox,
-            progressBox,
-            consoleBox,
-            controlBox
-        );
-        VBox.setVgrow(paramViewBox, Priority.ALWAYS);
-        VBox.setVgrow(consoleBox, Priority.ALWAYS);
-        VBox.setVgrow(tabContent, Priority.ALWAYS);
-        // Always keep status panel at the bottom
-        tabContent.getChildren().add(statusPanel);
-        return tabContent;
-    }
     private void updateMetadataTableFromIOPanel() {
-        // ... (copy/adapt from MaxQuant panel)
+        // Update metadata table when Parameters tab is selected
+        updateMetadataTable();
     }
     private void loadEnzymesFromIni() {
         try (InputStream in = getClass().getClassLoader().getResourceAsStream("enzyme_default.ini")) {
@@ -456,12 +317,6 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
             }
         } catch (IOException e) {
             e.printStackTrace();
-        }
-    }
-    private void loadIsobaricBaseTypes() {
-        IsobaricTag[] tags = IsobaricTag.getPFindTags();
-        for (IsobaricTag tag : tags) {
-            isobaricBaseTypes.add(tag.getName());
         }
     }
     private Label createSectionTitle(String title) {
@@ -710,7 +565,14 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
         removeMetadataColumnButton.setMinWidth(120);
         removeMetadataColumnButton.setPrefWidth(150);
         removeMetadataColumnButton.setOnAction(e -> removeMetadataColumn());
-        controlBox.getChildren().addAll(metadataColumnComboBox, customColumnTextField, addMetadataColumnButton, removeMetadataColumnButton);
+        
+        resetMetadataButton = new Button("Reset All");
+        resetMetadataButton.setMinWidth(120);
+        resetMetadataButton.setPrefWidth(150);
+        resetMetadataButton.setStyle("-fx-background-color: #ff6b6b; -fx-text-fill: white;");
+        resetMetadataButton.setOnAction(e -> resetMetadataTable());
+        
+        controlBox.getChildren().addAll(metadataColumnComboBox, customColumnTextField, addMetadataColumnButton, removeMetadataColumnButton, resetMetadataButton);
         section.getChildren().addAll(titleLabel, infoLabel, metadataTable, controlBox);
         updateMetadataTable();
         return section;
@@ -744,13 +606,17 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
             RadioButton selected = (RadioButton) quantModeGroup.getSelectedToggle();
             sb.append("Mode: ").append(selected.getText()).append("\n");
             if (selected.getText().contains("Isobaric")) {
-                sb.append("Isobaric Type: ").append(isobaricTypeComboBox.getValue() != null ? isobaricTypeComboBox.getValue() : "None").append("\n");
-                sb.append("Configured Labels: ").append(isobaricTableData.size()).append("\n");
+                sb.append("Isobaric Type: ").append(isobaricLabelingPanel.getSelectedIsobaricType() != null ? isobaricLabelingPanel.getSelectedIsobaricType() : "None").append("\n");
+                sb.append("Configured Labels: ").append(isobaricLabelingPanel.getIsobaricTableData().size()).append("\n");
             }
         }
         // Taxonomic analysis
         sb.append("\n").append(taxonomicAnalysisPanel.getTaxonomicSummary());
-        parameterView.setText(sb.toString());
+        
+        // Update the console panel's parameter view
+        if (consolePanel != null) {
+            consolePanel.setParameterText(sb.toString());
+        }
     }
     private void updateMetadataTable() {
         metadataTableData.clear();
@@ -762,11 +628,11 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
             String mode = selected.getText();
             boolean hasLabels = false;
             if (mode.contains("Isobaric")) {
-                hasLabels = !isobaricTableData.isEmpty();
+                hasLabels = isobaricLabelingPanel.hasLabels();
             }
             if (mode.contains("Isobaric") && hasLabels) {
                 for (MetaPilotIOPanelFX.ExperimentRow row : fileRows) {
-                    for (IsobaricLabelingPanel.IsobaricLabelRow isoLabel : isobaricTableData) {
+                    for (IsobaricLabelingPanel.IsobaricLabelRow isoLabel : isobaricLabelingPanel.getIsobaricTableData()) {
                         MetaPilotDdaIgcMaxQuantPanel.MetadataRow metadataRow = new MetaPilotDdaIgcMaxQuantPanel.MetadataRow(row.getExperimentName());
                         metadataRow.setLabelType("Isobaric - " + isoLabel.getLabelName());
                         metadataTableData.add(metadataRow);
@@ -777,31 +643,6 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
                     metadataTableData.add(new MetaPilotDdaIgcMaxQuantPanel.MetadataRow(row.getExperimentName()));
                 }
             }
-        }
-    }
-    private void updateIsobaricTable() {
-        String selectedType = isobaricTypeComboBox.getValue();
-        isobaricTableData.clear();
-        
-        if (selectedType != null) {
-            // Find the IsobaricTag that matches the selected type
-            IsobaricTag selectedTag = null;
-            IsobaricTag[] tags = IsobaricTag.getPFindTags();
-            for (IsobaricTag tag : tags) {
-                if (tag.getName().equals(selectedType)) {
-                    selectedTag = tag;
-                    break;
-                }
-            }
-            
-            if (selectedTag != null) {
-                // Use the getReportTitle() method to get the proper labels
-                String[] reportTitles = selectedTag.getReportTitle();
-                for (String title : reportTitles) {
-                    isobaricTableData.add(new IsobaricLabelingPanel.IsobaricLabelRow(title));
-                }
-            }
-            updateMetadataTable();
         }
     }
     private void addFixedModification() {
@@ -875,6 +716,20 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
         }
     }
     
+    private void resetMetadataTable() {
+        // Clear all data
+        metadataTableData.clear();
+        
+        // Remove all columns except the Sample column
+        metadataTable.getColumns().clear();
+        
+        // Recreate basic table structure with only Sample column
+        createMetadataTableColumns();
+        
+        // Update parameter view
+        updateParameterView();
+    }
+    
     private void addMetadataColumnWithProperty(String columnName, String propertyName) {
         TableColumn<MetaPilotDdaIgcMaxQuantPanel.MetadataRow, String> column = new TableColumn<>(columnName);
         column.setCellValueFactory(new PropertyValueFactory<>(propertyName));
@@ -899,11 +754,11 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
     }
 
     private void startAnalysis() {
-        // Disable start, enable stop
-        startButton.setDisable(true);
-        stopButton.setDisable(false);
-        consoleOutput.clear();
-        parameterView.setText("Starting analysis...\n" + parameterView.getText());
+        // Clear console and show starting message
+        if (consolePanel != null) {
+            consolePanel.clearConsole();
+            consolePanel.appendConsoleText("Starting pFind analysis...\n");
+        }
 
         // Gather parameters from UI
         ObservableList<MetaPilotIOPanelFX.ExperimentRow> fileRows = ioPanel.getIoPanel().getExperimentData();
@@ -967,53 +822,61 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
         LOGGER.info("Creating DDAIgcPFindTask with analysisParams: {}", analysisParams);
         DDAIgcPFindTask task = new DDAIgcPFindTask(analysisParams, mrp, overallBar, currentBar);
         // Bind progress and messages
-        overallProgressBar.progressProperty().bind(overallBar.progressProperty());
-        currentTaskProgressBar.progressProperty().bind(currentBar.progressProperty());
-        task.messageProperty().addListener((obs, oldMsg, newMsg) -> {
-            Platform.runLater(() -> {
-                if (newMsg != null && !newMsg.isEmpty()) {
-                    consoleOutput.appendText(newMsg + "\n");
-                }
+        if (consolePanel != null) {
+            consolePanel.getOverallProgressBar().progressProperty().bind(overallBar.progressProperty());
+            consolePanel.getCurrentTaskProgressBar().progressProperty().bind(currentBar.progressProperty());
+            task.messageProperty().addListener((obs, oldMsg, newMsg) -> {
+                Platform.runLater(() -> {
+                    if (newMsg != null && !newMsg.isEmpty()) {
+                        consolePanel.appendConsoleText(newMsg + "\n");
+                        consolePanel.updateCurrentTaskFromMessage(newMsg);
+                    }
+                });
             });
-        });
-        // Status panel timer
-        taskStartTimeMillis = System.currentTimeMillis();
-        if (statusTimeline != null) statusTimeline.stop();
-        statusTimeline = new Timeline(new KeyFrame(Duration.seconds(1), e -> updateStatusPanel()));
-        statusTimeline.setCycleCount(Timeline.INDEFINITE);
-        statusTimeline.play();
+        }
+        // Start status timer in console panel
+        if (consolePanel != null) {
+            consolePanel.startStatusTimer();
+        }
         // On succeeded/failed/cancelled
         task.setOnSucceeded(e -> {
-            statusTimeline.stop();
-            startButton.setDisable(false);
-            stopButton.setDisable(true);
-            updateStatusPanel();
+            if (consolePanel != null) {
+                consolePanel.setButtonsEnabled(true, false, true);
+                consolePanel.stopStatusTimer();
+            }
             
             // Check if the task actually succeeded by examining the result
             try {
                 Boolean result = task.get();
                 if (result != null && result) {
-                    consoleOutput.appendText("\nAnalysis completed successfully.\n");
+                    if (consolePanel != null) {
+                        consolePanel.appendConsoleText("\nAnalysis completed successfully.\n");
+                        consolePanel.enableViewReportButton();
+                    }
                 } else {
-                    consoleOutput.appendText("\nAnalysis completed but may not have been fully successful.\n");
+                    if (consolePanel != null) {
+                        consolePanel.appendConsoleText("\nAnalysis completed but may not have been fully successful.\n");
+                    }
                 }
             } catch (Exception ex) {
-                consoleOutput.appendText("\nAnalysis failed: " + ex.getMessage() + "\n");
+                if (consolePanel != null) {
+                    consolePanel.appendConsoleText("\nAnalysis failed: " + ex.getMessage() + "\n");
+                }
             }
         });
         task.setOnFailed(e -> {
-            statusTimeline.stop();
-            startButton.setDisable(false);
-            stopButton.setDisable(true);
-            updateStatusPanel();
-            consoleOutput.appendText("\nAnalysis failed: " + task.getException() + "\n");
+            if (consolePanel != null) {
+                consolePanel.setButtonsEnabled(true, false, false);
+                consolePanel.stopStatusTimer();
+                consolePanel.appendConsoleText("\nAnalysis failed: " + task.getException() + "\n");
+            }
         });
         task.setOnCancelled(e -> {
-            statusTimeline.stop();
-            startButton.setDisable(false);
-            stopButton.setDisable(true);
-            updateStatusPanel();
-            consoleOutput.appendText("\nAnalysis cancelled.\n");
+            if (consolePanel != null) {
+                consolePanel.setButtonsEnabled(true, false, false);
+                consolePanel.stopStatusTimer();
+                consolePanel.appendConsoleText("\nAnalysis cancelled.\n");
+            }
         });
         // Run the task
         Thread t = new Thread(task);
@@ -1021,40 +884,6 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
         t.start();
     }
 
-    private void updateStatusPanel() {
-        // Elapsed time
-        long elapsedMillis = System.currentTimeMillis() - taskStartTimeMillis;
-        long seconds = elapsedMillis / 1000;
-        long hh = seconds / 3600;
-        long mm = (seconds % 3600) / 60;
-        long ss = seconds % 60;
-        String timeStr = String.format("Time: %02d:%02d:%02d", hh, mm, ss);
-        // CPU usage (system-wide)
-        double cpuLoad = 0.0;
-        try {
-            java.lang.management.OperatingSystemMXBean osBean = ManagementFactory.getOperatingSystemMXBean();
-            if (osBean instanceof com.sun.management.OperatingSystemMXBean) {
-                cpuLoad = ((com.sun.management.OperatingSystemMXBean) osBean).getSystemCpuLoad();
-                if (cpuLoad >= 0) cpuLoad *= 100.0;
-                else cpuLoad = 0.0;
-            }
-        } catch (Throwable t) { cpuLoad = 0.0; }
-        String cpuStr = String.format("CPU: %.1f%%", cpuLoad);
-        // Memory usage (heap)
-        long usedMem = 0, maxMem = 0;
-        try {
-            MemoryMXBean memBean = ManagementFactory.getMemoryMXBean();
-            MemoryUsage heap = memBean.getHeapMemoryUsage();
-            usedMem = heap.getUsed() / (1024 * 1024);
-            maxMem = heap.getMax() / (1024 * 1024);
-        } catch (Throwable t) { usedMem = 0; maxMem = 0; }
-        String memStr = String.format("Memory: %d / %d MB", usedMem, maxMem);
-        Platform.runLater(() -> {
-            statusTimeLabel.setText(timeStr);
-            statusCpuLabel.setText(cpuStr);
-            statusMemLabel.setText(memStr);
-        });
-    }
 
     private void showAlert(String title, String message) {
         Alert alert = new Alert(AlertType.INFORMATION);
@@ -1096,9 +925,17 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
                 MetaPilotIOPanelFX.ExperimentRow row = fileRows.get(i);
                 rawFiles[i] = row.getFilePath();
                 expNames[i] = row.getExperimentName();
-                fractions[i] = 0;
+                // Get fraction from the IO panel, default to 1 if invalid
+                try {
+                    fractions[i] = Integer.parseInt(row.getFraction());
+                    if (fractions[i] <= 0) {
+                        fractions[i] = 1; // Ensure positive fraction
+                    }
+                } catch (NumberFormatException e) {
+                    fractions[i] = 1; // Default to 1 if not a valid integer
+                }
                 replicates[i] = 1;
-                LOGGER.info("collectParametersFromUI: Row {} - file: {}, name: {}", i, rawFiles[i], expNames[i]);
+                LOGGER.info("collectParametersFromUI: Row {} - file: {}, name: {}, fraction: {}", i, rawFiles[i], expNames[i], fractions[i]);
             }
             
             LOGGER.info("collectParametersFromUI: Creating MetaData with {} raw files", rawFiles.length);
@@ -1145,10 +982,10 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
         }
         
         // Isobaric labeling
-        if (isobaricTypeComboBox.getValue() != null) {
-            params.setIsobaricType(isobaricTypeComboBox.getValue());
+        if (isobaricLabelingPanel.getSelectedIsobaricType() != null) {
+            params.setIsobaricType(isobaricLabelingPanel.getSelectedIsobaricType());
         }
-        params.setIsobaricTableData(new ArrayList<>(isobaricTableData));
+        params.setIsobaricTableData(new ArrayList<>(isobaricLabelingPanel.getIsobaricTableData()));
         
         // Taxonomic analysis
         params.setEukaryota(taxonomicAnalysisPanel.isEukaryota());
@@ -1294,14 +1131,13 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
         }
         
         // Apply isobaric type if available
-        if (params.getIsobaricType() != null && isobaricTypeComboBox != null) {
-            isobaricTypeComboBox.setValue(params.getIsobaricType());
+        if (params.getIsobaricType() != null && isobaricLabelingPanel != null) {
+            isobaricLabelingPanel.setSelectedIsobaricType(params.getIsobaricType());
         }
         
         // Apply isobaric table data if available
-        if (params.getIsobaricTableData() != null && !params.getIsobaricTableData().isEmpty()) {
-            isobaricTableData.clear();
-            isobaricTableData.addAll(params.getIsobaricTableData());
+        if (params.getIsobaricTableData() != null && !params.getIsobaricTableData().isEmpty() && isobaricLabelingPanel != null) {
+            isobaricLabelingPanel.setIsobaricTableData(params.getIsobaricTableData());
         }
         
         // Apply taxonomic settings
@@ -1412,9 +1248,57 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
     }
     
     private void stopAnalysis() {
-        startButton.setDisable(false);
-        stopButton.setDisable(true);
-        consoleOutput.appendText("Stopping pFind analysis...\n");
+        if (consolePanel != null) {
+            consolePanel.appendConsoleText("Stopping pFind analysis...\n");
+        }
         System.out.println("DEBUG: stopAnalysis called");
+    }
+    
+    private void viewReport() {
+        if (consolePanel != null) {
+            consolePanel.appendConsoleText("Opening report in default browser...\n");
+        }
+        
+        // Get the output directory from the IO panel
+        String outputDir = ioPanel.getIoPanel().getOutputDirectory();
+        if (outputDir == null || outputDir.trim().isEmpty()) {
+            if (consolePanel != null) {
+                consolePanel.appendConsoleText("ERROR: No output directory specified.\n");
+            }
+            return;
+        }
+        
+        java.io.File reportDir = new java.io.File(outputDir);
+        if (!reportDir.exists()) {
+            if (consolePanel != null) {
+                consolePanel.appendConsoleText("ERROR: Report directory does not exist: " + outputDir + "\n");
+            }
+            return;
+        }
+        
+        java.io.File indexFile = new java.io.File(reportDir, "index.html");
+        if (!indexFile.exists()) {
+            if (consolePanel != null) {
+                consolePanel.appendConsoleText("ERROR: Report index.html not found in " + outputDir + "\n");
+            }
+            return;
+        }
+        
+        try {
+            if (java.awt.Desktop.isDesktopSupported()) {
+                java.awt.Desktop.getDesktop().browse(indexFile.toURI());
+                if (consolePanel != null) {
+                    consolePanel.appendConsoleText("✓ Report opened in default browser\n");
+                }
+            } else {
+                if (consolePanel != null) {
+                    consolePanel.appendConsoleText("ERROR: Desktop not supported. Please open manually: " + indexFile.getAbsolutePath() + "\n");
+                }
+            }
+        } catch (Exception e) {
+            if (consolePanel != null) {
+                consolePanel.appendConsoleText("ERROR: Failed to open report: " + e.getMessage() + "\n");
+            }
+        }
     }
 } 

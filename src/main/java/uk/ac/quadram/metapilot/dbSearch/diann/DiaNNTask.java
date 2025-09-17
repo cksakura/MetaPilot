@@ -31,6 +31,12 @@ public class DiaNNTask {
 	private ArrayList<String> parList;
 	private StringBuilder headsb;
 	private StringBuilder tailsb;
+	
+	// Task state management
+	private volatile boolean isRunning = false;
+	private volatile boolean isCancelled = false;
+	private volatile boolean isDone = false;
+	private ExecutorService executor = null;
 
 	public DiaNNTask(String diaNN) {
 		this(new File(diaNN));
@@ -632,12 +638,18 @@ public class DiaNNTask {
 	}
 
 	public void run(int threadPool, int waitHours) {
+		// Reset task state
+		isRunning = true;
+		isCancelled = false;
+		isDone = false;
 
 		if (this.parList.size() == 0) {
+			isDone = true;
+			isRunning = false;
 			return;
 		}
 
-		ExecutorService executor = Executors.newFixedThreadPool(threadPool);
+		executor = Executors.newFixedThreadPool(threadPool);
 		for (int i = 0; i < parList.size(); i++) {
 
 			String pari = parList.get(i);
@@ -648,7 +660,11 @@ public class DiaNNTask {
 
 				@Override
 				public void run() {
-					// TODO Auto-generated method stub
+					// Check for cancellation before starting
+					if (isCancelled) {
+						LOGGER.info("DiaNN task cancelled before execution: {}", pari);
+						return;
+					}
 
 					try {
 						LOGGER.info("Executing DiaNN conversion: {}", pari);
@@ -678,6 +694,17 @@ public class DiaNNTask {
 						String line0 = "";
 						String line1 = "";
 						while ((line1 = inBr.readLine()) != null) {
+							// Check for cancellation during execution
+							if (isCancelled) {
+								LOGGER.info("DiaNN task cancelled during execution: {}", pari);
+								p.destroyForcibly();
+								inBr.close();
+								errBr.close();
+								in.close();
+								err.close();
+								return;
+							}
+							
 							if (!line1.equals(line0)) {
 								LOGGER.info("DiaNN stdout: {}", line1);
 								System.out.println(format.format(new Date()) + "\t" + line1);
@@ -738,6 +765,9 @@ public class DiaNNTask {
 			// TODO Auto-generated catch block
 			LOGGER.error(taskName + ": failed", e);
 			System.out.println(format.format(new Date()) + "\t" + taskName + ": failed");
+		} finally {
+			isDone = true;
+			isRunning = false;
 		}
 	}
 
@@ -821,5 +851,56 @@ public class DiaNNTask {
 		}
 
 		return true;
+	}
+
+	/**
+	 * Check if the task is done (completed, failed, or cancelled)
+	 * @return true if the task has finished execution
+	 */
+	public boolean isDone() {
+		return isDone;
+	}
+	
+	/**
+	 * Check if the task is currently running
+	 * @return true if the task is currently executing
+	 */
+	public boolean isRunning() {
+		return isRunning;
+	}
+	
+	/**
+	 * Cancel the running task
+	 * This will shutdown the executor service and terminate all running processes
+	 */
+	public void cancel() {
+		if (isRunning && !isCancelled) {
+			LOGGER.info(taskName + ": Cancellation requested");
+			System.out.println(format.format(new Date()) + "\t" + taskName + ": Cancellation requested");
+			
+			isCancelled = true;
+			
+			// Shutdown the executor service if it's running
+			if (executor != null && !executor.isShutdown()) {
+				LOGGER.info(taskName + ": Shutting down executor service");
+				System.out.println(format.format(new Date()) + "\t" + taskName + ": Shutting down executor service");
+				
+				executor.shutdownNow();
+				
+				try {
+					// Wait a bit for the executor to terminate
+					if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+						LOGGER.warn(taskName + ": Executor service did not terminate gracefully within 5 seconds");
+						System.out.println(format.format(new Date()) + "\t" + taskName + ": Executor service did not terminate gracefully within 5 seconds");
+					}
+				} catch (InterruptedException e) {
+					LOGGER.warn(taskName + ": Interrupted while waiting for executor termination", e);
+					Thread.currentThread().interrupt();
+				}
+			}
+			
+			isDone = true;
+			isRunning = false;
+		}
 	}
 }

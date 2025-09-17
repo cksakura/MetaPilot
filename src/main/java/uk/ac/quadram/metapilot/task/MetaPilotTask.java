@@ -3,11 +3,10 @@
  */
 package uk.ac.quadram.metapilot.task;
 
-import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileFilter;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
-import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -15,6 +14,12 @@ import java.io.PrintWriter;
 import java.net.JarURLConnection;
 import java.net.URL;
 import java.net.URLConnection;
+import java.nio.file.FileSystems;
+import java.nio.file.Path;
+import java.nio.file.StandardWatchEventKinds;
+import java.nio.file.WatchEvent;
+import java.nio.file.WatchKey;
+import java.nio.file.WatchService;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Enumeration;
@@ -41,23 +46,19 @@ import org.apache.logging.log4j.core.config.builder.api.ConfigurationBuilderFact
 import org.apache.logging.log4j.core.config.builder.api.LayoutComponentBuilder;
 import org.apache.logging.log4j.core.config.builder.api.RootLoggerComponentBuilder;
 import org.apache.logging.log4j.core.config.builder.impl.BuiltConfiguration;
-import org.json.JSONException;
-import org.json.JSONObject;
 
 import javafx.scene.control.ProgressBar;
-import uk.ac.quadram.metapilot.task.pfind.gui.MetaPilotPFindMainFrame;
-import uk.ac.quadram.metapilot.task.pfind.par.MetaParameterPFind;
+import javafx.application.Platform;
 import uk.ac.quadram.metapilot.license.LicenseVerifier;
-import uk.ac.quadram.metapilot.resources.MetaResourceIO;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.par.MetaData;
+import uk.ac.quadram.metapilot.task.par.BaseParameterIO;
 import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
-import uk.ac.quadram.metapilot.task.par.MetaParameterIOHandler;
 
 /**
- * MetaPilot provides a super class of MetaPilotTask.
- * Different versions of MetaPilotTask could inherit this class to inherit the
- * method {@code exportMetadata()} and {@code copyReport()}
+ * MetaPilot provides a super class of MetaPilotTask. Different versions of
+ * MetaPilotTask could inherit this class to inherit the method
+ * {@code exportMetadata()} and {@code copyReport()}
  * 
  * (Migrated from SwingWorker to JavaFX Task)
  * 
@@ -70,8 +71,11 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 	protected static Logger LOGGER = LogManager.getLogger(MetaPilotTask.class);
 	protected SimpleDateFormat format = new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss");
 	
+	// WatchService thread for monitoring file generation progress
+	protected Thread watchServiceThread;
+
 	protected ConfigurationBuilder<BuiltConfiguration> builder;
-	
+
 	protected File final_pep_txt;
 	protected File final_pro_txt;
 	protected File reportHtmlDir;
@@ -93,27 +97,27 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 	}
 
 	public abstract void forceStop();
-	
+
 	protected abstract String getVersion();
 
 	// Helper method to update progress on the Swing progress bar
 	protected void setProgressValue(double value) {
-	    updateProgress(value, 100);
+		updateProgress(value, 100);
 	}
-	
+
 	// Helper method to send a message from the background thread
 	protected void publishMessage(String message) {
-	    updateMessage(message);
+		updateMessage(message);
 	}
 
 	/**
-	 * Compatibility method to start the task execution.
-	 * Equivalent to SwingWorker's execute() method.
+	 * Compatibility method to start the task execution. Equivalent to SwingWorker's
+	 * execute() method.
 	 */
 	public void execute() {
-	    Thread thread = new Thread(this);
-	    thread.setDaemon(true);
-	    thread.start();
+		Thread thread = new Thread(this);
+		thread.setDaemon(true);
+		thread.start();
 	}
 
 	protected void exportMetadata(File result) throws FileNotFoundException {
@@ -192,16 +196,16 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 			loadRecourseFromJarByFolder("/uk/ac/quadram/metapilot/report", destDir);
 		} catch (IOException e) {
 			LOGGER.error(taskName + ": error in creating the report folder", e);
-			System.err
-					.println(format.format(new Date()) + "\t" + taskName + ": error in creating the report folder");
+			System.err.println(format.format(new Date()) + "\t" + taskName + ": error in creating the report folder");
 		}
 
 		metaPar.setReportDir(destDir);
 	}
 
 	/**
-	 * Copy report templates in background thread with progress updates.
-	 * This method should be called from the call() method after setting up the result directory.
+	 * Copy report templates in background thread with progress updates. This method
+	 * should be called from the call() method after setting up the result
+	 * directory.
 	 * 
 	 * @return true if copy was successful, false otherwise
 	 */
@@ -223,7 +227,7 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 				reportDir.mkdirs();
 			}
 			metaPar.setReportDir(reportDir);
-			
+
 			// Copy report templates using MetaPythonReportCopyTask
 			MetaPythonReportCopyTask reportCopyTask = new MetaPythonReportCopyTask(resultDir);
 			Thread reportCopyThread = new Thread(reportCopyTask);
@@ -245,7 +249,7 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 				return false;
 			}
 
-			reportHtmlDir = new File(reportDir + "\\reports\\rmd_html");		
+			reportHtmlDir = new File(reportDir + "\\reports\\rmd_html");
 
 			updateMessage("Report templates ready");
 			updateProgress(10, 100);
@@ -453,9 +457,6 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 				public void run() {
 					try {
 
-						MetaPilotPFindMainFrame frame = new MetaPilotPFindMainFrame();
-						frame.setVisible(true);
-
 					} catch (Exception e) {
 						LOGGER.error("Error in creating the GUI", e);
 					}
@@ -479,51 +480,8 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 			String par = commandLine.getOptionValue("par");
 			File parafile = new File(par);
 			if (parafile.exists() && parafile.length() > 0) {
-				StringBuilder sb = new StringBuilder();
-				String line = null;
-				try (BufferedReader reader = new BufferedReader(new FileReader(parafile))) {
-					while ((line = reader.readLine()) != null) {
-						sb.append(line);
-					}
-					reader.close();
-				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					LOGGER.error("Error in reading MetaLab parameter file " + parafile, e);
-				}
+				Object parameters = BaseParameterIO.loadParametersFromFilePath(par);
 
-				JSONObject obj = null;
-				try {
-					obj = new JSONObject(sb.toString());
-				} catch (JSONException e) {
-					LOGGER.error("Error in reading MetaLab parameter file " + parafile, e);
-				}
-
-				MetaBaseParameter loadPar = MetaParameterIOHandler.parse(obj);
-
-				if (loadPar.getWorkflowType() == MetaLabWorkflowType.pFindWorkflow) {
-
-					MetaParameterPFind metaPar = (MetaParameterPFind) loadPar;
-
-					// ProgressBar instances removed - not needed for command line execution
-
-					File file = getApplicationBaseDirectory();
-					File setting = new File(file, "resources" + versionFile);
-
-					MetaResourceIO mrio = new MetaResourceIO(setting);
-					MetaResourceParameters mrp = mrio.loadParameters();
-
-
-					File report = new File(metaPar.getReportDir(), "index.html");
-					try {
-						java.awt.Desktop.getDesktop().browse(report.toURI());
-					} catch (IOException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-
-				} else {
-
-				}
 			}
 		}
 	}
@@ -571,49 +529,59 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 
 	/**
 	 * Gets the application base directory using multiple fallback mechanisms
+	 * 
 	 * @return A File representing the application base directory
 	 */
 	public static File getApplicationBaseDirectory() {
 		File baseDir = null;
-		
+
 		// First attempt: using ClassLoader.getSystemClassLoader().getResource(".")
 		URL resourceUrl = ClassLoader.getSystemClassLoader().getResource(".");
 		if (resourceUrl != null) {
 			try {
 				baseDir = new File(resourceUrl.getPath());
-				LOGGER.info("Using ClassLoader.getSystemClassLoader().getResource(\".\") to find base directory: " + baseDir);
+				LOGGER.info("Using ClassLoader.getSystemClassLoader().getResource(\".\") to find base directory: "
+						+ baseDir);
 				return baseDir;
 			} catch (Exception e) {
-				LOGGER.warn("Could not use ClassLoader.getSystemClassLoader().getResource(\".\") to find base directory", e);
+				LOGGER.warn(
+						"Could not use ClassLoader.getSystemClassLoader().getResource(\".\") to find base directory",
+						e);
 			}
 		}
-		
-		// Second attempt: using Thread.currentThread().getContextClassLoader().getResource(".")
+
+		// Second attempt: using
+		// Thread.currentThread().getContextClassLoader().getResource(".")
 		ClassLoader cl = Thread.currentThread().getContextClassLoader();
 		if (cl != null) {
 			URL contextResource = cl.getResource(".");
 			if (contextResource != null) {
 				try {
 					baseDir = new File(contextResource.getPath());
-					LOGGER.info("Using Thread.currentThread().getContextClassLoader().getResource(\".\") to find base directory: " + baseDir);
+					LOGGER.info(
+							"Using Thread.currentThread().getContextClassLoader().getResource(\".\") to find base directory: "
+									+ baseDir);
 					return baseDir;
 				} catch (Exception e) {
-					LOGGER.warn("Could not use Thread.currentThread().getContextClassLoader().getResource(\".\") to find base directory", e);
+					LOGGER.warn(
+							"Could not use Thread.currentThread().getContextClassLoader().getResource(\".\") to find base directory",
+							e);
 				}
 			}
 		}
-		
+
 		// Third attempt: using current working directory
 		baseDir = new File(System.getProperty("user.dir"));
 		LOGGER.info("Using System.getProperty(\"user.dir\") to find base directory: " + baseDir);
-		
+
 		// Make sure Resources directory exists
 		File resourcesDir = new File(baseDir, "Resources");
 		if (!resourcesDir.exists()) {
 			LOGGER.warn("Resources directory not found at: " + resourcesDir.getAbsolutePath());
-			
-			// If Resources directory doesn't exist in the current directory, 
-			// check if it exists one directory up (happens sometimes with projects run from IDEs)
+
+			// If Resources directory doesn't exist in the current directory,
+			// check if it exists one directory up (happens sometimes with projects run from
+			// IDEs)
 			File parentDir = baseDir.getParentFile();
 			if (parentDir != null) {
 				File parentResourcesDir = new File(parentDir, "Resources");
@@ -623,8 +591,140 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 				}
 			}
 		}
-		
+
 		return baseDir;
+	}
+
+	/**
+	 * Generic WatchServiceLoop that can be used by any MetaPilotTask subclass
+	 * to monitor file generation progress. This eliminates code duplication
+	 * across different workflow tasks.
+	 */
+	public class WatchServiceLoop implements Runnable {
+
+		private WatchService watchService;
+		private FileFilter filter;
+		private int totalCount = 0;
+		private int currentCount = 0;
+		private int barStart;
+		private int barEnd;
+
+		public WatchServiceLoop(WatchService watchService, FileFilter filter, int totalCount, int currentCount,
+				int barStart, int barEnd) {
+			this.watchService = watchService;
+			this.filter = filter;
+			this.totalCount = totalCount;
+			this.currentCount = currentCount;
+			this.barStart = barStart;
+			this.barEnd = barEnd;
+		}
+
+		@SuppressWarnings("unchecked")
+		@Override
+		public void run() {
+			while (currentCount < totalCount) {
+				try {
+					// Wait for a watch key to be available
+					WatchKey key = watchService.take();
+					// Iterate over the watch events
+					for (WatchEvent<?> event : key.pollEvents()) {
+						// Get the event kind and context
+						WatchEvent.Kind<?> kind = event.kind();
+						WatchEvent<Path> pathEvent = (WatchEvent<Path>) event;
+						Path fileName = pathEvent.context();
+						
+						// If the event is a creation of a file matching the filter, increment the count and update progress
+						if (kind == StandardWatchEventKinds.ENTRY_CREATE && filter.accept(fileName.toFile())) {
+							currentCount++;
+							int percentage = (int) ((double) currentCount / (double) totalCount
+									* (double) (barEnd - barStart));
+
+							// Update overall progress bar using the task's updateProgress method
+							MetaPilotTask.this.updateProgress(barStart + percentage, 100);
+							
+							// Update current task bar (second bar) to show progress within current step
+							if (secondBar != null) {
+								double currentTaskProgress = (double) currentCount / (double) totalCount;
+								Platform.runLater(() -> secondBar.setProgress(currentTaskProgress));
+							}
+
+							System.out.println(format.format(new Date()) + "\t" + getTaskName()
+									+ ": WatchService found one finished task at " + fileName.toFile());
+
+							LOGGER.info("WatchService found one finished task at {}", fileName.toFile());
+						}
+					}
+					// Reset the key
+					key.reset();
+				} catch (InterruptedException e) {
+					LOGGER.info("WatchService thread interrupted, stopping monitoring");
+					Thread.currentThread().interrupt();
+					break;
+				} catch (Exception e) {
+					LOGGER.error("Error in WatchService loop", e);
+					System.out.println(format.format(new Date()) + "\t" + getTaskName()
+							+ ": error in WatchService loop: " + e.getMessage());
+				}
+			}
+			LOGGER.info("WatchService monitoring completed. Found {}/{} files", currentCount, totalCount);
+		}
+	}
+
+	/**
+	 * Helper method to create and start a WatchServiceLoop for monitoring file generation.
+	 * This method handles the setup of WatchService and starts the monitoring thread.
+	 * 
+	 * @param folders Array of folders to monitor
+	 * @param subFolderName Subfolder name within each folder to monitor (e.g., "hap", "result")
+	 * @param filter FileFilter to determine which files to count
+	 * @param totalCount Total number of files expected
+	 * @param barStart Progress bar start percentage
+	 * @param barEnd Progress bar end percentage
+	 * @return true if WatchService was set up successfully, false otherwise
+	 */
+	protected boolean startWatchServiceLoop(File[] folders, String subFolderName, FileFilter filter, 
+			int totalCount, int barStart, int barEnd) {
+		WatchService watchService = null;
+		
+		try {
+			LOGGER.info("Setting up WatchService to monitor {} folders", folders.length);
+			watchService = FileSystems.getDefault().newWatchService();
+			
+			// Register each folder with the watch service
+			for (File folder : folders) {
+				File subFolder = new File(folder, subFolderName);
+				if (subFolder.exists()) {
+					Path path = subFolder.toPath();
+					path.register(watchService, StandardWatchEventKinds.ENTRY_CREATE);
+					LOGGER.debug("Registered folder for monitoring: {}", subFolder.getAbsolutePath());
+				} else {
+					LOGGER.warn("Subfolder does not exist, cannot monitor: {}", subFolder.getAbsolutePath());
+				}
+			}
+			LOGGER.info("WatchService setup completed successfully");
+		} catch (IOException e) {
+			LOGGER.error("Error creating WatchService", e);
+			System.out.println(format.format(new Date()) + "\t" + getTaskName()
+					+ ": error in creating WatchService: " + e.getMessage());
+			return false;
+		}
+
+		LOGGER.info("Starting WatchService monitoring thread");
+		watchServiceThread = new Thread(new WatchServiceLoop(watchService, filter, totalCount, 0, barStart, barEnd));
+		watchServiceThread.start();
+		
+		return true;
+	}
+
+	/**
+	 * Helper method to stop the WatchService thread if it's running.
+	 * This should be called at the end of methods that use WatchService monitoring.
+	 */
+	protected void stopWatchServiceThread() {
+		if (watchServiceThread != null && watchServiceThread.isAlive()) {
+			LOGGER.info("Stopping WatchService thread");
+			watchServiceThread.interrupt();
+		}
 	}
 
 }

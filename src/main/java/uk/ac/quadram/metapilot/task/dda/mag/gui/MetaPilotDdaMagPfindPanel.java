@@ -16,9 +16,7 @@ import uk.ac.quadram.metapilot.task.common.gui.IsobaricLabelingPanel;
 import uk.ac.quadram.metapilot.task.common.gui.MagDatabaseSettingsPanel;
 import uk.ac.quadram.metapilot.task.common.gui.PFindModificationPanel;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
-import uk.ac.quadram.metapilot.task.mag.par.MetaParameterMag;
 import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel;
-import uk.ac.quadram.metapilot.task.dda.mag.DDAMagPfindTask;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceIO;
@@ -42,6 +40,7 @@ import java.util.Date;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagPfindParameters;
+import uk.ac.quadram.metapilot.task.dda.mag.task.DDAMagPfindTask;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagPfindParameterIO;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagVersion;
 import uk.ac.quadram.metapilot.task.mag.MagDbConfigIO;
@@ -78,6 +77,9 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
     // Add parameter IO instance
     private DDAMagPfindParameterIO parameterIO;
     
+    // Current task reference
+    private DDAMagPfindTask currentTask;
+    
     public MetaPilotDdaMagPfindPanel(MagDbItem[] magDbItems) {
         // Initialize parameter IO instance
         parameterIO = new DDAMagPfindParameterIO();
@@ -94,51 +96,6 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
             System.out.println("DEBUG: MetaPilotDdaMagPfindPanel(MetaParameterMag) constructor completed successfully");
         } catch (Exception e) {
             System.err.println("ERROR: Exception in MetaPilotDdaMagPfindPanel constructor: " + e.getMessage());
-            e.printStackTrace();
-            throw e;
-        }
-    }
-
-    public MetaPilotDdaMagPfindPanel(MetaParameterMag metaParameterMag) {
-        System.out.println("DEBUG: MetaPilotDdaMagPfindPanel(MetaParameterMag) constructor started");
-        try {
-            loadEnzymesFromIni();
-            
-            // Initialize MAG databases from parameter
-            if (metaParameterMag != null) {
-                System.out.println("DEBUG: MetaParameterMag provided, loading MAG databases...");
-                MagDbItem[] magDbItems = metaParameterMag.getAvailableMagDbItem();
-                System.out.println("DEBUG: Found " + (magDbItems != null ? magDbItems.length : 0) + " MAG database items");
-                
-                // If no databases found, try to load from configuration files
-                if (magDbItems == null || magDbItems.length == 0) {
-                    System.out.println("DEBUG: No MAG databases found in MetaParameterMag, attempting to load from config files...");
-                    magDbItems = loadMagDatabasesFromConfig();
-                }
-            } else {
-                System.out.println("DEBUG: MetaParameterMag is null, loading MAG databases from config files...");
-                MagDbItem[] magDbItems = loadMagDatabasesFromConfig();
-                if (magDbItems != null && magDbItems.length > 0) {
-                    // Just log that we found databases, but don't create a temporary MetaParameterMag
-                    System.out.println("DEBUG: Found " + magDbItems.length + " MAG databases from config, but MetaParameterMag is required for analysis");
-                }
-            }
-            
-            initializeUI();
-            
-            // Now set MAG databases after UI is initialized
-            if (metaParameterMag != null) {
-                MagDbItem[] magDbItems = metaParameterMag.getAvailableMagDbItem();
-                if (magDbItems != null && magDbItems.length > 0) {
-                    setAvailableMagDatabases(magDbItems);
-                } else {
-                    System.err.println("WARNING: No MAG databases available for analysis");
-                }
-            }
-            
-            System.out.println("DEBUG: MetaPilotDdaMagPfindPanel(MetaParameterMag) constructor completed successfully");
-        } catch (Exception e) {
-            System.err.println("ERROR: Exception in MetaPilotDdaMagPfindPanel(MetaParameterMag) constructor: " + e.getMessage());
             e.printStackTrace();
             throw e;
         }
@@ -637,22 +594,23 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
             
             // 6. Create and run DDAMagPfindTask with DDAMagPfindParameters directly
             consolePanel.appendConsoleText("Creating MAG pFind task...\n");
-            DDAMagPfindTask task = new DDAMagPfindTask(analysisParams, mrp, overallBar, currentBar);
+            currentTask = new DDAMagPfindTask(analysisParams, mrp, overallBar, currentBar);
             consolePanel.appendConsoleText("✓ Task created successfully\n");
             
             // 7. Set up task callbacks
             consolePanel.appendConsoleText("Setting up task callbacks...\n");
-            task.messageProperty().addListener((obs, oldMsg, newMsg) -> {
+            currentTask.messageProperty().addListener((obs, oldMsg, newMsg) -> {
                 Platform.runLater(() -> {
                     if (newMsg != null) {
                         consolePanel.appendConsoleText("Current Task: " + newMsg + "\n");
+                        consolePanel.updateCurrentTaskFromMessage(newMsg);
                         statusLabel.setText(newMsg);
                     }
                 });
             });
             
             // Set up task completion callback to enable View Report button
-            task.setOnSucceeded(e -> {
+            currentTask.setOnSucceeded(e -> {
                 Platform.runLater(() -> {
                     consolePanel.appendConsoleText("✓ Analysis completed successfully!\n");
                     consolePanel.enableViewReportButton();
@@ -660,7 +618,7 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
                 });
             });
             
-            task.setOnFailed(e -> {
+            currentTask.setOnFailed(e -> {
                 Platform.runLater(() -> {
                     consolePanel.appendConsoleText("✗ Analysis failed. Check console output for details.\n");
                     consolePanel.setButtonsEnabled(true, false, false);
@@ -671,7 +629,7 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
             
             // 8. Run task in background thread
             consolePanel.appendConsoleText("Starting task execution...\n");
-            Thread taskThread = new Thread(task);
+            Thread taskThread = new Thread(currentTask);
             taskThread.setDaemon(true);
             taskThread.start();
             
@@ -689,6 +647,14 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
     private void stopAnalysis() {
         consolePanel.appendConsoleText("Stopping MAG pFind analysis...\n");
         System.out.println("DEBUG: stopAnalysis called");
+        
+        if (currentTask != null && currentTask.isRunning()) {
+            consolePanel.appendConsoleText("Force stopping MAG pFind task...\n");
+            currentTask.forceStop();
+            consolePanel.appendConsoleText("MAG pFind task stop requested.\n");
+        } else {
+            consolePanel.appendConsoleText("No running MAG pFind task to stop.\n");
+        }
     }
 
     private void viewReport() {
@@ -893,9 +859,17 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
                 ExperimentRow row = fileRows.get(i);
                 rawFiles[i] = row.getFilePath();
                 expNames[i] = row.getExperimentName();
-                fractions[i] = 1; // Default fraction
+                // Get fraction from the IO panel, default to 1 if invalid
+                try {
+                    fractions[i] = Integer.parseInt(row.getFraction());
+                    if (fractions[i] <= 0) {
+                        fractions[i] = 1; // Ensure positive fraction
+                    }
+                } catch (NumberFormatException e) {
+                    fractions[i] = 1; // Default to 1 if not a valid integer
+                }
                 replicates[i] = 1; // Default replicate
-                LOGGER.debug("Experiment {}: file={}, name={}", i, rawFiles[i], expNames[i]);
+                LOGGER.debug("Experiment {}: file={}, name={}, fraction={}", i, rawFiles[i], expNames[i], fractions[i]);
             }
             
             // Create MetaData object
@@ -1159,7 +1133,7 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
     /**
      * Save parameters to a JSON file
      */
-    private boolean saveParametersToFile(MetaParameterMag parameters, String outputDir) {
+    private boolean saveParametersToFile(DDAMagPfindParameters parameters, String outputDir) {
         try {
             if (parameters == null || outputDir == null || outputDir.trim().isEmpty()) {
                 LOGGER.warn("Cannot save parameters: parameters or output directory is null/empty");
@@ -1176,7 +1150,7 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
             
             // Basic parameters
             json.put("output_directory", outputDir);
-            json.put("mag_database", parameters.getMagDb());
+            json.put("mag_database", parameters.getMicroDb());
             json.put("mag_database_version", parameters.getMagDbVersion());
             json.put("append_host_db", parameters.isAppendHostDb());
             json.put("host_database", parameters.getHostDB());
@@ -1192,7 +1166,7 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
             json.put("generate_sample_specific_db", parameters.isReduceDb());
             
             // Quantitative mode
-            json.put("quantitative_mode", parameters.getQuanMode());
+            json.put("quantitative_mode", parameters.getQuantitativeMode());
             
             // Modifications
             JSONArray fixedMods = new JSONArray();

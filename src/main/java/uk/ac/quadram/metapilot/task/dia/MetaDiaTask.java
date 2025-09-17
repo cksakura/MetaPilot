@@ -2,6 +2,7 @@ package uk.ac.quadram.metapilot.task.dia;
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileFilter;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
@@ -57,16 +58,15 @@ import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.task.MetaPythonReportTask;
 import uk.ac.quadram.metapilot.task.MetaPythonReportCopyTask;
-import uk.ac.quadram.metapilot.task.dia.par.MetaParaIoDia;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
-import uk.ac.quadram.metapilot.task.dia.target.par.MetaParameterDiaTg;
+import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaTg;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import javafx.application.Platform;
 import uk.ac.quadram.metapilot.task.io.MetaTreeHandler;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
-import uk.ac.quadram.metapilot.task.io.pro.pfind.MetaProteinAnnoEggNog;
-import uk.ac.quadram.metapilot.task.io.pro.pfind.MetaProteinXMLReader2;
+import uk.ac.quadram.metapilot.task.io.pro.MetaProteinAnnoEggNog;
+import uk.ac.quadram.metapilot.task.io.pro.MetaProteinXMLReader2;
 import uk.ac.quadram.metapilot.task.mag.HMGenomeHtmlWriter;
 import uk.ac.quadram.metapilot.task.mag.MagFuncSearcher;
 import uk.ac.quadram.metapilot.task.mag.MetaPilotMagTask;
@@ -538,9 +538,22 @@ public class MetaDiaTask extends MetaPilotMagTask {
 							+ ": find the combined library file in " + combineLibFile + ", go to the next step");
 				}
 
-				diaNNTask.addTask(diannPar, diaFiles, combineParquetFile.getAbsolutePath(),
-						combineLibFile.getAbsolutePath());
-				diaNNTask.run(diaFiles.length * 4);
+			// Set up WatchService to monitor parquet file generation
+			FileFilter filter = new FileFilter() {
+				@Override
+				public boolean accept(File file) {
+					return file.getName().equals("combined.parquet");
+				}
+			};
+
+			// Use the generic WatchServiceLoop from the superclass
+			LOGGER.info("Starting WatchService monitoring for DIA identification");
+			File[] foldersToMonitor = { combinedFile };
+			startWatchServiceLoop(foldersToMonitor, "", filter, 1, 20, 85);
+
+			diaNNTask.addTask(diannPar, diaFiles, combineParquetFile.getAbsolutePath(),
+					combineLibFile.getAbsolutePath());
+			diaNNTask.run(diaFiles.length * 4);
 			}
 
 			LOGGER.info(getTaskName() + ": library search finished");
@@ -548,6 +561,9 @@ public class MetaDiaTask extends MetaPilotMagTask {
 		}
 
 		cleanTempFiles();
+
+		// Stop the watch service thread
+		stopWatchServiceThread();
 
 		updateProgress(85, 100);
 
@@ -1035,13 +1051,29 @@ public class MetaDiaTask extends MetaPilotMagTask {
 					diannPar.setRelaxed_prot_inf(true);
 					diaNNTask.addTask(diannPar, diaLibSearchPar, round1TsvFile.getAbsolutePath(), libPath);
 				}
-			}
-			if (firstTaskCount < maxTaskCount) {
-				diaNNTask.run(firstTaskCount, firstTaskCount * 12);
-			} else {
-				diaNNTask.run(maxTaskCount, firstTaskCount * 12);
-			}
 		}
+
+		// Set up WatchService to monitor first round parquet file generation
+		FileFilter filter = new FileFilter() {
+			@Override
+			public boolean accept(File file) {
+				return file.getName().equals("firstSearch.parquet");
+			}
+		};
+
+		// Use the generic WatchServiceLoop from the superclass
+		LOGGER.info("Starting WatchService monitoring for first round iterative search");
+		startWatchServiceLoop(separateResultFolders, "firstSearch", filter, firstTaskCount, 15, 20);
+
+		if (firstTaskCount < maxTaskCount) {
+			diaNNTask.run(firstTaskCount, firstTaskCount * 12);
+		} else {
+			diaNNTask.run(maxTaskCount, firstTaskCount * 12);
+		}
+		}
+
+		// Stop the watch service thread
+		stopWatchServiceThread();
 
 		updateProgress(20, 100);
 
@@ -1232,15 +1264,28 @@ public class MetaDiaTask extends MetaPilotMagTask {
 						diaNNTask.addTask(diannPar, round1DbFile.getAbsolutePath(), round2LibFile.getAbsolutePath(),
 								false);
 					}
-				}
 			}
-			if (secondTaskCount < maxTaskCount) {
-				diaNNTask.run(secondTaskCount, secondTaskCount * 12);
-			} else {
-				diaNNTask.run(maxTaskCount, secondTaskCount * 12);
-			}
+		}
 
-			for (int i = 0; i < this.separateResultFolders.length; i++) {
+		// Set up WatchService to monitor second round parquet file generation
+		FileFilter filter2 = new FileFilter() {
+			@Override
+			public boolean accept(File file) {
+				return file.getName().equals("secondSearch.parquet");
+			}
+		};
+
+		// Use the generic WatchServiceLoop from the superclass
+		LOGGER.info("Starting WatchService monitoring for second round iterative search");
+		startWatchServiceLoop(separateResultFolders, "secondSearch", filter2, secondTaskCount, 20, 35);
+
+		if (secondTaskCount < maxTaskCount) {
+			diaNNTask.run(secondTaskCount, secondTaskCount * 12);
+		} else {
+			diaNNTask.run(maxTaskCount, secondTaskCount * 12);
+		}
+
+		for (int i = 0; i < this.separateResultFolders.length; i++) {
 				File secondFile = new File(separateResultFolders[i], "secondSearch");
 				File round2TsvFile = new File(secondFile, "secondSearch.parquet");
 				File round2LibFile = new File(secondFile, "secondSearch.speclib");
@@ -1276,6 +1321,9 @@ public class MetaDiaTask extends MetaPilotMagTask {
 				diaNNTask.run(maxTaskCount, secondTaskCount * 12);
 			}
 		}
+
+		// Stop the watch service thread
+		stopWatchServiceThread();
 
 		updateProgress(50, 100);
 
@@ -1806,7 +1854,7 @@ public class MetaDiaTask extends MetaPilotMagTask {
 	}
 
 	protected String getVersion() {
-		return MetaParaIoDia.version;
+		return null;
 	}
 	
 	/**
@@ -5498,7 +5546,7 @@ public class MetaDiaTask extends MetaPilotMagTask {
 	 */
 	private void updateMainProgress(double progress) {
 		if (Platform.isFxApplicationThread()) {
-			updateMainProgress(progress);
+			progressBar.setProgress(progress);
 		} else {
 			Platform.runLater(() -> progressBar.setProgress(progress));
 		}
@@ -5519,7 +5567,6 @@ public class MetaDiaTask extends MetaPilotMagTask {
 	protected Boolean call() throws Exception {
 		updateMessage(getTaskName());
 		updateProgress(0, 100);
-		updateMainProgress(0.0); // Initialize main progress bar
 
 		LOGGER.info(getTaskName() + ": started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": started");
@@ -5551,7 +5598,7 @@ public class MetaDiaTask extends MetaPilotMagTask {
 		LOGGER.info("  MetaResourceParameters class: {}", mrp.getClass().getName());
 		
 		// Update main progress and keep second bar active
-		updateMainProgress(0.05);
+		updateProgress(5, 100);
 		updateSecondaryProgress(ProgressBar.INDETERMINATE_PROGRESS); // Indeterminate progress for continuous activity
 
 		// Step 0: Copy report templates in background
@@ -5563,7 +5610,7 @@ public class MetaDiaTask extends MetaPilotMagTask {
 		// Step 1: Spectra Conversion
 		LOGGER.info("Step 1: Starting spectra format conversion...");
 		updateMessage(getTaskName() + ": Converting spectra format...");
-		updateMainProgress(0.10);
+		updateProgress(10, 100);
 		updateSecondaryProgress(ProgressBar.INDETERMINATE_PROGRESS);
 		
 		boolean convert = spectraConvert();
@@ -5581,7 +5628,7 @@ public class MetaDiaTask extends MetaPilotMagTask {
 
 		// Step 2: sample-specific library generation
 		LOGGER.info("Step 2: Starting sample-specific library generation...");
-		updateMainProgress(0.15);
+		updateProgress(15, 100);
 		updateMessage(getTaskName() + ": Creating library...");
 		updateSecondaryProgress(ProgressBar.INDETERMINATE_PROGRESS);
 		updateMessage("Creating sample-specific library...");
@@ -5602,7 +5649,7 @@ public class MetaDiaTask extends MetaPilotMagTask {
 
 		// Step 3: Identification
 		LOGGER.info("Step 3: Starting identification...");
-		updateMainProgress(0.20);
+		updateProgress(20, 100);
 		updateMessage(getTaskName() + ": Running identification...");
 		updateSecondaryProgress(ProgressBar.INDETERMINATE_PROGRESS);
 		updateMessage("Performing protein identification...");
@@ -5623,7 +5670,7 @@ public class MetaDiaTask extends MetaPilotMagTask {
 
 		// Step 4: Export Report
 		LOGGER.info("Step 4: Starting report generation...");
-		updateMainProgress(0.85);
+		updateProgress(85, 100);
 		updateMessage(getTaskName() + ": Generating reports...");
 		updateSecondaryProgress(ProgressBar.INDETERMINATE_PROGRESS);
 		updateMessage("Preparing final reports...");
@@ -5643,7 +5690,7 @@ public class MetaDiaTask extends MetaPilotMagTask {
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": report generation finished");
 
 		// Update progress for completion
-		updateMainProgress(1.0);
+		updateProgress(100, 100);
 		updateMessage(getTaskName() + ": Completed successfully!");
 		updateSecondaryProgress(0.0); // Stop the indeterminate progress
 		updateMessage("Workflow completed!");
@@ -5657,7 +5704,19 @@ public class MetaDiaTask extends MetaPilotMagTask {
 	public void forceStop() {
 		LOGGER.info(getTaskName() + ": force stop requested");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": force stop requested");
-		// Add any cleanup logic here if needed
+		
+		// Cancel DiaNN task if running
+		if (diaNNTask != null && !diaNNTask.isDone()) {
+			LOGGER.info(getTaskName() + ": Cancelling DiaNN task");
+			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Cancelling DiaNN task");
+			diaNNTask.cancel();
+		}
+		
+		// Cancel this task itself
+		this.cancel(true);
+		
+		LOGGER.info(getTaskName() + ": force stop completed");
+		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": force stop completed");
 	}
 	
 	protected void setTaskCount() {

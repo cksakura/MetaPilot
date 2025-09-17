@@ -16,29 +16,30 @@ import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
 import javafx.concurrent.Task;
 import uk.ac.quadram.metapilot.task.common.gui.MagDatabaseSettingsPanel;
+import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagVersion;
-import uk.ac.quadram.metapilot.task.mag.par.MetaParameterMag;
 import uk.ac.quadram.metapilot.task.dia.par.DiaParameterIO;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
+import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaRT;
+import uk.ac.quadram.metapilot.task.dia.MetaDiaCombineTask;
+import uk.ac.quadram.metapilot.task.dia.MetaDiaMonitorTask;
+
+import javax.swing.DefaultListModel;
+import javax.swing.table.DefaultTableModel;
+import java.util.HashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.io.File;
-import java.io.IOException;
-import java.nio.channels.FileChannel;
-import java.nio.channels.FileLock;
-import java.nio.file.*;
-import java.nio.file.StandardOpenOption;
 
 public class MetaPilotDiaRealTimePanel extends VBox {
     // UI Components - Database
     private MagDatabaseSettingsPanel magDatabasePanel;
     private TextArea consoleOutput;
-    private TextArea parameterView;
-    private ProgressBar overallProgressBar;
-    private ProgressBar currentTaskProgressBar;
-    private Label currentTaskLabel;
+    private ConsolePanel consolePanel;
 
     // Real-time monitoring components
     private TextField monitorFolderField;
@@ -53,6 +54,7 @@ public class MetaPilotDiaRealTimePanel extends VBox {
     private Button startMonitorButton;
     private Button stopMonitorButton;
     private Button stopAfterCountButton;
+    private Button stopCombineButton;
     private Button resetButton;
     private ComboBox<Integer> fileCountComboBox;
     private CheckBox performAnalysisCheckBox;
@@ -64,48 +66,51 @@ public class MetaPilotDiaRealTimePanel extends VBox {
     private DiaLibraryGenerationPanel libraryGenerationPanel;
     private DiaModelGenerationPanel modelGenerationPanel;
 
-    // Status panel fields
-    private Label statusTimeLabel;
-    private Label statusCpuLabel;
-    private Label statusMemLabel;
 
     // Parameter I/O
     private DiaParameterIO parameterIO;
-    private MetaParameterDia currentAnalysisParameters;
+    private MetaParameterDiaRT currentAnalysisParameters;
+    
+    // Real-time task management
+    private MetaDiaMonitorTask monitorTask;
+    private MetaDiaCombineTask combineTask;
+    private ExecutorService taskExecutor;
+    private DefaultListModel<String> swingRawListModel;
+    private DefaultTableModel swingResultTableModel;
+    private HashMap<String, String[]> rawResultFileMap;
     
     // Resource parameters
     private MetaResourceParameters resourceParams;
 
     // Monitoring status
     private boolean isMonitoring = false;
-    private int processedFileCount = 0;
     private int targetFileCount = 0;
+    private boolean performAnalysisAfterComplete = false;
 
     public MetaPilotDiaRealTimePanel() {
         // Initialize parameter IO instance
         parameterIO = new DiaParameterIO();
+        
+        // Initialize console panel
+        consolePanel = new ConsolePanel();
+        consolePanel.setStartCallback(this::startMonitoring);
+        consolePanel.setStopCallback(this::stopMonitoring);
+        consolePanel.setViewReportCallback(this::viewReport);
+        
         initializeUI();
     }
 
-    public MetaPilotDiaRealTimePanel(MetaParameterMag metaParameterMag) {
-        // Initialize parameter IO instance
-        parameterIO = new DiaParameterIO();
-        
-        initializeUI();
-        
-        // Initialize MAG databases from parameter after UI is initialized
-        if (metaParameterMag != null) {
-            MagDbItem[] magDbItems = metaParameterMag.getAvailableMagDbItem();
-            if (magDbItems != null) {
-                setAvailableMagDatabases(magDbItems);
-            }
-        }
-    }
-    
     public MetaPilotDiaRealTimePanel(MagDbItem[] magDbItems, MetaResourceParameters resourceParams) {
         // Initialize parameter IO instance
         parameterIO = new DiaParameterIO();
         this.resourceParams = resourceParams;
+        
+        // Initialize console panel
+        consolePanel = new ConsolePanel();
+        consolePanel.setStartCallback(this::startMonitoring);
+        consolePanel.setStopCallback(this::stopMonitoring);
+        consolePanel.setViewReportCallback(this::viewReport);
+        
         initializeUI();
         // Set MAG databases after UI is initialized
         setAvailableMagDatabases(magDbItems);
@@ -172,7 +177,7 @@ public class MetaPilotDiaRealTimePanel extends VBox {
                 
                 // Save current parameters when Monitor tab is selected
                 try {
-                    MetaParameterDia currentParams = collectParametersFromUI();
+                    MetaParameterDiaRT currentParams = collectParametersFromUIForRealTime();
                     if (currentParams != null) {
                         boolean saved = parameterIO.saveLastUsedParameters(currentParams);
                         if (saved) {
@@ -335,7 +340,6 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         GridPane.setVgrow(monitorControls, Priority.ALWAYS);
 
         // Right side: Console content
-        VBox consolePanel = createConsolePanel();
         mainGrid.add(consolePanel, 1, 0);
         GridPane.setVgrow(consolePanel, Priority.ALWAYS);
 
@@ -373,75 +377,6 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         return controlsPanel;
     }
 
-    private VBox createConsolePanel() {
-        VBox consolePanel = new VBox(10);
-        consolePanel.setPadding(new Insets(10));
-        consolePanel.setStyle("-fx-background-color: #f8f8f8; -fx-background-radius: 5;");
-        VBox.setVgrow(consolePanel, Priority.ALWAYS);
-
-        Label consoleTitle = createSectionTitle("Console & Progress");
-
-        // Parameter View
-        VBox paramViewBox = new VBox(5);
-        Label paramLabel = new Label("Parameter View:");
-        paramLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 11px;");
-        parameterView = new TextArea();
-        parameterView.setEditable(false);
-        parameterView.setPrefHeight(150);
-        parameterView.setMaxHeight(180);
-        parameterView.setStyle("-fx-font-family: monospace; -fx-font-size: 10px;");
-        paramViewBox.getChildren().addAll(paramLabel, parameterView);
-
-        // Progress Bars
-        VBox progressBox = new VBox(5);
-        currentTaskLabel = new Label("Current Task: None");
-        currentTaskLabel.setStyle("-fx-font-size: 11px;");
-        overallProgressBar = new ProgressBar(0);
-        overallProgressBar.setMaxWidth(Double.MAX_VALUE);
-        currentTaskProgressBar = new ProgressBar(0);
-        currentTaskProgressBar.setMaxWidth(Double.MAX_VALUE);
-        
-        Label overallLabel = new Label("Overall Progress:");
-        overallLabel.setStyle("-fx-font-size: 11px;");
-        Label currentLabel = new Label("Current Task Progress:");
-        currentLabel.setStyle("-fx-font-size: 11px;");
-        
-        progressBox.getChildren().addAll(
-            currentTaskLabel, overallLabel, overallProgressBar, currentLabel, currentTaskProgressBar
-        );
-
-        // Console Output
-        VBox consoleBox = new VBox(5);
-        Label consoleLabel = new Label("Console Output:");
-        consoleLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 11px;");
-        consoleOutput = new TextArea();
-        consoleOutput.setEditable(false);
-        consoleOutput.setPrefHeight(200);
-        consoleOutput.setMaxHeight(Double.MAX_VALUE);
-        consoleOutput.setStyle("-fx-font-family: monospace; -fx-font-size: 10px;");
-        VBox.setVgrow(consoleOutput, Priority.ALWAYS);
-        consoleBox.getChildren().addAll(consoleLabel, consoleOutput);
-        VBox.setVgrow(consoleBox, Priority.ALWAYS);
-
-        // Status Panel
-        HBox statusPanel = new HBox(15);
-        statusPanel.setPadding(new Insets(5, 0, 0, 0));
-        statusPanel.setAlignment(Pos.CENTER_LEFT);
-        statusTimeLabel = new Label("Time: 00:00:00");
-        statusCpuLabel = new Label("CPU: 0.0%");
-        statusMemLabel = new Label("Memory: 0 / 0 MB");
-        statusTimeLabel.setStyle("-fx-font-size: 10px;");
-        statusCpuLabel.setStyle("-fx-font-size: 10px;");
-        statusMemLabel.setStyle("-fx-font-size: 10px;");
-        statusPanel.getChildren().addAll(statusTimeLabel, statusCpuLabel, statusMemLabel);
-
-        consolePanel.getChildren().addAll(
-            consoleTitle, paramViewBox, progressBox, consoleBox, statusPanel
-        );
-        
-        VBox.setVgrow(consoleBox, Priority.ALWAYS);
-        return consolePanel;
-    }
 
     private VBox createFolderSection() {
         VBox section = new VBox(10);
@@ -614,6 +549,13 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         resetButton.setOnAction(e -> resetMonitoring());
         controlGrid.add(resetButton, 3, 1);
 
+        // Row 3: Stop combine button
+        stopCombineButton = new Button("Stop Combined Analysis");
+        stopCombineButton.setPrefWidth(180);
+        stopCombineButton.setDisable(true);
+        stopCombineButton.setOnAction(e -> stopCombinedAnalysis());
+        controlGrid.add(stopCombineButton, 0, 2, 2, 1);
+
         section.getChildren().addAll(titleLabel, controlGrid);
         return section;
     }
@@ -644,7 +586,6 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         }
 
         isMonitoring = true;
-        processedFileCount = 0;
         
         startMonitorButton.setDisable(true);
         stopMonitorButton.setDisable(false);
@@ -655,12 +596,15 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         monitorFilesList.getItems().clear();
         resultData.clear();
 
-        consoleOutput.appendText("Starting real-time monitoring...\n");
-        consoleOutput.appendText("Monitor folder: " + monitorFolderField.getText() + "\n");
-        consoleOutput.appendText("Result folder: " + resultFolderField.getText() + "\n");
+        consolePanel.appendConsoleText("Starting real-time monitoring...\n");
+        consolePanel.appendConsoleText("Monitor folder: " + monitorFolderField.getText() + "\n");
+        consolePanel.appendConsoleText("Result folder: " + resultFolderField.getText() + "\n");
 
-        // Start monitoring task
-        startMonitoringTask();
+        // Store analysis preference
+        performAnalysisAfterComplete = performAnalysisCheckBox.isSelected();
+        
+        // Start real monitoring task
+        startRealMonitoringTask();
     }
 
     private void stopMonitoring() {
@@ -668,10 +612,20 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         
         stopMonitorButton.setDisable(true);
         
-        consoleOutput.appendText("Stopping monitoring after current files are processed...\n");
+        consolePanel.appendConsoleText("Stopping monitoring after current files are processed...\n");
         
-        // Create stop signal file
-        createStopSignalFile(false);
+        // Force stop the monitor task if it's running
+        if (monitorTask != null && monitorTask.isRunning()) {
+            consolePanel.appendConsoleText("Force stopping monitoring task...\n");
+            monitorTask.forceStop();
+            consolePanel.appendConsoleText("Monitoring task stop requested.\n");
+        }
+        
+        // Signal the monitor task to stop
+        if (monitorTask != null && currentAnalysisParameters != null) {
+            currentAnalysisParameters.setStopNow(true);
+            consolePanel.appendConsoleText("Stop signal sent to monitoring task.\n");
+        }
     }
 
     private void stopAfterCount() {
@@ -679,25 +633,40 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         
         stopAfterCountButton.setDisable(true);
         
-        consoleOutput.appendText("Will stop monitoring after " + targetFileCount + " files are processed...\n");
+        consolePanel.appendConsoleText("Will stop monitoring after " + targetFileCount + " files are processed...\n");
         
-        // Create stop signal file with count
-        createStopSignalFile(true);
+        // Signal the monitor task to stop after count
+        if (monitorTask != null && currentAnalysisParameters != null) {
+            currentAnalysisParameters.setStopComplete(true);
+            currentAnalysisParameters.setTaskCount(targetFileCount);
+            consolePanel.appendConsoleText("Stop-after-count signal sent to monitoring task.\n");
+        }
+    }
+    
+    private void stopCombinedAnalysis() {
+        consolePanel.appendConsoleText("Stopping combined analysis...\n");
+        
+        // Force stop the combine task if it's running
+        if (combineTask != null && combineTask.isRunning()) {
+            consolePanel.appendConsoleText("Force stopping combined analysis task...\n");
+            combineTask.forceStop();
+            consolePanel.appendConsoleText("Combined analysis task stop requested.\n");
+        }
     }
 
     private void resetMonitoring() {
         isMonitoring = false;
-        processedFileCount = 0;
         targetFileCount = 0;
         
         startMonitorButton.setDisable(false);
         stopMonitorButton.setDisable(true);
         stopAfterCountButton.setDisable(true);
+        stopCombineButton.setDisable(true);
         resetButton.setDisable(true);
         
         fileCountComboBox.setValue(10);
         
-        consoleOutput.appendText("Monitoring reset.\n");
+        consolePanel.appendConsoleText("Monitoring reset.\n");
     }
 
     private boolean validateFolders() {
@@ -725,233 +694,264 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         return true;
     }
 
-    private void createStopSignalFile(boolean useCount) {
-        // Implementation for creating stop signal file
-        // This would write a control file to the monitor folder
-        consoleOutput.appendText("Stop signal created.\n");
-    }
-
-    private void startMonitoringTask() {
-        // Create background task for real file monitoring using WatchService
-        Task<Void> monitorTask = new Task<Void>() {
-            @Override
-            protected Void call() throws Exception {
-                try {
-                    // Set up WatchService to monitor the folder for new files
-                    WatchService watchService = FileSystems.getDefault().newWatchService();
-                    Path monitorPath = Paths.get(monitorFolderField.getText());
-                    monitorPath.register(watchService, StandardWatchEventKinds.ENTRY_CREATE);
-                    
-                    consoleOutput.appendText("File monitoring started. Watching folder: " + monitorPath + "\n");
-                    
-                    // Process any existing files in the folder first
-                    File[] existingFiles = monitorPath.toFile().listFiles();
-                    if (existingFiles != null && existingFiles.length > 0) {
-                        consoleOutput.appendText("Found " + existingFiles.length + " existing files, processing...\n");
-                        for (File file : existingFiles) {
-                            if (isValidRawFile(file.getName())) {
-                                processNewFile(file);
-                            }
-                        }
-                    }
-                    
-                    // Watch for new files
-                    while (isMonitoring && !isCancelled()) {
-                        WatchKey key;
-                        try {
-                            key = watchService.take();
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                            break;
-                        }
-                        
-                        for (WatchEvent<?> event : key.pollEvents()) {
-                            WatchEvent.Kind<?> kind = event.kind();
-                            if (kind == StandardWatchEventKinds.OVERFLOW) {
-                                continue;
-                            }
-                            
-                            @SuppressWarnings("unchecked")
-                            WatchEvent<Path> ev = (WatchEvent<Path>) event;
-                            Path filename = ev.context();
-                            Path filePath = monitorPath.resolve(filename);
-                            
-                            if (Files.isRegularFile(filePath) && isValidRawFile(filename.toString())) {
-                                consoleOutput.appendText("New file detected: " + filename + "\n");
-                                
-                                // Wait for file to be completely written before processing
-                                waitForFileCompletionAndProcess(filePath);
-                            }
-                        }
-                        
-                        boolean valid = key.reset();
-                        if (!valid) {
-                            break;
-                        }
-                        
-                        // Check stop conditions
-                        if (targetFileCount > 0 && processedFileCount >= targetFileCount) {
-                            Platform.runLater(() -> {
-                                consoleOutput.appendText("Target file count reached. Stopping monitoring.\n");
-                                resetMonitoring();
-                            });
-                            break;
-                        }
-                    }
-                    
-                    watchService.close();
-                    consoleOutput.appendText("File monitoring stopped.\n");
-                    
-                } catch (IOException e) {
-                    consoleOutput.appendText("Error in file monitoring: " + e.getMessage() + "\n");
-                    e.printStackTrace();
-                }
-                
-                return null;
-            }
-        };
-        
-        new Thread(monitorTask).start();
-    }
-    
     /**
-     * Check if a file is a valid raw file for processing
+     * Start combined analysis after monitoring is complete
      */
-    private boolean isValidRawFile(String fileName) {
-        String lowerName = fileName.toLowerCase();
-        return lowerName.endsWith(".raw") || lowerName.endsWith(".d") || 
-               lowerName.endsWith(".dia") || lowerName.endsWith(".d");
-    }
-    
-    /**
-     * Process a new file that was detected
-     */
-    private void processNewFile(File file) {
-        String fileName = file.getName();
-        String baseFileName = getBaseFileName(fileName);
-        
-        Platform.runLater(() -> {
-            monitorFilesList.getItems().add(baseFileName);
-            ProcessingRow newRow = new ProcessingRow(baseFileName);
-            resultData.add(newRow);
-            consoleOutput.appendText("Processing file: " + baseFileName + "\n");
-            processFileInBackground(newRow);
-        });
-        
-        processedFileCount++;
-    }
-    
-    /**
-     * Get the base file name without extension
-     */
-    private String getBaseFileName(String fileName) {
-        String lowerName = fileName.toLowerCase();
-        if (lowerName.endsWith(".raw")) {
-            return fileName.substring(0, fileName.length() - 4);
-        } else if (lowerName.endsWith(".d")) {
-            return fileName.substring(0, fileName.length() - 2);
-        } else if (lowerName.endsWith(".dia")) {
-            if (lowerName.endsWith(".raw.dia")) {
-                return fileName.substring(0, fileName.length() - 8);
-            } else if (lowerName.endsWith(".raw.d")) {
-                return fileName.substring(0, fileName.length() - 6);
-            } else {
-                return fileName.substring(0, fileName.length() - 4);
-            }
-        }
-        return fileName;
-    }
-    
-    /**
-     * Wait for file to be completely written before processing
-     * Based on MetaDiaMonitorTask.waitForFileCompletionAndProcess()
-     */
-    private void waitForFileCompletionAndProcess(Path filePath) {
+    private void startCombinedAnalysis() {
         try {
-            long previousSize = -1;
-            while (true) {
-                // Check the file size at regular intervals
-                long currentSize = Files.size(filePath);
-                if (currentSize == previousSize) {
-                    // Try to acquire an exclusive lock to see if any other process is still writing
-                    try (FileChannel fileChannel = FileChannel.open(filePath, StandardOpenOption.WRITE)) {
-                        FileLock lock = fileChannel.tryLock();
-                        if (lock != null) {
-                            lock.release(); // Release the lock immediately
-                            break; // File is not in use
+            // Prepare raw result file map from monitoring results
+            rawResultFileMap = new HashMap<>();
+            
+            // Collect results from each processed file
+            File resultFolder = new File(resultFolderField.getText());
+            if (resultFolder.exists()) {
+                File[] subDirs = resultFolder.listFiles(File::isDirectory);
+                if (subDirs != null) {
+                    for (File subDir : subDirs) {
+                        if (!subDir.getName().equals("combined")) {
+                            // Find the last search result file
+                            File lastSearchFile = new File(subDir, "lastSearch.parquet");
+                            if (lastSearchFile.exists()) {
+                                String baseName = subDir.getName();
+                                // Create raw file mapping: base name -> [raw file path, result folder path]
+                                rawResultFileMap.put(baseName, new String[]{
+                                    new File(monitorFolderField.getText(), baseName + ".raw").getAbsolutePath(),
+                                    subDir.getAbsolutePath()
+                                });
+                            }
                         }
-                    } catch (Exception e) {
-                        // The file is still in use or another process is writing to it
-                        consoleOutput.appendText("File " + filePath.getFileName() + " is still being written, waiting...\n");
                     }
                 }
-                previousSize = currentSize;
-                Thread.sleep(1000); // Wait for 1 second before checking again
             }
             
-            // File is ready for processing
-            processNewFile(filePath.toFile());
+            if (rawResultFileMap.isEmpty()) {
+                consolePanel.appendConsoleText("No processed files found for combined analysis.\n");
+                resetMonitoring();
+                return;
+            }
             
-        } catch (IOException | InterruptedException e) {
-            consoleOutput.appendText("Error waiting for file completion: " + e.getMessage() + "\n");
+            consolePanel.appendConsoleText("Found " + rawResultFileMap.size() + " processed files for combined analysis.\n");
+            
+            // Create MetaParameterDiaRT for combined analysis
+            MetaParameterDiaRT combineParams = collectParametersFromUIForRealTime();
+            if (combineParams == null) {
+                showError("Parameter Error", "Failed to collect parameters for combined analysis.");
+                resetMonitoring();
+                return;
+            }
+            
+            // Create and start MetaDiaCombineTask
+            combineTask = new MetaDiaCombineTask(
+                combineParams,
+                resourceParams,
+                consolePanel.getOverallProgressBar(),
+                consolePanel.getCurrentTaskProgressBar(),
+                rawResultFileMap
+            );
+            
+            // Enable stop combine button
+            stopCombineButton.setDisable(false);
+            
+            // Set up task callbacks
+            combineTask.setOnSucceeded(e -> {
+                Platform.runLater(() -> {
+                    consolePanel.appendConsoleText("Combined analysis completed successfully!\n");
+                    consolePanel.appendConsoleText("Combined results saved to: " + resultFolder.getAbsolutePath() + "/combined\n");
+                    stopCombineButton.setDisable(true);
+                    resetMonitoring();
+                });
+            });
+            
+            combineTask.setOnFailed(e -> {
+                Platform.runLater(() -> {
+                    Throwable exception = combineTask.getException();
+                    consolePanel.appendConsoleText("Combined analysis failed: " + (exception != null ? exception.getMessage() : "Unknown error") + "\n");
+                    showError("Analysis Error", "Combined analysis failed: " + (exception != null ? exception.getMessage() : "Unknown error"));
+                    stopCombineButton.setDisable(true);
+                    resetMonitoring();
+                });
+            });
+            
+            combineTask.setOnCancelled(e -> {
+                Platform.runLater(() -> {
+                    consolePanel.appendConsoleText("Combined analysis was cancelled.\n");
+                    stopCombineButton.setDisable(true);
+                    resetMonitoring();
+                });
+            });
+            
+            // Start the combine task
+            if (taskExecutor == null) {
+                taskExecutor = Executors.newSingleThreadExecutor();
+            }
+            taskExecutor.submit(combineTask);
+            
+        } catch (Exception e) {
+            consolePanel.appendConsoleText("ERROR: Failed to start combined analysis - " + e.getMessage() + "\n");
+            showError("Analysis Error", "Failed to start combined analysis: " + e.getMessage());
+            resetMonitoring();
             e.printStackTrace();
-            Thread.currentThread().interrupt();
         }
     }
 
-    private void processFileInBackground(ProcessingRow row) {
-        // Mock processing of a file
-        Task<Void> processTask = new Task<Void>() {
+    private void startRealMonitoringTask() {
+        try {
+            // Collect parameters for real-time monitoring
+            MetaParameterDiaRT rtParams = collectParametersFromUIForRealTime();
+            if (rtParams == null) {
+                showError("Parameter Error", "Failed to collect parameters. Please check your settings.");
+                resetMonitoring();
+                return;
+            }
+            
+            // Set monitoring-specific parameters
+            rtParams.setMonitorFolder(new File(monitorFolderField.getText()));
+            rtParams.setResultFolder(new File(resultFolderField.getText()));
+            rtParams.setCombineResult(performAnalysisAfterComplete);
+            rtParams.setStopNow(false);
+            rtParams.setStopComplete(targetFileCount > 0);
+            rtParams.setTaskCount(targetFileCount > 0 ? targetFileCount : Integer.MAX_VALUE);
+            
+            // Store current parameters for use in stop control
+            currentAnalysisParameters = rtParams;
+            
+            // Initialize Swing models for compatibility with MetaDiaMonitorTask
+            swingRawListModel = new DefaultListModel<>();
+            swingResultTableModel = new DefaultTableModel();
+            swingResultTableModel.addColumn("File Name");
+            swingResultTableModel.addColumn("Round 1");
+            swingResultTableModel.addColumn("Model");
+            swingResultTableModel.addColumn("Round 2");
+            swingResultTableModel.addColumn("Round 3");
+            swingResultTableModel.addColumn("Round 4");
+            
+            consolePanel.appendConsoleText("Starting MetaPilot DIA Real-time monitoring...\n");
+            consolePanel.appendConsoleText("Monitor folder: " + rtParams.getMonitorFolder().getAbsolutePath() + "\n");
+            consolePanel.appendConsoleText("Result folder: " + rtParams.getResultFolder().getAbsolutePath() + "\n");
+            consolePanel.appendConsoleText("Perform analysis after completion: " + performAnalysisAfterComplete + "\n");
+            
+            // Create and start MetaDiaMonitorTask
+            monitorTask = new MetaDiaMonitorTask(
+                rtParams,
+                resourceParams,
+                consolePanel.getOverallProgressBar(),
+                consolePanel.getCurrentTaskProgressBar(),
+                rtParams.getMonitorFolder(),
+                rtParams.getResultFolder(),
+                swingResultTableModel,
+                swingRawListModel
+            );
+            
+            // Set up task monitoring callbacks
+            monitorTask.setOnSucceeded(e -> {
+                Platform.runLater(() -> {
+                    consolePanel.appendConsoleText("Real-time monitoring completed successfully!\n");
+                    
+                    if (performAnalysisAfterComplete) {
+                        consolePanel.appendConsoleText("Starting combined analysis...\n");
+                        startCombinedAnalysis();
+                    } else {
+                        consolePanel.appendConsoleText("Monitoring completed. No combined analysis requested.\n");
+                        resetMonitoring();
+                    }
+                });
+            });
+            
+            monitorTask.setOnFailed(e -> {
+                Platform.runLater(() -> {
+                    Throwable exception = monitorTask.getException();
+                    consolePanel.appendConsoleText("Real-time monitoring failed: " + (exception != null ? exception.getMessage() : "Unknown error") + "\n");
+                    showError("Monitoring Error", "Real-time monitoring failed: " + (exception != null ? exception.getMessage() : "Unknown error"));
+                    resetMonitoring();
+                });
+            });
+            
+            monitorTask.setOnCancelled(e -> {
+                Platform.runLater(() -> {
+                    consolePanel.appendConsoleText("Real-time monitoring was cancelled.\n");
+                    resetMonitoring();
+                });
+            });
+            
+            // Start progress sync task
+            startProgressSyncTask();
+            
+            // Start the monitoring task in background
+            if (taskExecutor == null) {
+                taskExecutor = Executors.newSingleThreadExecutor();
+            }
+            taskExecutor.submit(monitorTask);
+            
+        } catch (Exception e) {
+            consolePanel.appendConsoleText("ERROR: Failed to start real-time monitoring - " + e.getMessage() + "\n");
+            showError("Start Error", "Failed to start real-time monitoring: " + e.getMessage());
+            resetMonitoring();
+            e.printStackTrace();
+        }
+    }
+    
+    
+
+    /**
+     * Start progress synchronization between Swing components (used by MetaDiaMonitorTask)
+     * and JavaFX UI components (this panel)
+     */
+    private void startProgressSyncTask() {
+        Task<Void> syncTask = new Task<Void>() {
             @Override
             protected Void call() throws Exception {
-                // Round 1
-                Platform.runLater(() -> {
-                    row.setRound1("Running");
-                    consoleOutput.appendText("Starting Round 1 for " + row.getFileName() + "\n");
-                });
-                Thread.sleep(3000);
-                Platform.runLater(() -> row.setRound1("Done"));
-                
-                // Model
-                Platform.runLater(() -> {
-                    row.setModel("Running");
-                    consoleOutput.appendText("Running Model for " + row.getFileName() + "\n");
-                });
-                Thread.sleep(2000);
-                Platform.runLater(() -> row.setModel("Done"));
-                
-                // Round 2
-                Platform.runLater(() -> {
-                    row.setRound2("Running");
-                    consoleOutput.appendText("Starting Round 2 for " + row.getFileName() + "\n");
-                });
-                Thread.sleep(2500);
-                Platform.runLater(() -> row.setRound2("Done"));
-                
-                // Round 3
-                Platform.runLater(() -> {
-                    row.setRound3("Running");
-                    consoleOutput.appendText("Starting Round 3 for " + row.getFileName() + "\n");
-                });
-                Thread.sleep(2000);
-                Platform.runLater(() -> row.setRound3("Done"));
-                
-                // Round 4
-                Platform.runLater(() -> {
-                    row.setRound4("Running");
-                    consoleOutput.appendText("Starting Round 4 for " + row.getFileName() + "\n");
-                });
-                Thread.sleep(1500);
-                Platform.runLater(() -> {
-                    row.setRound4("Done");
-                    consoleOutput.appendText("Processing complete for " + row.getFileName() + "\n");
-                });
-                
+                while (isMonitoring && !isCancelled()) {
+                    try {
+                        Platform.runLater(() -> syncProgressFromSwingToJavaFX());
+                        Thread.sleep(500); // Update every 500ms
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
                 return null;
             }
         };
         
-        new Thread(processTask).start();
+        new Thread(syncTask).start();
+    }
+    
+    /**
+     * Synchronize progress from Swing models to JavaFX UI
+     */
+    private void syncProgressFromSwingToJavaFX() {
+        if (swingRawListModel == null || swingResultTableModel == null) {
+            return;
+        }
+        
+        // Sync file list
+        monitorFilesList.getItems().clear();
+        for (int i = 0; i < swingRawListModel.size(); i++) {
+            String fileName = swingRawListModel.getElementAt(i);
+            if (!monitorFilesList.getItems().contains(fileName)) {
+                monitorFilesList.getItems().add(fileName);
+            }
+        }
+        
+        // Sync result table
+        resultData.clear();
+        for (int row = 0; row < swingResultTableModel.getRowCount(); row++) {
+            String fileName = (String) swingResultTableModel.getValueAt(row, 0);
+            String round1 = (String) swingResultTableModel.getValueAt(row, 1);
+            String model = (String) swingResultTableModel.getValueAt(row, 2);
+            String round2 = (String) swingResultTableModel.getValueAt(row, 3);
+            String round3 = (String) swingResultTableModel.getValueAt(row, 4);
+            String round4 = (String) swingResultTableModel.getValueAt(row, 5);
+            
+            ProcessingRow javaFxRow = new ProcessingRow(fileName);
+            javaFxRow.setRound1(round1 != null ? round1 : "Pending");
+            javaFxRow.setModel(model != null ? model : "Pending");
+            javaFxRow.setRound2(round2 != null ? round2 : "Pending");
+            javaFxRow.setRound3(round3 != null ? round3 : "Pending");
+            javaFxRow.setRound4(round4 != null ? round4 : "Pending");
+            
+            resultData.add(javaFxRow);
+        }
     }
 
     private VBox createThreadCountSection() {
@@ -986,7 +986,7 @@ public class MetaPilotDiaRealTimePanel extends VBox {
     }
 
     private void updateParameterView() {
-        if (parameterView == null) {
+        if (consolePanel == null) {
             return;
         }
         
@@ -1067,7 +1067,10 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         }
         sb.append("\n");
 
-        parameterView.setText(sb.toString());
+        // Update the console panel's parameter view
+        if (consolePanel != null) {
+            consolePanel.setParameterText(sb.toString());
+        }
     }
 
     private Label createSectionTitle(String title) {
@@ -1097,7 +1100,7 @@ public class MetaPilotDiaRealTimePanel extends VBox {
     /**
      * Collect parameters from UI for real-time monitoring
      */
-    private MetaParameterDia collectParametersFromUI() {
+    private MetaParameterDiaRT collectParametersFromUIForRealTime() {
         try {
             // For real-time monitoring, we may not have raw files yet
             // So we create minimal parameters for configuration
@@ -1174,8 +1177,8 @@ public class MetaPilotDiaRealTimePanel extends VBox {
             boolean selfModelSearch = false;
             boolean useModel = models.length > 0;
             
-            // Create MetaParameterDia
-            MetaParameterDia metaParameterDia = new MetaParameterDia(
+            // Create MetaParameterDiaRT (extends MetaParameterDia)
+            MetaParameterDiaRT metaParameterDiaRT = new MetaParameterDiaRT(
                 metaBasePar,
                 selectedMagDb,
                 librarySearch,
@@ -1185,10 +1188,10 @@ public class MetaPilotDiaRealTimePanel extends VBox {
                 models
             );
             
-            return metaParameterDia;
+            return metaParameterDiaRT;
             
         } catch (Exception e) {
-            System.err.println("Error generating MetaParameterDia: " + e.getMessage());
+            System.err.println("Error generating MetaParameterDiaRT: " + e.getMessage());
             e.printStackTrace();
             return null;
         }
@@ -1276,7 +1279,7 @@ public class MetaPilotDiaRealTimePanel extends VBox {
      */
     public void saveCurrentParameters() {
         try {
-            MetaParameterDia currentParams = collectParametersFromUI();
+            MetaParameterDiaRT currentParams = collectParametersFromUIForRealTime();
             if (currentParams != null) {
                 boolean saved = parameterIO.saveLastUsedParameters(currentParams);
                 if (saved) {
@@ -1290,6 +1293,54 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         } catch (Exception e) {
             System.err.println("ERROR: Failed to save current parameters: " + e.getMessage());
             e.printStackTrace();
+        }
+    }
+    
+    private void viewReport() {
+        if (consolePanel != null) {
+            consolePanel.appendConsoleText("Opening report in default browser...\n");
+        }
+        
+        // Get the result folder
+        String resultDir = resultFolderField.getText();
+        if (resultDir == null || resultDir.trim().isEmpty()) {
+            if (consolePanel != null) {
+                consolePanel.appendConsoleText("ERROR: No result directory specified.\n");
+            }
+            return;
+        }
+        
+        java.io.File reportDir = new java.io.File(resultDir);
+        if (!reportDir.exists()) {
+            if (consolePanel != null) {
+                consolePanel.appendConsoleText("ERROR: Result directory does not exist: " + resultDir + "\n");
+            }
+            return;
+        }
+        
+        java.io.File indexFile = new java.io.File(reportDir, "index.html");
+        if (!indexFile.exists()) {
+            if (consolePanel != null) {
+                consolePanel.appendConsoleText("ERROR: Report index.html not found in " + resultDir + "\n");
+            }
+            return;
+        }
+        
+        try {
+            if (java.awt.Desktop.isDesktopSupported()) {
+                java.awt.Desktop.getDesktop().browse(indexFile.toURI());
+                if (consolePanel != null) {
+                    consolePanel.appendConsoleText("✓ Report opened in default browser\n");
+                }
+            } else {
+                if (consolePanel != null) {
+                    consolePanel.appendConsoleText("ERROR: Desktop not supported. Please open manually: " + indexFile.getAbsolutePath() + "\n");
+                }
+            }
+        } catch (Exception e) {
+            if (consolePanel != null) {
+                consolePanel.appendConsoleText("ERROR: Failed to open report: " + e.getMessage() + "\n");
+            }
         }
     }
 } 

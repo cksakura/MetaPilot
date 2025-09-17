@@ -19,7 +19,6 @@ import uk.ac.quadram.metapilot.resources.MetaResourceIO;
 import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagVersion;
-import uk.ac.quadram.metapilot.task.mag.par.MetaParameterMag;
 import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.task.dia.par.DiaParameterIO;
@@ -83,21 +82,6 @@ public class MetaPilotDiaNormalPanel extends VBox {
         initializeUI();
         // Set MAG databases after UI is initialized
         setAvailableMagDatabases(magDbItems);
-        // Load last used parameters after UI and databases are initialized
-        loadLastUsedParameters();
-    }
-
-    public MetaPilotDiaNormalPanel(MetaParameterMag metaParameterMag) {
-        // Initialize parameter IO instance
-        parameterIO = new DiaParameterIO();
-        initializeUI();
-        // Initialize MAG databases from parameter after UI is initialized
-        if (metaParameterMag != null) {
-            MagDbItem[] magDbItems = metaParameterMag.getAvailableMagDbItem();
-            if (magDbItems != null) {
-                setAvailableMagDatabases(magDbItems);
-            }
-        }
         // Load last used parameters after UI and databases are initialized
         loadLastUsedParameters();
     }
@@ -751,6 +735,7 @@ public class MetaPilotDiaNormalPanel extends VBox {
             if (newMsg != null && !newMsg.isEmpty()) {
                 Platform.runLater(() -> {
                     consolePanel.appendConsoleText("Progress: " + newMsg + "\n");
+                    consolePanel.updateCurrentTaskFromMessage(newMsg);
                 });
             }
         });
@@ -1169,7 +1154,15 @@ public class MetaPilotDiaNormalPanel extends VBox {
                 MetaPilotIOPanelFX.ExperimentRow row = fileRows.get(i);
                 rawFiles[i] = row.getFilePath();
                 expNames[i] = row.getExperimentName();
-                fractions[i] = 1; // Default fraction
+                // Get fraction from the IO panel, default to 1 if invalid
+                try {
+                    fractions[i] = Integer.parseInt(row.getFraction());
+                    if (fractions[i] <= 0) {
+                        fractions[i] = 1; // Ensure positive fraction
+                    }
+                } catch (NumberFormatException e) {
+                    fractions[i] = 1; // Default to 1 if not a valid integer
+                }
                 replicates[i] = 1; // Default replicate
             }
             

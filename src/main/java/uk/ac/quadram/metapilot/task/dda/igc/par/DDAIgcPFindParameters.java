@@ -7,11 +7,11 @@ import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantModification;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX.ExperimentRow;
 import uk.ac.quadram.metapilot.task.common.gui.IsobaricLabelingPanel.IsobaricLabelRow;
 import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel.MetadataRow;
+import uk.ac.quadram.metapilot.task.io.par.MetaOpenPar;
 import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.task.par.MetaPep2TaxaPar;
-import uk.ac.quadram.metapilot.task.v2.par.MetaOpenPar;
 
 /**
  * Parameter container for DDA IGC pFind workflow
