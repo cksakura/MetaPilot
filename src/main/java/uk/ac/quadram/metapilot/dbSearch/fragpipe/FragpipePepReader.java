@@ -15,6 +15,7 @@ import org.apache.logging.log4j.Logger;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
 import uk.ac.quadram.metapilot.task.io.pep.AbstractMetaPeptideReader;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
+import java.util.List;
 
 public class FragpipePepReader extends AbstractMetaPeptideReader {
 
@@ -39,6 +40,8 @@ public class FragpipePepReader extends AbstractMetaPeptideReader {
 	private HashMap<String, Double> scoreMap;
 	private HashMap<String, ArrayList<Double>> pepProbMap;
 	private HashMap<String, double[]> pepProbListMap;
+	
+	private FragPipePSM[] psms;
 
 	private static Logger LOGGER = LogManager.getLogger(FragpipePepReader.class);
 
@@ -57,6 +60,7 @@ public class FragpipePepReader extends AbstractMetaPeptideReader {
 			LOGGER.error("Error in reading Fragpipe search result file " + in, e);
 		}
 		this.parseTitle();
+		this.readPSMs();
 	}
 
 	public FragpipePepReader(String in, String[] fileNames) {
@@ -76,6 +80,7 @@ public class FragpipePepReader extends AbstractMetaPeptideReader {
 		this.fileNames = fileNames;
 
 		this.parseTitle();
+		this.readPSMs();
 	}
 
 	protected void parseTitle() {
@@ -441,5 +446,137 @@ public class FragpipePepReader extends AbstractMetaPeptideReader {
 			intensityTitles[i] = "Intensity " + fileNames[i];
 		}
 		return intensityTitles;
+	}
+	
+	/**
+	 * Read PSM data from individual psm.tsv files
+	 */
+	private void readPSMs() {
+		List<FragPipePSM> psmList = new ArrayList<FragPipePSM>();
+		
+		File parentFile = this.getFile().getParentFile();
+		for (int i = 0; i < fileNames.length; i++) {
+			File filei = new File(parentFile, fileNames[i]);
+			if (filei.exists() && filei.isDirectory()) {
+				File psmFile = new File(filei, "psm.tsv");
+				
+				if (psmFile.exists() && psmFile.length() > 0) {
+					try (BufferedReader reader = new BufferedReader(new FileReader(psmFile))) {
+						String line = reader.readLine(); // Header line
+						if (line == null) continue;
+						
+						String[] title = line.split("\t");
+						int spectrumId = -1;
+						int spectrumFileId = -1;
+						int peptideId = -1;
+						int modifiedPeptideId = -1;
+						int chargeId = -1;
+						int retentionId = -1;
+						int observedMassId = -1;
+						int calculatedMassId = -1;
+						int deltaMassId = -1;
+						int hyperscoreId = -1;
+						int probabilityId = -1;
+						int qvalueId = -1;
+						int missedCleavagesId = -1;
+						int proteinId = -1;
+						
+						// Find column indices
+						for (int j = 0; j < title.length; j++) {
+							switch (title[j]) {
+								case "Spectrum":
+									spectrumId = j;
+									break;
+								case "Spectrum File":
+									spectrumFileId = j;
+									break;
+								case "Peptide":
+									peptideId = j;
+									break;
+								case "Modified Peptide":
+									modifiedPeptideId = j;
+									break;
+								case "Charge":
+									chargeId = j;
+									break;
+								case "Retention":
+									retentionId = j;
+									break;
+								case "Observed Mass":
+									observedMassId = j;
+									break;
+								case "Calculated Peptide Mass":
+									calculatedMassId = j;
+									break;
+								case "Delta Mass":
+									deltaMassId = j;
+									break;
+								case "Hyperscore":
+									hyperscoreId = j;
+									break;
+								case "Probability":
+									probabilityId = j;
+									break;
+								case "Qvalue":
+									qvalueId = j;
+									break;
+								case "Number of Missed Cleavages":
+									missedCleavagesId = j;
+									break;
+								case "Protein":
+									proteinId = j;
+									break;
+							}
+						}
+						
+						// Read PSM data
+						while ((line = reader.readLine()) != null) {
+							String[] cs = line.split("\t");
+							
+							if (cs.length <= Math.max(Math.max(Math.max(spectrumId, spectrumFileId), 
+									Math.max(peptideId, modifiedPeptideId)), 
+									Math.max(Math.max(chargeId, proteinId), qvalueId))) {
+								continue; // Skip incomplete lines
+							}
+							
+							String spectrum = spectrumId >= 0 ? cs[spectrumId] : "";
+							String fileName = spectrumFileId >= 0 ? cs[spectrumFileId] : fileNames[i];
+							String sequence = peptideId >= 0 ? cs[peptideId] : "";
+							String modSeq = modifiedPeptideId >= 0 && !cs[modifiedPeptideId].isEmpty() 
+									? cs[modifiedPeptideId] : sequence;
+							int charge = chargeId >= 0 ? Integer.parseInt(cs[chargeId]) : 0;
+							double rt = retentionId >= 0 ? Double.parseDouble(cs[retentionId]) : 0.0;
+							double expMass = observedMassId >= 0 ? Double.parseDouble(cs[observedMassId]) : 0.0;
+							double calMass = calculatedMassId >= 0 ? Double.parseDouble(cs[calculatedMassId]) : 0.0;
+							double massDiff = deltaMassId >= 0 ? Double.parseDouble(cs[deltaMassId]) : 0.0;
+							int miss = missedCleavagesId >= 0 ? Integer.parseInt(cs[missedCleavagesId]) : 0;
+							double score = hyperscoreId >= 0 ? Double.parseDouble(cs[hyperscoreId]) : 0.0;
+							double probability = probabilityId >= 0 ? Double.parseDouble(cs[probabilityId]) : 0.0;
+							double qValue = qvalueId >= 0 ? Double.parseDouble(cs[qvalueId]) : 1.0;
+							String protein = proteinId >= 0 ? cs[proteinId] : "";
+							
+							String[] proteins = protein.isEmpty() ? new String[]{} : new String[]{protein};
+							
+							FragPipePSM psm = new FragPipePSM(fileName, spectrum, sequence, modSeq, charge,
+									expMass, calMass, massDiff, miss, rt, score, probability, qValue, proteins);
+							psmList.add(psm);
+						}
+						
+					} catch (IOException e) {
+						LOGGER.error("Error reading PSM file: " + psmFile.getAbsolutePath(), e);
+					}
+				}
+			}
+		}
+		
+		this.psms = psmList.toArray(new FragPipePSM[psmList.size()]);
+	}
+	
+	/**
+	 * Get all PSMs
+	 * @return Array of FragPipePSM objects
+	 */
+	public FragPipePSM[] getPSMs() {
+		return psms;
 	}
 }

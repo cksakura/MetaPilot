@@ -1,23 +1,19 @@
 package uk.ac.quadram.metapilot.dbSearch.sage;
 
-public class SagePSM {
+import uk.ac.quadram.metapilot.task.io.pep.MetaPSM;
 
-	private String fileName;
+public class SagePSM extends MetaPSM {
+
 	private int scan;
-	private String sequence;
-	private String modSeq;
 	private double expMass;
 	private double calMass;
 	private double massPPM;
 	private double fragPPM;
-	private int charge;
 	private int miss;
 	private int specificity;
-	private double qValue;
 	private double hyperscore;
 	private double disScore;
 	private double rt;
-	private String[] proteins;
 	private boolean isTarget;
 	private double peptideQ;
 	private double proteinQ;
@@ -27,22 +23,17 @@ public class SagePSM {
 			double massPPM, double fragPPM, int charge, int miss, int specificity, double rt, double qValue,
 			double hyperscore, double disScore, String[] proteins, boolean isTarget, double peptideQ, double proteinQ,
 			double ms2Intensity) {
-		this.fileName = fileName;
+		super(fileName, sequence, modSeq, charge, proteins, hyperscore, qValue);
 		this.scan = scan;
-		this.sequence = sequence;
-		this.modSeq = modSeq;
 		this.expMass = expMass;
 		this.calMass = calMass;
 		this.massPPM = massPPM;
 		this.fragPPM = fragPPM;
-		this.charge = charge;
 		this.miss = miss;
 		this.specificity = specificity;
 		this.rt = rt;
-		this.qValue = qValue;
 		this.hyperscore = hyperscore;
 		this.disScore = disScore;
-		this.proteins = proteins;
 		this.isTarget = isTarget;
 		this.peptideQ = peptideQ;
 		this.proteinQ = proteinQ;
@@ -61,14 +52,6 @@ public class SagePSM {
 		}
 	}
 
-	public String getFileName() {
-		return fileName;
-	}
-
-	public void setFileName(String fileName) {
-		this.fileName = fileName;
-	}
-
 	public int getScan() {
 		return scan;
 	}
@@ -77,22 +60,7 @@ public class SagePSM {
 		this.scan = scan;
 	}
 
-	public String getSequence() {
-		return sequence;
-	}
-
-	public void setSequence(String sequence) {
-		this.sequence = sequence;
-	}
-
-	public String getModSeq() {
-		return modSeq;
-	}
-
-	public void setModSeq(String modSeq) {
-		this.modSeq = modSeq;
-	}
-
+	@Override
 	public double getExpMass() {
 		return expMass;
 	}
@@ -101,6 +69,7 @@ public class SagePSM {
 		this.expMass = expMass;
 	}
 
+	@Override
 	public double getCalMass() {
 		return calMass;
 	}
@@ -125,14 +94,7 @@ public class SagePSM {
 		this.fragPPM = fragPPM;
 	}
 
-	public int getCharge() {
-		return charge;
-	}
-
-	public void setCharge(int charge) {
-		this.charge = charge;
-	}
-
+	@Override
 	public int getMiss() {
 		return miss;
 	}
@@ -147,14 +109,6 @@ public class SagePSM {
 
 	public void setSpecificity(int specificity) {
 		this.specificity = specificity;
-	}
-
-	public double getqValue() {
-		return qValue;
-	}
-
-	public void setqValue(double qValue) {
-		this.qValue = qValue;
 	}
 
 	public double getHyperscore() {
@@ -173,6 +127,7 @@ public class SagePSM {
 		this.disScore = disScore;
 	}
 
+	@Override
 	public double getRt() {
 		return rt;
 	}
@@ -181,12 +136,9 @@ public class SagePSM {
 		this.rt = rt;
 	}
 
-	public String[] getProteins() {
-		return proteins;
-	}
-
-	public void setProteins(String[] proteins) {
-		this.proteins = proteins;
+	@Override
+	public double getMassDiff() {
+		return massPPM; // Sage uses massPPM as mass difference
 	}
 
 	public boolean isTarget() {

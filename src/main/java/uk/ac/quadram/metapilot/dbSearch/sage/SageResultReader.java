@@ -14,6 +14,7 @@ import uk.ac.quadram.metapilot.task.io.pep.AbstractMetaPeptideReader;
 public class SageResultReader extends AbstractMetaPeptideReader {
 
 	private SagePeptide[] peptides;
+	private SagePSM[] psms;
 	private String[] intensityTitles;
 
 	public SageResultReader(String file) {
@@ -28,7 +29,7 @@ public class SageResultReader extends AbstractMetaPeptideReader {
 	private void read() {
 		File psmFile = new File(this.getFile(), "results.sage.tsv");
 		SagePsmReader reader = new SagePsmReader(psmFile);
-		SagePSM[] psms = reader.getPsms();
+		this.psms = reader.getPsms();
 		HashMap<String, ArrayList<SagePSM>> psmMap = new HashMap<String, ArrayList<SagePSM>>();
 		for (SagePSM psm : psms) {
 			String modseq = psm.getModSeq();
@@ -149,6 +150,10 @@ public class SageResultReader extends AbstractMetaPeptideReader {
 		return peptides;
 	}
 
+	public SagePSM[] getPSMs() {
+		return psms;
+	}
+
 	@Override
 	public Object[] getTitleObjs() {
 		// TODO Auto-generated method stub
@@ -159,11 +164,6 @@ public class SageResultReader extends AbstractMetaPeptideReader {
 	public String[] getIntensityTitle() {
 		// TODO Auto-generated method stub
 		return intensityTitles;
-	}
-
-	public static void main(String[] args) {
-		// TODO Auto-generated method stub
-		SageResultReader reader = new SageResultReader("Z:\\Kai\\Raw_files\\run21\\test2\\sage");
 	}
 
 }

@@ -21,8 +21,12 @@ import java.nio.file.WatchEvent;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.Enumeration;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
@@ -725,6 +729,49 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 			LOGGER.info("Stopping WatchService thread");
 			watchServiceThread.interrupt();
 		}
+	}
+
+	/**
+	 * Common Occam's razor implementation for selecting items (proteins, genomes, etc.) 
+	 * based on peptide coverage. This method implements the core algorithm used by both
+	 * protein refinement in IGC workflows and genome refinement in MAG workflows.
+	 * 
+	 * @param itemToPeptides Map from item names to their associated peptides
+	 * @param totalPeptides Total set of unique peptides (for threshold calculation)
+	 * @param threshold Coverage threshold (e.g., 0.95 for 95% coverage)
+	 * @return Set of selected item names that together cover the threshold percentage of peptides
+	 */
+	protected HashSet<String> applyOccamsRazor(HashMap<String, HashSet<String>> itemToPeptides, 
+			HashSet<String> totalPeptides, double threshold) {
+		HashSet<String> selectedItems = new HashSet<String>();
+
+		// Sort items by peptide count (descending)
+		ArrayList<Map.Entry<String, HashSet<String>>> sortedItems = new ArrayList<Map.Entry<String, HashSet<String>>>(
+				itemToPeptides.entrySet());
+		sortedItems.sort((e1, e2) -> Integer.compare(e2.getValue().size(), e1.getValue().size()));
+
+		HashSet<String> coveredPeptides = new HashSet<String>();
+
+		for (Map.Entry<String, HashSet<String>> entry : sortedItems) {
+			String item = entry.getKey();
+			HashSet<String> peptides = entry.getValue();
+
+			// Check how many new peptides this item would add
+			HashSet<String> newPeptides = new HashSet<String>(peptides);
+			newPeptides.removeAll(coveredPeptides);
+
+			if (!newPeptides.isEmpty()) {
+				selectedItems.add(item);
+				coveredPeptides.addAll(newPeptides);
+
+				// Check if we've covered enough peptides
+				if ((double) coveredPeptides.size() / totalPeptides.size() >= threshold) {
+					break;
+				}
+			}
+		}
+
+		return selectedItems;
 	}
 
 }
