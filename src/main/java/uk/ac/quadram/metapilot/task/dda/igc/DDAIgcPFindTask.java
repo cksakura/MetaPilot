@@ -12,6 +12,7 @@ import java.nio.file.StandardWatchEventKinds;
 import java.nio.file.WatchEvent;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
+import java.sql.SQLException;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -25,7 +26,7 @@ import org.apache.logging.log4j.Logger;
 
 import uk.ac.quadram.metapilot.core.mod.PostTransModification;
 import uk.ac.quadram.metapilot.core.taxonomy.Taxon;
-import uk.ac.quadram.metapilot.core.taxonomy.TaxonomyDatabase;
+import uk.ac.quadram.metapilot.core.taxonomy.TaxonomyDatabaseSQL;
 import uk.ac.quadram.metapilot.core.tools.FormatTool;
 import uk.ac.quadram.metapilot.dbSearch.dbReducer.DBReducerTask;
 import uk.ac.quadram.metapilot.dbSearch.pfind.PFindIsobaricTask;
@@ -41,7 +42,7 @@ import uk.ac.quadram.metapilot.mdb.unipept.UnipeptRequester;
 import uk.ac.quadram.metapilot.quant.flashLFQ.FlashLfqTask;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
-import uk.ac.quadram.metapilot.task.MetaPilotTask;
+import uk.ac.quadram.metapilot.task.igc.MetaPilotIgcTask;
 import uk.ac.quadram.metapilot.task.MetaPythonReportCopyTask;
 import uk.ac.quadram.metapilot.task.MetaPythonReportTask;
 import uk.ac.quadram.metapilot.task.dda.MetaDbReducerTask;
@@ -59,7 +60,7 @@ import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.par.MetaPep2TaxaPar;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 
-public class DDAIgcPFindTask extends MetaPilotTask {
+public class DDAIgcPFindTask extends MetaPilotIgcTask {
 
 	private static final Logger LOGGER = LogManager.getLogger(DDAIgcPFindTask.class);
 	private static final String taskName = "DDA IGC database search by pFind workflow";
@@ -67,6 +68,7 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 	protected File rawDir;
 	protected File quan_pep_file;
 	protected File quan_pro_file;
+	protected File combinedFile;
 	protected HashMap<String, String> expNameMap;
 	protected String[] quanExpNames;
 	protected HashMap<String, PostTransModification> ptmMap;
@@ -195,7 +197,7 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 		updateProgress(5, 100);
 		updateMessage("Starting spectra conversion...");
 
-		spectraConvertTask = new PFindSpectraConvertTask(metaPar, mrp, progressBar);
+		spectraConvertTask = new PFindSpectraConvertTask(metaPar, mrp, secondBar);
 		LOGGER.info("{}: PFindSpectraConvertTask created, executing...", taskName);
 		spectraConvertTask.execute();
 		try {
@@ -251,7 +253,7 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 		System.out.println(
 				format.format(new Date()) + "\t" + getTaskName() + ": sample specific database generation: finished");
 
-		File pfindSearchFile = new File(metaPar.getResult(), "pfind_search");
+		File pfindSearchFile = new File(metaPar.getResult(), "pfind_IGC_search");
 		if (!pfindSearchFile.exists()) {
 			pfindSearchFile.mkdir();
 			LOGGER.info("  Created pFind search directory: " + pfindSearchFile.getAbsolutePath());
@@ -260,6 +262,14 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 		}
 
 		metaPar.setDbSearchResultFile(pfindSearchFile);
+		
+		this.combinedFile = new File(pfindSearchFile, "combined");
+		if (!combinedFile.exists()) {
+			combinedFile.mkdir();
+			LOGGER.info("  Created combined search directory: " + combinedFile.getAbsolutePath());
+		} else {
+			LOGGER.info("  Combined search directory already exists: " + combinedFile.getAbsolutePath());
+		}
 
 		boolean iden = iden(spectraConvertTask.getMgfFiles(), spectraConvertTask.getPf2Files());
 		if (!iden) {
@@ -346,16 +356,15 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 			useDBReducer = true;
 		}
 
-		PFindResultReader pFindResultReader = new PFindResultReader(metaPar.getDbSearchResultFile(),
-				metaPar.getSpectraFile(), ptmMap);
+		PFindResultReader pFindResultReader = new PFindResultReader(combinedFile, metaPar.getSpectraFile(), ptmMap);
 
 		if (pFindResultReader.hasResult()) {
 
 			LOGGER.info(getTaskName() + ": peptide and protein identification results have been found in "
-					+ metaPar.getDbSearchResultFile() + ", go to next step");
+					+ combinedFile + ", go to next step");
 			System.out.println(format.format(new Date()) + "\t" + getTaskName()
-					+ ": peptide and protein identification results have been found in "
-					+ metaPar.getDbSearchResultFile() + ", go to next step");
+					+ ": peptide and protein identification results have been found in " + combinedFile
+					+ ", go to next step");
 
 			// Update progress if results already exist
 			updateProgress(55, 100);
@@ -393,7 +402,7 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 
 			pFindTask.setTotalThread(metaPar.getThreadCount());
 
-			pFindTask.searchPF2(pf2Files, metaPar.getDbSearchResultFile().getAbsolutePath(), db, ms2Type,
+			pFindTask.searchPF2(pf2Files, combinedFile.getAbsolutePath(), db, ms2Type,
 					((DDAIgcPFindParameters) metaPar).isOpenSearch(), true, mosp.getOpenPsmFDR(),
 					((DDAIgcPFindParameters) this.metaPar).getFixMods(),
 					((DDAIgcPFindParameters) this.metaPar).getVariMods(),
@@ -417,7 +426,7 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 		updateProgress(55, 100);
 		updateMessage("Reading identification results...");
 
-		PFindTask.cleanPFindResultFolder(metaPar.getDbSearchResultFile(), true);
+		PFindTask.cleanPFindResultFolder(combinedFile, true);
 
 		try {
 			pFindResultReader.read();
@@ -455,7 +464,7 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 		FlashLfqTask flashLfqTask = new FlashLfqTask(flashLFQ, metaPar.getThreadCount());
 
 		PFindLabelFreeTask pfindLFTask = new PFindLabelFreeTask(flashLfqTask, metaPar.getMetadata(),
-				metaPar.getDbSearchResultFile(), rawDir, metaPar.getSpectraFile());
+				combinedFile, rawDir, metaPar.getSpectraFile());
 		boolean quan = pfindLFTask.run();
 
 		if (!quan) {
@@ -495,10 +504,10 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 		File pFindBin = (new File(mrp.getToolPath(ToolType.PFIND))).getParentFile();
 		PFindTask pFindTask = new PFindTask(pFindBin, metaPar.getThreadCount());
 
-		PFindResultReader reader = new PFindResultReader(metaPar.getDbSearchResultFile(), metaPar.getSpectraFile(),
+		PFindResultReader reader = new PFindResultReader(combinedFile, metaPar.getSpectraFile(),
 				pFindTask.getPtmMap());
 		PFindIsobaricTask pfindIsobaricTask = new PFindIsobaricTask(reader, this.metaPar.getSpectraFile(),
-				metaPar.getDbSearchResultFile(), ((DDAIgcPFindParameters) this.metaPar).getIsobaricTag(),
+				combinedFile, ((DDAIgcPFindParameters) this.metaPar).getIsobaricTag(),
 				((DDAIgcPFindParameters) this.metaPar).getIsobaric(),
 				((DDAIgcPFindParameters) this.metaPar).getIsoCorFactor(),
 				((DDAIgcPFindParameters) this.metaPar).isCombineLabel(), metaPar.getMetadata());
@@ -553,7 +562,7 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 			reportDir.mkdirs();
 		}
 
-		MetaPythonReportCopyTask reportCopyTask = new MetaPythonReportCopyTask(new File(metaPar.getResult()));
+		MetaPythonReportCopyTask reportCopyTask = new MetaPythonReportCopyTask(metaPar.getDbSearchResultFile());
 		Thread reportCopyThread = new Thread(reportCopyTask);
 		reportCopyThread.start();
 		try {
@@ -593,8 +602,7 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 
 		updateProgress(82, 100);
 
-		PFindResultReader pFindResultReader = new PFindResultReader(metaPar.getDbSearchResultFile(),
-				metaPar.getSpectraFile(), ptmMap);
+		PFindResultReader pFindResultReader = new PFindResultReader(combinedFile, metaPar.getSpectraFile(), ptmMap);
 		try {
 			pFindResultReader.read();
 		} catch (NumberFormatException | IOException e) {
@@ -849,7 +857,7 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 
 		updateProgress(84, 100);
 
-		this.final_pro_txt = new File(this.metaPar.getResult(), "final_proteins.tsv");
+		this.final_pro_txt = new File(this.metaPar.getDbSearchResultFile(), "final_proteins.tsv");
 
 		if (!final_pro_txt.exists() || final_pro_txt.length() == 0) {
 
@@ -1222,21 +1230,56 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 		updateProgress(88, 100);
 
 		HashMap<String, ArrayList<PeptideResult>> baseSeqMap = pFindResultReader.getBasePeptideMap();
-		TaxonomyDatabase td = new TaxonomyDatabase(mrp.getToolPath(ToolType.FUNCDB));
+		LOGGER.info(getTaskName() + ": Found " + baseSeqMap.size() + " unique base sequences for taxonomy analysis");
+		
+		TaxonomyDatabaseSQL td = null;
+		try {
+			String dbPath = mrp.getToolPath(ToolType.FUNCDB);
+			LOGGER.info(getTaskName() + ": Initializing TaxonomyDatabaseSQL with path: " + dbPath);
+			td = new TaxonomyDatabaseSQL(dbPath);
+			LOGGER.info(getTaskName() + ": TaxonomyDatabaseSQL initialized successfully");
+		} catch (SQLException e) {
+			LOGGER.error(getTaskName() + ": error in initializing TaxonomyDatabaseSQL", e);
+			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in initializing TaxonomyDatabaseSQL: " + e.getMessage());
+			return false;
+		}
 		HashSet<String> sequenceSet = new HashSet<String>();
 		sequenceSet.addAll(baseSeqMap.keySet());
+		LOGGER.info(getTaskName() + ": Processing " + sequenceSet.size() + " sequences for taxonomy analysis");
+		
+		// Test TaxonomyDatabaseSQL with a known taxon ID
+		if (td != null) {
+			LOGGER.info(getTaskName() + ": Testing TaxonomyDatabaseSQL with taxon ID 1 (root)");
+			Taxon testTaxon = td.getTaxonFromId(1);
+			if (testTaxon != null) {
+				LOGGER.info(getTaskName() + ": Test successful - found taxon ID 1: " + testTaxon.getName());
+			} else {
+				LOGGER.error(getTaskName() + ": Test failed - could not find taxon ID 1 in TaxonomyDatabaseSQL");
+				// Let's check what's actually in the database
+				td.debugDatabaseContents();
+			}
+		}
 
 		updateProgress(90, 100);
 
 		if (executeUnipept) {
+			LOGGER.info(getTaskName() + ": Executing Unipept analysis for " + baseSeqMap.size() + " sequences");
 
 			String[] sequences = baseSeqMap.keySet().toArray(new String[baseSeqMap.size()]);
 			Arrays.sort(sequences);
+			LOGGER.info(getTaskName() + ": Sorted " + sequences.length + " sequences for Unipept query");
 
 			HashMap<String, UnipLCAResult> lcaResultMap = UnipeptRequester.pept2lca(sequences);
+			LOGGER.info(getTaskName() + ": Unipept returned " + (lcaResultMap != null ? lcaResultMap.size() : 0) + " LCA results");
 
 			MetaPeptideXMLWriter writer = new MetaPeptideXMLWriter(taxResultFile, MetaConstants.pFind,
 					MetaConstants.labelFree, expNames);
+
+			LOGGER.info(getTaskName() + ": Starting to process " + sequences.length + " sequences for taxonomy mapping");
+			int processedCount = 0;
+			int lcaFoundCount = 0;
+			int taxonFoundCount = 0;
+			int taxonNotFoundCount = 0;
 
 			for (int i = 0; i < sequences.length; i++) {
 
@@ -1290,9 +1333,24 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 				pro = prosb.toString();
 
 				if (lcaResultMap.containsKey(sequences[i])) {
+					lcaFoundCount++;
 					UnipLCAResult lcaResult = lcaResultMap.get(sequences[i]);
 					int taxId = lcaResult.getTaxon().getId();
-					Taxon lca = td.getTaxonFromId(taxId);
+					LOGGER.info(getTaskName() + ": Processing sequence " + sequences[i] + " with taxon ID " + taxId);
+					
+					Taxon lca = null;
+					if (td != null) {
+						lca = td.getTaxonFromId(taxId);
+						if (lca != null) {
+							taxonFoundCount++;
+							LOGGER.debug(getTaskName() + ": Found taxon for ID " + taxId + ": " + lca.getName());
+						} else {
+							taxonNotFoundCount++;
+							LOGGER.warn(getTaskName() + ": No taxon found for ID " + taxId + " in TaxonomyDatabaseSQL");
+						}
+					} else {
+						LOGGER.error(getTaskName() + ": TaxonomyDatabaseSQL is null, cannot lookup taxon ID " + taxId);
+					}
 
 					if (lca != null) {
 
@@ -1301,27 +1359,56 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 
 						op.setLca(lca);
 
-						if (lca.getMainParentIds() == null) {
+						if (lca.getMainParentIds() == null && td != null) {
+							LOGGER.debug(getTaskName() + ": Setting main parent IDs for taxon " + taxId);
 							lca.setMainParentIds(td.getMainParentTaxonIds(taxId));
 						}
 
 						int[] mainTaxonIds = lca.getMainParentIds();
+						LOGGER.debug(getTaskName() + ": Found " + (mainTaxonIds != null ? mainTaxonIds.length : 0) + " main parent taxon IDs for " + taxId);
 
+						int parentTaxonFoundCount = 0;
 						for (int parentId : mainTaxonIds) {
-							Taxon parentTaxon = td.getTaxonFromId(parentId);
-							if (parentTaxon != null) {
-								if (parentTaxon.getMainParentIds() == null) {
-									parentTaxon.setMainParentIds(td.getMainParentTaxonIds(parentId));
+							Taxon parentTaxon = null;
+							if (td != null) {
+								parentTaxon = td.getTaxonFromId(parentId);
+								if (parentTaxon != null) {
+									parentTaxonFoundCount++;
+									LOGGER.debug(getTaskName() + ": Found parent taxon " + parentId + ": " + parentTaxon.getName());
+									if (parentTaxon.getMainParentIds() == null && td != null) {
+										parentTaxon.setMainParentIds(td.getMainParentTaxonIds(parentId));
+									}
+									writer.addTaxon(parentTaxon);
+								} else {
+									LOGGER.warn(getTaskName() + ": No parent taxon found for ID " + parentId);
 								}
-								writer.addTaxon(parentTaxon);
 							}
 						}
+						LOGGER.debug(getTaskName() + ": Added " + parentTaxonFoundCount + " parent taxons for sequence " + sequences[i]);
 
 						op.setLca(lca);
 						writer.addPeptide(op);
+						LOGGER.debug(getTaskName() + ": Successfully added peptide " + sequences[i] + " to XML writer");
+					} else {
+						LOGGER.warn(getTaskName() + ": Skipping sequence " + sequences[i] + " because taxon lookup failed");
 					}
+				} else {
+					LOGGER.info(getTaskName() + ": No LCA result found for sequence " + sequences[i]);
+				}
+				
+				processedCount++;
+				if (processedCount % 100 == 0) {
+					LOGGER.info(getTaskName() + ": Processed " + processedCount + "/" + sequences.length + " sequences");
 				}
 			}
+			
+			LOGGER.info(getTaskName() + ": Taxonomy processing summary:");
+			LOGGER.info(getTaskName() + ": - Total sequences processed: " + processedCount);
+			LOGGER.info(getTaskName() + ": - Sequences with LCA results: " + lcaFoundCount);
+			LOGGER.info(getTaskName() + ": - Taxons found in database: " + taxonFoundCount);
+			LOGGER.info(getTaskName() + ": - Taxons not found in database: " + taxonNotFoundCount);
+			LOGGER.info(getTaskName() + ": - Success rate: " + (processedCount > 0 ? (taxonFoundCount * 100.0 / processedCount) : 0) + "%");
+			
 			writer.close();
 
 			if (taxResultFile.exists() && taxResultFile.length() > 0) {
@@ -1371,6 +1458,15 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 						finish = task.addTask(MetaPythonReportTask.TAXONOMY, refinedTaxon, report_taxonomy_summary);
 					}
 				}
+			}
+		}
+
+		// Clean up database connection
+		if (td != null) {
+			try {
+				td.close();
+			} catch (SQLException e) {
+				LOGGER.warn(getTaskName() + ": error closing TaxonomyDatabaseSQL connection", e);
 			}
 		}
 
@@ -1523,7 +1619,7 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 
 	protected boolean exportSummary(MetaPythonReportTask task) {
 
-		File final_summary_txt = new File(this.metaPar.getResult(), "final_summary.tsv");
+		File final_summary_txt = new File(this.metaPar.getDbSearchResultFile(), "final_summary.tsv");
 		try {
 
 			PrintWriter countWriter = new PrintWriter(final_summary_txt);
@@ -1541,8 +1637,7 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 			int totalpsmCount = 0;
 			int totalUnipepCount = 0;
 
-			BufferedReader idReader = new BufferedReader(
-					new FileReader(new File(this.metaPar.getDbSearchResultFile(), "id.tsv")));
+			BufferedReader idReader = new BufferedReader(new FileReader(new File(combinedFile, "id.tsv")));
 			HashMap<String, int[]> idMap = new HashMap<String, int[]>();
 			String line = idReader.readLine();
 			while ((line = idReader.readLine()) != null) {
@@ -1552,7 +1647,6 @@ public class DDAIgcPFindTask extends MetaPilotTask {
 			idReader.close();
 
 			File spectraDirFile = metaPar.getSpectraFile();
-			File rtFile = new File(spectraDirFile, "rt.txt");
 			File ms2CountFile = new File(spectraDirFile, "ms2Count.txt");
 
 			BufferedReader ms2CountReader = new BufferedReader(new FileReader(ms2CountFile));

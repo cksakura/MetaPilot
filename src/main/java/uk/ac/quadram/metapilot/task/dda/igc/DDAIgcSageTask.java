@@ -18,7 +18,7 @@ import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.spectra.io.MSConvertor;
-import uk.ac.quadram.metapilot.task.MetaPilotTask;
+import uk.ac.quadram.metapilot.task.igc.MetaPilotIgcTask;
 import uk.ac.quadram.metapilot.task.dda.MetaDbReducerTask;
 import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcSageParameters;
 import uk.ac.quadram.metapilot.dbSearch.sage.SageTask;
@@ -59,7 +59,7 @@ import java.util.HashSet;
  * 6. Taxonomy analysis
  * 7. Functional annotation
  */
-public class DDAIgcSageTask extends MetaPilotTask {
+public class DDAIgcSageTask extends MetaPilotIgcTask {
 
     private static final Logger LOGGER = LogManager.getLogger(DDAIgcSageTask.class);
     private static final String taskName = "DDA IGC database search by Sage workflow";
@@ -286,6 +286,28 @@ public class DDAIgcSageTask extends MetaPilotTask {
         LOGGER.info(getTaskName() + ": database search and identification: finished");
         System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": database search and identification: finished");
 
+        
+
+        // Read Sage results
+        File searchResultDir = metaPar.getDbSearchResultFile();
+        File pepResultFile = new File(searchResultDir, "pep.tsv");
+        File proResultFile = new File(searchResultDir, "pro.tsv");
+
+        if (!pepResultFile.exists() || !proResultFile.exists()) {
+            LOGGER.error("Sage result files not found: {} or {}", pepResultFile.getAbsolutePath(), proResultFile.getAbsolutePath());
+            return false;
+        }
+        
+		SageResultReader sageReader = new SageResultReader(searchResultDir);
+		super.metaPeptides = sageReader.getMetaPeptides();
+		if (metaPeptides == null || metaPeptides.length == 0) {
+			LOGGER.error("Sage result files not found: {} or {}", pepResultFile.getAbsolutePath(),
+					proResultFile.getAbsolutePath());
+			return false;
+		}
+		
+		
+        
         // Step 5: Report generation
         boolean reportGenerated = exportReport();
         if (!reportGenerated) {

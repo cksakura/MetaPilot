@@ -1,6 +1,8 @@
 package uk.ac.quadram.metapilot.task.dda.mag.par;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -127,6 +129,28 @@ public class DDAMagFragPipeParameterIO extends BaseParameterIO {
 			// Set quantitative mode (default to label-free)
 			params.setQuantitativeMode("Label-Free");
 
+			// Load fixed modifications
+			if (json.has("fixed_modifications")) {
+				JSONArray fixedMods = json.getJSONArray("fixed_modifications");
+				List<String> fixedModifications = new ArrayList<>();
+				for (int i = 0; i < fixedMods.length(); i++) {
+					fixedModifications.add(fixedMods.getString(i));
+				}
+				params.setFixedModifications(fixedModifications);
+				LOGGER.info("Loaded {} fixed modifications", fixedModifications.size());
+			}
+
+			// Load variable modifications
+			if (json.has("variable_modifications")) {
+				JSONArray variableMods = json.getJSONArray("variable_modifications");
+				List<String> variableModifications = new ArrayList<>();
+				for (int i = 0; i < variableMods.length(); i++) {
+					variableModifications.add(variableMods.getString(i));
+				}
+				params.setVariableModifications(variableModifications);
+				LOGGER.info("Loaded {} variable modifications", variableModifications.size());
+			}
+
 			// Load FragPipe workflow (simple flag)
 			if (json.optBoolean("fragpipe_workflow_configured", false)) {
 				// Workflow will be configured by UI/task
@@ -215,6 +239,28 @@ public class DDAMagFragPipeParameterIO extends BaseParameterIO {
 			additionalParams.put("spectra_clustering", params.isSpectraCluster());
 			json.put("additional_parameters", additionalParams);
 			LOGGER.info("Added additional parameters - threads: {}, ms2_scan_mode: {}", params.getThreadCount(), params.getMs2ScanMode());
+
+			// Fixed modifications
+			JSONArray fixedMods = new JSONArray();
+			List<String> fixedModifications = params.getFixedModifications();
+			if (fixedModifications != null) {
+				for (String mod : fixedModifications) {
+					fixedMods.put(mod);
+				}
+				LOGGER.info("Added {} fixed modifications", fixedModifications.size());
+			}
+			json.put("fixed_modifications", fixedMods);
+
+			// Variable modifications
+			JSONArray variableMods = new JSONArray();
+			List<String> variableModifications = params.getVariableModifications();
+			if (variableModifications != null) {
+				for (String mod : variableModifications) {
+					variableMods.put(mod);
+				}
+				LOGGER.info("Added {} variable modifications", variableModifications.size());
+			}
+			json.put("variable_modifications", variableMods);
 
 			// FragPipe workflow (simple flag)
 			if (params.getFragpipeWorkflow() != null) {

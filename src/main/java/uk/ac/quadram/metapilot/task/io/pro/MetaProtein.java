@@ -141,6 +141,10 @@ public class MetaProtein {
 		return evalue;
 	}
 
+	public void setEvalue(double evalue) {
+		this.evalue = evalue;
+	}
+
 	public double[] getIntensities() {
 		return intensities;
 	}

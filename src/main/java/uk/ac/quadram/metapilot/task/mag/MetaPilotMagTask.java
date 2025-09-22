@@ -40,10 +40,12 @@ import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProteinXMLWriter2;
 import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
+import uk.ac.quadram.metapilot.task.par.MetaData;
 
 public abstract class MetaPilotMagTask extends MetaPilotTask {
 
 	protected String[] rawFiles;
+	protected String[] rawFileNames;
 	protected String[] quanExpNames;
 	protected File spectraDirFile;
 	protected MagDbItem magDb;
@@ -54,8 +56,11 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 	protected File rawDir;
 	protected File quan_pep_file;
 	protected File quan_pro_file;
+	protected File final_pep_txt;
+	protected File final_pro_txt;
 	protected HashMap<String, String> expNameMap;
 	protected File summaryMetaFile;
+	protected File combinedFile;
 
 	public MetaPilotMagTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
 			ProgressBar secondBar) {
@@ -66,11 +71,94 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 		LOGGER.info(getTaskName() + ": Constructor completed, report templates will be copied during execution");
 	}
 
+	protected void createSeparateFolders() {
+		MetaData metaData = metaPar.getMetadata();
+		if (metaData == null) {
+			LOGGER.error("No metadata");
+			throw new IllegalArgumentException("Metadata are required");
+		}
+		this.rawFiles = metaPar.getMetadata().getRawFiles();
+		if (rawFiles == null || rawFiles.length == 0) {
+			LOGGER.error("No raw files found in metadata");
+			throw new IllegalArgumentException("Raw files are required");
+		}
+
+		this.rawDir = (new File(rawFiles[0])).getParentFile();
+		if (!rawDir.exists()) {
+			LOGGER.error("No raw files found in metadata");
+			throw new IllegalArgumentException("Raw files are required");
+		}
+
+		LOGGER.info("Initializing result directories in: {}", metaPar.getDbSearchResultFile().getAbsolutePath());
+
+		this.quanExpNames = metaPar.getMetadata().getExpNames();
+		this.combinedFile = new File(metaPar.getDbSearchResultFile(), "combined");
+		if (!this.combinedFile.exists()) {
+			this.combinedFile.mkdir();
+		}
+
+		this.rawFileNames = new String[rawFiles.length];
+		this.separateResultFolders = new File[rawFiles.length];
+
+		for (int i = 0; i < rawFiles.length; i++) {
+			rawFileNames[i] = rawFiles[i].substring(rawFiles[i].lastIndexOf("\\") + 1, rawFiles[i].lastIndexOf("."));
+			this.separateResultFolders[i] = new File(metaPar.getDbSearchResultFile(), rawFileNames[i]);
+			if (!this.separateResultFolders[i].exists()) {
+				this.separateResultFolders[i].mkdir();
+				LOGGER.info("  Created result directory: {}", this.separateResultFolders[i].getAbsolutePath());
+			} else {
+				LOGGER.info("  Result directory already exists: {}", this.separateResultFolders[i].getAbsolutePath());
+			}
+
+			File hapFile = new File(separateResultFolders[i], "hap");
+			if (!hapFile.exists()) {
+				hapFile.mkdirs();
+				LOGGER.info("  Created HAP result directory: {}", hapFile.getAbsolutePath());
+			} else {
+				LOGGER.info(" HAP result directory already exists: {}", hapFile.getAbsolutePath());
+			}
+		}
+
+		this.spectraDirFile = metaPar.getSpectraFile();
+	}
+	
+	/**
+	 * Refines genome set based on peptide coverage threshold.
+	 * Uses default parameters: stepThreshold=0.001, maxium=250, decoyFilter=false
+	 * 
+	 * USED BY:
+	 * - DDAMagPfindTask: Line 746 (genome filtering for sample-specific databases)
+	 * - DDAMagSageTask: Line 760 (genome filtering for sample-specific databases)
+	 * - DDAMagSageTask: Line 939 (genome filtering for combined database)
+	 * - DDAMagFragPipeTask: Line 686 (genome filtering for sample-specific databases)
+	 * - DDAMagFragPipeTask: Line 2170 (genome filtering for MAG database)
+	 * 
+	 * @param genomePepMap Map of genome names to their associated peptides
+	 * @param totalPepCount Total number of unique peptides
+	 * @param threshold Coverage threshold for genome selection
+	 * @param out Output file for genome statistics
+	 * @return Set of selected genome names
+	 */
 	protected HashSet<String> refineGenomes(HashMap<String, HashSet<String>> genomePepMap, int totalPepCount,
 			double threshold, File out) {
 		return refineGenomes(genomePepMap, totalPepCount, threshold, 0.001, 250, false, out);
 	}
 
+	/**
+	 * Advanced genome refinement with fine-tuned parameters.
+	 * Provides additional control over genome selection process.
+	 * 
+	 * USED BY: NONE - This advanced version is not used by any child class
+	 * 
+	 * @param genomePepMap Map of genome names to their associated peptides
+	 * @param totalPepCount Total number of unique peptides
+	 * @param threshold Coverage threshold for genome selection
+	 * @param stepThreshold Step threshold for additional filtering
+	 * @param maxium Maximum number of genomes to select
+	 * @param decoyFilter Whether to apply decoy filtering
+	 * @param out Output file for genome statistics
+	 * @return Set of selected genome names
+	 */
 	protected HashSet<String> refineGenomes(HashMap<String, HashSet<String>> genomePepMap, int totalPepCount,
 			double threshold, double stepThreshold, int maxium, boolean decoyFilter, File out) {
 
@@ -168,20 +256,31 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 	}
 
 	/**
-	 * Reverser proteins are also included to calculate the FDR of genomes
+	 * Refines genomes based on peptide intensity and FDR calculation.
+	 * Uses default decoy symbol (PFindResultReader.REV).
+	 * Reverser proteins are also included to calculate the FDR of genomes.
 	 * 
-	 * @param quanPeps
-	 * @return
+	 * USED BY:
+	 * - DDAMagPfindTask: Line 1330 (genome scoring for protein inference)
+	 * - DDAMagSageTask: Line 1237 (genome scoring for protein inference)
+	 * 
+	 * @param quanPeps Array of quantified peptides
+	 * @return Map of genome names to their FDR scores
 	 */
 	protected HashMap<String, Double> refineGenomes(MetaPeptide[] quanPeps) {
 		return refineGenomes(quanPeps, PFindResultReader.REV);
 	}
 
 	/**
-	 * Reverser proteins are also included to calculate the FDR of genomes
+	 * Refines genomes based on peptide intensity and FDR calculation with custom decoy symbol.
+	 * Reverser proteins are also included to calculate the FDR of genomes.
 	 * 
-	 * @param quanPeps
-	 * @return
+	 * USED BY:
+	 * - DDAMagFragPipeTask: Line 1182 (genome scoring with FastaManager.shuffle decoy symbol)
+	 * 
+	 * @param quanPeps Array of quantified peptides
+	 * @param decoySymble Custom decoy symbol for FDR calculation
+	 * @return Map of genome names to their FDR scores
 	 */
 	protected HashMap<String, Double> refineGenomes(MetaPeptide[] quanPeps, String decoySymble) {
 
@@ -423,10 +522,34 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 		return genomeScoreMap;
 	}
 
+	/**
+	 * Refines proteins using razor protein selection with default decoy symbol.
+	 * Selects the best protein for each peptide based on genome scores and intensity.
+	 * 
+	 * USED BY:
+	 * - DDAMagPfindTask: Line 1332 (razor protein selection for protein inference)
+	 * - DDAMagSageTask: Line 1238 (razor protein selection for protein inference)
+	 * 
+	 * @param quanPeps Array of quantified peptides
+	 * @param genomeScoreMap Map of genome names to their FDR scores
+	 * @return Array of selected razor proteins (one per peptide)
+	 */
 	protected String[] refineProteins(MetaPeptide[] quanPeps, HashMap<String, Double> genomeScoreMap) {
 		return refineProteins(quanPeps, genomeScoreMap, PFindResultReader.REV);
 	}
 
+	/**
+	 * Refines proteins using razor protein selection with custom decoy symbol.
+	 * Selects the best protein for each peptide based on genome scores and intensity.
+	 * 
+	 * USED BY:
+	 * - DDAMagFragPipeTask: Line 1184 (razor protein selection with FastaManager.shuffle decoy symbol)
+	 * 
+	 * @param quanPeps Array of quantified peptides
+	 * @param genomeScoreMap Map of genome names to their FDR scores
+	 * @param decoySymble Custom decoy symbol for protein filtering
+	 * @return Array of selected razor proteins (one per peptide)
+	 */
 	protected String[] refineProteins(MetaPeptide[] quanPeps, HashMap<String, Double> genomeScoreMap,
 			String decoySymble) {
 

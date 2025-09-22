@@ -3268,6 +3268,22 @@ public class MetaDiaTask extends MetaPilotMagTask {
 			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": writing results to " + html.getName()
 					+ " finished");
 		}
+		
+		// Copy functions.html to report directory for navigation access
+		if (html.exists() && this.reportHtmlDir != null) {
+			File reportFunctionsHtml = new File(this.reportHtmlDir, "functions.html");
+			if (!reportFunctionsHtml.exists()) {
+				try {
+					java.nio.file.Files.copy(html.toPath(), reportFunctionsHtml.toPath(), 
+						java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+					LOGGER.info(getTaskName() + ": copied functions.html to report directory");
+					System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": copied functions.html to report directory");
+				} catch (IOException e) {
+					LOGGER.error(getTaskName() + ": error copying functions.html to report directory", e);
+					System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error copying functions.html to report directory");
+				}
+			}
+		}
 
 		updateProgress(91, 100);
 
@@ -3316,6 +3332,22 @@ public class MetaDiaTask extends MetaPilotMagTask {
 			System.err.println(
 					format.format(new Date()) + "\t" + "Error in writing genome information to " + genomeHtmlFile);
 			return false;
+		}
+		
+		// Copy Genome.html to report directory for navigation access
+		if (genomeHtmlFile.exists() && this.reportHtmlDir != null) {
+			File reportGenomeHtml = new File(this.reportHtmlDir, "Genome.html");
+			if (!reportGenomeHtml.exists()) {
+				try {
+					java.nio.file.Files.copy(genomeHtmlFile.toPath(), reportGenomeHtml.toPath(), 
+						java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+					LOGGER.info(getTaskName() + ": copied Genome.html to report directory");
+					System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": copied Genome.html to report directory");
+				} catch (IOException e) {
+					LOGGER.error(getTaskName() + ": error copying Genome.html to report directory", e);
+					System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error copying Genome.html to report directory");
+				}
+			}
 		}
 
 		TaxonomyRanks[] mainRanks = TaxonomyRanks.getMainRanks();

@@ -18,7 +18,7 @@ import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.spectra.io.MSConvertor;
-import uk.ac.quadram.metapilot.task.MetaPilotTask;
+import uk.ac.quadram.metapilot.task.igc.MetaPilotIgcTask;
 import uk.ac.quadram.metapilot.task.dda.MetaDbReducerTask;
 import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcFragPipeParameters;
 import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragPipeTask;
@@ -62,7 +62,7 @@ import java.util.HashSet;
  * 6. Taxonomy analysis
  * 7. Functional annotation
  */
-public class DDAIgcFragPipeTask extends MetaPilotTask {
+public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 
     private static final Logger LOGGER = LogManager.getLogger(DDAIgcFragPipeTask.class);
     private static final String taskName = "DDA IGC database search by FragPipe workflow";

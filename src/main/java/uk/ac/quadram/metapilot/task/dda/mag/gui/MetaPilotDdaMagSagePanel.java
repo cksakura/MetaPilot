@@ -684,6 +684,42 @@ public class MetaPilotDdaMagSagePanel extends VBox {
             // Store analysis parameters for viewReport
             this.currentAnalysisParams = analysisParams;
             
+            // Save parameters for this analysis
+            String outputDir = analysisParams.getResult();
+            if (outputDir != null && !outputDir.trim().isEmpty()) {
+                consolePanel.appendConsoleText("Saving parameters to output directory...\n");
+                
+                // Save analysis-specific parameters
+                boolean analysisParamsSaved = parameterIO.saveAnalysisParameters(outputDir, analysisParams);
+                if (!analysisParamsSaved) {
+                    consolePanel.appendConsoleText("WARNING: Failed to save analysis parameters to result directory\n");
+                    LOGGER.warn("Failed to save analysis parameters to {}/analysis_parameters_sage.json", outputDir);
+                } else {
+                    consolePanel.appendConsoleText("✓ Analysis parameters saved to result directory\n");
+                    LOGGER.info("Saved analysis parameters to {}/analysis_parameters_sage.json", outputDir);
+                }
+                
+                // Save as last used parameters
+                boolean lastParamsSaved = parameterIO.saveLastUsedParameters(analysisParams);
+                if (!lastParamsSaved) {
+                    consolePanel.appendConsoleText("WARNING: Failed to save last used parameters\n");
+                    LOGGER.warn("Failed to save last used parameters");
+                } else {
+                    consolePanel.appendConsoleText("✓ Last used parameters saved\n");
+                }
+                
+                // Also save to preferences for quick defaults
+                boolean prefsSaved = parameterIO.savePreferences(analysisParams);
+                if (prefsSaved) {
+                    consolePanel.appendConsoleText("✓ Preferences saved\n");
+                } else {
+                    consolePanel.appendConsoleText("WARNING: Failed to save preferences\n");
+                }
+            } else {
+                consolePanel.appendConsoleText("WARNING: No output directory specified, skipping parameter save\n");
+                LOGGER.warn("No output directory specified, skipping parameter save");
+            }
+            
             // Load resource parameters
             consolePanel.appendConsoleText("Loading resource parameters from config...\n");
             MetaResourceIO resourceIO = new MetaResourceIO();
@@ -692,8 +728,6 @@ public class MetaPilotDdaMagSagePanel extends VBox {
             
             // Set up progress tracking
             consolePanel.appendConsoleText("Setting up progress tracking...\n");
-            ProgressBar overallBar = new ProgressBar();
-            ProgressBar currentBar = new ProgressBar();
             Label statusLabel = new Label("Ready to start analysis...");
             consolePanel.appendConsoleText("✓ Progress bars and status label initialized\n");
             
@@ -702,7 +736,8 @@ public class MetaPilotDdaMagSagePanel extends VBox {
             
             // Create and run DDAMagSageTask
             consolePanel.appendConsoleText("Creating MAG Sage task...\n");
-            currentTask = new DDAMagSageTask(analysisParams, mrp, overallBar, currentBar);
+			currentTask = new DDAMagSageTask(analysisParams, mrp, consolePanel.getOverallProgressBar(),
+					consolePanel.getCurrentTaskProgressBar());
             consolePanel.appendConsoleText("✓ Task created successfully\n");
             
             // Set up task callbacks
@@ -1640,6 +1675,27 @@ public class MetaPilotDdaMagSagePanel extends VBox {
         
         // Update parameter view after applying parameters
         Platform.runLater(() -> updateParameterView());
+    }
+    
+    /**
+     * Load analysis parameters from a specific result directory
+     */
+    public void loadAnalysisParameters(String resultDirectory) {
+        try {
+            LOGGER.info("Loading MAG Sage analysis parameters from: {}", resultDirectory);
+            DDAMagSageParameters params = (DDAMagSageParameters) parameterIO.loadAnalysisParameters(resultDirectory);
+            if (params != null) {
+                applyParametersToUI(params);
+                showError("Success", "Loaded MAG Sage analysis parameters from " + resultDirectory);
+                LOGGER.info("Loaded MAG Sage analysis parameters from {}", resultDirectory);
+            } else {
+                showError("Warning", "No parameters found in " + resultDirectory);
+                LOGGER.warn("No parameters found in {}", resultDirectory);
+            }
+        } catch (Exception e) {
+            showError("Error", "Failed to load parameters from " + resultDirectory + ": " + e.getMessage());
+            LOGGER.error("Failed to load MAG Sage analysis parameters from {}", resultDirectory, e);
+        }
     }
     
 	private void setupWindowCloseHandler() {

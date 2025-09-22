@@ -21,7 +21,6 @@ import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagVersion;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.MetaPilotApp;
-import uk.ac.quadram.metapilot.resources.MetaResourceIO;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import javafx.application.Platform;
 import org.slf4j.Logger;
@@ -139,6 +138,9 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
             if (newTab == paramTab) {
                 updateMetadataTableFromIOPanel();
             } else if (newTab == consoleTab) {
+                // Update parameter view first to show current modifications
+                updateParameterView();
+                
                 // Save current parameters when Console tab is selected
                 try {
                     consolePanel.appendConsoleText("Auto-saving parameters when switching to Console tab...\n");
@@ -429,9 +431,15 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
         workflowComboBox.setMinWidth(100);
         workflowComboBox.setPrefWidth(120);
         workflowComboBox.setMaxWidth(Double.MAX_VALUE);
-        if (workflows.size() > 0) {
-            workflowComboBox.setValue(workflows.get(0));
-        }
+		if (workflows.size() > 0) {
+			if (workflows.contains("LFQ-MBR")) {
+				workflowComboBox.setValue("LFQ-MBR");
+				LOGGER.info("Set default workflow to: LFQ-MBR");
+			} else if (!workflows.isEmpty()) {
+				workflowComboBox.setValue(workflows.get(0));
+				LOGGER.info("Set default workflow to: {}", workflows.get(0));
+			}
+		}
         workflowComboBox.setOnAction(e -> updateParameterView());
         
         VBox workflowBox = new VBox(5);
@@ -623,8 +631,6 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
             
             // 3. Create MetaResourceParameters (load from config file)
             consolePanel.appendConsoleText("Loading resource parameters from config...\n");
-            MetaResourceIO resourceIO = new MetaResourceIO();
-            MetaResourceParameters mrp = resourceIO.loadParameters();
             consolePanel.appendConsoleText("✓ Resource parameters loaded from config file\n");
             
             // 4. Create progress bars and status label
@@ -640,7 +646,8 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
             
             // 6. Create and run DDAMagFragPipeTask with DDAMagFragPipeParameters directly
             consolePanel.appendConsoleText("Creating MAG FragPipe task...\n");
-            currentTask = new DDAMagFragPipeTask(analysisParams, mrp, overallBar, currentBar);
+			currentTask = new DDAMagFragPipeTask(analysisParams, resourceParams, consolePanel.getOverallProgressBar(),
+					consolePanel.getCurrentTaskProgressBar());
             consolePanel.appendConsoleText("✓ Task created successfully\n");
             
             // 7. Set up task callbacks
@@ -862,9 +869,7 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
             // Create and configure FragPipe workflow
             try {
                 // Get FragPipe path from MetaResourceParameters
-                MetaResourceIO resourceIO = new MetaResourceIO();
-                MetaResourceParameters mrp = resourceIO.loadParameters();
-                String fragpipePath = mrp.getToolPath(MetaResourceParameters.ToolType.FRAGPIPE);
+				String fragpipePath = resourceParams.getToolPath(MetaResourceParameters.ToolType.FRAGPIPE);
                 
                 if (fragpipePath != null && !fragpipePath.trim().isEmpty()) {
                     File fragpipeFile = new File(fragpipePath);
@@ -1059,10 +1064,9 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
             threadsSpinner.getValueFactory().setValue(params.getThreadCount());
         }
         
-        // Workflow selection - use default since workflow is configured dynamically
-        if (workflowComboBox != null && workflows.size() > 0) {
-            workflowComboBox.setValue(workflows.get(0)); // Default to first workflow
-        }
+        // Workflow selection - don't update since workflow is not saved in parameters
+        // The workflow is only used to configure FragpipeWorkflow but not persisted
+        // So we keep the current UI selection (which defaults to LFQ-MBR if available)
         
         // MS data type - use default
         if (msDataTypeComboBox != null) {

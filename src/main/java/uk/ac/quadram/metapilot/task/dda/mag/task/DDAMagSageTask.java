@@ -68,9 +68,6 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 	private Thread reportCopyThread;
 	private Thread reportThread;
 	private ExecutorService executorService;
-	// Report generation fields
-	private File final_pep_txt;
-	private File final_pro_txt;
 
 	// Progress tracking components
 	private Label statusLabel;
@@ -95,10 +92,33 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		MagDbItem selectedMagDb = magSageParams.getMagDbItem();
 		if (selectedMagDb != null) {
 			this.magDb = selectedMagDb;
-			LOGGER.info("Initialized MAG database: {} (version: {})", 
-				selectedMagDb.getCatalogueID(), 
-				selectedMagDb.getVersionList() != null && !selectedMagDb.getVersionList().isEmpty() ? 
-					selectedMagDb.getVersionList().get(0).getCatalogueVersion() : "unknown");
+			LOGGER.info("Initialized MAG database: {} (version: {})", selectedMagDb.getCatalogueID(),
+					selectedMagDb.getVersionList() != null && !selectedMagDb.getVersionList().isEmpty()
+							? selectedMagDb.getVersionList().get(0).getCatalogueVersion()
+							: "unknown");
+
+			// Validate that the MAG database has the required files
+			File hapFastaFile = selectedMagDb.getHapFastaFile();
+			if (hapFastaFile == null || !hapFastaFile.exists()) {
+				LOGGER.error("MAG database HAP FASTA file is null or does not exist: {}",
+						hapFastaFile != null ? hapFastaFile.getAbsolutePath() : "null");
+				LOGGER.error("Repository file: {}", selectedMagDb.getRepositoryFile());
+				LOGGER.error("Current file: {}", selectedMagDb.getCurrentFile());
+				throw new IllegalArgumentException("MAG database HAP FASTA file is required and must exist");
+			}
+			LOGGER.info("MAG database HAP FASTA file validated: {}", hapFastaFile.getAbsolutePath());
+			
+			File currentDbFile = selectedMagDb.getCurrentFile();
+			if (currentDbFile == null || !currentDbFile.exists()) {
+				LOGGER.error("MAG database file is null or does not exist: {}",
+						currentDbFile != null ? currentDbFile.getAbsolutePath() : "null");
+				LOGGER.error("Repository file: {}", selectedMagDb.getRepositoryFile());
+				LOGGER.error("Current file: {}", selectedMagDb.getCurrentFile());
+				throw new IllegalArgumentException("MAG database file is required and must exist");
+			}
+
+			LOGGER.info("MAG database file validated: {}", currentDbFile.getAbsolutePath());
+			this.metaPar.setMicroDb(selectedMagDb.getCurrentFile().getAbsolutePath());
 		}
 		
 		// Initialize Sage task

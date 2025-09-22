@@ -25,12 +25,6 @@ import uk.ac.quadram.metapilot.MetaPilotApp;
 import uk.ac.quadram.metapilot.task.dda.igc.DDAIgcPFindTask;
 import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcPFindParameters;
 import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcPFindParameterIO;
-import javafx.animation.KeyFrame;
-import javafx.animation.Timeline;
-import javafx.util.Duration;
-import java.lang.management.ManagementFactory;
-import java.lang.management.MemoryMXBean;
-import java.lang.management.MemoryUsage;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -795,45 +789,39 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
         String outputDir = ioPanel.getIoPanel().getOutputDirectory();
         if (outputDir != null && !outputDir.trim().isEmpty()) {
             // Save analysis-specific parameters
-            parameterIO.saveAnalysisParameters(outputDir, analysisParams);
+            boolean analysisParamsSaved = parameterIO.saveAnalysisParameters(outputDir, analysisParams);
+            if (!analysisParamsSaved) {
+                LOGGER.warn("Failed to save analysis parameters to {}/analysis_parameters_pfind.json", outputDir);
+                showAlert("Warning", "Failed to save analysis parameters to result directory. Analysis will continue but parameters may not be preserved.");
+            } else {
+                LOGGER.info("Saved analysis parameters to {}/analysis_parameters_pfind.json", outputDir);
+            }
             
             // Save as last used parameters
             parameterIO.saveLastUsedParameters(analysisParams);
             
             // Also save to preferences for quick defaults
             parameterIO.savePreferences(analysisParams);
-            
-            LOGGER.info("Saved pFind analysis parameters to {}/analysis_parameters_pfind.json", outputDir);
         }
-        
-        // Note: We now use DDAIgcPFindParameters directly instead of MetaParameterPFind
-        // The analysisParams object already contains all the necessary metadata and parameters
-
-        // Note: We now use DDAIgcPFindParameters directly instead of MetaParameterPFind
 
         // Load resource parameters
         uk.ac.quadram.metapilot.resources.MetaResourceParameters mrp = (new uk.ac.quadram.metapilot.resources.MetaResourceIO()).loadParameters();
 
-        // Progress bars
-        ProgressBar overallBar = new ProgressBar();
-        ProgressBar currentBar = new ProgressBar();
-
-        // Create and run the DDAIgcPFindTask
-        LOGGER.info("Creating DDAIgcPFindTask with analysisParams: {}", analysisParams);
-        DDAIgcPFindTask task = new DDAIgcPFindTask(analysisParams, mrp, overallBar, currentBar);
-        // Bind progress and messages
-        if (consolePanel != null) {
-            consolePanel.getOverallProgressBar().progressProperty().bind(overallBar.progressProperty());
-            consolePanel.getCurrentTaskProgressBar().progressProperty().bind(currentBar.progressProperty());
-            task.messageProperty().addListener((obs, oldMsg, newMsg) -> {
-                Platform.runLater(() -> {
-                    if (newMsg != null && !newMsg.isEmpty()) {
-                        consolePanel.appendConsoleText(newMsg + "\n");
-                        consolePanel.updateCurrentTaskFromMessage(newMsg);
-                    }
-                });
-            });
-        }
+		// Create and run the DDAIgcPFindTask
+		LOGGER.info("Creating DDAIgcPFindTask with analysisParams: {}", analysisParams);
+		DDAIgcPFindTask task = new DDAIgcPFindTask(analysisParams, mrp, consolePanel.getOverallProgressBar(),
+				consolePanel.getCurrentTaskProgressBar());
+		// Bind progress and messages
+		if (consolePanel != null) {
+			task.messageProperty().addListener((obs, oldMsg, newMsg) -> {
+				Platform.runLater(() -> {
+					if (newMsg != null && !newMsg.isEmpty()) {
+						consolePanel.appendConsoleText(newMsg + "\n");
+						consolePanel.updateCurrentTaskFromMessage(newMsg);
+					}
+				});
+			});
+		}
         // Start status timer in console panel
         if (consolePanel != null) {
             consolePanel.startStatusTimer();

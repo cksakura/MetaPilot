@@ -55,6 +55,12 @@ public class TaxonomyDatabase {
 	}
 
 	private void read(String in) {
+		// Skip file reading if this is a SQL database instance
+		if (this instanceof TaxonomyDatabaseSQL) {
+			LOGGER.debug("Skipping file reading for SQL database instance");
+			return;
+		}
+		
 		try (BufferedReader reader = new BufferedReader(new FileReader(in))) {
 			String line = reader.readLine();
 			String[] title = line.split("\t");

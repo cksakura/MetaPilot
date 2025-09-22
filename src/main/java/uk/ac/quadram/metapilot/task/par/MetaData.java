@@ -41,7 +41,7 @@ public class MetaData {
 		this.rawFiles = rawFiles;
 		this.expNames = new String[rawFiles.length];
 		this.fractions = new int[rawFiles.length];
-		Arrays.fill(fractions, 0);
+		Arrays.fill(fractions, 1);
 		this.replicates = new int[rawFiles.length];
 		Arrays.fill(replicates, 1);
 
@@ -55,7 +55,7 @@ public class MetaData {
 		this.rawFiles = rawFiles;
 		this.expNames = expNames;
 		this.fractions = new int[rawFiles.length];
-		Arrays.fill(fractions, 0);
+		Arrays.fill(fractions, 1);
 		this.replicates = new int[rawFiles.length];
 		Arrays.fill(replicates, 1);
 

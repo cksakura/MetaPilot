@@ -1,5 +1,6 @@
 package uk.ac.quadram.metapilot.task.dda.igc.gui;
 
+import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
@@ -18,6 +19,15 @@ import uk.ac.quadram.metapilot.task.common.gui.TaxonomicAnalysisPanel;
 import uk.ac.quadram.metapilot.task.common.gui.DdaIgcInputOutputPanel;
 import uk.ac.quadram.metapilot.task.common.gui.ModificationsPanel;
 import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
+import uk.ac.quadram.metapilot.task.dda.igc.DDAIgcFragPipeTask;
+import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcFragPipeParameters;
+import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcFragPipeParameterIO;
+import uk.ac.quadram.metapilot.task.par.MetaData;
+import uk.ac.quadram.metapilot.MetaPilotApp;
+import java.util.ArrayList;
+import java.util.List;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -27,6 +37,8 @@ import java.util.regex.Pattern;
 import java.io.File;
 
 public class MetaPilotDdaIgcFragPipePanel extends VBox {
+    private static final Logger LOGGER = LogManager.getLogger(MetaPilotDdaIgcFragPipePanel.class);
+    
     // UI Components (similar to pFind panel)
     private DdaIgcInputOutputPanel ioPanel;
     private ConsolePanel consolePanel;
@@ -62,8 +74,14 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
     private Button removeMetadataColumnButton;
     private Button resetMetadataButton;
 
+    // Add parameter IO instance
+    private DDAIgcFragPipeParameterIO parameterIO;
+
 
     public MetaPilotDdaIgcFragPipePanel() {
+        // Initialize parameter IO instance
+        parameterIO = new DDAIgcFragPipeParameterIO();
+        
         loadEnzymesFromIni();
         loadWorkflowsFromFragPipe();
         
@@ -80,6 +98,14 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
         consolePanel.setViewReportCallback(this::viewReport);
         
         initializeUI();
+        
+        // Load parameters after UI is fully initialized
+        Platform.runLater(() -> {
+            loadLastUsedParameters();
+            
+            // Add window close event handler to save parameters
+            setupWindowCloseHandler();
+        });
     }
 
     private void initializeUI() {
@@ -110,9 +136,22 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
         tabPane.getTabs().addAll(ioTab, paramTab, consoleTab);
 
         // Add tab change listener to update metadata when Parameters tab is selected
+        // and save parameters when Console tab is selected
         tabPane.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, newTab) -> {
             if (newTab == paramTab) {
                 updateMetadataTableFromIOPanel();
+            } else if (newTab == consoleTab) {
+                // Save current parameters when Console tab is selected
+                try {
+                    DDAIgcFragPipeParameters currentParams = collectParametersFromUI();
+                    if (currentParams != null) {
+                        parameterIO.saveLastUsedParameters(currentParams);
+                        parameterIO.savePreferences(currentParams);
+                        LOGGER.info("Saved current parameters when Console tab was selected");
+                    }
+                } catch (Exception e) {
+                    LOGGER.warn("Failed to save parameters when Console tab was selected: " + e.getMessage());
+                }
             }
         });
 
@@ -367,9 +406,16 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
         workflowComboBox.setMinWidth(100);
         workflowComboBox.setPrefWidth(120);
         workflowComboBox.setMaxWidth(Double.MAX_VALUE);
-        if (workflows.size() > 0) {
-            workflowComboBox.setValue(workflows.get(0));
-        }
+		if (workflows.size() > 0) {
+			// Set default workflow to LFQ-MBR if it exists, otherwise use the first one
+			if (workflows.contains("LFQ-MBR")) {
+				workflowComboBox.setValue("LFQ-MBR");
+				System.out.println("Set default workflow to: LFQ-MBR");
+			} else if (!workflows.isEmpty()) {
+				workflowComboBox.setValue(workflows.get(0));
+				System.out.println("Set default workflow to: " + workflows.get(0));
+			}
+		}
         workflowComboBox.setOnAction(e -> updateParameterView());
 
         VBox workflowBox = new VBox(5);
@@ -688,11 +734,111 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
     }
 
     private void startAnalysis() {
+        // Clear console and show starting message
         if (consolePanel != null) {
             consolePanel.clearConsole();
             consolePanel.appendConsoleText("Starting FragPipe analysis...\n");
         }
-        System.out.println("DEBUG: startAnalysis called - FragPipe workflow");
+
+        // Gather parameters from UI
+        ObservableList<MetaPilotIOPanelFX.ExperimentRow> fileRows = ioPanel.getIoPanel().getExperimentData();
+        if (fileRows.isEmpty()) {
+            showAlert("Error", "No files selected for analysis.");
+            return;
+        }
+        
+        // Save parameters for this analysis
+        DDAIgcFragPipeParameters analysisParams = collectParametersFromUI();
+        
+        String outputDir = ioPanel.getIoPanel().getOutputDirectory();
+        if (outputDir != null && !outputDir.trim().isEmpty()) {
+            // Save analysis-specific parameters
+            boolean analysisParamsSaved = parameterIO.saveAnalysisParameters(outputDir, analysisParams);
+            if (!analysisParamsSaved) {
+                LOGGER.warn("Failed to save analysis parameters to {}/analysis_parameters_fragpipe.json", outputDir);
+                showAlert("Warning", "Failed to save analysis parameters to result directory. Analysis will continue but parameters may not be preserved.");
+            } else {
+                LOGGER.info("Saved analysis parameters to {}/analysis_parameters_fragpipe.json", outputDir);
+            }
+            
+            // Save as last used parameters
+            parameterIO.saveLastUsedParameters(analysisParams);
+            
+            // Also save to preferences for quick defaults
+            parameterIO.savePreferences(analysisParams);
+        }
+
+        // Load resource parameters
+        uk.ac.quadram.metapilot.resources.MetaResourceParameters mrp = (new uk.ac.quadram.metapilot.resources.MetaResourceIO()).loadParameters();
+
+        // Create and run the DDAIgcFragPipeTask
+        DDAIgcFragPipeTask task = new DDAIgcFragPipeTask(analysisParams, mrp, consolePanel.getOverallProgressBar(),
+                consolePanel.getCurrentTaskProgressBar());
+        
+        // Bind progress and messages
+        if (consolePanel != null) {
+            task.messageProperty().addListener((obs, oldMsg, newMsg) -> {
+                javafx.application.Platform.runLater(() -> {
+                    if (newMsg != null && !newMsg.isEmpty()) {
+                        consolePanel.appendConsoleText(newMsg + "\n");
+                        consolePanel.updateCurrentTaskFromMessage(newMsg);
+                    }
+                });
+            });
+        }
+        
+        // Start status timer in console panel
+        if (consolePanel != null) {
+            consolePanel.startStatusTimer();
+        }
+        
+        // On succeeded/failed/cancelled
+        task.setOnSucceeded(e -> {
+            if (consolePanel != null) {
+                consolePanel.setButtonsEnabled(true, false, true);
+                consolePanel.stopStatusTimer();
+            }
+            
+            // Check if the task actually succeeded by examining the result
+            try {
+                Boolean result = task.get();
+                if (result != null && result) {
+                    if (consolePanel != null) {
+                        consolePanel.appendConsoleText("\nAnalysis completed successfully.\n");
+                        consolePanel.enableViewReportButton();
+                    }
+                } else {
+                    if (consolePanel != null) {
+                        consolePanel.appendConsoleText("\nAnalysis completed but may not have been fully successful.\n");
+                    }
+                }
+            } catch (Exception ex) {
+                if (consolePanel != null) {
+                    consolePanel.appendConsoleText("\nAnalysis failed: " + ex.getMessage() + "\n");
+                }
+            }
+        });
+        
+        task.setOnFailed(e -> {
+            if (consolePanel != null) {
+                consolePanel.setButtonsEnabled(true, false, false);
+                consolePanel.stopStatusTimer();
+                consolePanel.appendConsoleText("\nAnalysis failed: " + task.getException() + "\n");
+            }
+        });
+        
+        task.setOnCancelled(e -> {
+            if (consolePanel != null) {
+                consolePanel.setButtonsEnabled(true, false, false);
+                consolePanel.stopStatusTimer();
+                consolePanel.appendConsoleText("\nAnalysis cancelled.\n");
+            }
+        });
+        
+        // Run the task
+        Thread t = new Thread(task);
+        t.setDaemon(true);
+        t.start();
     }
 
     private void stopAnalysis() {
@@ -788,6 +934,250 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
         alert.setHeaderText(null);
         alert.setContentText(content);
         alert.showAndWait();
+    }
+    
+    /**
+     * Collect all parameters from the UI into a parameters object
+     */
+    private DDAIgcFragPipeParameters collectParametersFromUI() {
+        // Collect required parameters for DDAIgcFragPipeParameters constructor
+        String result = ioPanel.getIoPanel().getOutputDirectory();
+        String microDb = ioPanel.getMicrobiomeDBPath();
+        boolean appendHostDb = ioPanel.isHostDBEnabled();
+        String hostDb = ioPanel.getHostDBPath();
+        String enzyme = enzymeComboBox.getValue();
+        int missCleavages = missedCleavagesSpinner.getValue();
+        String digestMode = digestionModeComboBox.getValue();
+        int threadCount = threadsSpinner.getValue();
+        String workflow = workflowComboBox.getValue();
+        String msDataType = msDataTypeComboBox.getValue();
+        boolean reduceDb = generateSampleSpecificDBCheckBox.isSelected();
+        boolean spectraCluster = spectraClusteringCheckBox.isSelected();
+
+        // Create MetaData object from experiment data
+        ObservableList<MetaPilotIOPanelFX.ExperimentRow> fileRows = ioPanel.getIoPanel().getExperimentData();
+        
+        MetaData metaData;
+        if (!fileRows.isEmpty()) {
+            String[] rawFiles = new String[fileRows.size()];
+            String[] expNames = new String[fileRows.size()];
+            int[] fractions = new int[fileRows.size()];
+            int[] replicates = new int[fileRows.size()];
+            
+            for (int i = 0; i < fileRows.size(); i++) {
+                MetaPilotIOPanelFX.ExperimentRow row = fileRows.get(i);
+                rawFiles[i] = row.getFilePath();
+                expNames[i] = row.getExperimentName();
+                // Get fraction from the IO panel, default to 1 if invalid
+                try {
+                    fractions[i] = Integer.parseInt(row.getFraction());
+                    if (fractions[i] <= 0) {
+                        fractions[i] = 1; // Ensure positive fraction
+                    }
+                } catch (NumberFormatException e) {
+                    fractions[i] = 1; // Default to 1 if not a valid integer
+                }
+                replicates[i] = 1;
+            }
+            
+            metaData = new MetaData(rawFiles, expNames, fractions, replicates);
+        } else {
+            metaData = new MetaData();
+        }
+
+        // Create DDAIgcFragPipeParameters using the correct constructor
+        DDAIgcFragPipeParameters params = new DDAIgcFragPipeParameters(
+            MetaPilotApp.WorkflowType.DDA_IGC_FRAGPIPE.getAnalysisType(),
+            metaData,
+            result,
+            microDb,
+            appendHostDb,
+            hostDb,
+            workflow,
+            threadCount
+        );
+        
+        // Set additional parameters that aren't in the constructor
+        params.setExperimentData(new ArrayList<>(fileRows));
+        
+        // Enzyme settings
+        params.setEnzyme(enzyme);
+        params.setMissCleavages(missCleavages);
+        params.setDigestMode(digestMode);
+        
+        // Additional parameters
+        params.setReduceDb(reduceDb);
+        params.setSpectraCluster(spectraCluster);
+        
+        // Modifications - convert to String lists
+        if (modificationsPanel != null) {
+            List<String> fixedMods = new ArrayList<>();
+            for (ModificationsPanel.FixedModificationRow row : modificationsPanel.getFixedModData()) {
+                if (row.getDeltaMass() != 0.0) {
+                    fixedMods.add(row.getSite() + ":" + row.getDeltaMass());
+                }
+            }
+            params.setFixedModifications(fixedMods);
+            
+            List<String> variableMods = new ArrayList<>();
+            for (ModificationsPanel.VariableModificationRow row : modificationsPanel.getVariableModData()) {
+                if (row.getUse()) {
+                    variableMods.add(row.getModName() + " (" + row.getSites() + "):" + row.getDeltaMass());
+                }
+            }
+            params.setVariableModifications(variableMods);
+        }
+        
+        // Taxonomic analysis
+        params.setEukaryota(taxonomicAnalysisPanel.isEukaryota());
+        params.setBacteria(taxonomicAnalysisPanel.isBacteria());
+        params.setArchaea(taxonomicAnalysisPanel.isArchaea());
+        params.setViruses(taxonomicAnalysisPanel.isViruses());
+        params.setViroids(taxonomicAnalysisPanel.isViroids());
+        params.setUnclassified(taxonomicAnalysisPanel.isUnclassified());
+        params.setOther(taxonomicAnalysisPanel.isOther());
+        params.setIgnoreRank(taxonomicAnalysisPanel.getIgnoreRank());
+        params.setIgnoreEnvironmentalSamples(taxonomicAnalysisPanel.isIgnoreEnvironmentalSamples());
+        
+        // Metadata table data
+        params.setMetadataTableData(new ArrayList<>(metadataTableData));
+        
+        return params;
+    }
+    
+    /**
+     * Load last used parameters and apply them to the UI
+     */
+    private void loadLastUsedParameters() {
+        try {
+            DDAIgcFragPipeParameters params = (DDAIgcFragPipeParameters) parameterIO.loadLastUsedParameters();
+            if (params != null) {
+                applyParametersToUI(params);
+                
+                // Also apply experiment data to the IO panel if available
+                if (params.getExperimentData() != null && !params.getExperimentData().isEmpty()) {
+                    ioPanel.getIoPanel().setExperimentData(params.getExperimentData());
+                }
+                
+                // Apply output directory if available
+                if (params.getResult() != null && !params.getResult().trim().isEmpty()) {
+                    ioPanel.getIoPanel().setOutputDirectory(params.getResult());
+                }
+                
+                // Update metadata table after loading parameters
+                Platform.runLater(() -> {
+                    updateMetadataTable();
+                    updateParameterView();
+                });
+            }
+        } catch (Exception e) {
+            // Continue with default UI state
+        }
+    }
+    
+    /**
+     * Apply parameters to the UI components
+     */
+    private void applyParametersToUI(DDAIgcFragPipeParameters params) {
+        if (params == null) return;
+        
+        // Apply basic settings that don't depend on file paths
+        if (params.getEnzyme() != null && enzymeComboBox != null) {
+            enzymeComboBox.setValue(params.getEnzyme());
+        }
+        if (missedCleavagesSpinner != null) {
+            missedCleavagesSpinner.getValueFactory().setValue(params.getMissCleavages());
+        }
+        if (params.getDigestModeString() != null && digestionModeComboBox != null) {
+            digestionModeComboBox.setValue(params.getDigestModeString());
+        }
+        if (threadsSpinner != null) {
+            threadsSpinner.getValueFactory().setValue(params.getThreadCount());
+        }
+        // Note: Workflow and MS data type are FragPipe-specific and may not have getters
+        // These would need to be added to DDAIgcFragPipeParameters if needed
+        if (generateSampleSpecificDBCheckBox != null) {
+            generateSampleSpecificDBCheckBox.setSelected(params.isReduceDb());
+        }
+        if (spectraClusteringCheckBox != null) {
+            spectraClusteringCheckBox.setSelected(params.isSpectraCluster());
+        }
+        
+        // Apply database settings
+        if (params.getMicroDb() != null && ioPanel != null) {
+            ioPanel.setMicrobiomeDBPath(params.getMicroDb());
+        }
+        if (ioPanel != null) {
+            ioPanel.setHostDBEnabled(params.isAppendHostDb());
+        }
+        if (params.getHostDB() != null && ioPanel != null) {
+            ioPanel.setHostDBPath(params.getHostDB());
+        }
+        
+        // Apply modifications - would need to parse string lists back to modification rows
+        // This is complex and may not be needed for basic functionality
+        
+        // Apply taxonomic settings
+        if (taxonomicAnalysisPanel != null) {
+            taxonomicAnalysisPanel.setEukaryota(params.isEukaryota());
+            taxonomicAnalysisPanel.setBacteria(params.isBacteria());
+            taxonomicAnalysisPanel.setArchaea(params.isArchaea());
+            taxonomicAnalysisPanel.setViruses(params.isViruses());
+            taxonomicAnalysisPanel.setViroids(params.isViroids());
+            taxonomicAnalysisPanel.setUnclassified(params.isUnclassified());
+            taxonomicAnalysisPanel.setOther(params.isOther());
+            if (params.getIgnoreRank() != null) {
+                taxonomicAnalysisPanel.setIgnoreRank(params.getIgnoreRank());
+            }
+            taxonomicAnalysisPanel.setIgnoreEnvironmentalSamples(params.isIgnoreEnvironmentalSamples());
+        }
+        
+        // Update parameter view after applying parameters
+        Platform.runLater(() -> updateParameterView());
+    }
+    
+    /**
+     * Load parameters from a specific analysis result directory
+     */
+    public void loadAnalysisParameters(String resultDirectory) {
+        try {
+            DDAIgcFragPipeParameters params = (DDAIgcFragPipeParameters) parameterIO.loadAnalysisParameters(resultDirectory);
+            applyParametersToUI(params);
+            showAlert("Success", "Loaded FragPipe analysis parameters from " + resultDirectory);
+            LOGGER.info("Loaded FragPipe analysis parameters from {}", resultDirectory);
+        } catch (Exception e) {
+            showAlert("Error", "Failed to load FragPipe analysis parameters: " + e.getMessage());
+            LOGGER.error("Failed to load FragPipe analysis parameters from " + resultDirectory, e);
+        }
+    }
+    
+    /**
+     * Set up window close handler to save parameters when the window is closed
+     */
+    private void setupWindowCloseHandler() {
+        Platform.runLater(() -> {
+            try {
+                // Get the current scene and window
+                if (getScene() != null) {
+                    javafx.stage.Window window = getScene().getWindow();
+                    if (window != null) {
+                        window.setOnCloseRequest(event -> {
+                            try {
+                                DDAIgcFragPipeParameters currentParams = collectParametersFromUI();
+                                if (currentParams != null) {
+                                    parameterIO.saveLastUsedParameters(currentParams);
+                                    parameterIO.savePreferences(currentParams);
+                                }
+                            } catch (Exception e) {
+                                // Ignore errors during window close
+                            }
+                        });
+                    }
+                }
+            } catch (Exception e) {
+                // Ignore errors during setup
+            }
+        });
     }
     
 } 

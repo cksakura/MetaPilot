@@ -1362,18 +1362,11 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
             // Create MetaResourceParameters by loading from config file
             uk.ac.quadram.metapilot.resources.MetaResourceIO resourceIO = new uk.ac.quadram.metapilot.resources.MetaResourceIO();
             MetaResourceParameters mrp = resourceIO.loadParameters();
-            
-            // Create separate progress bars for the task
-            ProgressBar taskOverallBar = new ProgressBar();
-            ProgressBar taskCurrentBar = new ProgressBar();
-            
+
             // Create and run DDAIgcMaxQuantTask with the separate progress bars
-            currentTask = new DDAIgcMaxQuantTask(analysisParams, mrp, taskOverallBar, taskCurrentBar);
-            
-            // Bind task progress bars to UI progress bars
-            consolePanel.getOverallProgressBar().progressProperty().bind(taskOverallBar.progressProperty());
-            consolePanel.getCurrentTaskProgressBar().progressProperty().bind(taskCurrentBar.progressProperty());
-            
+			currentTask = new DDAIgcMaxQuantTask(analysisParams, mrp, consolePanel.getOverallProgressBar(),
+					consolePanel.getCurrentTaskProgressBar());
+
             // Bind task message to console panel
             currentTask.messageProperty().addListener((obs, oldMsg, newMsg) -> {
                 Platform.runLater(() -> {

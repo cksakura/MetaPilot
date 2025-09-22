@@ -66,7 +66,7 @@ class TaxonomySummaryGenerator(BaseReportGenerator):
                     row=1,
                     col=2,
                 )
-            fig.update_layout(height=800, title_text="MetaPilot Taxonomy Summary Report")
+            fig.update_layout(height=1600, title_text="MetaPilot Taxonomy Summary Report")
             return fig
 
         # Compute total abundance and sort ranks by hierarchy
@@ -81,26 +81,28 @@ class TaxonomySummaryGenerator(BaseReportGenerator):
                     rank_order[ar] = i
         sorted_ranks = sorted(available_ranks, key=lambda x: (rank_order.get(x, 999), str(x)))
 
-        # Build subplot grid: 1 sunburst+bar row, N rank rows, 2 summary rows
+        # Build subplot grid: Single column layout with double height
         num_ranks = min(len(sorted_ranks), 4)
         total_rows = 1 + num_ranks + 2
         subplot_titles = [
             "Taxonomic Hierarchy (Multiple Ring)",
             "Top 20 Taxa by Abundance",
         ]
-        specs = [[{"type": "sunburst"}, {"type": "bar"}]]
+        specs = [[{"type": "sunburst"}], [{"type": "bar"}]]
 
         for r in sorted_ranks[:num_ranks]:
             subplot_titles.extend([f"{r} Composition (Treemap)", f"Top 20 {r} by Abundance"])
-            specs.append([{"type": "treemap"}, {"type": "bar"}])
+            specs.append([{"type": "treemap"}])
+            specs.append([{"type": "bar"}])
 
         subplot_titles.extend(["Taxa Count by Rank", "PCA of Taxonomic Profiles"])
-        specs.append([{"type": "bar"}, {"type": "scatter"}])
+        specs.append([{"type": "bar"}])
+        specs.append([{"type": "scatter"}])
 
-        subplot_titles.extend(["Diversity Indices by Sample", " "])
-        specs.append([{"type": "bar"}, {"type": "domain"}])
+        subplot_titles.extend(["Diversity Indices by Sample"])
+        specs.append([{"type": "bar"}])
 
-        fig = make_subplots(rows=total_rows, cols=2, subplot_titles=subplot_titles, specs=specs)
+        fig = make_subplots(rows=total_rows, cols=1, subplot_titles=subplot_titles, specs=specs)
 
         current_row = 1
         # Sunburst
@@ -264,11 +266,11 @@ class TaxonomySummaryGenerator(BaseReportGenerator):
 
         # Layout sizing and labels
         base_height = 500
-        rank_height = 280
+        rank_height = 560  # Double the height for single column layout
         total_height = base_height + num_ranks * rank_height
         fig.update_layout(height=total_height, title_text="MetaPilot Taxonomy Summary Report - All Taxonomic Ranks")
         fig.update_xaxes(title_text="Taxonomic Rank", row=(1 + num_ranks), col=1)
-        fig.update_xaxes(title_text="PC1", row=(1 + num_ranks), col=2)
+        fig.update_xaxes(title_text="PC1", row=(1 + num_ranks + 1), col=1)
         fig.update_yaxes(title_text="Number of Taxa", row=(1 + num_ranks), col=1)
         return fig
 

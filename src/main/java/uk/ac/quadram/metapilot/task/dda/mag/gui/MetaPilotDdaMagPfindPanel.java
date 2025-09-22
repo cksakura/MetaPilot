@@ -101,47 +101,6 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
         }
     }
 
-    // Load MAG databases from configuration files
-    private MagDbItem[] loadMagDatabasesFromConfig() {
-        try {
-            // Try to load from the default MAG database configuration file
-            File configFile = new File("MAGDB_1_0.json");
-            if (configFile.exists()) {
-                System.out.println("DEBUG: Loading MAG databases from config file: " + configFile.getAbsolutePath());
-                MagDbItem[][] magDbItems = MagDbConfigIO.parse(configFile);
-                if (magDbItems != null && magDbItems.length > 0) {
-                    // Combine MGnify and local databases
-                    List<MagDbItem> allDatabases = new ArrayList<>();
-                    for (MagDbItem[] dbArray : magDbItems) {
-                        if (dbArray != null) {
-                            for (MagDbItem db : dbArray) {
-                                if (db != null) {
-                                    // Only include databases that have local files available
-                                    if (db.getVersionList() != null) {
-                                        for (MagVersion version : db.getVersionList()) {
-                                            if (version.isLocalAvailable()) {
-                                                allDatabases.add(db);
-                                                break;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    System.out.println("DEBUG: Loaded " + allDatabases.size() + " available MAG databases from config");
-                    return allDatabases.toArray(new MagDbItem[0]);
-                }
-            } else {
-                System.out.println("DEBUG: MAG database config file not found: " + configFile.getAbsolutePath());
-            }
-        } catch (Exception e) {
-            System.err.println("ERROR: Failed to load MAG databases from config: " + e.getMessage());
-            e.printStackTrace();
-        }
-        return new MagDbItem[0];
-    }
-
     private void initializeUI() {
         System.out.println("DEBUG: initializeUI() started");
         try {
@@ -583,8 +542,6 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
             
             // 4. Create progress bars and status label
             consolePanel.appendConsoleText("Setting up progress tracking...\n");
-            ProgressBar overallBar = new ProgressBar();
-            ProgressBar currentBar = new ProgressBar();
             Label statusLabel = new Label("Ready to start analysis...");
             consolePanel.appendConsoleText("✓ Progress bars and status label initialized\n");
             
@@ -594,7 +551,8 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
             
             // 6. Create and run DDAMagPfindTask with DDAMagPfindParameters directly
             consolePanel.appendConsoleText("Creating MAG pFind task...\n");
-            currentTask = new DDAMagPfindTask(analysisParams, mrp, overallBar, currentBar);
+			currentTask = new DDAMagPfindTask(analysisParams, mrp, consolePanel.getOverallProgressBar(),
+					consolePanel.getCurrentTaskProgressBar());
             consolePanel.appendConsoleText("✓ Task created successfully\n");
             
             // 7. Set up task callbacks

@@ -39,7 +39,7 @@ import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantProReader;
 import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
-import uk.ac.quadram.metapilot.task.MetaPilotTask;
+import uk.ac.quadram.metapilot.task.igc.MetaPilotIgcTask;
 import uk.ac.quadram.metapilot.task.MetaPythonReportCopyTask;
 import uk.ac.quadram.metapilot.task.MetaPythonReportTask;
 import uk.ac.quadram.metapilot.task.dda.MetaDbReducerTask;
@@ -50,7 +50,7 @@ import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcMaxQuantParameters;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 
-public class DDAIgcMaxQuantTask extends MetaPilotTask {
+public class DDAIgcMaxQuantTask extends MetaPilotIgcTask {
 
 	private static final Logger LOGGER = LogManager.getLogger(DDAIgcMaxQuantTask.class);
 	private static final String taskName = "DDA IGC database searching by MaxQuant workflow";

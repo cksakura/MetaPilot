@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MetaPilot - Protein Functional Analysis</title>
+<link rel="shortcut icon" type="image/x-icon" href="resources/favicon.ico"/>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+<style>
+/* MetaPilot Functions Report Styling */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    color: #333;
+    line-height: 1.6;
+    min-height: 100vh;
+}
+
+.container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.header {
+    background: linear-gradient(135deg, #B5BD00 0%, #8ED1FC 100%);
+    color: #000;
+    padding: 30px;
+    border-radius: 10px;
+    margin-bottom: 30px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    text-align: center;
+}
+
+.header h1 {
+    font-size: 2.5em;
+    margin-bottom: 10px;
+    font-weight: 700;
+}
+
+.header p {
+    font-size: 1.2em;
+    opacity: 0.9;
+}
+
+.stats {
+    display: flex;
+    justify-content: space-around;
+    margin: 20px 0;
+    flex-wrap: wrap;
+}
+
+.stat-item {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    text-align: center;
+    margin: 10px;
+    min-width: 150px;
+}
+
+.stat-number {
+    font-size: 2em;
+    font-weight: bold;
+    color: #B5BD00;
+    display: block;
+}
+
+.stat-label {
+    color: #666;
+    font-size: 0.9em;
+    margin-top: 5px;
+}
+
+.function-table-container {
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    overflow: hidden;
+    margin-bottom: 30px;
+}
+
+.table-header {
+    background: linear-gradient(135deg, #B5BD00 0%, #8ED1FC 100%);
+    color: #000;
+    padding: 20px;
+    text-align: center;
+}
+
+.table-header h2 {
+    font-size: 1.8em;
+    margin-bottom: 10px;
+}
+
+.table-header p {
+    opacity: 0.9;
+}
+
+.function-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9em;
+}
+
+.function-table th {
+    background: #f8f9fa;
+    color: #333;
+    padding: 15px 10px;
+    text-align: left;
+    font-weight: 600;
+    border-bottom: 2px solid #B5BD00;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.function-table td {
+    padding: 12px 10px;
+    border-bottom: 1px solid #e9ecef;
+    vertical-align: top;
+}
+
+.function-table tr:hover {
+    background-color: #f8f9fa;
+}
+
+.function-name {
+    color: #B5BD00;
+    font-weight: 500;
+}
+
+.category-badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 0.8em;
+    font-weight: 500;
+    text-transform: uppercase;
+}
+
+.category-J { background: #d4edda; color: #155724; }
+.category-K { background: #cce5ff; color: #004085; }
+.category-L { background: #fff3cd; color: #856404; }
+.category-M { background: #f8d7da; color: #721c24; }
+.category-N { background: #e2e3e5; color: #383d41; }
+.category-O { background: #d1ecf1; color: #0c5460; }
+.category-P { background: #f4cccc; color: #721c24; }
+.category-Q { background: #e1d5e7; color: #4a148c; }
+.category-R { background: #dcedc8; color: #33691e; }
+.category-S { background: #f3e5f5; color: #4a148c; }
+.category-T { background: #e8f5e8; color: #1b5e20; }
+.category-U { background: #fff8e1; color: #e65100; }
+.category-V { background: #fce4ec; color: #880e4f; }
+.category-W { background: #e0f2f1; color: #004d40; }
+.category-X { background: #f1f8e9; color: #33691e; }
+.category-Y { background: #e3f2fd; color: #0d47a1; }
+.category-Z { background: #f9fbe7; color: #827717; }
+
+.search-container {
+    padding: 20px;
+    background: #f8f9fa;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.search-box {
+    width: 100%;
+    padding: 12px 15px;
+    border: 2px solid #e9ecef;
+    border-radius: 25px;
+    font-size: 1em;
+    transition: border-color 0.3s ease;
+}
+
+.search-box:focus {
+    outline: none;
+    border-color: #B5BD00;
+    box-shadow: 0 0 0 3px rgba(181, 189, 0, 0.1);
+}
+
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+    background: #f8f9fa;
+}
+
+.pagination button {
+    background: #B5BD00;
+    color: #000;
+    border: none;
+    padding: 10px 15px;
+    margin: 0 5px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background-color 0.3s ease;
+}
+
+.pagination button:hover {
+    background: #8ED1FC;
+}
+
+.pagination button:disabled {
+    background: #e9ecef;
+    color: #6c757d;
+    cursor: not-allowed;
+}
+
+.pagination-info {
+    margin: 0 20px;
+    color: #666;
+}
+
+.description-cell {
+    max-width: 300px;
+    word-wrap: break-word;
+}
+
+@media (max-width: 768px) {
+    .container {
+        padding: 10px;
+    }
+    
+    .header h1 {
+        font-size: 2em;
+    }
+    
+    .stats {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .function-table {
+        font-size: 0.8em;
+    }
+    
+    .function-table th,
+    .function-table td {
+        padding: 8px 5px;
+    }
+    
+    .description-cell {
+        max-width: 200px;
+    }
+}
+</style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1><i class="fas fa-cogs"></i> Protein Functional Analysis</h1>
+        <p>Comprehensive analysis of protein functions and functional categories</p>
+    </div>
+
+    <div class="stats">
+        <div class="stat-item">
+            <span class="stat-number" id="total-functions">0</span>
+            <div class="stat-label">Total Functions</div>
+        </div>
+        <div class="stat-item">
+            <span class="stat-number" id="unique-categories">0</span>
+            <div class="stat-label">Functional Categories</div>
+        </div>
+        <div class="stat-item">
+            <span class="stat-number" id="annotated-proteins">0</span>
+            <div class="stat-label">Annotated Proteins</div>
+        </div>
+        <div class="stat-item">
+            <span class="stat-number" id="coverage-percentage">0%</span>
+            <div class="stat-label">Annotation Coverage</div>
+        </div>
+    </div>
+
+    <div class="function-table-container">
+        <div class="table-header">
+            <h2><i class="fas fa-table"></i> Functional Annotation Database</h2>
+            <p>Complete list of protein functions with COG/NOG categories and descriptions</p>
+        </div>
+        
+        <div class="search-container">
+            <input type="text" class="search-box" id="searchBox" placeholder="Search functions, categories, or descriptions...">
+        </div>
+
+        <div style="overflow-x: auto; max-height: 600px;">
+            <table class="function-table" id="functionTable">
+                <thead>
+                    <tr>
+                        <th>Function ID</th>
+                        <th>Function Name</th>
+                        <th>Category</th>
+                        <th>Description</th>
+                        <th>Protein Count</th>
+                        <th>Abundance</th>
+                    </tr>
+                </thead>
+                <tbody id="functionTableBody">
+                    <!-- Sample data - will be populated by JavaScript -->
+                    <tr>
+                        <td>COG0001</td>
+                        <td class="function-name">Glutamate-1-semialdehyde 2,1-aminomutase</td>
+                        <td><span class="category-badge category-H">H</span></td>
+                        <td class="description-cell">Catalyzes the conversion of glutamate-1-semialdehyde to 5-aminolevulinate</td>
+                        <td>15</td>
+                        <td>2,450.5</td>
+                    </tr>
+                    <tr>
+                        <td>COG0002</td>
+                        <td class="function-name">DNA-directed RNA polymerase subunit alpha</td>
+                        <td><span class="category-badge category-K">K</span></td>
+                        <td class="description-cell">DNA-directed RNA polymerase catalyzes the transcription of DNA into RNA</td>
+                        <td>8</td>
+                        <td>1,890.2</td>
+                    </tr>
+                    <tr>
+                        <td>COG0003</td>
+                        <td class="function-name">Ribosomal protein S2</td>
+                        <td><span class="category-badge category-J">J</span></td>
+                        <td class="description-cell">Component of the 30S ribosomal subunit</td>
+                        <td>12</td>
+                        <td>3,120.8</td>
+                    </tr>
+                    <tr>
+                        <td>COG0004</td>
+                        <td class="function-name">ATP synthase subunit alpha</td>
+                        <td><span class="category-badge category-C">C</span></td>
+                        <td class="description-cell">ATP synthase is a membrane-bound enzyme complex that generates ATP</td>
+                        <td>6</td>
+                        <td>1,650.3</td>
+                    </tr>
+                    <tr>
+                        <td>COG0005</td>
+                        <td class="function-name">Cell division protein FtsZ</td>
+                        <td><span class="category-badge category-D">D</span></td>
+                        <td class="description-cell">Essential cell division protein that forms a contractile ring structure</td>
+                        <td>4</td>
+                        <td>980.7</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pagination">
+            <button id="prevBtn" onclick="changePage(-1)">Previous</button>
+            <div class="pagination-info">
+                Showing <span id="pageInfo">1-5 of 5</span> functions
+            </div>
+            <button id="nextBtn" onclick="changePage(1)">Next</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// Sample function data - in a real implementation, this would be loaded from a data file
+const functionData = [
+    {
+        id: "COG0001",
+        name: "Glutamate-1-semialdehyde 2,1-aminomutase",
+        category: "H",
+        description: "Catalyzes the conversion of glutamate-1-semialdehyde to 5-aminolevulinate",
+        proteinCount: 15,
+        abundance: 2450.5
+    },
+    {
+        id: "COG0002",
+        name: "DNA-directed RNA polymerase subunit alpha",
+        category: "K",
+        description: "DNA-directed RNA polymerase catalyzes the transcription of DNA into RNA",
+        proteinCount: 8,
+        abundance: 1890.2
+    },
+    {
+        id: "COG0003",
+        name: "Ribosomal protein S2",
+        category: "J",
+        description: "Component of the 30S ribosomal subunit",
+        proteinCount: 12,
+        abundance: 3120.8
+    },
+    {
+        id: "COG0004",
+        name: "ATP synthase subunit alpha",
+        category: "C",
+        description: "ATP synthase is a membrane-bound enzyme complex that generates ATP",
+        proteinCount: 6,
+        abundance: 1650.3
+    },
+    {
+        id: "COG0005",
+        name: "Cell division protein FtsZ",
+        category: "D",
+        description: "Essential cell division protein that forms a contractile ring structure",
+        proteinCount: 4,
+        abundance: 980.7
+    }
+];
+
+let currentPage = 1;
+const itemsPerPage = 10;
+let filteredData = [...functionData];
+
+function updateStats() {
+    const totalFunctions = filteredData.length;
+    const uniqueCategories = new Set(filteredData.map(f => f.category)).size;
+    const annotatedProteins = filteredData.reduce((sum, f) => sum + f.proteinCount, 0);
+    const totalAbundance = filteredData.reduce((sum, f) => sum + f.abundance, 0);
+    const coveragePercentage = Math.round((annotatedProteins / (annotatedProteins + 100)) * 100); // Mock calculation
+
+    document.getElementById('total-functions').textContent = totalFunctions;
+    document.getElementById('unique-categories').textContent = uniqueCategories;
+    document.getElementById('annotated-proteins').textContent = annotatedProteins;
+    document.getElementById('coverage-percentage').textContent = coveragePercentage + '%';
+}
+
+function getCategoryClass(category) {
+    return `category-${category}`;
+}
+
+function formatNumber(num) {
+    return num.toLocaleString();
+}
+
+function renderTable() {
+    const tbody = document.getElementById('functionTableBody');
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    const pageData = filteredData.slice(startIndex, endIndex);
+
+    tbody.innerHTML = pageData.map(func => `
+        <tr>
+            <td>${func.id}</td>
+            <td class="function-name">${func.name}</td>
+            <td><span class="category-badge ${getCategoryClass(func.category)}">${func.category}</span></td>
+            <td class="description-cell">${func.description}</td>
+            <td>${func.proteinCount}</td>
+            <td>${formatNumber(func.abundance)}</td>
+        </tr>
+    `).join('');
+
+    // Update pagination info
+    const start = startIndex + 1;
+    const end = Math.min(endIndex, filteredData.length);
+    document.getElementById('pageInfo').textContent = `${start}-${end} of ${filteredData.length}`;
+
+    // Update pagination buttons
+    document.getElementById('prevBtn').disabled = currentPage === 1;
+    document.getElementById('nextBtn').disabled = endIndex >= filteredData.length;
+}
+
+function changePage(direction) {
+    const newPage = currentPage + direction;
+    const maxPage = Math.ceil(filteredData.length / itemsPerPage);
+    
+    if (newPage >= 1 && newPage <= maxPage) {
+        currentPage = newPage;
+        renderTable();
+    }
+}
+
+function filterData(searchTerm) {
+    if (!searchTerm) {
+        filteredData = [...functionData];
+    } else {
+        const term = searchTerm.toLowerCase();
+        filteredData = functionData.filter(func => 
+            func.id.toLowerCase().includes(term) ||
+            func.name.toLowerCase().includes(term) ||
+            func.category.toLowerCase().includes(term) ||
+            func.description.toLowerCase().includes(term)
+        );
+    }
+    currentPage = 1;
+    updateStats();
+    renderTable();
+}
+
+// Initialize the page
+document.addEventListener('DOMContentLoaded', function() {
+    updateStats();
+    renderTable();
+
+    // Add search functionality
+    document.getElementById('searchBox').addEventListener('input', function(e) {
+        filterData(e.target.value);
+    });
+});
+</script>
+</body>
+</html>

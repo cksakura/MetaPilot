@@ -5,7 +5,6 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
-import javafx.stage.FileChooser;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.scene.text.Font;
@@ -15,45 +14,33 @@ import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.util.converter.DefaultStringConverter;
 import javafx.beans.property.SimpleStringProperty;
-import javafx.concurrent.Task;
 import javafx.scene.control.Alert.AlertType;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
-import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX.ExperimentRow;
 import uk.ac.quadram.metapilot.task.common.gui.IsobaricLabelingPanel;
 import uk.ac.quadram.metapilot.task.common.gui.TaxonomicAnalysisPanel;
 import uk.ac.quadram.metapilot.task.common.gui.DdaIgcInputOutputPanel;
 import uk.ac.quadram.metapilot.task.common.gui.ModificationsPanel;
 import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
+import uk.ac.quadram.metapilot.task.dda.igc.DDAIgcSageTask;
+import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcSageParameters;
+import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcSageParameterIO;
 import uk.ac.quadram.metapilot.task.par.MetaData;
-import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
-import uk.ac.quadram.metapilot.task.par.MetaConstants;
-import uk.ac.quadram.metapilot.task.MetaLabWorkflowType;
-import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
+import uk.ac.quadram.metapilot.MetaPilotApp;
+import java.util.ArrayList;
+import java.util.List;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import uk.ac.quadram.metapilot.core.mod.IsobaricTag;
-import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel;
-import uk.ac.quadram.metapilot.task.io.par.MaxQuantModIO;
-import javafx.animation.KeyFrame;
-import javafx.animation.Timeline;
-import javafx.util.Duration;
-import java.lang.management.ManagementFactory;
-import java.lang.management.OperatingSystemMXBean;
-import java.lang.management.MemoryMXBean;
-import java.lang.management.MemoryUsage;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.io.File;
-import uk.ac.quadram.metapilot.gui.JavaFXProgressBar;
-
-import java.util.HashMap;
 
 public class MetaPilotDdaIgcSagePanel extends VBox {
+    private static final Logger LOGGER = LogManager.getLogger(MetaPilotDdaIgcSagePanel.class);
+    
     // UI Components (similar to pFind panel)
     private DdaIgcInputOutputPanel ioPanel;
     private ConsolePanel consolePanel;
@@ -93,8 +80,14 @@ public class MetaPilotDdaIgcSagePanel extends VBox {
     private Button removeMetadataColumnButton;
     private Button resetMetadataButton;
 
+    // Add parameter IO instance
+    private DDAIgcSageParameterIO parameterIO;
+
 
     public MetaPilotDdaIgcSagePanel() {
+        // Initialize parameter IO instance
+        parameterIO = new DDAIgcSageParameterIO();
+        
         loadEnzymesFromIni();
         loadIsobaricBaseTypes();
         
@@ -111,6 +104,14 @@ public class MetaPilotDdaIgcSagePanel extends VBox {
         consolePanel.setViewReportCallback(this::viewReport);
         
         initializeUI();
+        
+        // Load parameters after UI is fully initialized
+        Platform.runLater(() -> {
+            loadLastUsedParameters();
+            
+            // Add window close event handler to save parameters
+            setupWindowCloseHandler();
+        });
     }
 
     private void initializeUI() {
@@ -141,9 +142,22 @@ public class MetaPilotDdaIgcSagePanel extends VBox {
         tabPane.getTabs().addAll(ioTab, paramTab, consoleTab);
 
         // Add tab change listener to update metadata when Parameters tab is selected
+        // and save parameters when Console tab is selected
         tabPane.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, newTab) -> {
             if (newTab == paramTab) {
                 updateMetadataTableFromIOPanel();
+            } else if (newTab == consoleTab) {
+                // Save current parameters when Console tab is selected
+                try {
+                    DDAIgcSageParameters currentParams = collectParametersFromUI();
+                    if (currentParams != null) {
+                        parameterIO.saveLastUsedParameters(currentParams);
+                        parameterIO.savePreferences(currentParams);
+                        LOGGER.info("Saved current parameters when Console tab was selected");
+                    }
+                } catch (Exception e) {
+                    LOGGER.warn("Failed to save parameters when Console tab was selected: " + e.getMessage());
+                }
             }
         });
 
@@ -839,11 +853,111 @@ public class MetaPilotDdaIgcSagePanel extends VBox {
     }
 
     private void startAnalysis() {
+        // Clear console and show starting message
         if (consolePanel != null) {
             consolePanel.clearConsole();
             consolePanel.appendConsoleText("Starting Sage analysis...\n");
         }
-        System.out.println("DEBUG: startAnalysis called - Sage workflow");
+
+        // Gather parameters from UI
+        ObservableList<MetaPilotIOPanelFX.ExperimentRow> fileRows = ioPanel.getIoPanel().getExperimentData();
+        if (fileRows.isEmpty()) {
+            showAlert("Error", "No files selected for analysis.");
+            return;
+        }
+        
+        // Save parameters for this analysis
+        DDAIgcSageParameters analysisParams = collectParametersFromUI();
+        
+        String outputDir = ioPanel.getIoPanel().getOutputDirectory();
+        if (outputDir != null && !outputDir.trim().isEmpty()) {
+            // Save analysis-specific parameters
+            boolean analysisParamsSaved = parameterIO.saveAnalysisParameters(outputDir, analysisParams);
+            if (!analysisParamsSaved) {
+                LOGGER.warn("Failed to save analysis parameters to {}/analysis_parameters_sage.json", outputDir);
+                showAlert("Warning", "Failed to save analysis parameters to result directory. Analysis will continue but parameters may not be preserved.");
+            } else {
+                LOGGER.info("Saved analysis parameters to {}/analysis_parameters_sage.json", outputDir);
+            }
+            
+            // Save as last used parameters
+            parameterIO.saveLastUsedParameters(analysisParams);
+            
+            // Also save to preferences for quick defaults
+            parameterIO.savePreferences(analysisParams);
+        }
+
+        // Load resource parameters
+        uk.ac.quadram.metapilot.resources.MetaResourceParameters mrp = (new uk.ac.quadram.metapilot.resources.MetaResourceIO()).loadParameters();
+
+        // Create and run the DDAIgcSageTask
+        DDAIgcSageTask task = new DDAIgcSageTask(analysisParams, mrp, consolePanel.getOverallProgressBar(),
+                consolePanel.getCurrentTaskProgressBar());
+        
+        // Bind progress and messages
+        if (consolePanel != null) {
+            task.messageProperty().addListener((obs, oldMsg, newMsg) -> {
+                javafx.application.Platform.runLater(() -> {
+                    if (newMsg != null && !newMsg.isEmpty()) {
+                        consolePanel.appendConsoleText(newMsg + "\n");
+                        consolePanel.updateCurrentTaskFromMessage(newMsg);
+                    }
+                });
+            });
+        }
+        
+        // Start status timer in console panel
+        if (consolePanel != null) {
+            consolePanel.startStatusTimer();
+        }
+        
+        // On succeeded/failed/cancelled
+        task.setOnSucceeded(e -> {
+            if (consolePanel != null) {
+                consolePanel.setButtonsEnabled(true, false, true);
+                consolePanel.stopStatusTimer();
+            }
+            
+            // Check if the task actually succeeded by examining the result
+            try {
+                Boolean result = task.get();
+                if (result != null && result) {
+                    if (consolePanel != null) {
+                        consolePanel.appendConsoleText("\nAnalysis completed successfully.\n");
+                        consolePanel.enableViewReportButton();
+                    }
+                } else {
+                    if (consolePanel != null) {
+                        consolePanel.appendConsoleText("\nAnalysis completed but may not have been fully successful.\n");
+                    }
+                }
+            } catch (Exception ex) {
+                if (consolePanel != null) {
+                    consolePanel.appendConsoleText("\nAnalysis failed: " + ex.getMessage() + "\n");
+                }
+            }
+        });
+        
+        task.setOnFailed(e -> {
+            if (consolePanel != null) {
+                consolePanel.setButtonsEnabled(true, false, false);
+                consolePanel.stopStatusTimer();
+                consolePanel.appendConsoleText("\nAnalysis failed: " + task.getException() + "\n");
+            }
+        });
+        
+        task.setOnCancelled(e -> {
+            if (consolePanel != null) {
+                consolePanel.setButtonsEnabled(true, false, false);
+                consolePanel.stopStatusTimer();
+                consolePanel.appendConsoleText("\nAnalysis cancelled.\n");
+            }
+        });
+        
+        // Run the task
+        Thread t = new Thread(task);
+        t.setDaemon(true);
+        t.start();
     }
 
     private void stopAnalysis() {
@@ -941,23 +1055,270 @@ public class MetaPilotDdaIgcSagePanel extends VBox {
         alert.showAndWait();
     }
     
-    private void updateStatusPanel() {
-        // Implementation for updating status panel
+    /**
+     * Collect all parameters from the UI into a parameters object
+     */
+    private DDAIgcSageParameters collectParametersFromUI() {
+        // Collect required parameters for DDAIgcSageParameters constructor
+        String result = ioPanel.getIoPanel().getOutputDirectory();
+        String microDb = ioPanel.getMicrobiomeDBPath();
+        boolean appendHostDb = ioPanel.isHostDBEnabled();
+        String hostDb = ioPanel.getHostDBPath();
+        String enzyme = enzymeComboBox.getValue();
+        int missCleavages = missedCleavagesSpinner.getValue();
+        String digestMode = digestionModeComboBox.getValue();
+        int threadCount = threadsSpinner.getValue();
+        String ms2ScanMode = ms2ScanModeComboBox.getValue();
+        boolean reduceDb = generateSampleSpecificDBCheckBox.isSelected();
+        boolean spectraCluster = spectraClusteringCheckBox.isSelected();
+
+        // Create MetaData object from experiment data
+        ObservableList<MetaPilotIOPanelFX.ExperimentRow> fileRows = ioPanel.getIoPanel().getExperimentData();
+        
+        MetaData metaData;
+        if (!fileRows.isEmpty()) {
+            String[] rawFiles = new String[fileRows.size()];
+            String[] expNames = new String[fileRows.size()];
+            int[] fractions = new int[fileRows.size()];
+            int[] replicates = new int[fileRows.size()];
+            
+            for (int i = 0; i < fileRows.size(); i++) {
+                MetaPilotIOPanelFX.ExperimentRow row = fileRows.get(i);
+                rawFiles[i] = row.getFilePath();
+                expNames[i] = row.getExperimentName();
+                // Get fraction from the IO panel, default to 1 if invalid
+                try {
+                    fractions[i] = Integer.parseInt(row.getFraction());
+                    if (fractions[i] <= 0) {
+                        fractions[i] = 1; // Ensure positive fraction
+                    }
+                } catch (NumberFormatException e) {
+                    fractions[i] = 1; // Default to 1 if not a valid integer
+                }
+                replicates[i] = 1;
+            }
+            
+            metaData = new MetaData(rawFiles, expNames, fractions, replicates);
+        } else {
+            metaData = new MetaData();
+        }
+
+        // Create DDAIgcSageParameters using the correct constructor
+        DDAIgcSageParameters params = new DDAIgcSageParameters(
+            MetaPilotApp.WorkflowType.DDA_IGC_SAGE.getAnalysisType(),
+            metaData,
+            result,
+            microDb,
+            appendHostDb,
+            hostDb,
+            ms2ScanMode,
+            threadCount
+        );
+        
+        // Set additional parameters that aren't in the constructor
+        params.setExperimentData(new ArrayList<>(fileRows));
+        
+        // Enzyme settings
+        params.setEnzyme(enzyme);
+        params.setMissCleavages(missCleavages);
+        params.setDigestMode(digestMode);
+        
+        // Additional parameters
+        params.setReduceDb(reduceDb);
+        params.setSpectraCluster(spectraCluster);
+        
+        // Modifications - convert to String lists
+        if (modificationsPanel != null) {
+            List<String> fixedMods = new ArrayList<>();
+            for (ModificationsPanel.FixedModificationRow row : modificationsPanel.getFixedModData()) {
+                if (row.getDeltaMass() != 0.0) {
+                    fixedMods.add(row.getSite() + ":" + row.getDeltaMass());
+                }
+            }
+            params.setFixedModifications(fixedMods);
+            
+            List<String> variableMods = new ArrayList<>();
+            for (ModificationsPanel.VariableModificationRow row : modificationsPanel.getVariableModData()) {
+                if (row.getUse()) {
+                    variableMods.add(row.getModName() + " (" + row.getSites() + "):" + row.getDeltaMass());
+                }
+            }
+            params.setVariableModifications(variableMods);
+        }
+        
+        // Quantitative mode
+        if (quantModeGroup.getSelectedToggle() != null) {
+            RadioButton selected = (RadioButton) quantModeGroup.getSelectedToggle();
+            params.setQuantitativeMode(selected.getText());
+        }
+        
+        // Isobaric labeling
+        if (isobaricTypeComboBox.getValue() != null) {
+            params.setIsobaricType(isobaricTypeComboBox.getValue());
+        }
+        params.setIsobaricTableData(new ArrayList<>(isobaricTableData));
+        
+        // Taxonomic analysis - these methods may not exist in DDAIgcSageParameters
+        // They would need to be added to the parameter class if needed
+        
+        // Metadata table data
+        params.setMetadataTableData(new ArrayList<>(metadataTableData));
+        
+        return params;
     }
     
+    /**
+     * Load last used parameters and apply them to the UI
+     */
     private void loadLastUsedParameters() {
-        // Implementation for loading last used parameters
+        try {
+            DDAIgcSageParameters params = (DDAIgcSageParameters) parameterIO.loadLastUsedParameters();
+            if (params != null) {
+                applyParametersToUI(params);
+                
+                // Also apply experiment data to the IO panel if available
+                if (params.getExperimentData() != null && !params.getExperimentData().isEmpty()) {
+                    ioPanel.getIoPanel().setExperimentData(params.getExperimentData());
+                }
+                
+                // Apply output directory if available
+                if (params.getResult() != null && !params.getResult().trim().isEmpty()) {
+                    ioPanel.getIoPanel().setOutputDirectory(params.getResult());
+                }
+                
+                // Update metadata table after loading parameters
+                Platform.runLater(() -> {
+                    updateMetadataTable();
+                    updateParameterView();
+                });
+            }
+        } catch (Exception e) {
+            // Continue with default UI state
+        }
     }
     
-    private void applyParametersToUI(Object params) {
-        // Implementation for applying parameters to UI
+    /**
+     * Apply parameters to the UI components
+     */
+    private void applyParametersToUI(DDAIgcSageParameters params) {
+        if (params == null) return;
+        
+        // Apply basic settings that don't depend on file paths
+        if (params.getEnzyme() != null && enzymeComboBox != null) {
+            enzymeComboBox.setValue(params.getEnzyme());
+        }
+        if (missedCleavagesSpinner != null) {
+            missedCleavagesSpinner.getValueFactory().setValue(params.getMissCleavages());
+        }
+        if (params.getDigestModeString() != null && digestionModeComboBox != null) {
+            digestionModeComboBox.setValue(params.getDigestModeString());
+        }
+        if (threadsSpinner != null) {
+            threadsSpinner.getValueFactory().setValue(params.getThreadCount());
+        }
+        if (params.getMs2ScanMode() != null && ms2ScanModeComboBox != null) {
+            ms2ScanModeComboBox.setValue(params.getMs2ScanMode());
+        }
+        if (generateSampleSpecificDBCheckBox != null) {
+            generateSampleSpecificDBCheckBox.setSelected(params.isReduceDb());
+        }
+        if (spectraClusteringCheckBox != null) {
+            spectraClusteringCheckBox.setSelected(params.isSpectraCluster());
+        }
+        
+        // Apply database settings
+        if (params.getMicroDb() != null && ioPanel != null) {
+            ioPanel.setMicrobiomeDBPath(params.getMicroDb());
+        }
+        if (ioPanel != null) {
+            ioPanel.setHostDBEnabled(params.isAppendHostDb());
+        }
+        if (params.getHostDB() != null && ioPanel != null) {
+            ioPanel.setHostDBPath(params.getHostDB());
+        }
+        
+        // Apply modifications - would need to parse string lists back to modification rows
+        // This is complex and may not be needed for basic functionality
+        
+        // Apply quantitative mode settings
+        if (params.getQuantitativeMode() != null && quantModeGroup != null) {
+            String mode = params.getQuantitativeMode();
+            if (mode.contains("Isobaric")) {
+                // Find and select the isobaric radio button
+                for (Toggle toggle : quantModeGroup.getToggles()) {
+                    if (toggle instanceof RadioButton && ((RadioButton) toggle).getText().contains("Isobaric")) {
+                        quantModeGroup.selectToggle(toggle);
+                        break;
+                    }
+                }
+            } else {
+                // Find and select the label-free radio button
+                for (Toggle toggle : quantModeGroup.getToggles()) {
+                    if (toggle instanceof RadioButton && ((RadioButton) toggle).getText().contains("Label-free")) {
+                        quantModeGroup.selectToggle(toggle);
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // Apply isobaric type if available
+        if (params.getIsobaricType() != null && isobaricTypeComboBox != null) {
+            isobaricTypeComboBox.setValue(params.getIsobaricType());
+        }
+        
+        // Apply isobaric table data if available
+        if (params.getIsobaricTableData() != null && !params.getIsobaricTableData().isEmpty()) {
+            isobaricTableData.clear();
+            isobaricTableData.addAll(params.getIsobaricTableData());
+        }
+        
+        // Apply taxonomic settings - these methods may not exist in DDAIgcSageParameters
+        // They would need to be added to the parameter class if needed
+        
+        // Update parameter view after applying parameters
+        Platform.runLater(() -> updateParameterView());
     }
     
+    /**
+     * Load parameters from a specific analysis result directory
+     */
     public void loadAnalysisParameters(String resultDirectory) {
-        // Implementation for loading analysis parameters
+        try {
+            DDAIgcSageParameters params = (DDAIgcSageParameters) parameterIO.loadAnalysisParameters(resultDirectory);
+            applyParametersToUI(params);
+            showAlert("Success", "Loaded Sage analysis parameters from " + resultDirectory);
+        } catch (Exception e) {
+            showAlert("Error", "Failed to load Sage analysis parameters: " + e.getMessage());
+        }
     }
     
+    /**
+     * Set up window close handler to save parameters when the window is closed
+     */
     private void setupWindowCloseHandler() {
-        // Implementation for setting up window close handler
+        Platform.runLater(() -> {
+            try {
+                // Get the current scene and window
+                if (getScene() != null) {
+                    javafx.stage.Window window = getScene().getWindow();
+                    if (window != null) {
+                        window.setOnCloseRequest(event -> {
+                            try {
+                                DDAIgcSageParameters currentParams = collectParametersFromUI();
+                                if (currentParams != null) {
+                                    parameterIO.saveLastUsedParameters(currentParams);
+                                    parameterIO.savePreferences(currentParams);
+                                }
+                            } catch (Exception e) {
+                                // Ignore errors during window close
+                            }
+                        });
+                    }
+                }
+            } catch (Exception e) {
+                // Ignore errors during setup
+            }
+        });
     }
 } 

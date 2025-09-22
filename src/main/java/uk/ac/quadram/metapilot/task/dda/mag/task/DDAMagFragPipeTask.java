@@ -72,9 +72,6 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 	private DDAMagFragPipeParameters magFragPipeParams;
 	private FragpipeWorkflow workflow;
 	// File references for reports
-	private File final_pep_txt;
-	private File final_pro_txt;
-	private File quan_pro_file;
 
 	protected static final Logger LOGGER = LogManager.getLogger(DDAMagFragPipeTask.class);
 	protected static final String taskName = "DDA MAG database search by FragPipe workflow";
@@ -82,54 +79,49 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 	public DDAMagFragPipeTask(DDAMagFragPipeParameters magFragPipeParams, MetaResourceParameters mrp, ProgressBar progressBar,
 			ProgressBar secondBar) {
 		super(magFragPipeParams, mrp, progressBar, secondBar);
-		
+
 		// Store the direct reference to DDAMagFragPipeParameters
 		this.magFragPipeParams = magFragPipeParams;
 		this.workflow = magFragPipeParams.getFragpipeWorkflow();
 		// Initialize status label - will be set by the UI panel
 		this.statusLabel = null; // Will be set by UI panel via setStatusLabel method
-		
+
 		// Initialize the magDb field from parameters
 		MagDbItem selectedMagDb = magFragPipeParams.getMagDbItem();
 		if (selectedMagDb != null) {
 			this.magDb = selectedMagDb;
-			LOGGER.info("Initialized MAG database: {} (version: {})", 
-				selectedMagDb.getCatalogueID(), 
-				selectedMagDb.getVersionList() != null && !selectedMagDb.getVersionList().isEmpty() ? 
-					selectedMagDb.getVersionList().get(0).getCatalogueVersion() : "unknown");
-			
+			LOGGER.info("Initialized MAG database: {} (version: {})", selectedMagDb.getCatalogueID(),
+					selectedMagDb.getVersionList() != null && !selectedMagDb.getVersionList().isEmpty()
+							? selectedMagDb.getVersionList().get(0).getCatalogueVersion()
+							: "unknown");
+
 			// Validate that the MAG database has the required files
 			File hapFastaFile = selectedMagDb.getHapFastaFile();
 			if (hapFastaFile == null || !hapFastaFile.exists()) {
-				LOGGER.error("MAG database HAP FASTA file is null or does not exist: {}", 
-					hapFastaFile != null ? hapFastaFile.getAbsolutePath() : "null");
+				LOGGER.error("MAG database HAP FASTA file is null or does not exist: {}",
+						hapFastaFile != null ? hapFastaFile.getAbsolutePath() : "null");
 				LOGGER.error("Repository file: {}", selectedMagDb.getRepositoryFile());
 				LOGGER.error("Current file: {}", selectedMagDb.getCurrentFile());
 				throw new IllegalArgumentException("MAG database HAP FASTA file is required and must exist");
 			}
 			LOGGER.info("MAG database HAP FASTA file validated: {}", hapFastaFile.getAbsolutePath());
+			
+			File currentDbFile = selectedMagDb.getCurrentFile();
+			if (currentDbFile == null || !currentDbFile.exists()) {
+				LOGGER.error("MAG database file is null or does not exist: {}",
+						currentDbFile != null ? currentDbFile.getAbsolutePath() : "null");
+				LOGGER.error("Repository file: {}", selectedMagDb.getRepositoryFile());
+				LOGGER.error("Current file: {}", selectedMagDb.getCurrentFile());
+				throw new IllegalArgumentException("MAG database file is required and must exist");
+			}
+
+			LOGGER.info("MAG database file validated: {}", currentDbFile.getAbsolutePath());
+			this.metaPar.setMicroDb(selectedMagDb.getCurrentFile().getAbsolutePath());
 		} else {
 			LOGGER.error("MAG database item is null in parameters");
 			throw new IllegalArgumentException("MAG database item is required");
 		}
-		
-		// Initialize using the DDAMagFragPipeParameters directly
-		String[] rawFiles = magFragPipeParams.getMetadata().getRawFiles();
-		if (rawFiles == null || rawFiles.length == 0) {
-			LOGGER.error("No raw files found in metadata");
-			throw new IllegalArgumentException("Raw files are required");
-		}
-		
-		// Initialize file arrays
-		this.fragpipeExpNames = new String[rawFiles.length];
-		for (int i = 0; i < rawFiles.length; i++) {
-			File rawi = new File(rawFiles[i]);
-			this.rawDir = rawi.getParentFile();
-			String rawName = rawi.getName();
-			rawName = rawName.substring(0, rawName.length() - ".raw".length());
-			this.fragpipeExpNames[i] = rawName;
-		}
-		
+
 		// Initialize the result directory structure in the constructor
 		File fragpipeMagSearchFile = new File(magFragPipeParams.getResult(), "fragpipe_MAG_search");
 		if (!fragpipeMagSearchFile.exists()) {
@@ -139,20 +131,27 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 			LOGGER.info("FragPipe MAG search directory already exists: {}", fragpipeMagSearchFile.getAbsolutePath());
 		}
 		magFragPipeParams.setDbSearchResultFile(fragpipeMagSearchFile);
-		
+
+		createSeparateFolders();
+
+		this.fragpipeExpNames = new String[rawFileNames.length];
+		for (int i = 0; i < fragpipeExpNames.length; i++) {
+			this.fragpipeExpNames[i] = this.rawFileNames[i].replaceAll("-", "_") + "_1";
+		}
+
 		// Initialize FragPipe executable path
 		this.fragpipeBat = mrp.getToolPath(ToolType.FRAGPIPE);
 		File fragpipeExe = new File(fragpipeBat);
-		
+
 		LOGGER.info("FragPipe path from MetaResourceParameters: {}", mrp.getToolPath(ToolType.FRAGPIPE));
 		LOGGER.info("FragPipe executable file: {}", fragpipeExe.getAbsolutePath());
 		LOGGER.info("FragPipe exists: {}", fragpipeExe.exists());
-		
+
 		if (!fragpipeExe.exists()) {
 			LOGGER.error("FragPipe executable not found: {}", fragpipeExe.getAbsolutePath());
 			throw new IllegalArgumentException("FragPipe executable is required and must exist");
 		}
-		
+
 		this.fragPipeTask = new FragPipeTask(fragpipeExe.getAbsolutePath());
 	}
 
@@ -448,46 +447,25 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 
 	protected boolean separateSearchHap() {
 		LOGGER.info("Starting separate search for high abundant database");
-		
+
 		// Get thread configuration
 		int threadCount = magFragPipeParams.getThreadCount();
 		LOGGER.info("Thread configuration: total={}", threadCount);
-		
-		// Get raw files from metadata
-		String[] rawFiles = magFragPipeParams.getMetadata().getRawFiles();
-		if (rawFiles == null || rawFiles.length == 0) {
-			LOGGER.error("No raw files found in metadata");
-			return false;
-		}
 
 		int taskCount = 0;
-		this.separateResultFolders = new File[rawFiles.length];
-		// fragpipeExpNames is already initialized in constructor
 
+		File[] hapResultFiles = new File[rawFiles.length];
 		for (int i = 0; i < rawFiles.length; i++) {
-			String name = rawFiles[i].substring(rawFiles[i].lastIndexOf("\\") + 1, rawFiles[i].lastIndexOf("."));
-
-			this.separateResultFolders[i] = new File(magFragPipeParams.getResult(), name);
-			if (!this.separateResultFolders[i].exists()) {
-				this.separateResultFolders[i].mkdir();
-			}
-
 			File hapFile = new File(separateResultFolders[i], "hap");
-			if (!hapFile.exists()) {
-				hapFile.mkdirs();
-			}
-
-			this.fragpipeExpNames[i] = this.fragpipeExpNames[i].replaceAll("-", "_") + "_1";
-
-			File hapResultFolder = new File(hapFile, this.fragpipeExpNames[i]);
-			File combinePsmFile = new File(hapResultFolder, "psm.tsv");
+			hapResultFiles[i] = new File(hapFile, this.fragpipeExpNames[i] + "_1");
+			File combinePsmFile = new File(hapResultFiles[i], "psm.tsv");
 
 			if (combinePsmFile.exists()) {
 				System.out.println(format.format(new Date()) + "\t" + getTaskName()
-						+ ": FragPipe search result already exists in " + hapResultFolder.getAbsolutePath());
+						+ ": FragPipe search result already exists in " + hapResultFiles[i].getAbsolutePath());
 
 				LOGGER.info(getTaskName() + ": FragPipe search result already exists in "
-						+ hapResultFolder.getAbsolutePath());
+						+ hapResultFiles[i].getAbsolutePath());
 			} else {
 				taskCount++;
 			}
@@ -527,13 +505,8 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 			}
 
 			File hapFile = new File(separateResultFolders[i], "hap");
-			if (!hapFile.exists()) {
-				hapFile.mkdirs();
-			}
-
-			File hapResultFolder = new File(hapFile, fragpipeExpNames[i]);
-			File combinePsmFile = new File(hapResultFolder, "psm.tsv");
-			File combineProFile = new File(hapResultFolder, "protein.tsv");
+			File combinePsmFile = new File(hapResultFiles[i], "psm.tsv");
+			File combineProFile = new File(hapResultFiles[i], "protein.tsv");
 
 			if (!combinePsmFile.exists() || !combineProFile.exists()) {
 
@@ -559,7 +532,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 
 				metaPar.setCurrentDb(hapTdFile.getAbsolutePath());
 				workflow.setDatabase(hapTdFile.getAbsolutePath());
-				
+
 				File workflowFile = new File(hapFile, "hap.workflow");
 				try {
 					workflow.export(workflowFile);
@@ -603,15 +576,14 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 
 		for (int i = 0; i < separateResultFolders.length; i++) {
 			File hapFile = new File(separateResultFolders[i], "hap");
-			File hapResultFolder = new File(hapFile, fragpipeExpNames[i]);
-			File combinePsmFile = new File(hapResultFolder, "psm.tsv");
+			File combinePsmFile = new File(hapResultFiles[i], "psm.tsv");
 
 			if (!combinePsmFile.exists()) {
 				System.out.println(format.format(new Date()) + "\t" + getTaskName()
-						+ ": FragPipe search result was not found from " + hapResultFolder.getAbsolutePath());
+						+ ": FragPipe search result was not found from " + hapResultFiles[i].getAbsolutePath());
 
 				LOGGER.info(getTaskName() + ": FragPipe search result was not found from "
-						+ hapResultFolder.getAbsolutePath());
+						+ hapResultFiles[i].getAbsolutePath());
 
 				return false;
 			}
@@ -648,7 +620,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 				continue;
 			}
 
-			File hapResultFolder = new File(hapFile, fragpipeExpNames[i]);
+			File hapResultFolder = new File(hapFile, fragpipeExpNames[i] + "_1");
 			File combinePsmFile = new File(hapResultFolder, "psm.tsv");
 			File combineProFile = new File(hapResultFolder, "protein.tsv");
 
@@ -921,14 +893,15 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 	protected boolean separateSearch() {
 
 		int taskCount = 0;
+		File[] spResultFiles = new File[separateResultFolders.length];
 		for (int i = 0; i < separateResultFolders.length; i++) {
-			File spResultFolder = new File(separateResultFolders[i], fragpipeExpNames[i]);
-			File combinePsmFile = new File(spResultFolder, "psm.tsv");
-			if (spResultFolder.exists() && combinePsmFile.exists()) {
+			spResultFiles[i] = new File(separateResultFolders[i], fragpipeExpNames[i] + "_1");
+			File combinePsmFile = new File(spResultFiles[i], "psm.tsv");
+			if (spResultFiles[i].exists() && combinePsmFile.exists()) {
 				System.out.println(format.format(new Date()) + "\t" + getTaskName()
-						+ ": FragPipe search result already exists in " + spResultFolder.getAbsolutePath());
+						+ ": FragPipe search result already exists in " + spResultFiles[i].getAbsolutePath());
 				LOGGER.info(getTaskName() + ": FragPipe search result already exists in "
-						+ spResultFolder.getAbsolutePath());
+						+ spResultFiles[i].getAbsolutePath());
 			} else {
 				taskCount++;
 			}
@@ -941,10 +914,8 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		for (int i = 0; i < this.separateResultFolders.length; i++) {
 			File hapFile = new File(separateResultFolders[i], "hap");
 			File dbFile = new File(hapFile, separateResultFolders[i].getName() + ".fasta");
-
-			File spResultFolder = new File(separateResultFolders[i], fragpipeExpNames[i]);
-			File combinePsmFile = new File(spResultFolder, "psm.tsv");
-			File combineProFile = new File(spResultFolder, "protein.tsv");
+			File combinePsmFile = new File(spResultFiles[i], "psm.tsv");
+			File combineProFile = new File(spResultFiles[i], "protein.tsv");
 
 			if (!combinePsmFile.exists() || !combineProFile.exists()) {
 				
@@ -992,16 +963,15 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		this.fragPipeTask.run(1, rawFiles.length * 4);
 
 		for (int i = 0; i < separateResultFolders.length; i++) {
-			File spResultFolder = new File(separateResultFolders[i], fragpipeExpNames[i]);
-			File combinePsmFile = new File(spResultFolder, "psm.tsv");
-			File combineProFile = new File(spResultFolder, "protein.tsv");
+			File combinePsmFile = new File(spResultFiles[i], "psm.tsv");
+			File combineProFile = new File(spResultFiles[i], "protein.tsv");
 
 			if (!combinePsmFile.exists() || !combineProFile.exists()) {
 				System.out.println(format.format(new Date()) + "\t" + getTaskName()
-						+ ": FragPipe search result was not found from " + spResultFolder.getAbsolutePath());
+						+ ": FragPipe search result was not found from " + spResultFiles[i].getAbsolutePath());
 
 				LOGGER.info(getTaskName() + ": FragPipe search result was not found from "
-						+ spResultFolder.getAbsolutePath());
+						+ spResultFiles[i].getAbsolutePath());
 
 				return false;
 			}
@@ -1014,11 +984,11 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 	}
 
 	protected boolean combineResult() {
-		File combinedFastaFile = new File(metaPar.getDbSearchResultFile(), "combined.fasta");
+		File combinedFastaFile = new File(combinedFile, "combined.fasta");
 		if (!combinedFastaFile.exists()) {
 			HashMap<String, String> fastaMap = new HashMap<String, String>();
 			for (int i = 0; i < this.separateResultFolders.length; i++) {
-				File spResultFolder = new File(separateResultFolders[i], fragpipeExpNames[i]);
+				File spResultFolder = new File(separateResultFolders[i], fragpipeExpNames[i] + "_1");
 				File fastaFile = new File(spResultFolder, "protein.fas");
 				try (BufferedReader reader = new BufferedReader(new FileReader(fastaFile))) {
 					String line = null;
@@ -1105,7 +1075,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 			}
 		}
 
-		File manifest = new File(metaPar.getDbSearchResultFile(), "raws.fp-manifest");
+		File manifest = new File(combinedFile, "raws.fp-manifest");
 		if (!manifest.exists()) {
 			try {
 				metaPar.getMetadata().exportFragpipeManifest(manifest);
@@ -1121,14 +1091,11 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 			}
 		}
 
-		this.quan_pep_file = new File(metaPar.getDbSearchResultFile(), "combined_modified_peptide.tsv");
-		this.quan_pro_file = new File(metaPar.getDbSearchResultFile(), "combined_protein.tsv");
+		this.quan_pep_file = new File(combinedFile, "combined_modified_peptide.tsv");
+		this.quan_pro_file = new File(combinedFile, "combined_protein.tsv");
 
 		if (!this.quan_pep_file.exists() || !this.quan_pro_file.exists()) {
-
-			metaPar.setCurrentDb(combinedFastaFile.getAbsolutePath());
-
-			File workflowFile = new File(metaPar.getDbSearchResultFile(), "combined.workflow");
+			File workflowFile = new File(combinedFile, "combined.workflow");
 			try {
 				workflow.export(workflowFile);
 			} catch (IOException e) {
@@ -1143,7 +1110,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 			System.out.println(format.format(new Date()) + "\t" + getTaskName()
 					+ ": searching the combined high-abundance database started");
 
-			this.fragPipeTask.addTask(workflowFile, manifest, metaPar.getDbSearchResultFile(), threadCount);
+			this.fragPipeTask.addTask(workflowFile, manifest, combinedFile, threadCount);
 			this.fragPipeTask.run(rawFiles.length * 4);
 		}
 
@@ -1184,8 +1151,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting peptide report started");
 
 		HashMap<String, Integer> fileIdMap = new HashMap<String, Integer>();
-		File magResultDir = new File(metaPar.getResult(), "mag_result");
-		File expDesignFile = new File(magResultDir, "fragpipe-files.fp-manifest");
+		File expDesignFile = new File(combinedFile, "raws.fp-manifest");
 		if (expDesignFile.exists()) {
 			try (BufferedReader reader = new BufferedReader(new FileReader(expDesignFile))) {
 				String line = null;
@@ -1200,7 +1166,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 						+ ": error in reading the experimental design from " + expDesignFile);
 			}
 		} else {
-			File[] files = magResultDir.listFiles();
+			File[] files = combinedFile.listFiles();
 			for (int i = 0; i < files.length; i++) {
 				if (files[i].isDirectory() && (new File(files[i], "peptide.tsv")).exists()) {
 					fileIdMap.put(files[i].getName(), fileIdMap.size());
@@ -1382,7 +1348,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 			proteinIdMap.put(proteins[i], i);
 		}
 
-		try (PrintWriter idWriter = new PrintWriter(new File(metaPar.getResult(), "id.tsv"))) {
+		try (PrintWriter idWriter = new PrintWriter(new File(metaPar.getDbSearchResultFile(), "id.tsv"))) {
 			idWriter.println("Raw file\tUnique peptide count\tPSM count");
 
 			String[] rawNames = fileIdMap.keySet().toArray(new String[fileIdMap.size()]);
@@ -1412,7 +1378,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		HashMap<String, ArrayList<Integer>> proPepRazorIdMap = new HashMap<String, ArrayList<Integer>>();
 		HashMap<String, Double> proScoreMap = new HashMap<String, Double>();
 		try {
-			this.final_pep_txt = new File(metaPar.getResult(), "final_peptides.tsv");
+			this.final_pep_txt = new File(metaPar.getDbSearchResultFile(), "final_peptides.tsv");
 
 			PrintWriter writer = new PrintWriter(this.final_pep_txt);
 
@@ -1601,7 +1567,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		ArrayList<MetaProtein> proteinList = new ArrayList<MetaProtein>();
 		try {
 
-			this.final_pro_txt = new File(metaPar.getResult(), "final_proteins.tsv");
+			this.final_pro_txt = new File(metaPar.getDbSearchResultFile(), "final_proteins.tsv");
 
 			PrintWriter writer = new PrintWriter(this.final_pro_txt);
 
@@ -1692,7 +1658,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		LOGGER.info(getTaskName() + ": functional annotation started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": functional annotation started");
 
-		File funcFile = new File(metaPar.getResult(), "functional_annotation");
+		File funcFile = new File(metaPar.getDbSearchResultFile(), "functional_annotation");
 		if (!funcFile.exists()) {
 			funcFile.mkdir();
 		}
@@ -1765,7 +1731,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		LOGGER.info(getTaskName() + ": taxonomy analysis started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": taxonomy analysis started");
 
-		File taxFile = new File(metaPar.getResult(), "taxonomy_analysis");
+		File taxFile = new File(metaPar.getDbSearchResultFile(), "taxonomy_analysis");
 		if (!taxFile.exists()) {
 			taxFile.mkdir();
 		}
@@ -2336,8 +2302,8 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 			}
 		}
 
-		this.final_pep_txt = new File(metaPar.getResult(), "final_peptides.tsv");
-		this.final_pro_txt = new File(metaPar.getResult(), "final_proteins.tsv");
+		this.final_pep_txt = new File(metaPar.getDbSearchResultFile(), "final_peptides.tsv");
+		this.final_pro_txt = new File(metaPar.getDbSearchResultFile(), "final_proteins.tsv");
 
 		PrintWriter pepWriter = null;
 		try {
@@ -2643,10 +2609,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		File final_summary_txt = new File(metaPar.getResult(), "final_summary.tsv");
 		try {
 			HashMap<String, int[]> idMap = new HashMap<String, int[]>();
-			MetaData metaData = metaPar.getMetadata();
-			File rawFolder = (new File(metaData.getRawFiles()[0])).getParentFile();
-			File magResultDir = new File(metaPar.getResult(), "mag_result");
-			File[] magResultFiles = magResultDir.listFiles();
+			File[] magResultFiles = this.combinedFile.listFiles();
 			for (int i = 0; i < magResultFiles.length; i++) {
 				if (magResultFiles[i].isDirectory()) {
 					int[] counts = new int[3];
@@ -2673,7 +2636,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 					counts[2] = pepSet.size();
 
 					if (resultName != null) {
-						File mzmlFile = new File(rawFolder, resultName + "_uncalibrated.mzML");
+						File mzmlFile = new File(this.rawDir, resultName + "_uncalibrated.mzML");
 						if (mzmlFile.exists()) {
 							BufferedReader mzmlReader = new BufferedReader(new FileReader(mzmlFile));
 							String mzmlLine = null;
