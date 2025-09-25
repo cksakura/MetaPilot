@@ -11,7 +11,6 @@ import javafx.scene.text.FontWeight;
 import javafx.scene.paint.Color;
 import javafx.application.Platform;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
-import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
 import uk.ac.quadram.metapilot.task.common.gui.MagDatabaseSettingsPanel;
 import uk.ac.quadram.metapilot.task.common.gui.MetadataConfigurationPanel;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
@@ -26,12 +25,13 @@ import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
 import uk.ac.quadram.metapilot.task.dia.MetaDiaTask;
 import uk.ac.quadram.metapilot.dbSearch.deepDetect.DeepDetectTask;
 import uk.ac.quadram.metapilot.dbSearch.deepDetect.DeepDetectParameter;
+import uk.ac.quadram.metapilot.task.common.gui.AbstractWorkflowPanel;
 import java.io.File;
 import java.time.LocalDateTime;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-public class MetaPilotDiaNormalPanel extends VBox {
+public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameterDia> {
     // UI Components - Database specific for MAG (like DIA workflows)
     private MetaPilotIOPanelFX ioPanel;
     private MagDatabaseSettingsPanel magDatabasePanel;
@@ -51,8 +51,6 @@ public class MetaPilotDiaNormalPanel extends VBox {
     private MetaDiaTask metaDiaTask;
     private MetaParameterDia currentAnalysisParameters;
     
-    // Reusable UI Components
-    private ConsolePanel consolePanel;
 
     // DIA-specific mode selection
     private ComboBox<String> modeSelectionComboBox;
@@ -76,10 +74,13 @@ public class MetaPilotDiaNormalPanel extends VBox {
     private DiaParameterIO parameterIO;
 
     public MetaPilotDiaNormalPanel(MagDbItem[] magDbItems, MetaResourceParameters resourceParams) {
+        // Call parent constructor first
+        super();
+        
         // Initialize parameter IO instance
         parameterIO = new DiaParameterIO();
         this.resourceParams = resourceParams;
-        initializeUI();
+        initializeSpecificUI();
         // Set MAG databases after UI is initialized
         setAvailableMagDatabases(magDbItems);
         // Load last used parameters after UI and databases are initialized
@@ -125,11 +126,10 @@ public class MetaPilotDiaNormalPanel extends VBox {
         System.out.println("DEBUG: Creating library generation panel with MAG database available");
         
         // Try to load last used parameters first, then create with minimal parameters for library generation
-        MetaParameterDia initialMetaParameter = loadLastUsedParameters();
-        if (initialMetaParameter == null) {
-            // Use minimal validation for library generation (doesn't require raw files)
-            initialMetaParameter = generateMetaParameterDiaForLibraryGeneration();
-        }
+        loadLastUsedParameters();
+        MetaParameterDia initialMetaParameter = null;
+        // Use minimal validation for library generation (doesn't require raw files)
+        initialMetaParameter = generateMetaParameterDiaForLibraryGeneration();
         
         if (initialMetaParameter != null) {
             libraryGenerationPanel = new DiaLibraryGenerationPanel(initialMetaParameter, resourceParams, new File("MAGDB_1_0.json"));
@@ -188,7 +188,7 @@ public class MetaPilotDiaNormalPanel extends VBox {
         }
     }
 
-    private void initializeUI() {
+    private void initializeSpecificUI() {
         setSpacing(10);
         setPadding(new Insets(10));
         setMinWidth(1200);
@@ -279,7 +279,13 @@ public class MetaPilotDiaNormalPanel extends VBox {
     }
 
     // Create IO tab (same as MAG workflows)
-    private VBox createIOTab() {
+    @Override
+    protected String getWorkflowName() {
+        return "DIA Normal";
+    }
+    
+    @Override
+    public VBox createIOTab() {
         VBox tabContent = new VBox(10);
         tabContent.setPadding(new Insets(10));
         ioPanel = new MetaPilotIOPanelFX();
@@ -374,7 +380,8 @@ public class MetaPilotDiaNormalPanel extends VBox {
         return statusPanel;
     }
 
-    private VBox createParametersTab() {
+    @Override
+    public VBox createParametersTab() {
         VBox tabContent = new VBox(10);
         tabContent.setPadding(new Insets(10));
         tabContent.setMinWidth(960);
@@ -535,7 +542,8 @@ public class MetaPilotDiaNormalPanel extends VBox {
 
 
 
-    private void updateParameterView() {
+    @Override
+    protected void updateParameterView() {
         if (consolePanel == null) {
             return;
         }
@@ -646,7 +654,8 @@ public class MetaPilotDiaNormalPanel extends VBox {
     }
 
 
-    private void startAnalysis() {
+    @Override
+    protected void startAnalysis() {
         System.out.println("DEBUG: startAnalysis called - DIA Normal workflow");
         
         // Validate inputs before starting analysis
@@ -749,7 +758,8 @@ public class MetaPilotDiaNormalPanel extends VBox {
         consolePanel.appendConsoleText("MetaDiaTask submitted to executor.\n");
     }
 
-    private void stopAnalysis() {
+    @Override
+    protected void stopAnalysis() {
         System.out.println("DEBUG: stopAnalysis called");
         
         if (metaDiaTask != null && metaDiaTask.isRunning()) {
@@ -761,58 +771,6 @@ public class MetaPilotDiaNormalPanel extends VBox {
         }
     }
     
-    private void viewReport() {
-        try {
-            consolePanel.appendConsoleText("Opening report in default browser...\n");
-            
-            // Use the stored parameters from the last analysis
-            if (currentAnalysisParameters == null || currentAnalysisParameters.getResult() == null) {
-                consolePanel.appendConsoleText("ERROR: No analysis parameters available. Please run analysis first.\n");
-                return;
-            }
-            
-            File resultDir = currentAnalysisParameters.getDbSearchResultFile();
-            consolePanel.appendConsoleText("DEBUG: Result path from stored analysis parameters: " + resultDir + "\n");
-            
-            // Look for the main index.html file in the report directory
-            // For DIA analysis, reports are in the analysis-specific subdirectory
-            File reportDir = new File(resultDir, "report");
-            File indexFile = new File(reportDir, "index.html");
-            
-            consolePanel.appendConsoleText("DEBUG: Looking for report in: " + reportDir.getAbsolutePath() + "\n");
-            
-            if (!indexFile.exists()) {
-                consolePanel.appendConsoleText("ERROR: Main report index.html not found in " + reportDir.getAbsolutePath() + "\n");
-                consolePanel.appendConsoleText("Please ensure the analysis has completed successfully.\n");
-                
-                // Try alternative locations
-                File altIndexFile = new File(resultDir, "index.html");
-                if (altIndexFile.exists()) {
-                    consolePanel.appendConsoleText("Found alternative report location: " + altIndexFile.getAbsolutePath() + "\n");
-                    indexFile = altIndexFile;
-                } else {
-                    consolePanel.appendConsoleText("No report found in result directory either.\n");
-                    return;
-                }
-            }
-            
-            consolePanel.appendConsoleText("Opening main report: " + indexFile.getName() + "\n");
-            
-            // Open the file in the default browser
-            if (java.awt.Desktop.isDesktopSupported()) {
-                java.awt.Desktop.getDesktop().browse(indexFile.toURI());
-                consolePanel.appendConsoleText("✓ Report opened in default browser\n");
-            } else {
-                consolePanel.appendConsoleText("ERROR: Desktop not supported. Please open manually: " + indexFile.getAbsolutePath() + "\n");
-            }
-            
-        } catch (Exception e) {
-            String errorMsg = "ERROR: Failed to open report: " + e.getMessage();
-            consolePanel.appendConsoleText(errorMsg + "\n");
-            System.err.println("Failed to open report: " + e.getMessage());
-            e.printStackTrace();
-        }
-    }
     
     /**
      * Update the MAG database status - check predicted peptide files and display in console
@@ -1360,7 +1318,8 @@ public class MetaPilotDiaNormalPanel extends VBox {
     /**
      * Load last used parameters and apply them to the UI
      */
-    private MetaParameterDia loadLastUsedParameters() {
+    @Override
+    protected void loadLastUsedParameters() {
         System.out.println("DEBUG: loadLastUsedParameters() called");
         try {
             MetaParameterDia params = (MetaParameterDia) parameterIO.loadLastUsedParameters();
@@ -1374,7 +1333,6 @@ public class MetaPilotDiaNormalPanel extends VBox {
                 
                 applyParametersToUI(params);
                 System.out.println("DEBUG: Applied parameters to UI successfully");
-                return params;
             } else {
                 System.out.println("DEBUG: No parameters loaded from file, using defaults");
             }
@@ -1383,13 +1341,13 @@ public class MetaPilotDiaNormalPanel extends VBox {
             e.printStackTrace();
             // Continue with default UI state
         }
-        return null;
     }
     
     /**
      * Apply parameters to the UI components
      */
-    private void applyParametersToUI(MetaParameterDia params) {
+    @Override
+    protected void applyParametersToUI(MetaParameterDia params) {
         if (params == null) {
             System.out.println("DEBUG: applyParametersToUI called with null params");
             return;
@@ -1484,13 +1442,6 @@ public class MetaPilotDiaNormalPanel extends VBox {
     /**
      * Show error dialog
      */
-    private void showError(String title, String content) {
-        Alert alert = new Alert(Alert.AlertType.ERROR);
-        alert.setTitle(title);
-        alert.setHeaderText(null);
-        alert.setContentText(content);
-        alert.showAndWait();
-    }
     
     /**
      * Save current parameters to file
