@@ -19,7 +19,6 @@ import javafx.scene.control.Alert.AlertType;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX.ExperimentRow;
 import uk.ac.quadram.metapilot.task.common.gui.DdaIgcInputOutputPanel;
-import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
@@ -28,6 +27,7 @@ import uk.ac.quadram.metapilot.core.mod.IsobaricTag;
 import uk.ac.quadram.metapilot.task.dda.igc.DDAIgcMaxQuantTask;
 import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcMaxQuantParameters;
 import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcMaxQuantParameterIO;
+import uk.ac.quadram.metapilot.task.common.gui.AbstractWorkflowPanel;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
@@ -41,12 +41,11 @@ import java.io.InputStreamReader;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
+public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMaxQuantParameters> {
     private static final Logger LOGGER = LogManager.getLogger(MetaPilotDdaIgcMaxQuantPanel.class);
     
     // UI Components
     private DdaIgcInputOutputPanel ioPanel;
-    private ConsolePanel consolePanel;
     private ToggleGroup quantModeGroup;
     
     // Parameter Panel Components
@@ -108,32 +107,25 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
     private DDAIgcMaxQuantTask currentTask;
     
     public MetaPilotDdaIgcMaxQuantPanel() {
+        // Call parent constructor first
+        super();
+        
         // Initialize parameter IO instance
         parameterIO = new DDAIgcMaxQuantParameterIO();
         
         // Initialize unified IO panel
         ioPanel = new DdaIgcInputOutputPanel(this::updateParameterView);
         
-        // Initialize console panel
-        consolePanel = new ConsolePanel();
-        consolePanel.setStartCallback(this::startAnalysis);
-        consolePanel.setStopCallback(this::stopAnalysis);
-        consolePanel.setViewReportCallback(this::viewReport);
-        
-        initializeUI();
-        
-        // Note: Parameters are only saved when starting analysis or explicitly requested
+        // Initialize specific UI components
+        initializeSpecificUI();
         
         // Load parameters after UI is fully initialized
         Platform.runLater(() -> {
             loadLastUsedParameters();
-            
-            // Add window close event handler to save parameters
-            setupWindowCloseHandler();
         });
     }
     
-    private void initializeUI() {
+    private void initializeSpecificUI() {
         setSpacing(10);
         setPadding(new Insets(10));
         setMinWidth(1200);
@@ -224,7 +216,8 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
 		return total;
 	}
     
-    private VBox createIOTab() {
+    @Override
+    public VBox createIOTab() {
         VBox tabContent = new VBox(10);
         tabContent.setPadding(new Insets(10));
         
@@ -236,7 +229,8 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
     
     
     
-    private VBox createParametersTab() {
+    @Override
+    public VBox createParametersTab() {
         VBox tabContent = new VBox(10);
         tabContent.setPadding(new Insets(10));
         tabContent.setMinWidth(960);
@@ -1237,7 +1231,8 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
         }
     }
     
-    private void updateParameterView() {
+    @Override
+    protected void updateParameterView() {
         // Update the console panel's parameter view
         if (consolePanel != null) {
             consolePanel.setParameterText(getParameterDisplay());
@@ -1321,7 +1316,8 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
         return true;
     }
     
-    private void startAnalysis() {
+    @Override
+    protected void startAnalysis() {
         try {
             // Validate inputs first
             if (!validateInputs()) {
@@ -1419,7 +1415,8 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
         }
     }
     
-    private void stopAnalysis() {
+    @Override
+    protected void stopAnalysis() {
         Alert alert = new Alert(AlertType.CONFIRMATION);
         alert.setTitle("Stop Analysis");
         alert.setHeaderText("Are you sure you want to stop the analysis?");
@@ -1448,47 +1445,11 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
         }
     }
     
-    private void viewReport() {
-        try {
-            // Get the result directory from the IO panel
-            String resultDir = ioPanel.getIoPanel().getOutputDirectory();
-            if (resultDir == null || resultDir.trim().isEmpty()) {
-                showAlert("Error", "No result directory available. Please run analysis first.");
-                return;
-            }
-            
-            // Look for the main report file
-            java.io.File reportDir = new java.io.File(resultDir);
-            java.io.File indexFile = new java.io.File(reportDir, "index.html");
-            
-            if (!indexFile.exists()) {
-                showAlert("Error", "Report not found. Please ensure the analysis has completed successfully.");
-                return;
-            }
-            
-            // Open the report in the default browser
-            if (java.awt.Desktop.isDesktopSupported()) {
-                java.awt.Desktop.getDesktop().browse(indexFile.toURI());
-                showAlert("Success", "Report opened in default browser.");
-            } else {
-                showAlert("Error", "Desktop not supported. Please open manually: " + indexFile.getAbsolutePath());
-            }
-            
-        } catch (Exception e) {
-            showAlert("Error", "Failed to open report: " + e.getMessage());
-            e.printStackTrace();
-        }
+    @Override
+    protected String getWorkflowName() {
+        return "DDA IGC MaxQuant";
     }
     
-    private void showError(String title, String content) {
-        Platform.runLater(() -> {
-            Alert alert = new Alert(AlertType.ERROR);
-            alert.setTitle(title);
-            alert.setHeaderText(null);
-            alert.setContentText(content);
-            alert.showAndWait();
-        });
-    }
     
     private Label createSectionTitle(String title) {
         Label label = new Label(title);
@@ -1697,19 +1658,13 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
         updateMetadataTable();
     }
     
-    private void showAlert(String title, String message) {
-        Alert alert = new Alert(AlertType.INFORMATION);
-        alert.setTitle(title);
-        alert.setHeaderText(null);
-        alert.setContentText(message);
-        alert.showAndWait();
-    }
     
     
     /**
      * Collect all parameters from the UI into a parameters object
      */
-    private DDAIgcMaxQuantParameters collectParametersFromUI() {
+    @Override
+    protected DDAIgcMaxQuantParameters collectParametersFromUI() {
         // Collect experiment data from ioPanel
         ObservableList<ExperimentRow> fileRows = ioPanel.getIoPanel().getExperimentData();
         String[] rawFiles = new String[fileRows.size()];
@@ -1847,7 +1802,8 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
     /**
      * Load last used parameters and apply them to the UI
      */
-    private void loadLastUsedParameters() {
+    @Override
+    protected void loadLastUsedParameters() {
         try {
             DDAIgcMaxQuantParameters params = (DDAIgcMaxQuantParameters) parameterIO.loadLastUsedParameters();
             applyParametersToUI(params);
@@ -1861,7 +1817,8 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
     /**
      * Apply parameters to the UI components
      */
-    private void applyParametersToUI(DDAIgcMaxQuantParameters params) {
+    @Override
+    protected void applyParametersToUI(DDAIgcMaxQuantParameters params) {
         if (params == null) return;
         
         // Apply Input/Output settings
@@ -2007,35 +1964,4 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
     /**
      * Set up window close handler to save parameters when the window is closed
      */
-    private void setupWindowCloseHandler() {
-        Platform.runLater(() -> {
-            try {
-                // Get the current scene and window
-                if (getScene() != null) {
-                    javafx.stage.Window window = getScene().getWindow();
-                    if (window != null) {
-                        window.setOnCloseRequest(event -> {
-                            try {
-                                DDAIgcMaxQuantParameters currentParams = collectParametersFromUI();
-                                if (currentParams != null) {
-                                    parameterIO.saveLastUsedParameters(currentParams);
-                                    parameterIO.savePreferences(currentParams);
-                                    LOGGER.info("Saved current parameters when window was closed");
-                                }
-                            } catch (Exception e) {
-                                LOGGER.warn("Failed to save parameters when window was closed: " + e.getMessage(), e);
-                            }
-                        });
-                        LOGGER.info("Window close handler set up successfully");
-                    } else {
-                        LOGGER.warn("Window is null, cannot set close handler");
-                    }
-                } else {
-                    LOGGER.warn("Scene is null, cannot set close handler");
-                }
-            } catch (Exception e) {
-                LOGGER.error("Failed to set up window close handler", e);
-            }
-        });
-    }
 } 
