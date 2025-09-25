@@ -22,6 +22,7 @@ import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagVersion;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.MetaPilotApp;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
+import uk.ac.quadram.metapilot.task.common.gui.AbstractWorkflowPanel;
 import javafx.application.Platform;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,13 +36,12 @@ import java.util.List;
 import java.util.ArrayList;
 import java.io.File;
 
-public class MetaPilotDdaMagFragPipePanel extends VBox {
+public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFragPipeParameters> {
     // UI Components - Database specific for MAG
     private MetaPilotIOPanelFX ioPanel;
     private MagDatabaseSettingsPanel magDatabasePanel;
 
     // Reusable UI Components
-    private ConsolePanel consolePanel;
     private MetadataConfigurationPanel metadataPanel;
 
     // Parameter Panel Components
@@ -75,13 +75,16 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
     private static final Logger LOGGER = LoggerFactory.getLogger(MetaPilotDdaMagFragPipePanel.class);
 
 	public MetaPilotDdaMagFragPipePanel(MagDbItem[] magDbItems, MetaResourceParameters resourceParams) {
+		// Call parent constructor first
+		super();
+		
 		// Initialize parameter IO instance
 		parameterIO = new DDAMagFragPipeParameterIO();
 		this.resourceParams = resourceParams;
 		
 		loadEnzymesFromIni();
 		loadWorkflowsFromFragPipe();
-		initializeUI();
+		initializeSpecificUI();
 		// Set MAG databases after UI is initialized
 		setAvailableMagDatabases(magDbItems);
 	}
@@ -93,7 +96,7 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
         }
     }
 
-    private void initializeUI() {
+    private void initializeSpecificUI() {
         setSpacing(10);
         setPadding(new Insets(10));
         setMinWidth(1200);
@@ -187,7 +190,13 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
     }
 
     // Create IO tab (similar to pFind)
-    private VBox createIOTab() {
+    @Override
+    protected String getWorkflowName() {
+        return "DDA MAG FragPipe";
+    }
+    
+    @Override
+    public VBox createIOTab() {
         VBox tabContent = new VBox(10);
         tabContent.setPadding(new Insets(10));
         ioPanel = new MetaPilotIOPanelFX();
@@ -201,7 +210,8 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
     }
 
 
-    private VBox createParametersTab() {
+    @Override
+    public VBox createParametersTab() {
         VBox tabContent = new VBox(10);
         tabContent.setPadding(new Insets(10));
         tabContent.setMinWidth(960);
@@ -477,7 +487,8 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
         metadataPanel.updateMetadataFromIOPanel(experiments);
     }
 
-    private void updateParameterView() {
+    @Override
+    protected void updateParameterView() {
         if (consolePanel == null) {
             return;
         }
@@ -573,7 +584,8 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
     }
 
 
-    private void startAnalysis() {
+    @Override
+    protected void startAnalysis() {
         try {
             consolePanel.appendConsoleText("Starting MAG FragPipe analysis...\n");
             System.out.println("DEBUG: startAnalysis called - MAG FragPipe workflow");
@@ -697,7 +709,8 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
         }
     }
 
-    private void stopAnalysis() {
+    @Override
+    protected void stopAnalysis() {
         consolePanel.appendConsoleText("Stopping FragPipe analysis...\n");
         System.out.println("DEBUG: stopAnalysis called");
         
@@ -710,51 +723,12 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
         }
     }
     
-    private void viewReport() {
-        try {
-            consolePanel.appendConsoleText("Opening report in default browser...\n");
-            
-            if (currentAnalysisParams == null) {
-                consolePanel.appendConsoleText("ERROR: No analysis parameters available. Please run analysis first.\n");
-                return;
-            }
-            
-            File reportDir = currentAnalysisParams.getReportDir();
-            if (reportDir == null || !reportDir.exists()) {
-                consolePanel.appendConsoleText("ERROR: Report directory not available or does not exist.\n");
-                consolePanel.appendConsoleText("Please ensure the analysis has completed successfully.\n");
-                return;
-            }
-            
-            File indexFile = new File(reportDir, "index.html");
-            
-            if (!indexFile.exists()) {
-                consolePanel.appendConsoleText("ERROR: Main report index.html not found in " + reportDir.getAbsolutePath() + "\n");
-                consolePanel.appendConsoleText("Please ensure the analysis has completed successfully.\n");
-                return;
-            }
-            
-            consolePanel.appendConsoleText("Opening main report: index.html\n");
-            
-            if (java.awt.Desktop.isDesktopSupported()) {
-                java.awt.Desktop.getDesktop().browse(indexFile.toURI());
-                consolePanel.appendConsoleText("✓ Report opened in default browser\n");
-            } else {
-                consolePanel.appendConsoleText("ERROR: Desktop not supported. Please open manually: " + indexFile.getAbsolutePath() + "\n");
-            }
-            
-        } catch (Exception e) {
-            String errorMsg = "ERROR: Failed to open report: " + e.getMessage();
-            consolePanel.appendConsoleText(errorMsg + "\n");
-            System.err.println("Failed to open report: " + e.getMessage());
-            e.printStackTrace();
-        }
-    }
     
     /**
      * Collect all parameters from the UI into a parameters object
      */
-    private DDAMagFragPipeParameters collectParametersFromUI() {
+    @Override
+    protected DDAMagFragPipeParameters collectParametersFromUI() {
         try {
             LOGGER.info("Starting parameter collection from UI for MAG FragPipe workflow");
             
@@ -999,7 +973,8 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
     /**
      * Load last used parameters and apply them to the UI
      */
-    private void loadLastUsedParameters() {
+    @Override
+    protected void loadLastUsedParameters() {
         try {
             LOGGER.info("Attempting to load last used parameters for DDA MAG FragPipe workflow");
             DDAMagFragPipeParameters params = (DDAMagFragPipeParameters) parameterIO.loadLastUsedParameters();
@@ -1037,7 +1012,8 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
     /**
      * Apply parameters to the UI components
      */
-    private void applyParametersToUI(DDAMagFragPipeParameters params) {
+    @Override
+    protected void applyParametersToUI(DDAMagFragPipeParameters params) {
         if (params == null) return;
         
         // Apply metadata to IO panel if available
@@ -1212,64 +1188,5 @@ public class MetaPilotDdaMagFragPipePanel extends VBox {
     /**
      * Show error dialog
      */
-    private void showError(String title, String content) {
-        Platform.runLater(() -> {
-            Alert alert = new Alert(Alert.AlertType.ERROR);
-            alert.setTitle(title);
-            alert.setHeaderText(null);
-            alert.setContentText(content);
-            alert.showAndWait();
-        });
-    }
     
-    private void setupWindowCloseHandler() {
-        Platform.runLater(() -> {
-            try {
-                // Get the current scene and window
-                if (getScene() != null) {
-                    javafx.stage.Window window = getScene().getWindow();
-                    if (window != null) {
-                        window.setOnCloseRequest(event -> {
-                            try {
-                                consolePanel.appendConsoleText("Saving parameters on window close...\n");
-                                DDAMagFragPipeParameters currentParams = collectParametersFromUI();
-                                if (currentParams != null) {
-                                    boolean saved = parameterIO.saveLastUsedParameters(currentParams);
-                                    if (saved) {
-                                        consolePanel.appendConsoleText("✓ Parameters saved to config folder: last_used_mag_fragpipe_parameters.json\n");
-                                        LOGGER.info("Successfully saved parameters on window close to config folder");
-                                    } else {
-                                        consolePanel.appendConsoleText("WARNING: Failed to save parameters to config folder\n");
-                                        LOGGER.warn("Failed to save parameters to config folder on window close");
-                                    }
-                                    
-                                    // Also save preferences
-                                    boolean prefsSaved = parameterIO.savePreferences(currentParams);
-                                    if (prefsSaved) {
-                                        consolePanel.appendConsoleText("✓ Preferences saved\n");
-                                    } else {
-                                        consolePanel.appendConsoleText("WARNING: Failed to save preferences\n");
-                                    }
-                                } else {
-                                    consolePanel.appendConsoleText("WARNING: No parameters to save on window close\n");
-                                    LOGGER.warn("No parameters to save on window close");
-                                }
-                            } catch (Exception e) {
-                                String errorMsg = "ERROR: Failed to save parameters on window close: " + e.getMessage();
-                                consolePanel.appendConsoleText(errorMsg + "\n");
-                                LOGGER.error("Failed to save parameters on window close", e);
-                            }
-                        });
-                        LOGGER.info("Window close handler set up successfully");
-                    } else {
-                        LOGGER.warn("Window is null, cannot set close handler");
-                    }
-                } else {
-                    LOGGER.warn("Scene is null, cannot set close handler");
-                }
-            } catch (Exception e) {
-                LOGGER.error("Failed to set up window close handler", e);
-            }
-        });
-    }
 } 
