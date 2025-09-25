@@ -21,7 +21,6 @@ import javafx.concurrent.Task;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
 import uk.ac.quadram.metapilot.task.common.gui.MagDatabaseSettingsPanel;
 import uk.ac.quadram.metapilot.task.common.gui.MetadataConfigurationPanel;
-import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
@@ -29,6 +28,7 @@ import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.dia.par.DiaTargetParameterIO;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaTg;
+import uk.ac.quadram.metapilot.task.common.gui.AbstractWorkflowPanel;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -56,12 +56,11 @@ import uk.ac.quadram.metapilot.dbSearch.diann.DiannParameter;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.task.dia.MetaDiaTask;
 
-public class MetaPilotDiaTargetPanel extends VBox {
+public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameterDiaTg> {
     // UI Components - Database specific for MAG (like DIA workflows)
     private MetaPilotIOPanelFX ioPanel;
     private MagDatabaseSettingsPanel magDatabasePanel;
     private DiaTargetDBGenerationPanel dbGenerationPanel;
-    private ConsolePanel consolePanel;
 
     // DIA Target-specific components
     private ComboBox<Integer> threadsComboBox;
@@ -118,10 +117,13 @@ public class MetaPilotDiaTargetPanel extends VBox {
     private SimpleDateFormat format = new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss");
 
     public MetaPilotDiaTargetPanel(MagDbItem[] magDbItems, MetaResourceParameters resourceParams) {
+        // Call parent constructor first
+        super();
+        
         // Initialize parameter IO instance
         parameterIO = new DiaTargetParameterIO();
         this.resourceParams = resourceParams;
-        initializeUI();
+        initializeSpecificUI();
         // Set MAG databases after UI is initialized
         setAvailableMagDatabases(magDbItems);
         // Load last used parameters after UI and databases are initialized
@@ -145,7 +147,7 @@ public class MetaPilotDiaTargetPanel extends VBox {
         }
     }
 
-    private void initializeUI() {
+    private void initializeSpecificUI() {
         setSpacing(10);
         setPadding(new Insets(10));
         setMinWidth(1200);
@@ -224,8 +226,13 @@ public class MetaPilotDiaTargetPanel extends VBox {
         updateParameterView();
     }
 
-    // Create IO tab (same as MAG workflows)
-    private VBox createIOTab() {
+    @Override
+    protected String getWorkflowName() {
+        return "DIA Target";
+    }
+    
+    @Override
+    public VBox createIOTab() {
         VBox tabContent = new VBox(10);
         tabContent.setPadding(new Insets(10));
         ioPanel = new MetaPilotIOPanelFX();
@@ -269,7 +276,8 @@ public class MetaPilotDiaTargetPanel extends VBox {
     }
 
 
-    private VBox createParametersTab() {
+    @Override
+    public VBox createParametersTab() {
         VBox tabContent = new VBox(10);
         tabContent.setPadding(new Insets(10));
         tabContent.setMinWidth(960);
@@ -919,7 +927,8 @@ public class MetaPilotDiaTargetPanel extends VBox {
     }
 
 
-    private void updateParameterView() {
+    @Override
+    protected void updateParameterView() {
         if (consolePanel == null) {
             return;
         }
@@ -997,7 +1006,8 @@ public class MetaPilotDiaTargetPanel extends VBox {
 
 
 
-    private void startAnalysis() {
+    @Override
+    protected void startAnalysis() {
         try {
             // Validate that a library has been created
             String resultDir = ioPanel.getOutputDirectory();
@@ -1083,7 +1093,8 @@ public class MetaPilotDiaTargetPanel extends VBox {
         }
     }
 
-    private void stopAnalysis() {
+    @Override
+    protected void stopAnalysis() {
         System.out.println("DEBUG: stopAnalysis called");
         
         if (metaDiaTask != null && metaDiaTask.isRunning()) {
@@ -1095,58 +1106,6 @@ public class MetaPilotDiaTargetPanel extends VBox {
         }
     }
     
-    private void viewReport() {
-        try {
-            consolePanel.appendConsoleText("Opening report in default browser...\n");
-            
-            // Use the stored parameters from the last analysis
-            if (currentAnalysisParameters == null || currentAnalysisParameters.getResult() == null) {
-                consolePanel.appendConsoleText("ERROR: No analysis parameters available. Please run analysis first.\n");
-                return;
-            }
-            
-            File resultDir = currentAnalysisParameters.getDbSearchResultFile();
-            consolePanel.appendConsoleText("DEBUG: Result path from stored analysis parameters: " + resultDir + "\n");
-            
-            // Look for the main index.html file in the report directory
-            // For DIA analysis, reports are in the analysis-specific subdirectory
-            File reportDir = new File(resultDir, "report");
-            File indexFile = new File(reportDir, "index.html");
-            
-            consolePanel.appendConsoleText("DEBUG: Looking for report in: " + reportDir.getAbsolutePath() + "\n");
-            
-            if (!indexFile.exists()) {
-                consolePanel.appendConsoleText("ERROR: Main report index.html not found in " + reportDir.getAbsolutePath() + "\n");
-                consolePanel.appendConsoleText("Please ensure the analysis has completed successfully.\n");
-                
-                // Try alternative locations
-                File altIndexFile = new File(resultDir, "index.html");
-                if (altIndexFile.exists()) {
-                    consolePanel.appendConsoleText("Found alternative report location: " + altIndexFile.getAbsolutePath() + "\n");
-                    indexFile = altIndexFile;
-                } else {
-                    consolePanel.appendConsoleText("No report found in result directory either.\n");
-                    return;
-                }
-            }
-            
-            consolePanel.appendConsoleText("Opening main report: " + indexFile.getName() + "\n");
-            
-            // Open the file in the default browser
-            if (java.awt.Desktop.isDesktopSupported()) {
-                java.awt.Desktop.getDesktop().browse(indexFile.toURI());
-                consolePanel.appendConsoleText("✓ Report opened in default browser\n");
-            } else {
-                consolePanel.appendConsoleText("ERROR: Desktop not supported. Please open manually: " + indexFile.getAbsolutePath() + "\n");
-            }
-            
-        } catch (Exception e) {
-            String errorMsg = "ERROR: Failed to open report: " + e.getMessage();
-            consolePanel.appendConsoleText(errorMsg + "\n");
-            System.err.println("Failed to open report: " + e.getMessage());
-            e.printStackTrace();
-        }
-    }
 
 
     /**
@@ -1407,7 +1366,8 @@ public class MetaPilotDiaTargetPanel extends VBox {
     /**
      * Load last used parameters and apply them to the UI
      */
-    private void loadLastUsedParameters() {
+    @Override
+    protected void loadLastUsedParameters() {
         System.out.println("DEBUG: loadLastUsedParameters() called for DIA Target panel");
         try {
             MetaParameterDiaTg params = (MetaParameterDiaTg) parameterIO.loadLastUsedParameters();
@@ -1516,7 +1476,8 @@ public class MetaPilotDiaTargetPanel extends VBox {
     /**
      * Apply parameters to the UI components
      */
-    private void applyParametersToUI(MetaParameterDiaTg params) {
+    @Override
+    protected void applyParametersToUI(MetaParameterDiaTg params) {
         if (params == null) {
             System.out.println("DEBUG: applyParametersToUI called with null params");
             return;
@@ -2709,15 +2670,6 @@ public class MetaPilotDiaTargetPanel extends VBox {
     /**
      * Show error dialog
      */
-    private void showError(String title, String message) {
-        Platform.runLater(() -> {
-            javafx.scene.control.Alert alert = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.ERROR);
-            alert.setTitle(title);
-            alert.setHeaderText(null);
-            alert.setContentText(message);
-            alert.showAndWait();
-        });
-    }
     
     /**
      * Save current parameters to file
