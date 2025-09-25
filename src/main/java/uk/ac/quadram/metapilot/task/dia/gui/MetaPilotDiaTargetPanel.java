@@ -29,6 +29,7 @@ import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.dia.par.DiaTargetParameterIO;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaTg;
 import uk.ac.quadram.metapilot.task.common.gui.AbstractWorkflowPanel;
+import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -93,12 +94,14 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 
     // Parameter I/O
     private DiaTargetParameterIO parameterIO;
-    private MetaParameterDiaTg currentAnalysisParameters;
     
     // Task management (following MetaPilotDiaNormalPanel pattern)
     private MetaDiaTask metaDiaTask;
     private ExecutorService taskExecutor;
     private MetaResourceParameters resourceParams;
+    
+    // Store the last used analysis parameters for viewReport
+    private MetaParameterDiaTg currentAnalysisParams;
     
     // Function types for database queries (same as MetaDiaTargetDBTask.FUNCTIONS)
     private static final String[] FUNCTION_TYPES = new String[] { 
@@ -1035,6 +1038,9 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
                 showError("Parameter Error", "Failed to collect parameters from UI. Please check your settings.");
                 return;
             }
+            
+            // Store analysis parameters for viewReport
+            currentAnalysisParams = targetParams;
             
             targetParams.setLibraryPath(libraryFilePath);
             

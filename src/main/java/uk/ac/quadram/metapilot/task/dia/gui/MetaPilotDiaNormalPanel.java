@@ -26,6 +26,8 @@ import uk.ac.quadram.metapilot.task.dia.MetaDiaTask;
 import uk.ac.quadram.metapilot.dbSearch.deepDetect.DeepDetectTask;
 import uk.ac.quadram.metapilot.dbSearch.deepDetect.DeepDetectParameter;
 import uk.ac.quadram.metapilot.task.common.gui.AbstractWorkflowPanel;
+import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
+
 import java.io.File;
 import java.time.LocalDateTime;
 import java.util.concurrent.ExecutorService;
@@ -49,7 +51,9 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
     
     // MetaDiaTask for DIA analysis
     private MetaDiaTask metaDiaTask;
-    private MetaParameterDia currentAnalysisParameters;
+    
+    // Store the last used analysis parameters for viewReport
+    private MetaParameterDia currentAnalysisParams;
     
 
     // DIA-specific mode selection
@@ -672,7 +676,7 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
         }
         
         // Store the parameters for later use (e.g., in viewReport)
-        currentAnalysisParameters = metaParameterDia;
+        currentAnalysisParams = metaParameterDia;
         
         // Load resource parameters from config file (same as DDA panel)
         consolePanel.appendConsoleText("Loading resource parameters from config...\n");
@@ -711,7 +715,7 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
                 if (result != null && result) {
                     // Task completed successfully
                     consolePanel.appendConsoleText("✓ Analysis completed successfully!\n");
-                    consolePanel.appendConsoleText("Results saved to: " + currentAnalysisParameters.getResult() + "\n");
+                    consolePanel.appendConsoleText("Results saved to: " + currentAnalysisParams.getResult() + "\n");
                     consolePanel.enableViewReportButton();
                     consolePanel.setButtonsEnabled(true, false, true);
                 } else {
