@@ -21,7 +21,7 @@ import java.util.HashMap;
  * <h3>Complete Hierarchy (Top to Bottom):</h3>
  * <pre>{@code
  *   Root
- *   ├── Superkingdom (Domain)    [Main Rank 0]
+ *   ├── Domain (Superkingdom)    [Main Rank 0]
  *   │   ├── Kingdom              [Main Rank 1]
  *   │   │   ├── Subkingdom
  *   │   │   ├── Superphylum
@@ -56,7 +56,7 @@ import java.util.HashMap;
  * <h3>Main Ranks (8 core levels):</h3>
  * <p>These are the primary taxonomic levels used in most classifications:</p>
  * <ul>
- *   <li><strong>Superkingdom:</strong> Bacteria, Archaea, Eukaryota</li>
+ *   <li><strong>Domain:</strong> Bacteria, Archaea, Eukaryota</li>
  *   <li><strong>Kingdom:</strong> Traditional kingdoms (Animalia, Plantae, etc.)</li>
  *   <li><strong>Phylum:</strong> Major body plan divisions</li>
  *   <li><strong>Class:</strong> Fundamental groupings within phyla</li>
@@ -69,7 +69,7 @@ import java.util.HashMap;
  * <h3>Simplified 7-Rank System:</h3>
  * <p>For streamlined analysis, excludes Kingdom level:</p>
  * <ul>
- *   <li>Superkingdom → Phylum → Class → Order → Family → Genus → Species</li>
+ *   <li>Domain → Phylum → Class → Order → Family → Genus → Species</li>
  * </ul>
  * 
  * <h3>Intermediate Ranks:</h3>
@@ -125,7 +125,7 @@ import java.util.HashMap;
  *   boolean isMain2 = TaxonomyRanks.Subgenus.isMainRank(); // false
  *   
  *   // Get rank from name
- *   TaxonomyRanks rank = TaxonomyRanks.getRankFromName("Species");
+ *   TaxonomyRanks rank = TaxonomyRanks.getRankFromName("species");
  * }</pre>
  * 
  * <h3>Rank Mapping:</h3>
@@ -135,7 +135,7 @@ import java.util.HashMap;
  *   
  *   // Convert between ID and rank
  *   TaxonomyRanks genus = TaxonomyRanks.getRankFromId(20);
- *   String rankName = TaxonomyRanks.getRankNameFromId(23); // "Species"
+ *   String rankName = TaxonomyRanks.getRankNameFromId(23); // "species"
  * }</pre>
  * 
  * <h3>Hierarchical Analysis:</h3>
@@ -151,7 +151,7 @@ import java.util.HashMap;
  * 
  * <h3>Human Classification:</h3>
  * <ul>
- *   <li><strong>Superkingdom:</strong> Eukaryota</li>
+ *   <li><strong>Domain:</strong> Eukaryota</li>
  *   <li><strong>Kingdom:</strong> Animalia</li>
  *   <li><strong>Phylum:</strong> Chordata</li>
  *   <li><strong>Class:</strong> Mammalia</li>
@@ -163,7 +163,7 @@ import java.util.HashMap;
  * 
  * <h3>E. coli Classification:</h3>
  * <ul>
- *   <li><strong>Superkingdom:</strong> Bacteria</li>
+ *   <li><strong>Domain:</strong> Bacteria</li>
  *   <li><strong>Phylum:</strong> Proteobacteria</li>
  *   <li><strong>Class:</strong> Gammaproteobacteria</li>
  *   <li><strong>Order:</strong> Enterobacterales</li>
@@ -200,70 +200,70 @@ import java.util.HashMap;
  */
 public enum TaxonomyRanks {
 
-	Root(-1, "Root", true, -1),
+	Root(-1, "root", true, -1),
 
-	Superkingdom(0, "Superkingdom", true, 0),
+	Superkingdom(0, "domain", true, 0),
 
-	Kingdom(1, "Kingdom", true, 1),
+	Kingdom(1, "kingdom", true, 1),
 
-	Subkingdom(2, "Subkingdom", false, -1),
+	Subkingdom(2, "subkingdom", false, -1),
 
-	Superphylum(3, "Superphylum", false, -1),
+	Superphylum(3, "superphylum", false, -1),
 
-	Phylum(4, "Phylum", true, 2),
+	Phylum(4, "phylum", true, 2),
 
-	Subphylum(5, "Subphylum", false, -1),
+	Subphylum(5, "subphylum", false, -1),
 
-	Superclass(6, "Superclass", false, -1),
+	Superclass(6, "superclass", false, -1),
 
-	Class(7, "Class", true, 3),
+	Class(7, "class", true, 3),
 
-	Subclass(8, "Subclass", false, -1),
+	Subclass(8, "subclass", false, -1),
 
-	Infraclass(9, "Infraclass", false, -1),
+	Infraclass(9, "infraclass", false, -1),
 
-	Superorder(10, "Superorder", false, -1),
+	Superorder(10, "superorder", false, -1),
 
-	Order(11, "Order", true, 4),
+	Order(11, "order", true, 4),
 
-	Suborder(12, "Suborder", false, -1),
+	Suborder(12, "suborder", false, -1),
 
-	Infraorder(13, "Infraorder", false, -1),
+	Infraorder(13, "infraorder", false, -1),
 
-	Parvorder(14, "Parvorder", true, -1),
+	Parvorder(14, "parvorder", true, -1),
 
-	Superfamily(15, "Superfamily", false, -1),
+	Superfamily(15, "superfamily", false, -1),
 
-	Family(16, "Family", true, 5),
+	Family(16, "family", true, 5),
 
-	Subfamily(17, "Subfamily", false, -1),
+	Subfamily(17, "subfamily", false, -1),
 
-	Tribe(18, "Tribe", false, -1),
+	Tribe(18, "tribe", false, -1),
 
-	Subtribe(19, "Subtribe", false, -1),
+	Subtribe(19, "subtribe", false, -1),
 
-	Genus(20, "Genus", true, 6),
+	Genus(20, "genus", true, 6),
 
-	Subgenus(21, "Subgenus", false, -1),
+	Subgenus(21, "subgenus", false, -1),
 
-	Species_group(22, "Species group", false, -1),
+	Species_group(22, "species group", false, -1),
 
-	Species(23, "Species", true, 7),
+	Species(23, "species", true, 7),
 
-	Species_subgroup(24, "Species subgroup", false, -1),
+	Species_subgroup(24, "species subgroup", false, -1),
 
-	Subspecies(25, "Subspecies", false, -1),
+	Subspecies(25, "subspecies", false, -1),
 
-	Varietas(26, "Varietas", false, -1),
+	Varietas(26, "varietas", false, -1),
 
-	Forma(27, "Forma", false, -1),
+	Forma(27, "forma", false, -1),
 
 	;
 
-	protected static final String[] ranks = new String[] { "Superkingdom", "Kingdom", "Subkingdom", "Superphylum",
-			"Phylum", "Subphylum", "Superclass", "Class", "Subclass", "Infraclass", "Superorder", "Order", "Suborder",
-			"Infraorder", "Parvorder", "Superfamily", "Family", "Subfamily", "Tribe", "Subtribe", "Genus", "Subgenus",
-			"Species group", "Species", "Species subgroup", "Subspecies", "Varietas", "Forma" };
+	protected static final String[] ranks = new String[] { "domain", "kingdom", "subkingdom", "superphylum",
+			"phylum", "subphylum", "superclass", "class", "subclass", "infraclass", "superorder", "order", "suborder",
+			"infraorder", "parvorder", "superfamily", "family", "subfamily", "tribe", "subtribe", "genus", "subgenus",
+			"species group", "species", "species subgroup", "subspecies", "varietas", "forma" };
 
 	private int id;
 	private String name;

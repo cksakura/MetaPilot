@@ -1,0 +1,263 @@
+DIA DATA ANALYSIS WORKFLOW - MetaDiaTask.java
+=======================================================
+
+OVERVIEW
+--------
+DIA (Data-Independent Acquisition) workflow for metaproteomics analysis using DiaNN.
+Extends MetaPilotMagTask and provides three analysis modes:
+- Library Search Mode (using existing spectral libraries)
+- Self Model Search Mode (using self-generated models)  
+- Iterative Search Mode (iterative library building and searching)
+
+MAIN WORKFLOW STEPS
+-------------------
+Progress: 0-100% (4 major phases)
+
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                           DIA WORKFLOW OVERVIEW                                 │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│  INPUT: DIA Files (.raw, .d, .mzML, .dia) + MAG Database                       │
+│  OUTPUT: Comprehensive HTML/TSV reports with protein identification/quantification │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+PHASE 1: INITIALIZATION & SPECTRA CONVERSION (0-15%)
+═══════════════════════════════════════════════════════════
+Progress: 0-15%
+
+Step 0: Background Setup (0-5%)
+├─ Copy report templates to output directory
+├─ Initialize DiaNN task and parameters
+├─ Set up thread pools and resource management
+└─ Validate MAG database and input files
+
+Step 1: Spectra Format Conversion (5-15%)
+├─ Input: Raw files (.raw, .d, .mzML, .dia)
+├─ Process: Convert .raw files to .dia format using DiaNN
+├─ Validation: Check converted files exist and are readable
+├─ Output: DIA-compatible spectra files
+└─ Error Handling: .NET SDK dependency check
+
+PHASE 2: SAMPLE-SPECIFIC LIBRARY CREATION (15-20%)
+═══════════════════════════════════════════════════════════
+Progress: 15-20%
+
+Step 2: Library Generation Strategy
+├─ Library Search Mode: Skip library creation (use existing libraries)
+├─ Self Model Search Mode: Use pre-built models
+└─ Iterative Search Mode: Build sample-specific libraries
+
+Iterative Search Process (if applicable):
+├─ Round 1: Initial library search using MAG database libraries
+│  ├─ Host library search (if host database enabled)
+│  ├─ MAG library searches (multiple taxonomic groups)
+│  └─ Generate initial peptide identifications
+├─ Round 2+: Iterative refinement
+│  ├─ Extract high-confidence peptides from previous round
+│  ├─ Build refined library from identified peptides
+│  ├─ Re-search with improved library
+│  └─ Continue until convergence or max iterations
+└─ Final Library: Combined spectral library for identification
+
+PHASE 3: PROTEIN IDENTIFICATION & QUANTIFICATION (20-85%)
+═══════════════════════════════════════════════════════════
+Progress: 20-85%
+
+Step 3: Main Identification Process
+├─ Configure DiaNN parameters:
+│  ├─ Thread count optimization
+│  ├─ Quality thresholds (q-value, FDR)
+│  ├─ Match-between-runs (MBR) settings
+│  └─ Library file paths
+├─ Execute DiaNN search:
+│  ├─ Spectral library matching
+│  ├─ Peptide identification with confidence scores
+│  ├─ Protein inference and grouping
+│  └─ Quantitative analysis (if applicable)
+└─ Generate Results:
+    ├─ Peptide identifications (parquet format)
+    ├─ Protein identifications and scores
+    ├─ Quantitative matrices (if quantification enabled)
+    └─ Quality control metrics
+
+DiaNN-Specific Processing:
+├─ Spectral Library Matching
+│  ├─ Precursor mass matching
+│  ├─ Fragment ion matching
+│  └─ Retention time alignment
+├─ Protein Inference
+│  ├─ Peptide-to-protein mapping
+│  ├─ Protein grouping and parsimony
+│  └─ Confidence scoring
+└─ Quantitative Analysis (if enabled)
+    ├─ Peak area integration
+    ├─ Normalization across samples
+    └─ Missing value imputation
+
+PHASE 4: REPORT GENERATION & ANALYSIS (85-100%)
+═══════════════════════════════════════════════════════════
+Progress: 85-100%
+
+Step 4: Comprehensive Report Generation
+├─ Protein Inference & Refinement:
+│  ├─ Genome-level Occam's Razor filtering
+│  ├─ Protein-level refinement and scoring
+│  ├─ FDR filtering at protein level
+│  └─ Protein group validation
+├─ Functional Annotation:
+│  ├─ Extract protein sequences from combined FASTA
+│  ├─ Run functional annotation pipeline
+│  ├─ Generate EC number and GO term mappings
+│  └─ Create functional annotation XML files
+├─ Taxonomic Analysis:
+│  ├─ Genome-to-taxonomy mapping
+│  ├─ Taxonomic rank aggregation (species → kingdom)
+│  ├─ Calculate intensities at all taxonomic levels
+│  ├─ Generate taxonomic distribution reports
+│  └─ Create taxonomic tree visualizations
+├─ Report Generation:
+│  ├─ Generate identification summary (TSV)
+│  ├─ Create peptide report with quantitative data
+│  ├─ Generate protein report with functional info
+│  ├─ Create taxonomic analysis reports
+│  └─ Generate functional annotation reports
+└─ HTML Report Compilation:
+    ├─ Convert TSV files to HTML format
+    ├─ Create interactive visualizations
+    ├─ Generate summary statistics and plots
+    ├─ Compile comprehensive HTML report
+    └─ Copy final reports to output directory
+
+DETAILED WORKFLOW BRANCHES
+═══════════════════════════════════════════════════════════
+
+LIBRARY SEARCH MODE:
+├─ Use pre-existing spectral libraries
+├─ Skip iterative library building
+├─ Direct identification with DiaNN
+└─ Faster processing, requires quality libraries
+
+SELF MODEL SEARCH MODE:
+├─ Use pre-built self-generated models
+├─ Skip library building phase
+├─ Direct identification with models
+└─ Balanced speed and accuracy
+
+ITERATIVE SEARCH MODE:
+├─ Build sample-specific libraries iteratively
+├─ Multiple rounds of identification and refinement
+├─ Highest accuracy but slower processing
+└─ Best for novel or poorly characterized samples
+
+TECHNICAL COMPONENTS
+═══════════════════════════════════════════════════════════
+
+DiaNN Integration:
+├─ DiaNNTask: Wrapper for DiaNN executable
+├─ DiannParameter: Configuration management
+├─ DiaLibSearchPar: Library search parameters
+└─ DiaNNPrecursor: Precursor data structures
+
+Data Processing:
+├─ FlashLfqQuanPeptide: Quantitative peptide data
+├─ DiaNNResultReader: Result file parsing
+├─ DiaNNParquetReader: Parquet format handling
+└─ ConcurrentHashMap: Thread-safe data structures
+
+Report Generation:
+├─ MetaPythonReportTask: Python-based report generation
+├─ MetaTreeHandler: Taxonomic tree processing
+├─ HMGenomeHtmlWriter: HTML report generation
+└─ MetaProteinXMLReader2: XML data processing
+
+ERROR HANDLING & VALIDATION
+═══════════════════════════════════════════════════════════
+
+Critical Dependencies:
+├─ .NET SDK 8.0.407+ (for .raw file conversion)
+├─ DiaNN executable (for identification)
+├─ Python environment (for report generation)
+└─ MAG database files (libraries, models, FASTA)
+
+Validation Points:
+├─ Input file format validation
+├─ MAG database accessibility check
+├─ DiaNN executable verification
+├─ Thread count optimization
+└─ Output directory write permissions
+
+Progress Tracking:
+├─ Main progress bar: Overall workflow progress
+├─ Secondary progress bar: Current step progress
+├─ Indeterminate progress: For long-running operations
+└─ Detailed logging: Step-by-step execution tracking
+
+OUTPUT STRUCTURE
+═══════════════════════════════════════════════════════════
+
+Result Directory:
+├─ [analysis_type]/ (library_analysis, self_model_analysis, iterative_analysis)
+│  ├─ combined/ (combined results across samples)
+│  ├─ [sample_name]/ (individual sample results)
+│  ├─ host/ (host database results, if applicable)
+│  ├─ reports/ (HTML and TSV reports)
+│  └─ temp/ (temporary files, cleaned up after completion)
+│
+Reports Generated:
+├─ index.html (main report entry point)
+├─ identification_summary.tsv
+├─ peptide_report.tsv
+├─ protein_report.tsv
+├─ taxonomy_report.tsv
+├─ functional_annotation.tsv
+└─ quality_control_metrics.tsv
+
+PERFORMANCE OPTIMIZATION
+═══════════════════════════════════════════════════════════
+
+Threading:
+├─ Configurable thread count (default: 4)
+├─ Parallel file processing where possible
+├─ ConcurrentHashMap for thread-safe data structures
+└─ ExecutorService for task management
+
+Memory Management:
+├─ Streaming file processing for large datasets
+├─ Efficient data structures (HashSet, HashMap)
+├─ Cleanup of temporary files
+└─ Garbage collection optimization
+
+I/O Optimization:
+├─ Batch file operations
+├─ Efficient file format handling (parquet)
+├─ Minimal file copying and movement
+└─ Background template copying
+
+WORKFLOW COMPARISON
+═══════════════════════════════════════════════════════════
+
+DIA vs DDA MAG:
+├─ DIA: Library-based identification, higher throughput
+├─ DDA MAG: Spectrum-based identification, higher specificity
+├─ DIA: Better quantitative reproducibility
+├─ DDA MAG: Better identification depth for novel proteins
+
+DIA vs IGC:
+├─ DIA: Genome-based taxonomy, MAG database integration
+├─ IGC: Protein-based taxonomy, Unipept integration
+├─ DIA: Comprehensive functional annotation
+├─ IGC: Simplified functional annotation
+
+KEY ADVANTAGES OF DIA WORKFLOW
+═══════════════════════════════════════════════════════════
+
+1. High Throughput: Process many samples simultaneously
+2. Quantitative Accuracy: Excellent reproducibility across runs
+3. Comprehensive Analysis: Full taxonomic and functional profiling
+4. Flexible Modes: Library, self-model, or iterative search options
+5. Scalable: Handles large metaproteomics datasets efficiently
+6. Quality Control: Built-in validation and error checking
+7. Rich Reporting: Comprehensive HTML reports with visualizations
+
+=======================================================
+End of DIA Workflow Chart
+=======================================================

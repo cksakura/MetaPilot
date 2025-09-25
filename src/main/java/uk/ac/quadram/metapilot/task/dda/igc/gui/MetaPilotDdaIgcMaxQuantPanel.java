@@ -18,7 +18,6 @@ import javafx.beans.property.StringProperty;
 import javafx.scene.control.Alert.AlertType;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX.ExperimentRow;
-import uk.ac.quadram.metapilot.task.common.gui.TaxonomicAnalysisPanel;
 import uk.ac.quadram.metapilot.task.common.gui.DdaIgcInputOutputPanel;
 import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
 import uk.ac.quadram.metapilot.task.par.MetaData;
@@ -92,8 +91,6 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
     private TableView<IsobaricLabelRow> isobaricTable;
     private ObservableList<IsobaricLabelRow> isobaricTableData = FXCollections.observableArrayList();
     
-    // Taxonomic analysis panel
-    private TaxonomicAnalysisPanel taxonomicAnalysisPanel;
     
     // Metadata configuration components
     private TableView<MetadataRow> metadataTable;
@@ -257,8 +254,6 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
         // Load enzymes and modifications from XML
         loadEnzymesAndModifications();
         
-        // Initialize taxonomic analysis panel
-        taxonomicAnalysisPanel = new TaxonomicAnalysisPanel(this::updateParameterView);
         
         // Create main grid layout for parameters with 2-column responsive sizing
         GridPane mainGrid = new GridPane();
@@ -292,7 +287,7 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
         VBox enzymeSection = createEnzymeSection();
         VBox additionalParamsSection = createAdditionalParametersSection();
         VBox modificationsSection = createModificationsSection();
-        leftColumn.getChildren().addAll(enzymeSection, additionalParamsSection, taxonomicAnalysisPanel, modificationsSection);
+        leftColumn.getChildren().addAll(enzymeSection, additionalParamsSection, modificationsSection);
         GridPane.setVgrow(leftColumn, Priority.ALWAYS);
         
         // Right column: Quantitative Mode and Metadata Configuration (stacked)
@@ -1298,7 +1293,6 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
         }
         
         // Taxonomic analysis
-        sb.append("\n").append(taxonomicAnalysisPanel.getTaxonomicSummary());
         
         return sb.toString();
     }
@@ -1843,15 +1837,6 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
         }
         
         // Taxonomic analysis
-        params.setEukaryota(taxonomicAnalysisPanel.isEukaryota());
-        params.setBacteria(taxonomicAnalysisPanel.isBacteria());
-        params.setArchaea(taxonomicAnalysisPanel.isArchaea());
-        params.setViruses(taxonomicAnalysisPanel.isViruses());
-        params.setViroids(taxonomicAnalysisPanel.isViroids());
-        params.setUnclassified(taxonomicAnalysisPanel.isUnclassified());
-        params.setOther(taxonomicAnalysisPanel.isOther());
-        params.setIgnoreRank(taxonomicAnalysisPanel.getIgnoreRank());
-        params.setIgnoreEnvironmentalSamples(taxonomicAnalysisPanel.isIgnoreEnvironmentalSamples());
         
         // Metadata
         params.setMetadataTableData(new ArrayList<>(metadataTableData));
@@ -1990,19 +1975,6 @@ public class MetaPilotDdaIgcMaxQuantPanel extends VBox {
         }
         
         // Apply taxonomic settings
-        if (taxonomicAnalysisPanel != null) {
-            taxonomicAnalysisPanel.setEukaryota(params.isEukaryota());
-            taxonomicAnalysisPanel.setBacteria(params.isBacteria());
-            taxonomicAnalysisPanel.setArchaea(params.isArchaea());
-            taxonomicAnalysisPanel.setViruses(params.isViruses());
-            taxonomicAnalysisPanel.setViroids(params.isViroids());
-            taxonomicAnalysisPanel.setUnclassified(params.isUnclassified());
-            taxonomicAnalysisPanel.setOther(params.isOther());
-            if (params.getIgnoreRank() != null) {
-                taxonomicAnalysisPanel.setIgnoreRank(params.getIgnoreRank());
-            }
-            taxonomicAnalysisPanel.setIgnoreEnvironmentalSamples(params.isIgnoreEnvironmentalSamples());
-        }
         
         // Apply metadata table data
         if (params.getMetadataTableData() != null && metadataTableData != null) {

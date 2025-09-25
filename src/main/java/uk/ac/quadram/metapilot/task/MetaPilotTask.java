@@ -22,11 +22,13 @@ import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
@@ -732,46 +734,169 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 	}
 
 	/**
-	 * Common Occam's razor implementation for selecting items (proteins, genomes, etc.) 
-	 * based on peptide coverage. This method implements the core algorithm used by both
-	 * protein refinement in IGC workflows and genome refinement in MAG workflows.
+	 * Sophisticated Occam's razor implementation for selecting items (proteins,
+	 * genomes, etc.) based on peptide coverage. This method implements the advanced
+	 * algorithm with iterative re-sorting and multiple breakpoints used by the MAG
+	 * workflow's refineGenomes method.
 	 * 
 	 * @param itemToPeptides Map from item names to their associated peptides
-	 * @param totalPeptides Total set of unique peptides (for threshold calculation)
-	 * @param threshold Coverage threshold (e.g., 0.95 for 95% coverage)
-	 * @return Set of selected item names that together cover the threshold percentage of peptides
+	 * @param totalPeptides  Total set of unique peptides (for threshold
+	 *                       calculation)
+	 * @param threshold      Coverage threshold (e.g., 0.95 for 95% coverage)
+	 * @param stepThreshold  Increment threshold for breakpoint detection (e.g.,
+	 *                       0.01 for 1%)
+	 * @param maximum        Maximum number of items to select
+	 * @param decoyFilter    Whether to apply decoy filtering logic
+	 * @param out            Output file for ranking statistics (optional, can be
+	 *                       null)
+	 * @return Set of selected item names that together cover the threshold
+	 *         percentage of peptides
 	 */
-	protected HashSet<String> applyOccamsRazor(HashMap<String, HashSet<String>> itemToPeptides, 
-			HashSet<String> totalPeptides, double threshold) {
+	protected HashSet<String> applyOccamsRazor(HashMap<String, HashSet<String>> itemToPeptides,
+			Set<String> totalPeptides, double threshold, double stepThreshold, int maximum, boolean decoyFilter,
+			File out) {
+
+		int totalPepCount = totalPeptides.size();
+		String[] items = itemToPeptides.keySet().toArray(new String[itemToPeptides.size()]);
+
+		// Initial sort by peptide count (descending)
+		Arrays.sort(items, (i1, i2) -> {
+			int s1 = itemToPeptides.get(i1).size();
+			int s2 = itemToPeptides.get(i2).size();
+			return s2 - s1;
+		});
+
+		// Iterative re-sorting based on actual contributions (5 iterations for
+		// optimization)
+		for (int iteratorCount = 0; iteratorCount < 5; iteratorCount++) {
+			HashSet<String> totalSet = new HashSet<String>();
+			HashMap<String, Integer> orderMap = new HashMap<String, Integer>();
+			for (int i = 0; i < items.length; i++) {
+				int currentSize = totalSet.size();
+				totalSet.addAll(itemToPeptides.get(items[i]));
+				int increaseSize = totalSet.size() - currentSize;
+				orderMap.put(items[i], increaseSize);
+			}
+
+			// Re-sort by actual increment contributions
+			Arrays.sort(items, (i1, i2) -> {
+				return orderMap.get(i2) - orderMap.get(i1);
+			});
+		}
+
+		double[] percentage = new double[items.length];
 		HashSet<String> selectedItems = new HashSet<String>();
+		HashSet<String> totalSet = new HashSet<String>();
+		int breakPoint1 = -1;
+		int breakPoint2 = -1;
 
-		// Sort items by peptide count (descending)
-		ArrayList<Map.Entry<String, HashSet<String>>> sortedItems = new ArrayList<Map.Entry<String, HashSet<String>>>(
-				itemToPeptides.entrySet());
-		sortedItems.sort((e1, e2) -> Integer.compare(e2.getValue().size(), e1.getValue().size()));
+		// Write ranking statistics if output file is provided
+		if (out != null) {
+			try (PrintWriter writer = new PrintWriter(out)) {
+				writer.println(
+						"Rank\tItem\tPeptide_count\tTotal_covered_peptide_count\tPercentage\tIncrement\tIncrement ratio");
+				for (int i = 0; i < items.length; i++) {
 
-		HashSet<String> coveredPeptides = new HashSet<String>();
+					int currentSize = totalSet.size();
+					totalSet.addAll(itemToPeptides.get(items[i]));
+					int add = totalSet.size() - currentSize;
+					double additional = ((double) add / (double) totalPepCount);
 
-		for (Map.Entry<String, HashSet<String>> entry : sortedItems) {
-			String item = entry.getKey();
-			HashSet<String> peptides = entry.getValue();
+					percentage[i] = ((double) totalSet.size() / (double) totalPepCount);
 
-			// Check how many new peptides this item would add
-			HashSet<String> newPeptides = new HashSet<String>(peptides);
-			newPeptides.removeAll(coveredPeptides);
+					writer.println(i + "\t" + items[i] + "\t" + itemToPeptides.get(items[i]).size() + "\t"
+							+ totalSet.size() + "\t" + percentage[i] + "\t" + add + "\t" + additional);
 
-			if (!newPeptides.isEmpty()) {
-				selectedItems.add(item);
-				coveredPeptides.addAll(newPeptides);
+					if (add > 1) {
+						breakPoint1 = i;
+					}
+					if (additional > stepThreshold) {
+						breakPoint2 = i;
+					}
+				}
+				writer.close();
+			} catch (IOException e) {
+				LOGGER.error(getTaskName() + ": error in writing ranking to " + out, e);
+				System.out.println(
+						format.format(new Date()) + "\t" + getTaskName() + ": error in writing ranking to " + out);
+			}
+		} else {
+			// Calculate breakpoints without writing to file
+			for (int i = 0; i < items.length; i++) {
+				int currentSize = totalSet.size();
+				totalSet.addAll(itemToPeptides.get(items[i]));
+				int add = totalSet.size() - currentSize;
+				double additional = ((double) add / (double) totalPepCount);
 
-				// Check if we've covered enough peptides
-				if ((double) coveredPeptides.size() / totalPeptides.size() >= threshold) {
+				percentage[i] = ((double) totalSet.size() / (double) totalPepCount);
+
+				if (add > 1) {
+					breakPoint1 = i;
+				}
+				if (additional > stepThreshold) {
+					breakPoint2 = i;
+				}
+			}
+		}
+
+		// Reset totalSet for actual selection
+		totalSet.clear();
+
+		int decoyCount = 0;
+		for (int i = 0; i < items.length; i++) {
+			selectedItems.add(items[i]);
+
+			// Check for decoy items (common decoy patterns)
+			if (items[i].startsWith("REV_") || items[i].contains("DECOY") || items[i].startsWith("REV")
+					|| items[i].endsWith("_REV")) {
+				decoyCount++;
+			}
+
+			if (decoyFilter) {
+				if (decoyCount >= 3) {
+					if (percentage[i] >= threshold) {
+						break;
+					}
+					if (i == breakPoint1 || i == breakPoint2) {
+						break;
+					}
+					if (selectedItems.size() > maximum) {
+						break;
+					}
+				}
+			} else {
+				if (percentage[i] >= threshold) {
 					break;
+				}
+				if (threshold < 1.0) {
+					if (i == breakPoint1 || i == breakPoint2) {
+						break;
+					}
+					if (selectedItems.size() > maximum) {
+						break;
+					}
 				}
 			}
 		}
 
 		return selectedItems;
+	}
+
+	/**
+	 * Simplified version of applyOccamsRazor for backward compatibility. Uses
+	 * default values for advanced parameters.
+	 * 
+	 * @param itemToPeptides Map from item names to their associated peptides
+	 * @param totalPeptides  Total set of unique peptides (for threshold
+	 *                       calculation)
+	 * @param threshold      Coverage threshold (e.g., 0.95 for 95% coverage)
+	 * @param out            Output file for ranking statistics
+	 * @return Set of selected item names that together cover the threshold
+	 *         percentage of peptides
+	 */
+	protected HashSet<String> applyOccamsRazor(HashMap<String, HashSet<String>> itemToPeptides,
+			Set<String> totalPeptides, double threshold, File out) {
+		return applyOccamsRazor(itemToPeptides, totalPeptides, threshold, 0.01, Integer.MAX_VALUE, false, out);
 	}
 
 }

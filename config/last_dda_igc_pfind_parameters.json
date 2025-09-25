@@ -64,7 +64,7 @@
     "missed_cleavages": 2,
     "digestion_mode": "Specific"
   },
-  "generated_at": "2025-09-19 10:09:04",
+  "generated_at": "2025-09-25 11:50:42",
   "additional_parameters": {
     "generate_sample_specific_db": true,
     "ms2_scan_mode": "HCD-FTMS",
@@ -73,15 +73,15 @@
   },
   "description": "Last used parameters",
   "taxonomic_analysis": {
-    "viruses": true,
+    "viruses": false,
     "unclassified": false,
     "other": false,
-    "bacteria": true,
-    "eukaryota": true,
-    "ignore_environmental_samples": true,
-    "ignore_rank": "Family",
+    "bacteria": false,
+    "eukaryota": false,
+    "ignore_environmental_samples": false,
+    "ignore_rank": "Species",
     "viroids": false,
-    "archaea": true
+    "archaea": false
   },
   "version": "1.0",
   "modifications": {

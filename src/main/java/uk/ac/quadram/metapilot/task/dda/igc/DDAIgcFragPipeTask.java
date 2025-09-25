@@ -23,31 +23,9 @@ import uk.ac.quadram.metapilot.task.dda.MetaDbReducerTask;
 import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcFragPipeParameters;
 import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragPipeTask;
 import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragpipePepReader;
-import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragpipeProReader;
-import uk.ac.quadram.metapilot.task.MetaPythonReportCopyTask;
-import uk.ac.quadram.metapilot.task.MetaPythonReportTask;
-import uk.ac.quadram.metapilot.task.io.MetaAlgorithm;
-import uk.ac.quadram.metapilot.task.io.MetaBiomJsonHandler;
-import uk.ac.quadram.metapilot.task.io.MetaTreeHandler;
+import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragPipePSM;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
-import uk.ac.quadram.metapilot.dbSearch.pfind.PFindPeptide;
-import uk.ac.quadram.metapilot.task.io.pep.MetaPeptideXMLReader;
-import uk.ac.quadram.metapilot.task.io.pep.MetaPeptideXMLWriter;
-import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
-import uk.ac.quadram.metapilot.task.par.MetaPep2TaxaPar;
-import uk.ac.quadram.metapilot.mdb.unipept.UnipLCAResult;
-import uk.ac.quadram.metapilot.mdb.unipept.UnipeptRequester;
-import uk.ac.quadram.metapilot.core.taxonomy.Taxon;
-import uk.ac.quadram.metapilot.core.taxonomy.TaxonomyDatabase;
-import uk.ac.quadram.metapilot.core.tools.FormatTool;
-import java.io.BufferedReader;
-import java.io.FileReader;
-import java.io.PrintWriter;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.util.Arrays;
-import java.util.HashSet;
 
 /**
  * DDA IGC FragPipe Task - Implements the complete DDA IGC workflow using FragPipe
@@ -68,14 +46,15 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
     private static final String taskName = "DDA IGC database search by FragPipe workflow";
 
     // Task-specific fields
-    protected File rawDir;
-    protected File quan_pep_file;
-    protected File quan_pro_file;
-    protected HashMap<String, String> expNameMap;
     protected String[] mzMLFiles;
     protected String[] mgfFiles;
-    protected File spectraDirFile;
     protected File msConvertExe;
+
+    // Fields to track running subtasks
+    private MetaDbReducerTask dbReducerTask;
+    private FragPipeTask fragPipeTask;
+    private Thread spectraConvertThread;
+    private Thread mgfConvertThread;
 
     public DDAIgcFragPipeTask(DDAIgcFragPipeParameters metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
             ProgressBar secondBar) {
@@ -108,12 +87,6 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
         // Initialize MSConvert executable
         this.msConvertExe = new File(mrp.getToolPath(ToolType.MSCONVERT));
     }
-
-    // Fields to track running subtasks
-    private MetaDbReducerTask dbReducerTask;
-    private FragPipeTask fragPipeTask;
-    private Thread spectraConvertThread;
-    private Thread mgfConvertThread;
 
     @Override
     public void forceStop() {
@@ -652,578 +625,63 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
      * This method follows the same pattern as DDAIgcPFindTask but uses FragPipe readers
      */
     protected boolean exportReport() {
-        updateMessage(getTaskName() + ": exporting report");
+        LOGGER.info(getTaskName() + ": exporting peptide report started");
+        System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting peptide report started");
 
-        LOGGER.info(getTaskName() + ": exporting report started");
-        System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting report started");
-
-        // Update progress before report generation
-        updateProgress(75, 100);
-        updateMessage("Starting report generation...");
-
-        File reportDir = new File(this.metaPar.getResult(), "report");
-        if (!reportDir.exists()) {
-            reportDir.mkdirs();
-        }
-
-        // Copy report template
-        MetaPythonReportCopyTask reportCopyTask = new MetaPythonReportCopyTask(new File(metaPar.getResult()));
-        Thread reportCopyThread = new Thread(reportCopyTask);
-        reportCopyThread.start();
-        try {
-            reportCopyThread.join();
-            if (!reportCopyTask.get()) {
-                LOGGER.error(getTaskName() + ": error in copying report template");
-                System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in copying report template");
-                return false;
-            }
-        } catch (InterruptedException | ExecutionException e) {
-            LOGGER.error(getTaskName() + ": error in copying report template", e);
-            System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in copying report template: " + e.getMessage());
-            return false;
-        }
-
-        metaPar.setReportDir(reportDir);
-
-        File reportHtmlDir = new File(reportDir + "\\reports\\rmd_html");
-        if (!reportHtmlDir.exists()) {
-            reportHtmlDir.mkdirs();
-        }
-
-        // Export metadata
-        File summaryMetaFile = new File(this.metaPar.getResult(), "metainfo.tsv");
-        try {
-            this.metaPar.getMetadata().exportMetadata(summaryMetaFile);
-        } catch (FileNotFoundException e) {
-            LOGGER.error("Error exporting metadata", e);
-        }
-
-        MetaPythonReportTask task = new MetaPythonReportTask(metaPar.getThreadCount());
-
-        // Export summary
-        boolean summaryFinished = this.exportSummary(task);
-        updateProgress(80, 100);
-
-        // Generate final peptide and protein files
+        // Build file list and mapping
+        ArrayList<String> fileList = new ArrayList<String>();
+        HashMap<String, Integer> fileIdMap = new HashMap<String, Integer>();
+        
+        // Get experiment names from raw files
         String[] rawFiles = this.metaPar.getMetadata().getRawFiles();
         String[] quanExpNames = new String[rawFiles.length];
         for (int i = 0; i < rawFiles.length; i++) {
             quanExpNames[i] = rawFiles[i].substring(rawFiles[i].lastIndexOf("\\") + 1, rawFiles[i].lastIndexOf("."));
+            fileIdMap.put(quanExpNames[i], fileIdMap.size());
+            fileList.add(quanExpNames[i]);
         }
 
-        // Read FragPipe results
+        // Read quantified peptides and PSMs from FragPipe results
         File searchResultDir = metaPar.getDbSearchResultFile();
         File pepResultFile = new File(searchResultDir, "pep.tsv");
-        File proResultFile = new File(searchResultDir, "pro.tsv");
 
-        if (!pepResultFile.exists() || !proResultFile.exists()) {
-            LOGGER.error("FragPipe result files not found: {} or {}", pepResultFile.getAbsolutePath(), proResultFile.getAbsolutePath());
+        if (!pepResultFile.exists()) {
+            LOGGER.error(getTaskName() + ": FragPipe peptide result file not found: " + pepResultFile.getAbsolutePath());
             return false;
         }
 
-        // Generate final peptide report
-        File final_pep_txt = new File(this.metaPar.getResult(), "final_peptides.tsv");
-        if (!final_pep_txt.exists() || final_pep_txt.length() == 0) {
-            LOGGER.info(getTaskName() + ": exporting peptide report started");
-            System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting peptide report started");
+        FragpipePepReader quanPepReader = new FragpipePepReader(pepResultFile, quanExpNames);
+        MetaPeptide[] quanPeps = quanPepReader.getMetaPeptides();
+        FragPipePSM[] psms = quanPepReader.getPSMs();
+        String[] intensityTitles = quanPepReader.getIntensityTitle();
 
-            try {
-                FragpipePepReader pepReader = new FragpipePepReader(pepResultFile, quanExpNames);
-                MetaPeptide[] peptides = pepReader.getMetaPeptides();
-                
-                try (PrintWriter writer = new PrintWriter(final_pep_txt)) {
-                    // Write header
-                    StringBuilder titlesb = new StringBuilder();
-                    titlesb.append("Sequence").append("\t");
-                    titlesb.append("Base sequence").append("\t");
-                    titlesb.append("Length").append("\t");
-                    titlesb.append("Missed cleavages").append("\t");
-                    titlesb.append("Mass").append("\t");
-                    titlesb.append("Proteins").append("\t");
-                    titlesb.append("Charges").append("\t");
-                    titlesb.append("Score").append("\t");
-                    titlesb.append("Final score").append("\t");
-                    titlesb.append("Q-value").append("\t");
-
-                    for (int i = 0; i < quanExpNames.length; i++) {
-                        titlesb.append("Identification type " + quanExpNames[i]).append("\t");
-                    }
-
-                    titlesb.append("Intensity").append("\t");
-
-                    for (int i = 0; i < quanExpNames.length; i++) {
-                        titlesb.append("Intensity " + quanExpNames[i]).append("\t");
-                    }
-
-                    titlesb.append("Reverse").append("\t");
-                    titlesb.append("Potential contaminant").append("\t");
-                    titlesb.append("id").append("\t");
-                    titlesb.append("Protein group IDs").append("\t");
-                    titlesb.append("MS/MS Count");
-
-                    writer.println(titlesb);
-
-                    // Write peptide data
-                    for (int i = 0; i < peptides.length; i++) {
-                        MetaPeptide pep = peptides[i];
-                        StringBuilder sb = new StringBuilder();
-                        sb.append(pep.getSequence()).append("\t");
-                        sb.append(pep.getSequence()).append("\t");
-                        sb.append(pep.getLength()).append("\t");
-                        sb.append(pep.getMissCleave()).append("\t");
-                        sb.append(pep.getMass()).append("\t");
-
-                        String[] proteins = pep.getProteins();
-                        if (proteins.length > 0) {
-                            for (String pro : proteins) {
-                                sb.append(pro).append(";");
-                            }
-                            sb.deleteCharAt(sb.length() - 1);
-                        }
-                        sb.append("\t");
-
-                        int[] charge = pep.getCharges();
-                        StringBuilder chargesb = new StringBuilder();
-                        for (int j = 0; j < charge.length; j++) {
-                            if (charge[j] == 1) {
-                                chargesb.append(j + 1).append(";");
-                            }
-                        }
-                        if (chargesb.length() > 1) {
-                            sb.append(chargesb.subSequence(0, chargesb.length() - 1)).append("\t");
-                        } else {
-                            sb.append("2").append("\t");
-                        }
-
-                        sb.append(pep.getScore()).append("\t");
-                        sb.append(pep.getScore()).append("\t");
-                        sb.append(pep.getPEP()).append("\t");
-
-                        // Add identification types and intensities
-                        double[] intensity = pep.getIntensity();
-                        int[] idenType = pep.getIdenType();
-                        
-                        for (int j = 0; j < idenType.length; j++) {
-                            if (idenType[j] == 0) {
-                                sb.append("By MS/MS").append("\t");
-                            } else {
-                                sb.append("\t");
-                            }
-                        }
-
-                        double totalIntensity = 0;
-                        for (int j = 0; j < intensity.length; j++) {
-                            totalIntensity += intensity[j];
-                        }
-                        sb.append((int) totalIntensity).append("\t");
-
-                        for (int j = 0; j < intensity.length; j++) {
-                            sb.append((int) intensity[j]).append("\t");
-                        }
-
-                        sb.append(pep.isUse() ? "" : "+").append("\t");
-                        sb.append("").append("\t");
-                        sb.append(i).append("\t");
-                        sb.append("").append("\t");
-                        sb.append(pep.getTotalMS2Count());
-
-                        writer.println(sb);
-                    }
-                }
-
-                LOGGER.info(getTaskName() + ": peptide report has been exported to " + final_pep_txt);
-                System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": peptide report has been exported to " + final_pep_txt);
-
-            } catch (Exception e) {
-                LOGGER.error(getTaskName() + ": error in reading peptides from FragPipe results", e);
-                System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in reading peptides from FragPipe results");
-                return false;
-            }
-        }
-
-        updateProgress(85, 100);
-
-        // Generate final protein report
-        File final_pro_txt = new File(this.metaPar.getResult(), "final_proteins.tsv");
-        if (!final_pro_txt.exists() || final_pro_txt.length() == 0) {
-            LOGGER.info(getTaskName() + ": exporting protein report started");
-            System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting protein report started");
-
-            try {
-                FragpipeProReader proReader = new FragpipeProReader(proResultFile, quanExpNames);
-                MetaProtein[] proteins = proReader.getMetaProteins();
-                
-                try (PrintWriter writer = new PrintWriter(final_pro_txt)) {
-                    // Write header
-                    StringBuilder titlesb = new StringBuilder();
-                    titlesb.append("Protein IDs").append("\t");
-                    titlesb.append("Majority protein IDs").append("\t");
-                    titlesb.append("Peptide counts (all)").append("\t");
-                    titlesb.append("Peptide counts (razor)").append("\t");
-                    titlesb.append("Number of proteins").append("\t");
-                    titlesb.append("Peptides").append("\t");
-                    titlesb.append("Score").append("\t");
-                    titlesb.append("Intensity").append("\t");
-
-                    for (int i = 0; i < quanExpNames.length; i++) {
-                        titlesb.append("Intensity " + quanExpNames[i]).append("\t");
-                    }
-
-                    titlesb.append("Reverse").append("\t");
-                    titlesb.append("Potential contaminant").append("\t");
-                    titlesb.append("id").append("\t");
-                    titlesb.append("Peptide IDs").append("\t");
-                    titlesb.append("Peptide is razor");
-
-                    writer.println(titlesb);
-
-                    // Write protein data
-                    for (int i = 0; i < proteins.length; i++) {
-                        MetaProtein pro = proteins[i];
-                        StringBuilder sb = new StringBuilder();
-                        sb.append(pro.getName()).append("\t");
-                        sb.append(pro.getName()).append("\t");
-                        sb.append(pro.getPepCount()).append("\t");
-                        sb.append(pro.getPepCount()).append("\t");
-                        sb.append(1).append("\t");
-                        sb.append(pro.getPepCount()).append("\t");
-                        sb.append(FormatTool.getDF2().format(pro.getScore())).append("\t");
-
-                        double[] intensity = pro.getIntensities();
-                        double totalIntensity = 0;
-                        for (int j = 0; j < intensity.length; j++) {
-                            totalIntensity += intensity[j];
-                        }
-                        sb.append(FormatTool.getDFE4().format(totalIntensity)).append("\t");
-
-                        for (int j = 0; j < intensity.length; j++) {
-                            sb.append(FormatTool.getDFE4().format(intensity[j])).append("\t");
-                        }
-
-                        sb.append(pro.getName().startsWith("REV_") ? "+" : "").append("\t");
-                        sb.append("").append("\t");
-                        sb.append(pro.getProteinId()).append("\t");
-                        sb.append("").append("\t");
-                        sb.append("");
-
-                        writer.println(sb);
-                    }
-                }
-
-                LOGGER.info(getTaskName() + ": protein report has been exported to " + final_pro_txt);
-                System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": protein report has been exported to " + final_pro_txt);
-
-            } catch (Exception e) {
-                LOGGER.error(getTaskName() + ": error in reading proteins from FragPipe results", e);
-                System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in reading proteins from FragPipe results");
-                return false;
-            }
-        }
-
-        updateProgress(90, 100);
-
-        // Taxonomy analysis (same as DDAIgcPFindTask)
-        LOGGER.info(getTaskName() + ": taxonomy analysis started");
-        System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": taxonomy analysis started");
-
-        File taxFile = new File(metaPar.getDbSearchResultFile(), "taxonomy_analysis");
-        if (!taxFile.exists()) {
-            taxFile.mkdir();
-        }
-
-        // Read peptide intensity data for taxonomy analysis
-        HashMap<String, double[]> pepIntensityMap = new HashMap<String, double[]>();
-        String[] expNames = null;
-        try (BufferedReader quanPepReader = new BufferedReader(new FileReader(final_pep_txt))) {
-            String line = quanPepReader.readLine(); // Skip header
-            String[] title = line.split("\t");
-            int seqId = -1;
-            ArrayList<String> list = new ArrayList<String>();
-            for (int i = 0; i < title.length; i++) {
-                if (title[i].equals("Sequence")) {
-                    seqId = i;
-                } else if (title[i].startsWith("Intensity ")) {
-                    list.add(title[i]);
-                }
-            }
-
-            expNames = list.toArray(new String[list.size()]);
-            int[] intenId = new int[list.size()];
-            for (int i = 0; i < expNames.length; i++) {
-                for (int j = 0; j < title.length; j++) {
-                    if (expNames[i].equals(title[j])) {
-                        intenId[i] = j;
-                    }
-                }
-            }
-
-            while ((line = quanPepReader.readLine()) != null) {
-                String[] cs = line.split("\t");
-                double[] intensity = new double[expNames.length];
-                for (int i = 0; i < intensity.length; i++) {
-                    intensity[i] = Double.parseDouble(cs[intenId[i]]);
-                }
-                pepIntensityMap.put(cs[seqId], intensity);
-            }
-        } catch (IOException e) {
-            LOGGER.error("Error in reading peptides from " + final_pep_txt, e);
-            return false;
-        }
-
-        // Execute Unipept analysis (same as DDAIgcPFindTask)
-        boolean executeUnipept = true; // For now, always execute
-        MetaPep2TaxaPar mptp = MetaPep2TaxaPar.getDefault();
-        File taxResultFile = new File(taxFile, MetaAlgorithm.Unipept.getName() + ".taxonomy.xml");
+        // Create and execute the post-analysis task directly
+        DDAIgcPostAnalysisTask postAnalysisTask = new DDAIgcPostAnalysisTask(
+            metaPar, mrp, secondBar, quanPeps, psms, fileIdMap, fileList, MetaConstants.labelFree, intensityTitles, getTaskName(), this);
         
-        if (executeUnipept) {
-            // Get unique peptide sequences
-            HashSet<String> sequenceSet = new HashSet<String>();
-            try (BufferedReader reader = new BufferedReader(new FileReader(final_pep_txt))) {
-                String line = reader.readLine(); // Skip header
-                int seqId = -1;
-                String[] title = line.split("\t");
-                for (int i = 0; i < title.length; i++) {
-                    if (title[i].equals("Sequence")) {
-                        seqId = i;
-                        break;
-                    }
-                }
-                
-                while ((line = reader.readLine()) != null) {
-                    String[] cs = line.split("\t");
-                    sequenceSet.add(cs[seqId]);
-                }
-            } catch (IOException e) {
-                LOGGER.error("Error reading sequences for taxonomy analysis", e);
-                return false;
-            }
-
-            String[] sequences = sequenceSet.toArray(new String[sequenceSet.size()]);
-            Arrays.sort(sequences);
-
-            HashMap<String, UnipLCAResult> lcaResultMap = UnipeptRequester.pept2lca(sequences);
-
-            MetaPeptideXMLWriter writer = new MetaPeptideXMLWriter(taxResultFile, MetaConstants.pFind,
-                    MetaConstants.labelFree, expNames);
-
-            TaxonomyDatabase td = new TaxonomyDatabase(mrp.getToolPath(ToolType.FUNCDB));
-
-            for (int i = 0; i < sequences.length; i++) {
-                if (lcaResultMap.containsKey(sequences[i])) {
-                    UnipLCAResult lcaResult = lcaResultMap.get(sequences[i]);
-                    int taxId = lcaResult.getTaxon().getId();
-                    Taxon lca = td.getTaxonFromId(taxId);
-
-                    if (lca != null) {
-                        // Create a simple MetaPeptide for taxonomy analysis
-                        double[] intensity = pepIntensityMap.getOrDefault(sequences[i], new double[expNames.length]);
-                        PFindPeptide op = new PFindPeptide(sequences[i], 0, 0.0, "", new String[]{sequences[i]}, 
-                                new double[]{0.0}, new int[]{1}, new double[][]{intensity});
-                        op.setLca(lca);
-
-                        if (lca.getMainParentIds() == null) {
-                            lca.setMainParentIds(td.getMainParentTaxonIds(taxId));
-                        }
-
-                        int[] mainTaxonIds = lca.getMainParentIds();
-                        for (int parentId : mainTaxonIds) {
-                            Taxon parentTaxon = td.getTaxonFromId(parentId);
-                            if (parentTaxon != null) {
-                                if (parentTaxon.getMainParentIds() == null) {
-                                    parentTaxon.setMainParentIds(td.getMainParentTaxonIds(parentId));
-                                }
-                                writer.addTaxon(parentTaxon);
-                            }
-                        }
-
-                        writer.addPeptide(op);
-                    }
-                }
-            }
-            writer.close();
-
-            // Generate taxonomy analysis files (same as DDAIgcPFindTask)
-            if (taxResultFile.exists() && taxResultFile.length() > 0) {
-                MetaPeptideXMLReader reader = new MetaPeptideXMLReader(taxResultFile);
-                File refinedTaxon = new File(taxFile, MetaAlgorithm.Builtin.getName() + ".taxa.refine.csv");
-                reader.exportCsv(taxFile, MetaAlgorithm.Unipept, mptp.getLeastPepCount());
-
-                MetaPeptide[] peps = reader.getPeptides();
-                Taxon[] taxons = reader.getTaxons();
-
-                File megan = new File(taxFile, MetaAlgorithm.Unipept.getName() + ".biom");
-                if (!megan.exists() || megan.length() == 0) {
-                    MetaBiomJsonHandler.export(peps, taxons, expNames, megan.getAbsolutePath());
-                }
-
-                File allPepTaxa = new File(taxFile, MetaAlgorithm.Unipept.getName() + ".allPepTaxa.csv");
-                if (!allPepTaxa.exists() || allPepTaxa.length() == 0) {
-                    reader.exportPeptideTaxaAll(allPepTaxa);
-                }
-
-                File iMetaLab = new File(taxFile, MetaAlgorithm.Unipept.getName() + ".iMetaLab.tree.csv");
-                if (!iMetaLab.exists() || iMetaLab.length() == 0) {
-                    MetaTreeHandler.export(peps, taxons, expNames, iMetaLab);
-                }
-
-                File jsOutput = new File(metaPar.getReportDir() + "\\reports\\metamap\\data\\tree.js");
-                if (!jsOutput.exists() || jsOutput.length() == 0) {
-                    MetaTreeHandler.exportJS(peps, taxons, expNames, jsOutput);
-                } else {
-                    jsOutput = new File(metaPar.getReportDir() + "\\reports\\metamap\\data\\tree2.js");
-                    MetaTreeHandler.exportJS(peps, taxons, expNames, jsOutput);
-                }
-            }
-        }
-
-        updateProgress(95, 100);
-
-        // Functional annotation (same as DDAIgcPFindTask)
-        LOGGER.info(getTaskName() + ": functional annotation started");
-        System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": functional annotation started");
-
-        File funcFile = new File(metaPar.getDbSearchResultFile(), "functional_annotation");
-        if (!funcFile.exists()) {
-            funcFile.mkdir();
-        }
-
-        File final_pro_xml_file = new File(funcFile, "functions.xml");
-        if (!final_pro_xml_file.exists() || final_pro_xml_file.length() == 0) {
-            // Read protein data for functional annotation
-            try (BufferedReader quanProReader = new BufferedReader(new FileReader(final_pro_txt))) {
-                String line = quanProReader.readLine(); // Skip header
-                // Process protein data for functional annotation
-                // This would be similar to DDAIgcPFindTask but using FragPipe protein data
-            } catch (IOException e) {
-                LOGGER.error("Error reading protein data for functional annotation", e);
-            }
-        }
-
-        updateProgress(98, 100);
-
-        // Generate reports
-        boolean pepReportOk = false;
-        boolean proReportOk = false;
+        // Execute the task and wait for completion
+        Thread taskThread = new Thread(postAnalysisTask);
+        taskThread.setDaemon(true);
+        taskThread.start();
         
-        if (final_pep_txt.exists() && final_pep_txt.length() > 0) {
-            File report_peptides_summary = new File(reportHtmlDir, "report_peptides_summary.html");
-            if (!report_peptides_summary.exists() || report_peptides_summary.length() == 0) {
-                if (summaryMetaFile.exists()) {
-                    pepReportOk = task.addTask(MetaPythonReportTask.PEPTIDE, final_pep_txt, report_peptides_summary, summaryMetaFile);
-                } else {
-                    pepReportOk = task.addTask(MetaPythonReportTask.PEPTIDE, final_pep_txt, report_peptides_summary);
-                }
-            }
-        }
-
-        if (final_pro_txt.exists() && final_pro_txt.length() > 0) {
-            File report_proteinGroups_summary = new File(reportHtmlDir, "report_proteinGroups_summary.html");
-            if (!report_proteinGroups_summary.exists() || report_proteinGroups_summary.length() == 0) {
-                if (summaryMetaFile.exists()) {
-                    proReportOk = task.addTask(MetaPythonReportTask.PROTEIN, final_pro_txt, report_proteinGroups_summary, summaryMetaFile);
-                } else {
-                    proReportOk = task.addTask(MetaPythonReportTask.PROTEIN, final_pro_txt, report_proteinGroups_summary);
-                }
-            }
-        }
-
-        // Taxonomy report
-        File refinedTaxon = new File(taxFile, MetaAlgorithm.Builtin.getName() + ".taxa.refine.csv");
-        File report_taxonomy_summary = new File(reportHtmlDir, "report_taxonomy_summary.html");
-        if (!report_taxonomy_summary.exists() || report_taxonomy_summary.length() == 0) {
-            if (summaryMetaFile.exists()) {
-                task.addTask(MetaPythonReportTask.TAXONOMY, refinedTaxon, report_taxonomy_summary, summaryMetaFile);
-            } else {
-                task.addTask(MetaPythonReportTask.TAXONOMY, refinedTaxon, report_taxonomy_summary);
-            }
-        }
-
-        // Functional report
-        File funReportTsv = new File(funcFile, "functions_report.tsv");
-        File report_function_summary = new File(reportHtmlDir, "report_function_summary.html");
-        if (!report_function_summary.exists() || report_function_summary.length() == 0) {
-            if (summaryMetaFile.exists()) {
-                task.addTask(MetaPythonReportTask.FUNCTION, funReportTsv, report_function_summary, summaryMetaFile);
-            } else {
-                task.addTask(MetaPythonReportTask.FUNCTION, funReportTsv, report_function_summary);
-            }
-        }
-
-        if (!summaryFinished || !pepReportOk || !proReportOk) {
-            LOGGER.info(getTaskName() + ": error in generating the reports");
-            System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": error in generating the reports");
-            return false;
-        }
-
-        task.run();
-
         try {
-            if (task.get()) {
-                LOGGER.info(getTaskName() + ": report generation successes");
-                System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": report generation successes");
+            taskThread.join();
+            boolean success = postAnalysisTask.get();
+            
+            if (success) {
+                LOGGER.info(getTaskName() + ": Post-analysis completed successfully");
                 return true;
-            }
-        } catch (InterruptedException | ExecutionException e) {
-            LOGGER.error("Error in report generation", e);
-        }
-
-        return false;
-    }
-
-    /**
-     * Export summary report (same as DDAIgcPFindTask)
-     */
-    protected boolean exportSummary(MetaPythonReportTask task) {
-        File final_summary_txt = new File(this.metaPar.getResult(), "final_summary.tsv");
-        try {
-            PrintWriter countWriter = new PrintWriter(final_summary_txt);
-            StringBuilder titlesb = new StringBuilder();
-            titlesb.append("Raw file").append("\t");
-            titlesb.append("Experiment").append("\t");
-            titlesb.append("MS/MS").append("\t");
-            titlesb.append("MS/MS Identified").append("\t");
-            titlesb.append("MS/MS Identified [%]").append("\t");
-            titlesb.append("Peptide Sequences Identified");
-
-            countWriter.println(titlesb);
-
-            // For FragPipe, we need to read the identification results
-            // This is a simplified version - in practice, you'd read the actual FragPipe results
-            String[] rawFiles = this.metaPar.getMetadata().getRawFiles();
-            for (int i = 0; i < rawFiles.length; i++) {
-                StringBuilder sb = new StringBuilder();
-                sb.append(rawFiles[i]).append("\t");
-                sb.append(rawFiles[i]).append("\t");
-                sb.append("0").append("\t"); // MS/MS count - would need to read from FragPipe results
-                sb.append("0").append("\t"); // MS/MS identified - would need to read from FragPipe results
-                sb.append("0.0").append("\t"); // Percentage - would need to calculate
-                sb.append("0"); // Peptide sequences - would need to read from FragPipe results
-                countWriter.println(sb);
-            }
-
-            countWriter.close();
-
-        } catch (IOException e) {
-            LOGGER.error(getTaskName() + ": error in writing summary information to " + final_summary_txt.getName(), e);
-            System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in writing summary information to " + final_summary_txt.getName());
-        }
-
-        File summaryMetaFile = new File(this.metaPar.getResult(), "metainfo.tsv");
-        try {
-            this.metaPar.getMetadata().exportMetadata(summaryMetaFile);
-        } catch (FileNotFoundException e) {
-            LOGGER.error("Error exporting metadata", e);
-        }
-
-        if (!final_summary_txt.exists() || final_summary_txt.length() == 0) {
+                } else {
+                LOGGER.error(getTaskName() + ": Post-analysis task failed");
             return false;
-        } else {
-            File report_ID_summary = new File(metaPar.getReportDir(), "report_ID_summary.html");
-            if (summaryMetaFile != null && summaryMetaFile.exists()) {
-                return task.addTask(MetaPythonReportTask.ID_SUMMARY, final_summary_txt, report_ID_summary, summaryMetaFile);
-            } else {
-                return task.addTask(MetaPythonReportTask.ID_SUMMARY, final_summary_txt, report_ID_summary);
-            }
+        }
+        } catch (InterruptedException e) {
+            LOGGER.error(getTaskName() + ": Post-analysis task was interrupted", e);
+            Thread.currentThread().interrupt();
+        return false;
+        } catch (ExecutionException e) {
+            LOGGER.error(getTaskName() + ": Post-analysis task failed with exception", e);
+            return false;
         }
     }
 }

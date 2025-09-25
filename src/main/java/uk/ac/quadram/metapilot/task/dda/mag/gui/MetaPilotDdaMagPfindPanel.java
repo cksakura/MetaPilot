@@ -28,7 +28,6 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.io.File;
@@ -43,7 +42,6 @@ import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagPfindParameters;
 import uk.ac.quadram.metapilot.task.dda.mag.task.DDAMagPfindTask;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagPfindParameterIO;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagVersion;
-import uk.ac.quadram.metapilot.task.mag.MagDbConfigIO;
 
 public class MetaPilotDdaMagPfindPanel extends VBox {
     // UI Components - Database specific
@@ -76,6 +74,9 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
     
     // Add parameter IO instance
     private DDAMagPfindParameterIO parameterIO;
+    
+    // Store the last used analysis parameters for viewReport
+    private DDAMagPfindParameters currentAnalysisParams;
     
     // Current task reference
     private DDAMagPfindTask currentTask;
@@ -497,6 +498,9 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
             consolePanel.appendConsoleText("✓ Successfully collected parameters from UI\n");
             LOGGER.info("Successfully collected parameters from UI for MAG pFind workflow");
             
+            // Store analysis parameters for viewReport
+            this.currentAnalysisParams = analysisParams;
+            
             // 2. Save parameters to file
             String outputDir = analysisParams.getResult();
             if (outputDir != null && !outputDir.trim().isEmpty()) {
@@ -619,15 +623,18 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
         try {
             consolePanel.appendConsoleText("Opening report in default browser...\n");
             
-            // Get the result directory from the current parameters
-            DDAMagPfindParameters currentParams = collectParametersFromUI();
-            if (currentParams == null || currentParams.getResult() == null) {
-                consolePanel.appendConsoleText("ERROR: No result directory available. Please run analysis first.\n");
+            if (currentAnalysisParams == null) {
+                consolePanel.appendConsoleText("ERROR: No analysis parameters available. Please run analysis first.\n");
                 return;
             }
             
-            // Look for the main index.html file in the report directory
-            File reportDir = new File(currentParams.getResult(), "report");
+            File reportDir = currentAnalysisParams.getReportDir();
+            if (reportDir == null || !reportDir.exists()) {
+                consolePanel.appendConsoleText("ERROR: Report directory not available or does not exist.\n");
+                consolePanel.appendConsoleText("Please ensure the analysis has completed successfully.\n");
+                return;
+            }
+            
             File indexFile = new File(reportDir, "index.html");
             
             if (!indexFile.exists()) {
@@ -638,7 +645,6 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
             
             consolePanel.appendConsoleText("Opening main report: index.html\n");
             
-            // Open the file in the default browser
             if (java.awt.Desktop.isDesktopSupported()) {
                 java.awt.Desktop.getDesktop().browse(indexFile.toURI());
                 consolePanel.appendConsoleText("✓ Report opened in default browser\n");

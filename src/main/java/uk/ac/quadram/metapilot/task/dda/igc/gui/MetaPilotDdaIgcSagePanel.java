@@ -17,7 +17,6 @@ import javafx.beans.property.SimpleStringProperty;
 import javafx.scene.control.Alert.AlertType;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
 import uk.ac.quadram.metapilot.task.common.gui.IsobaricLabelingPanel;
-import uk.ac.quadram.metapilot.task.common.gui.TaxonomicAnalysisPanel;
 import uk.ac.quadram.metapilot.task.common.gui.DdaIgcInputOutputPanel;
 import uk.ac.quadram.metapilot.task.common.gui.ModificationsPanel;
 import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
@@ -69,8 +68,6 @@ public class MetaPilotDdaIgcSagePanel extends VBox {
     private TableView<IsobaricLabelingPanel.IsobaricLabelRow> isobaricTable;
     private ObservableList<IsobaricLabelingPanel.IsobaricLabelRow> isobaricTableData = FXCollections.observableArrayList();
 
-    // Taxonomic analysis panel (unified component)
-    private TaxonomicAnalysisPanel taxonomicAnalysisPanel;
 
     // Metadata configuration components
     private TableView<MetaPilotDdaIgcMaxQuantPanel.MetadataRow> metadataTable;
@@ -94,8 +91,6 @@ public class MetaPilotDdaIgcSagePanel extends VBox {
         // Initialize unified IO panel
         ioPanel = new DdaIgcInputOutputPanel(this::updateParameterView);
         
-        // Initialize taxonomic analysis panel
-        taxonomicAnalysisPanel = new TaxonomicAnalysisPanel(this::updateParameterView);
         
         // Initialize console panel
         consolePanel = new ConsolePanel();
@@ -218,7 +213,7 @@ public class MetaPilotDdaIgcSagePanel extends VBox {
         // Create horizontal modifications panel with fixed mods (narrow) and variable mods (wider)
         modificationsPanel = new ModificationsPanel(this::updateParameterView);
         
-        leftColumn.getChildren().addAll(enzymeSection, additionalParamsSection, taxonomicAnalysisPanel, modificationsPanel);
+        leftColumn.getChildren().addAll(enzymeSection, additionalParamsSection, modificationsPanel);
         GridPane.setVgrow(leftColumn, Priority.ALWAYS);
 
         // Right column: Quantitative Mode and Metadata Configuration (keeping original layout)
@@ -742,7 +737,6 @@ public class MetaPilotDdaIgcSagePanel extends VBox {
         sb.append("\n");
 
         // Taxonomic analysis
-        sb.append("\n").append(taxonomicAnalysisPanel.getTaxonomicSummary());
 
         // Update the console panel's parameter view
         if (consolePanel != null) {

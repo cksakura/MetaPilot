@@ -17,7 +17,6 @@ import javafx.util.converter.DefaultStringConverter;
 import javafx.scene.control.Alert.AlertType;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
 import uk.ac.quadram.metapilot.task.common.gui.IsobaricLabelingPanel;
-import uk.ac.quadram.metapilot.task.common.gui.TaxonomicAnalysisPanel;
 import uk.ac.quadram.metapilot.task.common.gui.DdaIgcInputOutputPanel;
 import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
 import uk.ac.quadram.metapilot.task.par.MetaData;
@@ -69,8 +68,6 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
     // Isobaric labeling panel (reusable component)
     private IsobaricLabelingPanel isobaricLabelingPanel;
 
-    // Taxonomic analysis panel
-    private TaxonomicAnalysisPanel taxonomicAnalysisPanel;
 
     // Metadata configuration components
     private TableView<MetaPilotDdaIgcMaxQuantPanel.MetadataRow> metadataTable;
@@ -80,7 +77,6 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
     private Button removeMetadataColumnButton;
     private Button resetMetadataButton;
 
-    
     // Add parameter IO instance
     private DDAIgcPFindParameterIO parameterIO;
     
@@ -98,8 +94,6 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
         // Initialize unified IO panel
         ioPanel = new DdaIgcInputOutputPanel(this::updateParameterView);
         
-        // Initialize taxonomic analysis panel
-        taxonomicAnalysisPanel = new TaxonomicAnalysisPanel(this::updateParameterView);
         
         // Initialize console panel
         consolePanel = new ConsolePanel();
@@ -216,7 +210,7 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
         VBox enzymeSection = createEnzymeSection();
         VBox additionalParamsSection = createAdditionalParametersSection();
         VBox modificationsSection = createModificationsSection();
-        leftColumn.getChildren().addAll(enzymeSection, additionalParamsSection, taxonomicAnalysisPanel, modificationsSection);
+        leftColumn.getChildren().addAll(enzymeSection, additionalParamsSection, modificationsSection);
         GridPane.setVgrow(leftColumn, Priority.ALWAYS);
         // Right column: Quantitative Mode and Metadata Configuration (stacked)
         VBox rightColumn = new VBox(15);
@@ -605,7 +599,6 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
             }
         }
         // Taxonomic analysis
-        sb.append("\n").append(taxonomicAnalysisPanel.getTaxonomicSummary());
         
         // Update the console panel's parameter view
         if (consolePanel != null) {
@@ -976,15 +969,6 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
         params.setIsobaricTableData(new ArrayList<>(isobaricLabelingPanel.getIsobaricTableData()));
         
         // Taxonomic analysis
-        params.setEukaryota(taxonomicAnalysisPanel.isEukaryota());
-        params.setBacteria(taxonomicAnalysisPanel.isBacteria());
-        params.setArchaea(taxonomicAnalysisPanel.isArchaea());
-        params.setViruses(taxonomicAnalysisPanel.isViruses());
-        params.setViroids(taxonomicAnalysisPanel.isViroids());
-        params.setUnclassified(taxonomicAnalysisPanel.isUnclassified());
-        params.setOther(taxonomicAnalysisPanel.isOther());
-        params.setIgnoreRank(taxonomicAnalysisPanel.getIgnoreRank());
-        params.setIgnoreEnvironmentalSamples(taxonomicAnalysisPanel.isIgnoreEnvironmentalSamples());
         
         // Metadata table data
         params.setMetadataTableData(new ArrayList<>(metadataTableData));
@@ -1129,19 +1113,6 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
         }
         
         // Apply taxonomic settings
-        if (taxonomicAnalysisPanel != null) {
-            taxonomicAnalysisPanel.setEukaryota(params.isEukaryota());
-            taxonomicAnalysisPanel.setBacteria(params.isBacteria());
-            taxonomicAnalysisPanel.setArchaea(params.isArchaea());
-            taxonomicAnalysisPanel.setViruses(params.isViruses());
-            taxonomicAnalysisPanel.setViroids(params.isViroids());
-            taxonomicAnalysisPanel.setUnclassified(params.isUnclassified());
-            taxonomicAnalysisPanel.setOther(params.isOther());
-            if (params.getIgnoreRank() != null) {
-                taxonomicAnalysisPanel.setIgnoreRank(params.getIgnoreRank());
-            }
-            taxonomicAnalysisPanel.setIgnoreEnvironmentalSamples(params.isIgnoreEnvironmentalSamples());
-        }
         
         // Update parameter view after applying parameters
         Platform.runLater(() -> updateParameterView());

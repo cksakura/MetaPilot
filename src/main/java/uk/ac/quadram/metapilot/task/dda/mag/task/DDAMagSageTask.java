@@ -18,6 +18,7 @@ import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ExecutionException;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -36,6 +37,7 @@ import javafx.application.Platform;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.task.mag.MetaPilotMagTask;
+import uk.ac.quadram.metapilot.task.mag.MetaPilotMagTask.DDAMagPostAnalysisTask;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagSageParameters;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.spectra.io.MSConvertor;
@@ -735,7 +737,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 					separateResultFolders[i].getName(), pepSet.size(), genomeMap.size());
 			// Create sample-specific database
 			File hapGenomeFile = new File(hapFile, "hap_genomes.tsv");
-			HashSet<String> genomeSet = refineGenomes(genomeMap, pepSet.size(), psmCoverThreshold, hapGenomeFile);
+			HashSet<String> genomeSet = applyOccamsRazor(genomeMap, pepSet, psmCoverThreshold, hapGenomeFile);
 
 			try (PrintWriter writer = new PrintWriter(dbFile)) {
 				File dbFolder = this.magDb.getOriginalDbFolder();
@@ -914,7 +916,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		File combinedFastaFile = new File(combinedFile, "combined.fasta");
 		if (!combinedFastaFile.exists() || combinedFastaFile.length() == 0) {
 			File hapGenomeFile = new File(combinedFile, "razorProteins.tsv");
-			HashSet<String> proteinSet = refineGenomes(genomeMap, totalPsmSet.size(), 1.0, hapGenomeFile);
+			HashSet<String> proteinSet = applyOccamsRazor(genomeMap, totalPsmSet, 1.0, hapGenomeFile);
 
 			try (PrintWriter writer = new PrintWriter(combinedFastaFile)) {
 				Random random = new Random();
@@ -1113,9 +1115,34 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		// Build intensity title array
 		String[] intensityTitle = fileList.toArray(String[]::new);
 
-		// Call the common method to process peptides and generate reports
-		return processPeptideListAndGenerateReports(quanPeps, psms, fileIdMap, fileList, quanMode, intensityTitle,
-				getTaskName());
+		// Create and execute the post-analysis task directly
+		DDAMagPostAnalysisTask postAnalysisTask = new DDAMagPostAnalysisTask(
+			metaPar, mrp, secondBar, quanPeps, psms, fileIdMap, fileList, quanMode, intensityTitle, getTaskName(), this);
+		
+		// Execute the task and wait for completion
+		Thread taskThread = new Thread(postAnalysisTask);
+		taskThread.setDaemon(true);
+		taskThread.start();
+		
+		try {
+			taskThread.join();
+			boolean success = postAnalysisTask.get();
+			
+			if (success) {
+				LOGGER.info(getTaskName() + ": Post-analysis completed successfully");
+				return true;
+			} else {
+				LOGGER.error(getTaskName() + ": Post-analysis task failed");
+				return false;
+			}
+		} catch (InterruptedException e) {
+			LOGGER.error(getTaskName() + ": Post-analysis task was interrupted", e);
+			Thread.currentThread().interrupt();
+			return false;
+		} catch (ExecutionException e) {
+			LOGGER.error(getTaskName() + ": Post-analysis task failed with exception", e);
+			return false;
+		}
 	}
 
 	@Override

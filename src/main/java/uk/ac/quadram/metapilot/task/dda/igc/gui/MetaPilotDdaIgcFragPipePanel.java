@@ -15,7 +15,6 @@ import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.beans.property.SimpleStringProperty;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
-import uk.ac.quadram.metapilot.task.common.gui.TaxonomicAnalysisPanel;
 import uk.ac.quadram.metapilot.task.common.gui.DdaIgcInputOutputPanel;
 import uk.ac.quadram.metapilot.task.common.gui.ModificationsPanel;
 import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
@@ -63,8 +62,6 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
     private ObservableList<String> workflows = FXCollections.observableArrayList();
 
 
-    // Taxonomic analysis panel (unified component)
-    private TaxonomicAnalysisPanel taxonomicAnalysisPanel;
 
     // Metadata configuration components
     private TableView<MetaPilotDdaIgcMaxQuantPanel.MetadataRow> metadataTable;
@@ -88,8 +85,6 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
         // Initialize unified IO panel
         ioPanel = new DdaIgcInputOutputPanel(this::updateParameterView);
         
-        // Initialize taxonomic analysis panel
-        taxonomicAnalysisPanel = new TaxonomicAnalysisPanel(this::updateParameterView);
         
         // Initialize console panel
         consolePanel = new ConsolePanel();
@@ -212,7 +207,7 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
         // Create horizontal modifications panel with fixed mods (narrow) and variable mods (wider)
         modificationsPanel = new ModificationsPanel(this::updateParameterView);
         
-        leftColumn.getChildren().addAll(enzymeSection, additionalParamsSection, taxonomicAnalysisPanel, modificationsPanel);
+        leftColumn.getChildren().addAll(enzymeSection, additionalParamsSection, modificationsPanel);
         GridPane.setVgrow(leftColumn, Priority.ALWAYS);
 
         // Right column: Metadata Configuration only
@@ -639,7 +634,6 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
         sb.append("Quantitative Mode: Determined by workflow selection\n\n");
 
         // Taxonomic analysis
-        sb.append("\n").append(taxonomicAnalysisPanel.getTaxonomicSummary());
 
         // Update the console panel's parameter view
         if (consolePanel != null) {
@@ -1029,15 +1023,6 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
         }
         
         // Taxonomic analysis
-        params.setEukaryota(taxonomicAnalysisPanel.isEukaryota());
-        params.setBacteria(taxonomicAnalysisPanel.isBacteria());
-        params.setArchaea(taxonomicAnalysisPanel.isArchaea());
-        params.setViruses(taxonomicAnalysisPanel.isViruses());
-        params.setViroids(taxonomicAnalysisPanel.isViroids());
-        params.setUnclassified(taxonomicAnalysisPanel.isUnclassified());
-        params.setOther(taxonomicAnalysisPanel.isOther());
-        params.setIgnoreRank(taxonomicAnalysisPanel.getIgnoreRank());
-        params.setIgnoreEnvironmentalSamples(taxonomicAnalysisPanel.isIgnoreEnvironmentalSamples());
         
         // Metadata table data
         params.setMetadataTableData(new ArrayList<>(metadataTableData));
@@ -1118,19 +1103,6 @@ public class MetaPilotDdaIgcFragPipePanel extends VBox {
         // This is complex and may not be needed for basic functionality
         
         // Apply taxonomic settings
-        if (taxonomicAnalysisPanel != null) {
-            taxonomicAnalysisPanel.setEukaryota(params.isEukaryota());
-            taxonomicAnalysisPanel.setBacteria(params.isBacteria());
-            taxonomicAnalysisPanel.setArchaea(params.isArchaea());
-            taxonomicAnalysisPanel.setViruses(params.isViruses());
-            taxonomicAnalysisPanel.setViroids(params.isViroids());
-            taxonomicAnalysisPanel.setUnclassified(params.isUnclassified());
-            taxonomicAnalysisPanel.setOther(params.isOther());
-            if (params.getIgnoreRank() != null) {
-                taxonomicAnalysisPanel.setIgnoreRank(params.getIgnoreRank());
-            }
-            taxonomicAnalysisPanel.setIgnoreEnvironmentalSamples(params.isIgnoreEnvironmentalSamples());
-        }
         
         // Update parameter view after applying parameters
         Platform.runLater(() -> updateParameterView());

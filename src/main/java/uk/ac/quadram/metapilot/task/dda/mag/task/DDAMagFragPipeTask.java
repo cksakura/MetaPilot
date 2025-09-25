@@ -9,14 +9,11 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
+import java.util.concurrent.ExecutionException;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.math.NumberUtils;
@@ -37,7 +34,6 @@ import javafx.application.Platform;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.task.MetaPythonReportTask;
-import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProteinAnnoEggNog;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProteinXMLReader2;
@@ -676,8 +672,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 				}
 
 				File hapGenomeFile = new File(hapFile, "hap_genomes.tsv");
-				HashSet<String> genomeSet = refineGenomes(genomeMap, totalPsmSet.size(), psmCoverThreshold,
-						hapGenomeFile);
+				HashSet<String> genomeSet = applyOccamsRazor(genomeMap, totalPsmSet, psmCoverThreshold, hapGenomeFile);
 
 				try {
 					PrintWriter writer = new PrintWriter(dbFile);
@@ -1176,495 +1171,34 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		FragPipePSM[] psms = quanPepReader.getPSMs();
 		String[] intensityTitles = quanPepReader.getIntensityTitle();
 
-		// Call the common method to process peptides and generate reports
-		return processPeptideListAndGenerateReports(quanPeps, psms, fileIdMap, fileList, MetaConstants.labelFree, intensityTitles,
-				getTaskName());
-	}
-
-	protected boolean exportPepProTxt(File magPepResultFile, File magProResultFile) {
-
-		LOGGER.info(getTaskName() + ": exporting peptide report started");
-		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting peptide report started");
-
-		int[] rep = metaPar.getMetadata().getReplicates();
-		for (int i = 0; i < fragpipeExpNames.length; i++) {
-			this.fragpipeExpNames[i] = fragpipeExpNames[i] + "_" + rep[i];
-		}
-
-		FragpipePepReader pepReader = new FragpipePepReader(magPepResultFile, fragpipeExpNames);
-		FragpipePeptide[] peps = pepReader.getMetaPeptides();
-		HashMap<String, Integer> hostProMap = new HashMap<String, Integer>();
-
-		HashSet<String> magPepSet = new HashSet<String>();
-		HashMap<String, HashSet<String>> genomePepMap = new HashMap<String, HashSet<String>>();
-		HashMap<String, HashSet<String>> totalPepProMap = new HashMap<String, HashSet<String>>();
-		for (int i = 0; i < peps.length; i++) {
-			String stripSeq = peps[i].getSequence();
-			String[] pros = peps[i].getProteins();
-			for (int j = 0; j < pros.length; j++) {
-				if (totalPepProMap.containsKey(stripSeq)) {
-					totalPepProMap.get(stripSeq).add(pros[j]);
-				} else {
-					HashSet<String> set = new HashSet<String>();
-					set.add(pros[j]);
-					totalPepProMap.put(stripSeq, set);
-				}
-				if (pros[j].startsWith(magDb.getIdentifier())) {
-					magPepSet.add(stripSeq);
-					String genome = pros[j].split("_")[0];
-					if (genomePepMap.containsKey(genome)) {
-						genomePepMap.get(genome).add(stripSeq);
-					} else {
-						HashSet<String> pSet = new HashSet<String>();
-						pSet.add(stripSeq);
-						genomePepMap.put(genome, pSet);
-					}
-				} else {
-					if (hostProMap.containsKey(pros[j])) {
-						hostProMap.put(pros[j], hostProMap.get(pros[j]) + 1);
-					} else {
-						hostProMap.put(pros[j], 1);
-					}
-				}
-			}
-		}
-
-		File magsFile = new File(metaPar.getDbSearchResultFile(), "mags.tsv");
-		HashSet<String> genomeSet = refineGenomes(genomePepMap, magPepSet.size(), 1.0, magsFile);
-
-		LOGGER.info(getTaskName() + ": filtered genome count " + genomeSet.size());
-		System.out.println(
-				format.format(new Date()) + "\t" + getTaskName() + ": filtered genome count " + genomeSet.size());
-
-		HashMap<String, HashSet<String>> magProPepMap = new HashMap<String, HashSet<String>>();
-
-		for (int i = 0; i < peps.length; i++) {
-			String stripSeq = peps[i].getSequence();
-			String[] pros = peps[i].getProteins();
-			for (int j = 0; j < pros.length; j++) {
-				if (pros[j].startsWith(magDb.getIdentifier())) {
-					String genome = pros[j].split("_")[0];
-					if (genomeSet.contains(genome)) {
-						if (magProPepMap.containsKey(pros[j])) {
-							magProPepMap.get(pros[j]).add(stripSeq);
-						} else {
-							HashSet<String> pSet = new HashSet<String>();
-							pSet.add(stripSeq);
-							magProPepMap.put(pros[j], pSet);
-						}
-					}
-				}
-			}
-		}
-
-		File razorProFile = new File(metaPar.getDbSearchResultFile(), "razorPro.tsv");
-		HashSet<String> razorProSet = refineProtein(magProPepMap, magPepSet.size(), razorProFile);
-
-		LOGGER.info(getTaskName() + ": filtered microbial protein count " + razorProSet.size());
-		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": filtered microbial protein count "
-				+ razorProSet.size());
-
-		razorProSet.addAll(hostProMap.keySet());
-
-		HashMap<String, Integer> proIdMap = new HashMap<String, Integer>();
-		try (BufferedReader reader = new BufferedReader(new FileReader(razorProFile))) {
-			String line = reader.readLine();
-			while ((line = reader.readLine()) != null) {
-				String[] cs = line.split("\t");
-				if (razorProSet.contains(cs[1])) {
-					proIdMap.put(cs[1], proIdMap.size());
-				}
-			}
-			reader.close();
-		} catch (IOException e) {
-			LOGGER.error(getTaskName() + ": error in reading razor protein file " + razorProFile, e);
-			System.out.println(format.format(new Date()) + "\t" + getTaskName()
-					+ ": error in reading razor protein file " + razorProFile);
-		}
-
-		if (hostProMap.size() > 0) {
-			// Convert the HashMap into a list of entries and sort it by values
-			List<Map.Entry<String, Integer>> sortedList = hostProMap.entrySet().stream()
-					.sorted(Map.Entry.comparingByValue(Collections.reverseOrder())).collect(Collectors.toList());
-			String[] hostPros = sortedList.stream().map(Map.Entry::getKey).toArray(String[]::new);
-			for (String hostPro : hostPros) {
-				proIdMap.put(hostPro, proIdMap.size());
-			}
-		}
-
-		HashMap<String, HashSet<String>> razorProPepMap = new HashMap<String, HashSet<String>>();
-		HashMap<String, HashSet<String>> allProPepMap = new HashMap<String, HashSet<String>>();
-		HashMap<String, Integer> pepIdMap = new HashMap<String, Integer>();
-		HashMap<String, String[]> pepProMap = new HashMap<String, String[]>();
-		HashMap<String, double[]> proIntensityMap = new HashMap<String, double[]>();
-		HashMap<String, ArrayList<Double>> proScoreMap = new HashMap<String, ArrayList<Double>>();
-
-		for (int i = 0; i < peps.length; i++) {
-			String seq = peps[i].getModSeq();
-			String[] pros = peps[i].getProteins();
-
-			ArrayList<String> tempList = new ArrayList<String>();
-			for (int j = 0; j < pros.length; j++) {
-				if (proIdMap.containsKey(pros[j])) {
-					tempList.add(pros[j]);
-				}
-			}
-
-			if (tempList.size() > 0) {
-
-				String[] tempPros = tempList.toArray(String[]::new);
-				Arrays.sort(tempPros, new Comparator<String>() {
-					@Override
-					public int compare(String s1, String s2) {
-						return proIdMap.get(s1) - proIdMap.get(s2);
-					}
-				});
-
-				if (razorProPepMap.containsKey(tempPros[0])) {
-					razorProPepMap.get(tempPros[0]).add(seq);
-				} else {
-					HashSet<String> razorSet = new HashSet<String>();
-					razorSet.add(seq);
-					razorProPepMap.put(tempPros[0], razorSet);
-				}
-				double[] pepIntensity = peps[i].getIntensity();
-
-				for (int j = 0; j < tempPros.length; j++) {
-					double[] proIntensity;
-					if (proIntensityMap.containsKey(tempPros[j])) {
-						proIntensity = proIntensityMap.get(tempPros[j]);
-					} else {
-						proIntensity = new double[pepIntensity.length];
-					}
-
-					for (int k = 0; k < proIntensity.length; k++) {
-						proIntensity[k] += pepIntensity[k] / (double) tempPros.length;
-					}
-					proIntensityMap.put(tempPros[j], proIntensity);
-
-					ArrayList<Double> scoreList;
-					if (proScoreMap.containsKey(tempPros[j])) {
-						scoreList = proScoreMap.get(tempPros[j]);
-					} else {
-						scoreList = new ArrayList<Double>();
-					}
-					scoreList.add(peps[i].getScore());
-					proScoreMap.put(tempPros[j], scoreList);
-
-					HashSet<String> pepSet;
-					if (allProPepMap.containsKey(tempPros[j])) {
-						pepSet = allProPepMap.get(tempPros[j]);
-					} else {
-						pepSet = new HashSet<String>();
-						allProPepMap.put(tempPros[j], pepSet);
-					}
-					pepSet.add(seq);
-				}
-				pepIdMap.put(seq, pepIdMap.size());
-				pepProMap.put(seq, tempPros);
-			}
-		}
-
-		this.final_pep_txt = new File(metaPar.getDbSearchResultFile(), "final_peptides.tsv");
-		this.final_pro_txt = new File(metaPar.getDbSearchResultFile(), "final_proteins.tsv");
-
-		PrintWriter pepWriter = null;
+		// Create and execute the post-analysis task directly
+		DDAMagPostAnalysisTask postAnalysisTask = new DDAMagPostAnalysisTask(
+			metaPar, mrp, secondBar, quanPeps, psms, fileIdMap, fileList, MetaConstants.labelFree, intensityTitles, getTaskName(), this);
+		
+		// Execute the task and wait for completion
+		Thread taskThread = new Thread(postAnalysisTask);
+		taskThread.setDaemon(true);
+		taskThread.start();
+		
 		try {
-			pepWriter = new PrintWriter(this.final_pep_txt);
-
-			StringBuilder titlesb = new StringBuilder();
-			titlesb.append("Sequence").append("\t");
-			titlesb.append("Base sequence").append("\t");
-			titlesb.append("Length").append("\t");
-			titlesb.append("Proteins").append("\t");
-			titlesb.append("Charges").append("\t");
-			titlesb.append("PEP").append("\t");
-
-			for (int i = 0; i < this.fragpipeExpNames.length; i++) {
-				titlesb.append("Identification type " + fragpipeExpNames[i]).append("\t");
+			taskThread.join();
+			boolean success = postAnalysisTask.get();
+			
+			if (success) {
+				LOGGER.info(getTaskName() + ": Post-analysis completed successfully");
+				return true;
+			} else {
+				LOGGER.error(getTaskName() + ": Post-analysis task failed");
+				return false;
 			}
-
-			titlesb.append("Intensity").append("\t");
-
-			for (int i = 0; i < fragpipeExpNames.length; i++) {
-				titlesb.append("Intensity " + fragpipeExpNames[i]).append("\t");
-			}
-
-			titlesb.append("Reverse").append("\t");
-			titlesb.append("Potential contaminant").append("\t");
-			titlesb.append("id").append("\t");
-			titlesb.append("Protein group IDs").append("\t");
-			titlesb.append("MS/MS Count");
-
-			pepWriter.println(titlesb);
-
-			for (int i = 0; i < peps.length; i++) {
-
-				String sequence = peps[i].getSequence();
-				String modSeqString = peps[i].getModSeq();
-				if (!pepIdMap.containsKey(modSeqString)) {
-					continue;
-				}
-
-				StringBuilder sb = new StringBuilder();
-				sb.append(modSeqString).append("\t");
-				sb.append(sequence).append("\t");
-				sb.append(peps[i].getLength()).append("\t");
-
-				String[] proteins = pepProMap.get(modSeqString);
-				for (String pro : proteins) {
-					sb.append(pro).append(";");
-				}
-				sb.deleteCharAt(sb.length() - 1);
-				sb.append("\t");
-
-				int[] charge = peps[i].getCharges();
-				StringBuilder chargesb = new StringBuilder();
-				for (int j = 0; j < charge.length; j++) {
-					chargesb.append(charge[j]).append(";");
-				}
-				if (chargesb.length() > 1) {
-					sb.append(chargesb.subSequence(0, chargesb.length() - 1)).append("\t");
-				} else {
-					sb.append("2").append("\t");
-				}
-
-				sb.append(FormatTool.getDF4().format(peps[i].getScore())).append("\t");
-
-				int[] idenType = peps[i].getIdenType();
-
-				for (int j = 0; j < idenType.length; j++) {
-					sb.append(MetaPeptide.idenTypeStrings[idenType[j]]).append("\t");
-				}
-
-				double totalIntensity = 0;
-
-				double[] intensity = peps[i].getIntensity();
-				for (int j = 0; j < intensity.length; j++) {
-					totalIntensity += intensity[j];
-				}
-
-				sb.append((int) totalIntensity).append("\t");
-
-				for (int j = 0; j < intensity.length; j++) {
-					sb.append((int) intensity[j]).append("\t");
-				}
-
-				sb.append("\t").append("\t");
-
-				sb.append(pepIdMap.get(modSeqString)).append("\t");
-
-				for (String pro : proteins) {
-					sb.append(proIdMap.get(pro)).append(";");
-				}
-				sb.deleteCharAt(sb.length() - 1);
-				sb.append("\t");
-
-				int totalSpCount = 0;
-				int[] spCount = peps[i].getMs2Counts();
-				for (int j = 0; j < spCount.length; j++) {
-					totalSpCount += spCount[j];
-				}
-				sb.append(totalSpCount);
-
-				pepWriter.println(sb);
-			}
-
-			pepWriter.close();
-
-		} catch (FileNotFoundException e) {
-			// TODO Auto-generated catch block
-			LOGGER.error(getTaskName() + ": error in writing peptides to " + this.final_pep_txt.getName(), e);
-			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in writing peptides to "
-					+ this.final_pep_txt.getName());
-		}
-
-		LOGGER.info(getTaskName() + ": peptide report has been exported to " + final_pep_txt);
-		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": peptide report has been exported to "
-				+ final_pep_txt);
-
-		if (!final_pep_txt.exists() || final_pep_txt.length() == 0) {
+		} catch (InterruptedException e) {
+			LOGGER.error(getTaskName() + ": Post-analysis task was interrupted", e);
+			Thread.currentThread().interrupt();
+			return false;
+		} catch (ExecutionException e) {
+			LOGGER.error(getTaskName() + ": Post-analysis task failed with exception", e);
 			return false;
 		}
-
-		LOGGER.info(getTaskName() + ": exporting protein report started");
-		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting protein report started");
-
-		PrintWriter proWriter = null;
-		try {
-			proWriter = new PrintWriter(this.final_pro_txt);
-		} catch (FileNotFoundException e) {
-			// TODO Auto-generated catch block
-			LOGGER.error(getTaskName() + ": error in writing final protein result to " + this.final_pro_txt.getName(),
-					e);
-			System.err.println(format.format(new Date()) + "\t" + getTaskName()
-					+ ": error in writing final protein result to " + this.final_pro_txt.getName());
-			return false;
-		}
-
-		StringBuilder titlesb = new StringBuilder();
-		titlesb.append("Protein IDs").append("\t");
-		titlesb.append("Majority protein IDs").append("\t");
-		titlesb.append("Peptide counts (all)").append("\t");
-		titlesb.append("Peptide counts (razor)").append("\t");
-		titlesb.append("Number of proteins").append("\t");
-		titlesb.append("Peptides").append("\t");
-		titlesb.append("PEP").append("\t");
-		titlesb.append("Intensity").append("\t");
-
-		for (int i = 0; i < fragpipeExpNames.length; i++) {
-			titlesb.append("Intensity " + fragpipeExpNames[i]).append("\t");
-		}
-
-		titlesb.append("Reverse").append("\t");
-		titlesb.append("Potential contaminant").append("\t");
-		titlesb.append("id").append("\t");
-		titlesb.append("Peptide IDs").append("\t");
-		titlesb.append("Peptide is razor");
-
-		proWriter.println(titlesb);
-
-		List<Map.Entry<String, Integer>> sortedList = proIdMap.entrySet().stream().sorted(Map.Entry.comparingByValue())
-				.collect(Collectors.toList());
-		String[] pros = sortedList.stream().map(Map.Entry::getKey).toArray(String[]::new);
-
-		for (int i = 0; i < pros.length; i++) {
-
-			HashSet<String> allPepSet = allProPepMap.get(pros[i]);
-			HashSet<String> razorPepSet = razorProPepMap.get(pros[i]);
-
-			if (allPepSet == null || razorPepSet == null) {
-				continue;
-			}
-
-			int pepCountAll = allProPepMap.get(pros[i]).size();
-			int pepCountRazor = razorProPepMap.get(pros[i]).size();
-
-			StringBuilder sb = new StringBuilder();
-			sb.append(pros[i]).append("\t");
-			sb.append(pros[i]).append("\t");
-			sb.append(pepCountAll).append("\t");
-			sb.append(pepCountRazor).append("\t");
-			sb.append("1\t");
-			sb.append(allPepSet.size()).append("\t");
-
-			double proScore = 1.0;
-			ArrayList<Double> scoreList = proScoreMap.get(pros[i]);
-			for (int j = 0; j < scoreList.size(); j++) {
-				proScore = proScore * scoreList.get(j);
-			}
-
-			sb.append(FormatTool.getDF4().format(proScore)).append("\t");
-
-			double totalIntensity = 0;
-			double[] intensity = proIntensityMap.get(pros[i]);
-			for (int j = 0; j < intensity.length; j++) {
-				totalIntensity += intensity[j];
-			}
-
-			sb.append(totalIntensity).append("\t");
-			for (int j = 0; j < intensity.length; j++) {
-				sb.append(intensity[j]).append("\t");
-			}
-			sb.append("\t").append("\t");
-			sb.append(proIdMap.get(pros[i])).append("\t");
-
-			StringBuilder pepIdSb = new StringBuilder();
-			StringBuilder pepRazorSb = new StringBuilder();
-
-			String[] allPeps = allPepSet.toArray(new String[allPepSet.size()]);
-			Arrays.sort(allPeps, new Comparator<String>() {
-
-				@Override
-				public int compare(String o1, String o2) {
-					// TODO Auto-generated method stub
-
-					return pepIdMap.get(o1) - pepIdMap.get(o2);
-				}
-			});
-			for (String pep : allPeps) {
-				pepIdSb.append(pepIdMap.get(pep)).append(";");
-				if (razorPepSet.contains(pep)) {
-					pepRazorSb.append("true;");
-				} else {
-					pepRazorSb.append("false;");
-				}
-			}
-			sb.append(pepIdSb).append("\t");
-			sb.append(pepRazorSb);
-
-			proWriter.println(sb);
-		}
-
-		proWriter.close();
-
-		LOGGER.info(getTaskName() + ": protein report has been exported to " + final_pro_txt.getName());
-		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": protein report has been exported to "
-				+ final_pro_txt.getName());
-
-		return true;
-	}
-
-	protected HashSet<String> refineProtein(HashMap<String, HashSet<String>> proPepMap, int totalPepCount, File out) {
-
-		String[] proteins = proPepMap.keySet().toArray(new String[proPepMap.size()]);
-		Arrays.sort(proteins, (g1, g2) -> {
-			int s1 = proPepMap.get(g1).size();
-			int s2 = proPepMap.get(g2).size();
-			return s2 - s1;
-		});
-
-		for (int iteratorCount = 0; iteratorCount < 5; iteratorCount++) {
-			HashSet<String> totalSet = new HashSet<String>();
-			HashMap<String, Integer> orderMap = new HashMap<String, Integer>();
-			for (int i = 0; i < proteins.length; i++) {
-				int currentSize = totalSet.size();
-				totalSet.addAll(proPepMap.get(proteins[i]));
-				int increaseSize = totalSet.size() - currentSize;
-				orderMap.put(proteins[i], increaseSize);
-			}
-
-			Arrays.sort(proteins, (g1, g2) -> {
-				return orderMap.get(g2) - orderMap.get(g1);
-			});
-		}
-
-		double[] percentage = new double[proteins.length];
-		HashSet<String> totalSet = new HashSet<String>();
-		int breakPoint1 = -1;
-		HashSet<String> proSet = new HashSet<String>();
-		try (PrintWriter writer = new PrintWriter(out)) {
-			writer.println("Rank\tProtein\tTotal_covered_PSM_count\tPercentage\tIncrement\tIncrement ratio");
-			for (int i = 0; i < proteins.length; i++) {
-
-				int currentSize = totalSet.size();
-				totalSet.addAll(proPepMap.get(proteins[i]));
-				int add = totalSet.size() - currentSize;
-				double additional = ((double) add / (double) totalPepCount);
-				if (add > 0) {
-					breakPoint1 = i;
-				}
-
-				percentage[i] = ((double) totalSet.size() / (double) totalPepCount);
-
-				writer.println(i + "\t" + proteins[i] + "\t" + totalSet.size() + "\t" + percentage[i] + "\t" + add
-						+ "\t" + additional);
-			}
-			writer.close();
-		} catch (IOException e) {
-			LOGGER.error(getTaskName() + ": error in writing genomes to " + out, e);
-			System.out
-					.println(format.format(new Date()) + "\t" + getTaskName() + ": error in writing genomes to " + out);
-		}
-
-		for (int i = 0; i < proteins.length; i++) {
-			proSet.add(proteins[i]);
-			if (i == breakPoint1) {
-				break;
-			}
-		}
-
-		return proSet;
 	}
 
 	protected boolean exportSummary(MetaPythonReportTask task) {

@@ -8,49 +8,46 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.math.BigInteger;
 import java.util.concurrent.ExecutionException;
+import java.util.stream.Collectors;
 
+import uk.ac.quadram.metapilot.core.math.MathTool;
 import uk.ac.quadram.metapilot.core.taxonomy.Taxon;
-import uk.ac.quadram.metapilot.core.taxonomy.TaxonomyDatabase;
 import uk.ac.quadram.metapilot.core.taxonomy.TaxonomyDatabaseSQL;
 import uk.ac.quadram.metapilot.core.taxonomy.TaxonomyRanks;
 import uk.ac.quadram.metapilot.core.tools.FormatTool;
-import uk.ac.quadram.metapilot.dbSearch.pfind.PFindPeptide;
+import uk.ac.quadram.metapilot.dbSearch.pfind.PFindResultReader;
 import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
+import uk.ac.quadram.metapilot.task.MetaAbstractTask;
 import uk.ac.quadram.metapilot.task.MetaPilotTask;
-import uk.ac.quadram.metapilot.task.MetaPythonReportCopyTask;
 import uk.ac.quadram.metapilot.task.MetaPythonReportTask;
-import uk.ac.quadram.metapilot.task.io.MetaAlgorithm;
-import uk.ac.quadram.metapilot.task.io.MetaBiomJsonHandler;
-import uk.ac.quadram.metapilot.task.io.MetaTreeHandler;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
-import uk.ac.quadram.metapilot.task.io.pep.MetaPeptideXMLReader;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPSM;
-import uk.ac.quadram.metapilot.task.io.pep.MetaPeptideXMLWriter;
-import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
-import uk.ac.quadram.metapilot.task.io.pro.MetaProteinAnnoIgc;
 import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
-import uk.ac.quadram.metapilot.task.par.MetaConstants;
-import uk.ac.quadram.metapilot.task.par.MetaPep2TaxaPar;
 import uk.ac.quadram.metapilot.mdb.unipept.UnipeptRequester;
 import uk.ac.quadram.metapilot.mdb.unipept.UnipProResult;
 import uk.ac.quadram.metapilot.mdb.unipept.UnipProInfo;
-import uk.ac.quadram.metapilot.mdb.unipept.UnipLCAResult;
+
+import org.apache.commons.math3.stat.inference.TTest;
+import org.apache.logging.log4j.Logger;
 
 /**
  * Abstract base class for DDA IGC (Integrated Gene Catalog) workflow tasks.
  * 
- * This class provides common functionality and fields shared across all DDA IGC workflows,
- * including pFind, MaxQuant, Sage, and FragPipe implementations. It handles common operations
- * such as result directory creation, report generation, and taxonomic analysis.
+ * This class provides common functionality and fields shared across all DDA IGC
+ * workflows, including pFind, MaxQuant, Sage, and FragPipe implementations. It
+ * handles common operations such as result directory creation, report
+ * generation, and taxonomic analysis.
  */
 public abstract class MetaPilotIgcTask extends MetaPilotTask {
 
@@ -60,7 +57,6 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
     protected String[] quanExpNames;
     protected File spectraDirFile;
     protected File[] separateResultFolders;
-    protected int threadCount;
     protected double psmCoverThreshold = 0.95;
 
     protected File rawDir;
@@ -77,1287 +73,146 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
     public MetaPilotIgcTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
             ProgressBar secondBar) {
         super(metaPar, mrp, progressBar, secondBar);
-
         // Report templates will be copied in background during call() method
         // This prevents UI freeze during task construction
         LOGGER.info(getTaskName() + ": Constructor completed, report templates will be copied during execution");
     }
     
     /**
-     * Export report including peptide/protein reports, taxonomy analysis, and functional annotation
-     * This method follows the same pattern as DDAIgcPFindTask but uses Sage readers
-     */
-    protected boolean exportReport() {
-        updateMessage(getTaskName() + ": exporting report");
-
-        LOGGER.info(getTaskName() + ": exporting report started");
-        System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting report started");
-
-        // Update progress before report generation
-        updateProgress(75, 100);
-        updateMessage("Starting report generation...");
-
-        File reportDir = new File(this.metaPar.getResult(), "report");
-        if (!reportDir.exists()) {
-            reportDir.mkdirs();
-        }
-
-        // Copy report template
-        MetaPythonReportCopyTask reportCopyTask = new MetaPythonReportCopyTask(new File(metaPar.getResult()));
-        Thread reportCopyThread = new Thread(reportCopyTask);
-        reportCopyThread.start();
-        try {
-            reportCopyThread.join();
-            if (!reportCopyTask.get()) {
-                LOGGER.error(getTaskName() + ": error in copying report template");
-                System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in copying report template");
-                return false;
-            }
-        } catch (InterruptedException | ExecutionException e) {
-            LOGGER.error(getTaskName() + ": error in copying report template", e);
-            System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in copying report template: " + e.getMessage());
-            return false;
-        }
-
-        metaPar.setReportDir(reportDir);
-
-        File reportHtmlDir = new File(reportDir + "\\reports\\rmd_html");
-        if (!reportHtmlDir.exists()) {
-            reportHtmlDir.mkdirs();
-        }
-
-        // Export metadata
-        File summaryMetaFile = new File(this.metaPar.getResult(), "metainfo.tsv");
-        try {
-            this.metaPar.getMetadata().exportMetadata(summaryMetaFile);
-        } catch (FileNotFoundException e) {
-            LOGGER.error("Error exporting metadata", e);
-        }
-
-        MetaPythonReportTask task = new MetaPythonReportTask(metaPar.getThreadCount());
-
-        // Export summary
-        boolean summaryFinished = this.exportSummary(task);
-        updateProgress(80, 100);
-
-        // Generate final peptide and protein files
-        String[] rawFiles = this.metaPar.getMetadata().getRawFiles();
-        String[] quanExpNames = new String[rawFiles.length];
-        for (int i = 0; i < rawFiles.length; i++) {
-            quanExpNames[i] = rawFiles[i].substring(rawFiles[i].lastIndexOf("\\") + 1, rawFiles[i].lastIndexOf("."));
-        }
-
-        // Use the common processPeptideListAndGenerateReports method
-        // This method will handle protein inference and report generation
-        // TODO: Build file mappings and call processPeptideListAndGenerateReports
-
-        // For now, keep the existing exportReport logic
-        // Generate final peptide report
-        File final_pep_txt = new File(this.metaPar.getDbSearchResultFile(), "final_peptides.tsv");
-        if (!final_pep_txt.exists() || final_pep_txt.length() == 0) {
-            LOGGER.info(getTaskName() + ": exporting peptide report started");
-            System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting peptide report started");
-
-            try {
-                
-                try (PrintWriter writer = new PrintWriter(final_pep_txt)) {
-                    // Write header
-                    StringBuilder titlesb = new StringBuilder();
-                    titlesb.append("Sequence").append("\t");
-                    titlesb.append("Base sequence").append("\t");
-                    titlesb.append("Length").append("\t");
-                    titlesb.append("Missed cleavages").append("\t");
-                    titlesb.append("Mass").append("\t");
-                    titlesb.append("Proteins").append("\t");
-                    titlesb.append("Charges").append("\t");
-                    titlesb.append("Score").append("\t");
-                    titlesb.append("Final score").append("\t");
-                    titlesb.append("Q-value").append("\t");
-
-                    for (int i = 0; i < quanExpNames.length; i++) {
-                        titlesb.append("Identification type " + quanExpNames[i]).append("\t");
-                    }
-
-                    titlesb.append("Intensity").append("\t");
-
-                    for (int i = 0; i < quanExpNames.length; i++) {
-                        titlesb.append("Intensity " + quanExpNames[i]).append("\t");
-                    }
-
-                    titlesb.append("Reverse").append("\t");
-                    titlesb.append("Potential contaminant").append("\t");
-                    titlesb.append("id").append("\t");
-                    titlesb.append("Protein group IDs").append("\t");
-                    titlesb.append("MS/MS Count");
-
-                    writer.println(titlesb);
-
-                    // Write peptide data
-                    for (int i = 0; i < metaPeptides.length; i++) {
-                        MetaPeptide pep = metaPeptides[i];
-                        StringBuilder sb = new StringBuilder();
-                        sb.append(pep.getSequence()).append("\t");
-                        sb.append(pep.getSequence()).append("\t");
-                        sb.append(pep.getLength()).append("\t");
-                        sb.append(pep.getMissCleave()).append("\t");
-                        sb.append(pep.getMass()).append("\t");
-
-                        String[] proteins = pep.getProteins();
-                        if (proteins.length > 0) {
-                            for (String pro : proteins) {
-                                sb.append(pro).append(";");
-                            }
-                            sb.deleteCharAt(sb.length() - 1);
-                        }
-                        sb.append("\t");
-
-                        int[] charge = pep.getCharges();
-                        StringBuilder chargesb = new StringBuilder();
-                        for (int j = 0; j < charge.length; j++) {
-                            if (charge[j] == 1) {
-                                chargesb.append(j + 1).append(";");
-                            }
-                        }
-                        if (chargesb.length() > 1) {
-                            sb.append(chargesb.subSequence(0, chargesb.length() - 1)).append("\t");
-                        } else {
-                            sb.append("2").append("\t");
-                        }
-
-                        sb.append(pep.getScore()).append("\t");
-                        sb.append(pep.getScore()).append("\t");
-                        sb.append(pep.getPEP()).append("\t");
-
-                        // Add identification types and intensities
-                        double[] intensity = pep.getIntensity();
-                        int[] idenType = pep.getIdenType();
-                        
-                        for (int j = 0; j < idenType.length; j++) {
-                            if (idenType[j] == 0) {
-                                sb.append("By MS/MS").append("\t");
-                            } else {
-                                sb.append("\t");
-                            }
-                        }
-
-                        double totalIntensity = 0;
-                        for (int j = 0; j < intensity.length; j++) {
-                            totalIntensity += intensity[j];
-                        }
-                        sb.append((int) totalIntensity).append("\t");
-
-                        for (int j = 0; j < intensity.length; j++) {
-                            sb.append((int) intensity[j]).append("\t");
-                        }
-
-                        sb.append(pep.isUse() ? "" : "+").append("\t");
-                        sb.append("").append("\t");
-                        sb.append(i).append("\t");
-                        sb.append("").append("\t");
-                        sb.append(pep.getTotalMS2Count());
-
-                        writer.println(sb);
-                    }
-                }
-
-                LOGGER.info(getTaskName() + ": peptide report has been exported to " + final_pep_txt);
-                System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": peptide report has been exported to " + final_pep_txt);
-
-            } catch (Exception e) {
-                LOGGER.error(getTaskName() + ": error in reading peptides from Sage results", e);
-                System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in reading peptides from Sage results");
-                return false;
-            }
-        }
-
-        updateProgress(85, 100);
-
-        // Generate final protein report (simplified for Sage)
-        File final_pro_txt = new File(this.metaPar.getResult(), "final_proteins.tsv");
-        if (!final_pro_txt.exists() || final_pro_txt.length() == 0) {
-            LOGGER.info(getTaskName() + ": exporting protein report started");
-            System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting protein report started");
-
-            try {
-                // For Sage, we need to create a simplified protein report from peptide data
-                // This is a simplified version - in practice, you'd read the actual Sage protein results
-                try (PrintWriter writer = new PrintWriter(final_pro_txt)) {
-                    // Write header
-                    StringBuilder titlesb = new StringBuilder();
-                    titlesb.append("Protein IDs").append("\t");
-                    titlesb.append("Majority protein IDs").append("\t");
-                    titlesb.append("Peptide counts (all)").append("\t");
-                    titlesb.append("Peptide counts (razor)").append("\t");
-                    titlesb.append("Number of proteins").append("\t");
-                    titlesb.append("Peptides").append("\t");
-                    titlesb.append("Score").append("\t");
-                    titlesb.append("Intensity").append("\t");
-
-                    for (int i = 0; i < quanExpNames.length; i++) {
-                        titlesb.append("Intensity " + quanExpNames[i]).append("\t");
-                    }
-
-                    titlesb.append("Reverse").append("\t");
-                    titlesb.append("Potential contaminant").append("\t");
-                    titlesb.append("id").append("\t");
-                    titlesb.append("Peptide IDs").append("\t");
-                    titlesb.append("Peptide is razor");
-
-                    writer.println(titlesb);
-
-                    // Create simplified protein data from peptide data
-                    // This is a placeholder - in practice, you'd read actual Sage protein results
-                    writer.println("Protein_1\tProtein_1\t1\t1\t1\t1\t0.0\t0.0\t" + 
-                        String.join("\t", new String[quanExpNames.length]) + "\t\t\t0\t\t");
-                }
-
-                LOGGER.info(getTaskName() + ": protein report has been exported to " + final_pro_txt);
-                System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": protein report has been exported to " + final_pro_txt);
-
-            } catch (Exception e) {
-                LOGGER.error(getTaskName() + ": error in reading proteins from Sage results", e);
-                System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in reading proteins from Sage results");
-                return false;
-            }
-        }
-
-        updateProgress(90, 100);
-
-        // Taxonomy analysis (same as DDAIgcPFindTask)
-        LOGGER.info(getTaskName() + ": taxonomy analysis started");
-        System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": taxonomy analysis started");
-
-        File taxFile = new File(metaPar.getDbSearchResultFile(), "taxonomy_analysis");
-        if (!taxFile.exists()) {
-            taxFile.mkdir();
-        }
-
-        // Read peptide intensity data for taxonomy analysis
-        HashMap<String, double[]> pepIntensityMap = new HashMap<String, double[]>();
-        String[] expNames = null;
-        try (BufferedReader quanPepReader = new BufferedReader(new FileReader(final_pep_txt))) {
-            String line = quanPepReader.readLine(); // Skip header
-            String[] title = line.split("\t");
-            int seqId = -1;
-            ArrayList<String> list = new ArrayList<String>();
-            for (int i = 0; i < title.length; i++) {
-                if (title[i].equals("Sequence")) {
-                    seqId = i;
-                } else if (title[i].startsWith("Intensity ")) {
-                    list.add(title[i]);
-                }
-            }
-
-            expNames = list.toArray(new String[list.size()]);
-            int[] intenId = new int[list.size()];
-            for (int i = 0; i < expNames.length; i++) {
-                for (int j = 0; j < title.length; j++) {
-                    if (expNames[i].equals(title[j])) {
-                        intenId[i] = j;
-                    }
-                }
-            }
-
-            while ((line = quanPepReader.readLine()) != null) {
-                String[] cs = line.split("\t");
-                double[] intensity = new double[expNames.length];
-                for (int i = 0; i < intensity.length; i++) {
-                    intensity[i] = Double.parseDouble(cs[intenId[i]]);
-                }
-                pepIntensityMap.put(cs[seqId], intensity);
-            }
-        } catch (IOException e) {
-            LOGGER.error("Error in reading peptides from " + final_pep_txt, e);
-            return false;
-        }
-
-        // Execute Unipept analysis (same as DDAIgcPFindTask)
-        boolean executeUnipept = true; // For now, always execute
-        MetaPep2TaxaPar mptp = MetaPep2TaxaPar.getDefault();
-        File taxResultFile = new File(taxFile, MetaAlgorithm.Unipept.getName() + ".taxonomy.xml");
-        
-        if (executeUnipept) {
-            // Get unique peptide sequences
-            HashSet<String> sequenceSet = new HashSet<String>();
-            try (BufferedReader reader = new BufferedReader(new FileReader(final_pep_txt))) {
-                String line = reader.readLine(); // Skip header
-                int seqId = -1;
-                String[] title = line.split("\t");
-                for (int i = 0; i < title.length; i++) {
-                    if (title[i].equals("Sequence")) {
-                        seqId = i;
-                        break;
-                    }
-                }
-                
-                while ((line = reader.readLine()) != null) {
-                    String[] cs = line.split("\t");
-                    sequenceSet.add(cs[seqId]);
-                }
-            } catch (IOException e) {
-                LOGGER.error("Error reading sequences for taxonomy analysis", e);
-                return false;
-            }
-
-            String[] sequences = sequenceSet.toArray(new String[sequenceSet.size()]);
-            Arrays.sort(sequences);
-
-            HashMap<String, UnipLCAResult> lcaResultMap = UnipeptRequester.pept2lca(sequences);
-
-            MetaPeptideXMLWriter writer = new MetaPeptideXMLWriter(taxResultFile, MetaConstants.pFind,
-                    MetaConstants.labelFree, expNames);
-
-            TaxonomyDatabase td = new TaxonomyDatabase(mrp.getToolPath(ToolType.FUNCDB));
-
-            for (int i = 0; i < sequences.length; i++) {
-                if (lcaResultMap.containsKey(sequences[i])) {
-                    UnipLCAResult lcaResult = lcaResultMap.get(sequences[i]);
-                    int taxId = lcaResult.getTaxon().getId();
-                    Taxon lca = td.getTaxonFromId(taxId);
-
-                    if (lca != null) {
-                        // Create a simple MetaPeptide for taxonomy analysis
-                        double[] intensity = pepIntensityMap.getOrDefault(sequences[i], new double[expNames.length]);
-                        PFindPeptide op = new PFindPeptide(sequences[i], 0, 0.0, "", new String[]{sequences[i]}, 
-                                new double[]{0.0}, new int[]{1}, new double[][]{intensity});
-                        op.setLca(lca);
-
-                        if (lca.getMainParentIds() == null) {
-                            lca.setMainParentIds(td.getMainParentTaxonIds(taxId));
-                        }
-
-                        int[] mainTaxonIds = lca.getMainParentIds();
-                        for (int parentId : mainTaxonIds) {
-                            Taxon parentTaxon = td.getTaxonFromId(parentId);
-                            if (parentTaxon != null) {
-                                if (parentTaxon.getMainParentIds() == null) {
-                                    parentTaxon.setMainParentIds(td.getMainParentTaxonIds(parentId));
-                                }
-                                writer.addTaxon(parentTaxon);
-                            }
-                        }
-
-                        writer.addPeptide(op);
-                    }
-                }
-            }
-            writer.close();
-
-            // Generate taxonomy analysis files (same as DDAIgcPFindTask)
-            if (taxResultFile.exists() && taxResultFile.length() > 0) {
-                MetaPeptideXMLReader reader = new MetaPeptideXMLReader(taxResultFile);
-                File refinedTaxon = new File(taxFile, MetaAlgorithm.Builtin.getName() + ".taxa.refine.csv");
-                reader.exportCsv(taxFile, MetaAlgorithm.Unipept, mptp.getLeastPepCount());
-
-                MetaPeptide[] peps = reader.getPeptides();
-                Taxon[] taxons = reader.getTaxons();
-
-                File megan = new File(taxFile, MetaAlgorithm.Unipept.getName() + ".biom");
-                if (!megan.exists() || megan.length() == 0) {
-                    MetaBiomJsonHandler.export(peps, taxons, expNames, megan.getAbsolutePath());
-                }
-
-                File allPepTaxa = new File(taxFile, MetaAlgorithm.Unipept.getName() + ".allPepTaxa.csv");
-                if (!allPepTaxa.exists() || allPepTaxa.length() == 0) {
-                    reader.exportPeptideTaxaAll(allPepTaxa);
-                }
-
-                File iMetaLab = new File(taxFile, MetaAlgorithm.Unipept.getName() + ".iMetaLab.tree.csv");
-                if (!iMetaLab.exists() || iMetaLab.length() == 0) {
-                    MetaTreeHandler.export(peps, taxons, expNames, iMetaLab);
-                }
-
-                File jsOutput = new File(metaPar.getReportDir() + "\\reports\\metamap\\data\\tree.js");
-                if (!jsOutput.exists() || jsOutput.length() == 0) {
-                    MetaTreeHandler.exportJS(peps, taxons, expNames, jsOutput);
-                } else {
-                    jsOutput = new File(metaPar.getReportDir() + "\\reports\\metamap\\data\\tree2.js");
-                    MetaTreeHandler.exportJS(peps, taxons, expNames, jsOutput);
-                }
-            }
-        }
-
-        updateProgress(95, 100);
-
-        // Functional annotation (same as DDAIgcPFindTask)
-        LOGGER.info(getTaskName() + ": functional annotation started");
-        System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": functional annotation started");
-
-        File funcFile = new File(metaPar.getDbSearchResultFile(), "functional_annotation");
-        if (!funcFile.exists()) {
-            funcFile.mkdir();
-        }
-
-        File final_pro_xml_file = new File(funcFile, "functions.xml");
-        if (!final_pro_xml_file.exists() || final_pro_xml_file.length() == 0) {
-            // Read protein data for functional annotation
-            try (BufferedReader quanProReader = new BufferedReader(new FileReader(final_pro_txt))) {
-                String line = quanProReader.readLine(); // Skip header
-                // Process protein data for functional annotation
-                // This would be similar to DDAIgcPFindTask but using Sage protein data
-            } catch (IOException e) {
-                LOGGER.error("Error reading protein data for functional annotation", e);
-            }
-        }
-
-        updateProgress(98, 100);
-
-        // Generate reports
-        boolean pepReportOk = false;
-        boolean proReportOk = false;
-        
-        if (final_pep_txt.exists() && final_pep_txt.length() > 0) {
-            File report_peptides_summary = new File(reportHtmlDir, "report_peptides_summary.html");
-            if (!report_peptides_summary.exists() || report_peptides_summary.length() == 0) {
-                if (summaryMetaFile.exists()) {
-                    pepReportOk = task.addTask(MetaPythonReportTask.PEPTIDE, final_pep_txt, report_peptides_summary, summaryMetaFile);
-                } else {
-                    pepReportOk = task.addTask(MetaPythonReportTask.PEPTIDE, final_pep_txt, report_peptides_summary);
-                }
-            }
-        }
-
-        if (final_pro_txt.exists() && final_pro_txt.length() > 0) {
-            File report_proteinGroups_summary = new File(reportHtmlDir, "report_proteinGroups_summary.html");
-            if (!report_proteinGroups_summary.exists() || report_proteinGroups_summary.length() == 0) {
-                if (summaryMetaFile.exists()) {
-                    proReportOk = task.addTask(MetaPythonReportTask.PROTEIN, final_pro_txt, report_proteinGroups_summary, summaryMetaFile);
-                } else {
-                    proReportOk = task.addTask(MetaPythonReportTask.PROTEIN, final_pro_txt, report_proteinGroups_summary);
-                }
-            }
-        }
-
-        // Taxonomy report
-        File refinedTaxon = new File(taxFile, MetaAlgorithm.Builtin.getName() + ".taxa.refine.csv");
-        File report_taxonomy_summary = new File(reportHtmlDir, "report_taxonomy_summary.html");
-        if (!report_taxonomy_summary.exists() || report_taxonomy_summary.length() == 0) {
-            if (summaryMetaFile.exists()) {
-                task.addTask(MetaPythonReportTask.TAXONOMY, refinedTaxon, report_taxonomy_summary, summaryMetaFile);
-            } else {
-                task.addTask(MetaPythonReportTask.TAXONOMY, refinedTaxon, report_taxonomy_summary);
-            }
-        }
-
-        // Functional report
-        File funReportTsv = new File(funcFile, "functions_report.tsv");
-        File report_function_summary = new File(reportHtmlDir, "report_function_summary.html");
-        if (!report_function_summary.exists() || report_function_summary.length() == 0) {
-            if (summaryMetaFile.exists()) {
-                task.addTask(MetaPythonReportTask.FUNCTION, funReportTsv, report_function_summary, summaryMetaFile);
-            } else {
-                task.addTask(MetaPythonReportTask.FUNCTION, funReportTsv, report_function_summary);
-            }
-        }
-
-        if (!summaryFinished || !pepReportOk || !proReportOk) {
-            LOGGER.info(getTaskName() + ": error in generating the reports");
-            System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": error in generating the reports");
-            return false;
-        }
-
-        task.run();
-
-        try {
-            if (task.get()) {
-                LOGGER.info(getTaskName() + ": report generation successes");
-                System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": report generation successes");
-                return true;
-            }
-        } catch (InterruptedException | ExecutionException e) {
-            LOGGER.error("Error in report generation", e);
-        }
-
-        return false;
-    }
-
-    /**
-     * Updates protein inference using peptide and PSM data with two-stage filtering.
-     * 
-     * This method performs the following steps:
-     * 1. Builds peptide-to-protein mapping from MetaPSM data
-     * 2. Applies protein-level Occam's razor filtering
-     * 3. Gets taxonomic information using UnipeptRequester.protinfo()
-     * 4. Applies species-level Occam's razor filtering
-     * 5. Recalculates protein intensities from peptide data
-     * 6. Applies FDR filtering at protein level (< 1%)
-     * 7. Updates MetaPeptide.proteins field with final protein names
-     * 8. Returns filtered MetaProtein array with FDR < 1%
-     * 
-     * @param peptides Array of identified peptides
-     * @param psms Array of PSMs for protein inference
-     * @return Array of filtered MetaProtein objects with FDR < 1%
-     */
-	protected boolean processPeptideListAndGenerateReports(MetaPeptide[] quanPeps, MetaPSM[] psms,
-			HashMap<String, Integer> fileIdMap, ArrayList<String> fileList, String quanMode, String[] intensityTitle,
-			String taskName) {
-
-		LOGGER.info(taskName + ": Starting peptide processing and report generation for IGC workflow");
-
-		if (quanPeps == null || quanPeps.length == 0) {
-			LOGGER.warn(taskName + ": No quantified peptides provided");
-			return false;
-		}
-		if (psms == null || psms.length == 0) {
-			LOGGER.warn(taskName + ": No PSM information provided");
-			return false;
-		}
-		if (fileIdMap == null || fileIdMap.isEmpty()) {
-			LOGGER.warn(taskName + ": File mapping is empty");
-			return false;
-		}
-
-		// First, update proteins to get final filtered protein set
-		HashMap<String, UnipProInfo> finalProteinInfoMap = updateProtein(quanPeps);
-
-		if (finalProteinInfoMap.isEmpty()) {
-			LOGGER.warn(taskName + ": No proteins survived protein/species refinement");
-		}
-
-		// Update peptide protein mappings with final protein names
-		String[] razorProteins = new String[quanPeps.length];
-		for (int i = 0; i < quanPeps.length; i++) {
-			MetaPeptide peptide = quanPeps[i];
-			if (peptide == null) {
-				continue;
+	 * Exports summary statistics for the analysis. This method generates the ID
+	 * summary report common to all IGC workflows.
+	 */
+	protected boolean exportSummary(MetaPythonReportTask task) {
+
+		File final_summary_txt = new File(this.metaPar.getDbSearchResultFile(), "final_summary.tsv");
+		try {
+
+			PrintWriter countWriter = new PrintWriter(final_summary_txt);
+			StringBuilder titlesb = new StringBuilder();
+			titlesb.append("Raw file").append("\t");
+			titlesb.append("Experiment").append("\t");
+			titlesb.append("MS/MS").append("\t");
+			titlesb.append("MS/MS Identified").append("\t");
+			titlesb.append("MS/MS Identified [%]").append("\t");
+			titlesb.append("Peptide Sequences Identified");
+
+			countWriter.println(titlesb);
+
+			int totalms2count = 0;
+			int totalpsmCount = 0;
+			int totalUnipepCount = 0;
+
+			BufferedReader idReader = new BufferedReader(new FileReader(new File(combinedFile, "id.tsv")));
+			HashMap<String, int[]> idMap = new HashMap<String, int[]>();
+			String line = idReader.readLine();
+			while ((line = idReader.readLine()) != null) {
+				String[] cs = line.split("\t");
+				idMap.put(cs[0], new int[] { Integer.parseInt(cs[1]), Integer.parseInt(cs[2]) });
 			}
-			String[] proteins = peptide.getProteins();
-			if (proteins == null) {
-				peptide.setProteins(new String[0]);
-				continue;
-			}
-			ArrayList<String> filtered = new ArrayList<String>();
-			for (String protein : proteins) {
-				if (protein != null && finalProteinInfoMap.containsKey(protein)) {
-					filtered.add(protein);
-				}
-			}
-			if (filtered.isEmpty()) {
-				peptide.setProteins(new String[0]);
-				continue;
-			}
-			peptide.setProteins(filtered.toArray(new String[filtered.size()]));
-			razorProteins[i] = filtered.get(0);
-		}
+			idReader.close();
 
-		// Now build PSM maps with the final, filtered protein information
-		HashMap<String, MetaPSM> psmMap = new HashMap<String, MetaPSM>();
-		HashMap<String, int[]> pepPsmCountMap = new HashMap<String, int[]>();
-		HashMap<String, int[]> pepChargeMap = new HashMap<String, int[]>();
-		HashMap<String, double[]> pepExpectMap = new HashMap<String, double[]>();
-		HashMap<String, Integer> proteinPsmCountMap = new HashMap<String, Integer>();
+			File ms2CountFile = new File(spectraDirFile, "ms2Count.txt");
+			BufferedReader ms2CountReader = new BufferedReader(new FileReader(ms2CountFile));
+			line = ms2CountReader.readLine();
 
-		int fileCount = fileIdMap.size();
-		int[] filePsmCount = new int[fileCount];
-		HashSet<String>[] fileSequenceSets = new HashSet[fileCount];
-		for (int i = 0; i < fileSequenceSets.length; i++) {
-			fileSequenceSets[i] = new HashSet<String>();
-		}
+			while ((line = ms2CountReader.readLine()) != null) {
+				String[] cs = line.split("\t");
+				String rawName = cs[0];
 
-		for (MetaPSM psm : psms) {
-			if (psm == null) {
-				continue;
-			}
+				if (idMap.containsKey(rawName)) {
 
-			String modseq = psm.getModSeq();
-			String baseSequence = psm.getBaseSequence();
-			String fileName = psm.getFileName();
-			Integer fileIdx = fileIdMap.get(fileName);
-			if (fileIdx == null) {
-				LOGGER.warn(taskName + ": Skip PSM because file '" + fileName + "' is not recognised in file map");
-				continue;
-			}
+					StringBuilder sb = new StringBuilder();
+					sb.append(cs[0]).append("\t");
 
-			int[] psmCount;
-			if (pepPsmCountMap.containsKey(modseq)) {
-				psmCount = pepPsmCountMap.get(modseq);
-			} else {
-				psmCount = new int[fileCount];
-				pepPsmCountMap.put(modseq, psmCount);
-			}
-			psmCount[fileIdx]++;
-
-			filePsmCount[fileIdx]++;
-			fileSequenceSets[fileIdx].add(baseSequence);
-
-			int[] charges;
-			if (pepChargeMap.containsKey(modseq)) {
-				charges = pepChargeMap.get(modseq);
-			} else {
-				charges = new int[7];
-				pepChargeMap.put(modseq, charges);
-			}
-			int charge = psm.getCharge();
-			if (charge >= 0 && charge < charges.length) {
-				charges[charge] = 1;
-			}
-
-			double[] expect;
-			if (pepExpectMap.containsKey(modseq)) {
-				expect = pepExpectMap.get(modseq);
-						} else {
-				expect = new double[fileCount];
-				Arrays.fill(expect, 1.0);
-				pepExpectMap.put(modseq, expect);
-			}
-			double pep = psm.getPEP();
-			if (pep < expect[fileIdx]) {
-				expect[fileIdx] = pep;
-			}
-
-			MetaPSM best = psmMap.get(modseq);
-			if (best == null || pep < best.getPEP()) {
-				psmMap.put(modseq, psm);
-			}
-
-			String[] proteins = psm.getProteins();
-			if (proteins != null) {
-				for (String protein : proteins) {
-					if (protein != null && protein.length() > 0) {
-						if (proteinPsmCountMap.containsKey(protein)) {
-							proteinPsmCountMap.put(protein, proteinPsmCountMap.get(protein) + 1);
-						} else {
-							proteinPsmCountMap.put(protein, 1);
-						}
-					}
-				}
-			}
-		}
-
-		for (MetaPeptide peptide : quanPeps) {
-			if (peptide == null) {
-				continue;
-			}
-			String modSeq = peptide.getModSeq();
-			double[] expect = pepExpectMap.get(modSeq);
-			if (expect == null) {
-				expect = new double[fileCount];
-				Arrays.fill(expect, 1.0);
-			}
-			peptide.setIndividualPEP(expect);
-		}
-
-		// Use the protein info map directly since it already contains the filtered proteins
-		HashMap<String, UnipProInfo> proteinInfoMap = finalProteinInfoMap;
-
-		HashMap<String, String> proteinToSpeciesKey = new HashMap<String, String>();
-		for (String protein : finalProteinInfoMap.keySet()) {
-			UnipProInfo info = proteinInfoMap.get(protein);
-			if (info != null) {
-				String speciesKey = buildSpeciesKey(info.getTaxId());
-				proteinToSpeciesKey.put(protein, speciesKey);
-			}
-		}
-
-		HashMap<String, double[]> proteinIntensityMap = new HashMap<String, double[]>();
-		HashMap<String, Double> proteinTotalIntensityMap = new HashMap<String, Double>();
-		HashMap<String, double[]> speciesIntensityMap = new HashMap<String, double[]>();
-		HashMap<String, HashSet<String>> totalPepCountMap = new HashMap<String, HashSet<String>>();
-		HashMap<String, HashSet<String>> razorPepCountMap = new HashMap<String, HashSet<String>>();
-		ArrayList<MetaPeptide> peptideList = new ArrayList<MetaPeptide>();
-
-		for (int i = 0; i < quanPeps.length; i++) {
-			MetaPeptide peptide = quanPeps[i];
-			if (peptide == null) {
-				continue;
-			}
-
-			String[] proteins = peptide.getProteins();
-			if (proteins == null || proteins.length == 0) {
-				continue;
-			}
-
-			String sequence = peptide.getSequence();
-			if (sequence == null) {
-				continue;
-			}
-
-			int contributingProteins = 0;
-			for (String protein : proteins) {
-				if (protein != null && finalProteinInfoMap.containsKey(protein)) {
-					contributingProteins++;
-				}
-			}
-
-			if (contributingProteins == 0) {
-				continue;
-			}
-
-			peptideList.add(peptide);
-
-			if (razorProteins[i] != null) {
-				HashSet<String> set;
-				if (razorPepCountMap.containsKey(razorProteins[i])) {
-					set = razorPepCountMap.get(razorProteins[i]);
-			} else {
-					set = new HashSet<String>();
-					razorPepCountMap.put(razorProteins[i], set);
-				}
-				set.add(sequence);
-
-				String speciesKey = proteinToSpeciesKey.get(razorProteins[i]);
-				if (speciesKey != null) {
-					HashSet<String> speciesSet;
-					if (razorPepCountMap.containsKey(speciesKey)) {
-						speciesSet = razorPepCountMap.get(speciesKey);
+					if (this.expNameMap.containsKey(cs[0])) {
+						sb.append(expNameMap.get(cs[0])).append("\t");
 					} else {
-						speciesSet = new HashSet<String>();
-						razorPepCountMap.put(speciesKey, speciesSet);
+						sb.append(cs[0]).append("\t");
 					}
-					speciesSet.add(sequence);
+
+					int ms2count = Integer.parseInt(cs[1]);
+
+					int[] idCounts = idMap.get(rawName);
+
+					sb.append(ms2count).append("\t");
+					sb.append(idCounts[1]).append("\t");
+
+					double ratio = 0;
+					if (ms2count > 0) {
+						ratio = (double) idCounts[1] / (double) ms2count * 100.0;
+					}
+
+					sb.append(FormatTool.getDF2().format(ratio)).append("\t");
+
+					sb.append(idCounts[0]);
+
+					countWriter.println(sb);
+
+					totalms2count += ms2count;
+					totalpsmCount += idCounts[1];
+					totalUnipepCount += idCounts[0];
 				}
 			}
 
-			double[] pepIntensity = new double[peptide.getIntensity().length];
-			for (int k = 0; k < pepIntensity.length; k++) {
-				pepIntensity[k] = peptide.getIntensity()[k] / (double) contributingProteins;
+			ms2CountReader.close();
+
+			StringBuilder sb = new StringBuilder();
+			sb.append("Total").append("\t");
+			sb.append("\t");
+			sb.append(totalms2count).append("\t");
+			sb.append(totalpsmCount).append("\t");
+
+			double ratio = 0;
+			if (totalms2count > 0) {
+				ratio = (double) totalpsmCount / (double) totalms2count * 100.0;
 			}
 
-			for (String protein : proteins) {
-				if (protein == null || !finalProteinInfoMap.containsKey(protein)) {
-					continue;
-				}
+			sb.append(FormatTool.getDF2().format(ratio)).append("\t");
 
-				double[] proteinIntensity;
-				if (proteinIntensityMap.containsKey(protein)) {
-					proteinIntensity = proteinIntensityMap.get(protein);
-				} else {
-					proteinIntensity = new double[pepIntensity.length];
-					proteinIntensityMap.put(protein, proteinIntensity);
-				}
-				double total = proteinTotalIntensityMap.containsKey(protein)
-						? proteinTotalIntensityMap.get(protein)
-						: 0.0;
+			sb.append(totalUnipepCount);
 
-				for (int k = 0; k < pepIntensity.length; k++) {
-					proteinIntensity[k] += pepIntensity[k];
-					total += pepIntensity[k];
-				}
-				proteinTotalIntensityMap.put(protein, total);
+			countWriter.print(sb);
 
-				HashSet<String> totalSet;
-				if (totalPepCountMap.containsKey(protein)) {
-					totalSet = totalPepCountMap.get(protein);
-				} else {
-					totalSet = new HashSet<String>();
-					totalPepCountMap.put(protein, totalSet);
-				}
-				totalSet.add(sequence);
+			countWriter.close();
 
-				String speciesKey = proteinToSpeciesKey.get(protein);
-				if (speciesKey != null) {
-					double[] speciesIntensity;
-					if (speciesIntensityMap.containsKey(speciesKey)) {
-						speciesIntensity = speciesIntensityMap.get(speciesKey);
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			LOGGER.error(getTaskName() + ": error in writing PSM information to " + final_summary_txt.getName(), e);
+			System.err.println(format.format(new Date()) + "\t" + getTaskName()
+					+ ": error in writing PSM information to " + final_summary_txt.getName());
+		}
+
+		if (!final_summary_txt.exists() || final_summary_txt.length() == 0) {
+			return false;
+
+		} else {
+			boolean finish = false;
+			File report_ID_summary = new File(metaPar.getReportDir(), "report_ID_summary.html");
+			if (summaryMetaFile != null && summaryMetaFile.exists()) {
+				finish = task.addTask(MetaPythonReportTask.ID_SUMMARY, final_summary_txt, report_ID_summary,
+						summaryMetaFile);
 			} else {
-						speciesIntensity = new double[pepIntensity.length];
-						speciesIntensityMap.put(speciesKey, speciesIntensity);
-					}
-					for (int k = 0; k < pepIntensity.length; k++) {
-						speciesIntensity[k] += pepIntensity[k];
-					}
-
-					HashSet<String> speciesTotal;
-					if (totalPepCountMap.containsKey(speciesKey)) {
-						speciesTotal = totalPepCountMap.get(speciesKey);
-			} else {
-						speciesTotal = new HashSet<String>();
-						totalPepCountMap.put(speciesKey, speciesTotal);
-					}
-					speciesTotal.add(sequence);
-				}
-			}
-		}
-
-		HashMap<String, Integer> filteredProteinPsmCountMap = new HashMap<String, Integer>();
-		for (String protein : finalProteinInfoMap.keySet()) {
-			if (proteinPsmCountMap.containsKey(protein)) {
-				filteredProteinPsmCountMap.put(protein, proteinPsmCountMap.get(protein));
-			}
-		}
-		proteinPsmCountMap = filteredProteinPsmCountMap;
-
-		HashMap<String, Integer> speciesPsmCountMap = new HashMap<String, Integer>();
-		for (Map.Entry<String, Integer> entry : proteinPsmCountMap.entrySet()) {
-			String speciesKey = proteinToSpeciesKey.get(entry.getKey());
-			if (speciesKey != null) {
-				if (speciesPsmCountMap.containsKey(speciesKey)) {
-					speciesPsmCountMap.put(speciesKey, speciesPsmCountMap.get(speciesKey) + entry.getValue());
-			} else {
-					speciesPsmCountMap.put(speciesKey, entry.getValue());
-				}
-			}
-		}
-
-		String[] proteins = proteinTotalIntensityMap.keySet().toArray(new String[proteinTotalIntensityMap.size()]);
-		Arrays.sort(proteins, new Comparator<String>() {
-			@Override
-			public int compare(String o1, String o2) {
-				double inten1 = proteinTotalIntensityMap.get(o1);
-				double inten2 = proteinTotalIntensityMap.get(o2);
-				if (inten1 > inten2)
-					return -1;
-				if (inten1 < inten2)
-					return 1;
-				return 0;
-			}
-		});
-
-		HashMap<String, Integer> proteinIdMap = new HashMap<String, Integer>();
-		for (int i = 0; i < proteins.length; i++) {
-			proteinIdMap.put(proteins[i], i);
-		}
-
-		if (!generateIdentificationSummary(fileIdMap, filePsmCount, fileSequenceSets, taskName)) {
-			return false;
-		}
-
-		updateProgress(85, 100);
-
-		if (!generatePeptideReport(peptideList, psmMap, pepPsmCountMap, pepChargeMap, proteinIdMap, fileList, quanMode,
-				intensityTitle, taskName)) {
-			return false;
-		}
-
-		if (!generateProteinReport(proteins, proteinIntensityMap, proteinTotalIntensityMap, totalPepCountMap,
-					razorPepCountMap, proteinPsmCountMap, proteinIdMap, quanMode, intensityTitle, taskName)) {
-			return false;
-		}
-
-		updateProgress(89, 100);
-
-		if (!performFunctionalAnnotation(proteins, proteinIntensityMap, proteinTotalIntensityMap, totalPepCountMap, proteinInfoMap, intensityTitle, taskName)) {
-			return false;
-		}
-
-		if (!performTaxonomyAnalysis(proteins, proteinIntensityMap, proteinPsmCountMap, totalPepCountMap, razorPepCountMap,
-				proteinInfoMap, intensityTitle, taskName)) {
-			return false;
-		}
-
-		updateProgress(95, 100);
-
-		if (!generateFinalReports(taskName)) {
-			return false;
-		}
-
-		LOGGER.info(taskName + ": Peptide processing and report generation completed successfully for IGC workflow");
-		return true;
-	}
-	
-	protected HashMap<String, UnipProInfo> updateProtein(MetaPeptide[] peptides) {
-		LOGGER.info(getTaskName() + ": Starting protein inference and filtering using peptide and PSM data");
-
-		// Step 1: Build peptide-to-protein mapping from MetaPeptide data
-		HashMap<String, HashSet<String>> peptideToProteins = new HashMap<String, HashSet<String>>();
-		HashMap<String, HashSet<String>> proteinToPeptides = new HashMap<String, HashSet<String>>();
-
-		for (MetaPeptide peptide : peptides) {
-			if (peptide != null && peptide.getSequence() != null && peptide.getProteins() != null) {
-				String sequence = peptide.getSequence();
-				String[] peptideProteins = peptide.getProteins();
-
-				if (!peptideToProteins.containsKey(sequence)) {
-					peptideToProteins.put(sequence, new HashSet<String>());
-				}
-
-				for (String protein : peptideProteins) {
-					if (protein != null && !protein.isEmpty()) {
-						peptideToProteins.get(sequence).add(protein);
-
-						if (!proteinToPeptides.containsKey(protein)) {
-							proteinToPeptides.put(protein, new HashSet<String>());
-						}
-						proteinToPeptides.get(protein).add(sequence);
-					}
-				}
-			}
-		}
-
-		LOGGER.info(getTaskName() + ": Found " + proteinToPeptides.size() + " proteins with " + peptideToProteins.size()
-				+ " unique peptides");
-
-		// Step 2: Extract unique peptide sequences for Unipept API call
-		HashSet<String> uniqueSequences = new HashSet<String>(peptideToProteins.keySet());
-		if (uniqueSequences.isEmpty()) {
-			LOGGER.warn(getTaskName() + ": No valid peptide sequences found for protein inference");
-			return new HashMap<String, UnipProInfo>();
-		}
-
-		String[] sequences = uniqueSequences.toArray(new String[uniqueSequences.size()]);
-		LOGGER.info(getTaskName() + ": Calling Unipept API for " + sequences.length + " unique peptide sequences");
-
-		// Step 3: Call UnipeptRequester.pept2prot to get protein mappings
-		HashMap<String, UnipProResult> pept2protMap = UnipeptRequester.pept2prot(sequences);
-
-		if (pept2protMap == null || pept2protMap.isEmpty()) {
-			LOGGER.warn(getTaskName() + ": No protein mappings returned from Unipept API");
-			return new HashMap<String, UnipProInfo>();
-		}
-
-		LOGGER.info(getTaskName() + ": Received " + pept2protMap.size() + " protein mappings from Unipept API");
-
-		// Step 4: Apply protein-level Occam's razor (similar to DDA MAG workflow)
-		HashSet<String> selectedProteins = applyOccamsRazor(proteinToPeptides, uniqueSequences, 0.95);
-		LOGGER.info(getTaskName() + ": Protein-level filtering selected " + selectedProteins.size() + " proteins");
-
-		// Step 5: Get taxonomic information for selected proteins using protinfo
-		HashSet<String> uniprotProteins = new HashSet<String>();
-		for (String peptide : selectedProteins) {
-			HashSet<String> peptideProteins = proteinToPeptides.get(peptide);
-			if (peptideProteins != null) {
-				uniprotProteins.addAll(peptideProteins);
-			}
-		}
-
-		// Get protein information from Unipept
-		String[] proteinArray = uniprotProteins.toArray(new String[uniprotProteins.size()]);
-		HashMap<String, UnipProInfo> proteinInfoMap = UnipeptRequester.protinfo(proteinArray);
-
-		if (proteinInfoMap == null || proteinInfoMap.isEmpty()) {
-			LOGGER.warn(getTaskName() + ": No protein information returned from Unipept protinfo API");
-			return new HashMap<String, UnipProInfo>();
-		}
-
-		// Step 6: Build protein-to-species mapping
-		HashMap<String, Integer> proteinToSpeciesMap = new HashMap<String, Integer>();
-		HashMap<Integer, HashSet<String>> speciesToProteins = new HashMap<Integer, HashSet<String>>();
-
-		for (String protein : selectedProteins) {
-			UnipProInfo info = proteinInfoMap.get(protein);
-			if (info != null) {
-				int speciesId = info.getTaxId(); // Already at species level
-				proteinToSpeciesMap.put(protein, speciesId);
-
-				if (!speciesToProteins.containsKey(speciesId)) {
-					speciesToProteins.put(speciesId, new HashSet<String>());
-				}
-				speciesToProteins.get(speciesId).add(protein);
-			}
-		}
-
-		LOGGER.info(getTaskName() + ": Mapped " + proteinToSpeciesMap.size() + " proteins to "
-				+ speciesToProteins.size() + " species");
-
-		// Step 7: Apply species-level Occam's razor based on peptide coverage
-		// Build species-to-peptides mapping for Occam's razor
-		HashMap<String, HashSet<String>> speciesToPeptidesString = new HashMap<String, HashSet<String>>();
-		HashMap<String, Integer> stringToIntegerSpecies = new HashMap<String, Integer>();
-		
-		for (Map.Entry<Integer, HashSet<String>> entry : speciesToProteins.entrySet()) {
-			Integer speciesId = entry.getKey();
-			HashSet<String> speciesProteins = entry.getValue();
-			String speciesKey = String.valueOf(speciesId);
-			stringToIntegerSpecies.put(speciesKey, speciesId);
-			
-			// Build peptide set for this species
-			HashSet<String> speciesPeptides = new HashSet<String>();
-			for (String protein : speciesProteins) {
-				HashSet<String> proteinPeptides = proteinToPeptides.get(protein);
-				if (proteinPeptides != null) {
-					speciesPeptides.addAll(proteinPeptides);
-				}
-			}
-			speciesToPeptidesString.put(speciesKey, speciesPeptides);
-		}
-		
-		// Use total unique peptides for threshold calculation
-		HashSet<String> selectedSpeciesString = applyOccamsRazor(speciesToPeptidesString, uniqueSequences, 0.95);
-		
-		// Convert back to Integer set
-		HashSet<Integer> selectedSpecies = new HashSet<Integer>();
-		for (String speciesKey : selectedSpeciesString) {
-			selectedSpecies.add(stringToIntegerSpecies.get(speciesKey));
-		}
-		LOGGER.info(getTaskName() + ": Species-level filtering selected " + selectedSpecies.size() + " species");
-
-		// Step 8: Update protein list to remove proteins from discarded species
-		HashSet<String> finalSelectedProteins = new HashSet<String>();
-		for (String protein : selectedProteins) {
-			Integer speciesId = proteinToSpeciesMap.get(protein);
-			if (speciesId != null && selectedSpecies.contains(speciesId)) {
-				finalSelectedProteins.add(protein);
-			}
-		}
-
-		LOGGER.info(getTaskName() + ": Final protein set contains " + finalSelectedProteins.size()
-				+ " proteins after species filtering");
-
-		// Step 9: Apply FDR filtering to protein names (no MetaProtein objects created here)
-		// Note: Intensity calculations are done in processPeptideListAndGenerateReports method
-		ArrayList<String> proteinList = new ArrayList<String>(finalSelectedProteins);
-
-		// Sort proteins by peptide count (descending) for FDR calculation
-		proteinList.sort((p1, p2) -> {
-			int count1 = proteinToPeptides.get(p1) != null ? proteinToPeptides.get(p1).size() : 0;
-			int count2 = proteinToPeptides.get(p2) != null ? proteinToPeptides.get(p2).size() : 0;
-			return Integer.compare(count2, count1);
-		});
-
-		int decoyCount = 0;
-		int targetCount = 0;
-		HashSet<String> filteredProteins = new HashSet<String>();
-
-		for (String protein : proteinList) {
-			boolean isDecoy = protein.startsWith("REV_") || protein.contains("DECOY") || protein.startsWith("REV")
-					|| protein.endsWith("_REV");
-
-			if (isDecoy) {
-				decoyCount++;
-			} else {
-				targetCount++;
+				finish = task.addTask(MetaPythonReportTask.ID_SUMMARY, final_summary_txt, report_ID_summary);
 			}
 
-			// Calculate FDR
-			double fdr = (double) decoyCount / (double) (targetCount + decoyCount);
-
-			if (fdr < 0.01) { // FDR < 1%
-				filteredProteins.add(protein);
-					} else {
-				// Stop when FDR >= 1%
-				break;
-			}
+			return finish;
 		}
-
-		LOGGER.info(
-				getTaskName() + ": FDR filtering complete - " + filteredProteins.size() + " proteins kept at FDR < 1%");
-
-		// Step 11: Update peptide protein mappings with final protein names
-		updatePeptideProteinMappings(peptides, filteredProteins);
-
-		// Step 12: Build final protein info map with only filtered proteins
-		HashMap<String, UnipProInfo> finalProteinInfoMap = new HashMap<String, UnipProInfo>();
-		for (String protein : filteredProteins) {
-			UnipProInfo info = proteinInfoMap.get(protein);
-			if (info != null) {
-				finalProteinInfoMap.put(protein, info);
-			}
-		}
-
-		LOGGER.info(getTaskName() + ": Protein inference complete - returning " + finalProteinInfoMap.size()
-				+ " filtered proteins with taxonomic information");
-
-		return finalProteinInfoMap;
 	}
 
 	/**
-	 * Gets detailed protein information for UniProt proteins using the protinfo API.
-	 * This method extracts UniProt protein IDs from MetaProtein objects and retrieves
-	 * detailed information including protein names, taxonomic data, and functional annotations.
+	 * Helper method to refine proteins using Occam's razor principle (similar to
+	 * DDA MAG workflow).
 	 * 
-	 * @param proteins Array of MetaProtein objects with UniProt protein names
-	 * @return HashMap mapping UniProt protein IDs to their detailed information
+	 * @param proteinToPeptides Map from protein names to their associated peptides
+	 * @param totalPeptides     Total number of unique peptides
+	 * @param threshold         Threshold for protein selection (e.g., 0.95 for 95%
+	 *                          peptide coverage)
+	 * @return Set of selected protein names
 	 */
-	protected HashMap<String, UnipProInfo> getProteinInfo(MetaProtein[] proteins) {
-		LOGGER.info(getTaskName() + ": Starting protein information retrieval using Unipept protinfo API");
-		
-		if (proteins == null || proteins.length == 0) {
-			LOGGER.warn(getTaskName() + ": No proteins provided for information retrieval");
-			return new HashMap<String, UnipProInfo>();
-		}
-		
-		// Step 1: Extract unique UniProt protein IDs from MetaProtein array
-		HashSet<String> uniqueProteinIds = new HashSet<String>();
-		for (MetaProtein protein : proteins) {
-			if (protein != null && protein.getName() != null && !protein.getName().isEmpty()) {
-				// Only include non-decoy proteins (UniProt IDs)
-				boolean isDecoy = protein.getName().startsWith("REV_") || protein.getName().contains("DECOY") ||
-								protein.getName().startsWith("REV") || protein.getName().endsWith("_REV");
-				
-				if (!isDecoy) {
-					uniqueProteinIds.add(protein.getName());
-				}
-			}
-		}
-		
-		if (uniqueProteinIds.isEmpty()) {
-			LOGGER.warn(getTaskName() + ": No valid UniProt protein IDs found for information retrieval");
-			return new HashMap<String, UnipProInfo>();
-		}
-		
-		// Convert HashSet to String array for Unipept API call
-		String[] proteinIds = uniqueProteinIds.toArray(new String[uniqueProteinIds.size()]);
-		LOGGER.info(getTaskName() + ": Calling Unipept protinfo API for " + proteinIds.length + " unique protein IDs");
-		
-		// Step 2: Call UnipeptRequester.protinfo to get protein information
-		HashMap<String, UnipProInfo> proteinInfoMap = UnipeptRequester.protinfo(proteinIds);
-		
-		if (proteinInfoMap == null || proteinInfoMap.isEmpty()) {
-			LOGGER.warn(getTaskName() + ": No protein information returned from Unipept protinfo API");
-			return new HashMap<String, UnipProInfo>();
-		}
-		
-		LOGGER.info(getTaskName() + ": Successfully retrieved information for " + proteinInfoMap.size() + 
-				   " proteins from Unipept protinfo API");
-		
-		// Log some sample protein information for verification
-		int sampleCount = 0;
-		for (String proteinId : proteinInfoMap.keySet()) {
-			if (sampleCount < 3) { // Log first 3 proteins as examples
-				UnipProInfo info = proteinInfoMap.get(proteinId);
-				LOGGER.info(getTaskName() + ": Sample protein info - ID: " + proteinId + 
-						   ", Name: " + info.getName() + ", Taxon ID: " + info.getTaxId() +
-						   ", EC numbers: " + java.util.Arrays.toString(info.getEc()) +
-						   ", GO terms: " + java.util.Arrays.toString(info.getGo()));
-				sampleCount++;
-			}
-		}
-		
-		return proteinInfoMap;
-	}
-
-
-	/**
-	 * Exports functional annotation results for proteins.
-	 * This method handles the common functional annotation workflow for IGC tasks.
-	 */
-    protected MetaProteinAnnoIgc[] funcAnnoSqlite(MetaProtein[] pros, String[] fileNames) {
-        // This method would contain the common functional annotation logic
-        // Implementation would be similar to MetaPilotMagTask but adapted for IGC workflows
-        
-        LOGGER.info(getTaskName() + ": functional annotation started");
-        System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": functional annotation started");
-
-        // TODO: Implement functional annotation logic specific to IGC workflows
-        // This would include COG, NOG, KEGG, GO, and EC annotations
-        
-        return new MetaProteinAnnoIgc[0];
-    }
-
-    /**
-     * Exports summary statistics for the analysis.
-     * This method generates the ID summary report common to all IGC workflows.
-     */
-    protected boolean exportSummary(MetaPythonReportTask task) {
-
-        File final_summary_txt = new File(this.metaPar.getDbSearchResultFile(), "final_summary.tsv");
-        try {
-
-            PrintWriter countWriter = new PrintWriter(final_summary_txt);
-            StringBuilder titlesb = new StringBuilder();
-            titlesb.append("Raw file").append("\t");
-            titlesb.append("Experiment").append("\t");
-            titlesb.append("MS/MS").append("\t");
-            titlesb.append("MS/MS Identified").append("\t");
-            titlesb.append("MS/MS Identified [%]").append("\t");
-            titlesb.append("Peptide Sequences Identified");
-
-            countWriter.println(titlesb);
-
-            int totalms2count = 0;
-            int totalpsmCount = 0;
-            int totalUnipepCount = 0;
-
-            BufferedReader idReader = new BufferedReader(
-                    new FileReader(new File(metaPar.getDbSearchResultFile(), "id.tsv")));
-            HashMap<String, int[]> idMap = new HashMap<String, int[]>();
-            String line = idReader.readLine();
-            while ((line = idReader.readLine()) != null) {
-                String[] cs = line.split("\t");
-                idMap.put(cs[0], new int[] { Integer.parseInt(cs[1]), Integer.parseInt(cs[2]) });
-            }
-            idReader.close();
-
-            File ms2CountFile = new File(spectraDirFile, "ms2Count.txt");
-            BufferedReader ms2CountReader = new BufferedReader(new FileReader(ms2CountFile));
-            line = ms2CountReader.readLine();
-
-            while ((line = ms2CountReader.readLine()) != null) {
-                String[] cs = line.split("\t");
-                String rawName = cs[0];
-
-                if (idMap.containsKey(rawName)) {
-
-                    StringBuilder sb = new StringBuilder();
-                    sb.append(cs[0]).append("\t");
-
-                    if (this.expNameMap.containsKey(cs[0])) {
-                        sb.append(expNameMap.get(cs[0])).append("\t");
-                    } else {
-                        sb.append(cs[0]).append("\t");
-                    }
-
-                    int ms2count = Integer.parseInt(cs[1]);
-
-                    int[] idCounts = idMap.get(rawName);
-
-                    sb.append(ms2count).append("\t");
-                    sb.append(idCounts[1]).append("\t");
-
-                    double ratio = 0;
-                    if (ms2count > 0) {
-                        ratio = (double) idCounts[1] / (double) ms2count * 100.0;
-                    }
-
-                    sb.append(FormatTool.getDF2().format(ratio)).append("\t");
-
-                    sb.append(idCounts[0]);
-
-                    countWriter.println(sb);
-
-                    totalms2count += ms2count;
-                    totalpsmCount += idCounts[1];
-                    totalUnipepCount += idCounts[0];
-                }
-            }
-
-            ms2CountReader.close();
-
-            StringBuilder sb = new StringBuilder();
-            sb.append("Total").append("\t");
-            sb.append("\t");
-            sb.append(totalms2count).append("\t");
-            sb.append(totalpsmCount).append("\t");
-
-            double ratio = 0;
-            if (totalms2count > 0) {
-                ratio = (double) totalpsmCount / (double) totalms2count * 100.0;
-            }
-
-            sb.append(FormatTool.getDF2().format(ratio)).append("\t");
-
-            sb.append(totalUnipepCount);
-
-            countWriter.print(sb);
-
-            countWriter.close();
-
-        } catch (IOException e) {
-            // TODO Auto-generated catch block
-            LOGGER.error(getTaskName() + ": error in writing PSM information to " + final_summary_txt.getName(), e);
-            System.err.println(format.format(new Date()) + "\t" + getTaskName()
-                    + ": error in writing PSM information to " + final_summary_txt.getName());
-        }
-
-        if (!final_summary_txt.exists() || final_summary_txt.length() == 0) {
-            return false;
-
-        } else {
-            boolean finish = false;
-            File report_ID_summary = new File(metaPar.getReportDir(), "report_ID_summary.html");
-            if (summaryMetaFile != null && summaryMetaFile.exists()) {
-                finish = task.addTask(MetaPythonReportTask.ID_SUMMARY, final_summary_txt, report_ID_summary,
-                        summaryMetaFile);
-            } else {
-                finish = task.addTask(MetaPythonReportTask.ID_SUMMARY, final_summary_txt, report_ID_summary);
-            }
-
-            return finish;
-        }
-    }
-
-    /**
-     * Helper method to refine proteins using Occam's razor principle (similar to DDA MAG workflow).
-     * 
-     * @param proteinToPeptides Map from protein names to their associated peptides
-     * @param totalPeptides Total number of unique peptides
-     * @param threshold Threshold for protein selection (e.g., 0.95 for 95% peptide coverage)
-     * @return Set of selected protein names
-     */
-	private boolean generateIdentificationSummary(HashMap<String, Integer> fileIdMap, int[] filePsmCount,
+	protected boolean generateIdentificationSummary(HashMap<String, Integer> fileIdMap, int[] filePsmCount,
 			HashSet<String>[] fileSequenceSets, String taskName) {
 
-		try (PrintWriter idWriter = new PrintWriter(new File(metaPar.getDbSearchResultFile(), "id.tsv"))) {
+		try (PrintWriter idWriter = new PrintWriter(new File(combinedFile, "id.tsv"))) {
 			idWriter.println("Raw file\tUnique peptide count\tPSM count");
 
 			String[] rawNames = fileIdMap.keySet().toArray(new String[fileIdMap.size()]);
@@ -1380,7 +235,7 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 		return true;
 	}
 
-	private boolean generatePeptideReport(ArrayList<MetaPeptide> peptideList, HashMap<String, MetaPSM> psmMap,
+	protected boolean generatePeptideReport(ArrayList<MetaPeptide> peptideList, HashMap<String, MetaPSM> psmMap,
 			HashMap<String, int[]> pepPsmCountMap, HashMap<String, int[]> pepChargeMap,
 			HashMap<String, Integer> proteinIdMap, ArrayList<String> fileList, String quanMode, String[] intensityTitle,
 			String taskName) {
@@ -1392,15 +247,15 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 			final_pep_txt = new File(this.metaPar.getDbSearchResultFile(), "final_peptides.tsv");
 			PrintWriter writer = new PrintWriter(final_pep_txt);
 
-			StringBuilder titlesb = new StringBuilder();
-			titlesb.append("Sequence").append("\t");
-			titlesb.append("Base sequence").append("\t");
-			titlesb.append("Length").append("\t");
-			titlesb.append("Missed cleavages").append("\t");
-			titlesb.append("Mass").append("\t");
-			titlesb.append("Proteins").append("\t");
-			titlesb.append("Charges").append("\t");
-			titlesb.append("Score").append("\t");
+                    StringBuilder titlesb = new StringBuilder();
+                    titlesb.append("Sequence").append("\t");
+                    titlesb.append("Base sequence").append("\t");
+                    titlesb.append("Length").append("\t");
+                    titlesb.append("Missed cleavages").append("\t");
+                    titlesb.append("Mass").append("\t");
+                    titlesb.append("Proteins").append("\t");
+                    titlesb.append("Charges").append("\t");
+                    titlesb.append("Score").append("\t");
 			titlesb.append("PEP").append("\t");
 
 			for (int i = 0; i < fileList.size(); i++) {
@@ -1409,32 +264,32 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 
 			for (int i = 0; i < fileList.size(); i++) {
 				titlesb.append("MS/MS count " + fileList.get(i)).append("\t");
-			}
+                    }
 
-			titlesb.append("Intensity").append("\t");
+                    titlesb.append("Intensity").append("\t");
 
 			for (int i = 0; i < intensityTitle.length; i++) {
 				titlesb.append(intensityTitle[i]).append("\t");
-			}
+                    }
 
-			titlesb.append("Reverse").append("\t");
-			titlesb.append("Potential contaminant").append("\t");
-			titlesb.append("id").append("\t");
-			titlesb.append("Protein group IDs").append("\t");
+                    titlesb.append("Reverse").append("\t");
+                    titlesb.append("Potential contaminant").append("\t");
+                    titlesb.append("id").append("\t");
+                    titlesb.append("Protein group IDs").append("\t");
 			titlesb.append("Total MS/MS count");
 
-			writer.println(titlesb);
+                    writer.println(titlesb);
 
 			int id = 0;
 			for (MetaPeptide peptide : peptideList) {
 				String fullSeq = peptide.getModSeq();
 				MetaPSM psm = psmMap.get(fullSeq);
 
-				StringBuilder sb = new StringBuilder();
-				sb.append(peptide.getSequence()).append("\t");
-				sb.append(peptide.getSequence()).append("\t");
-				sb.append(peptide.getLength()).append("\t");
-				sb.append(peptide.getMissCleave()).append("\t");
+                        StringBuilder sb = new StringBuilder();
+				sb.append(psm.getFullSequence()).append("\t");
+				sb.append(psm.getBaseSequence()).append("\t");
+				sb.append(psm.getBaseSequence().length()).append("\t");
+				sb.append(psm.getMiss()).append("\t");
 
 				double mass = peptide.getMass();
 				if (mass == 0 && psm != null) {
@@ -1452,14 +307,14 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 						proSb.deleteCharAt(proSb.length() - 1);
 					}
 					sb.append(proSb);
-				}
-				sb.append("\t");
+                        }
+                        sb.append("\t");
 
 				int[] charge = pepChargeMap.get(fullSeq);
 				if (charge != null) {
-					StringBuilder chargesb = new StringBuilder();
-					for (int j = 0; j < charge.length; j++) {
-						if (charge[j] == 1) {
+                        StringBuilder chargesb = new StringBuilder();
+                        for (int j = 0; j < charge.length; j++) {
+                            if (charge[j] == 1) {
 							chargesb.append(j).append(";");
 						}
 					}
@@ -1468,15 +323,15 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 							chargesb.deleteCharAt(chargesb.length() - 1);
 						}
 						sb.append(chargesb).append("\t");
-					} else {
+                        } else {
 						sb.append("2\t");
 					}
 				} else {
 					sb.append("2\t");
 				}
 
-				sb.append(peptide.getScore()).append("\t");
-				sb.append(peptide.getPEP()).append("\t");
+				sb.append(psm.getScore()).append("\t");
+				sb.append(psm.getPEP()).append("\t");
 
 				int totalMsCount = 0;
 				int[] psmCount = pepPsmCountMap.get(fullSeq);
@@ -1485,8 +340,8 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 					for (int j = 0; j < psmCount.length; j++) {
 						if (psmCount[j] > 0) {
 							totalMsCount += psmCount[j];
-							sb.append("By MS/MS").append("\t");
-						} else {
+                                sb.append("By MS/MS").append("\t");
+                            } else {
 							if (intensity[j] > 0) {
 								sb.append("MBR\t");
 							} else {
@@ -1504,23 +359,23 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 					}
 					for (int j = 0; j < fileList.size(); j++) {
 						sb.append(0).append("\t");
-					}
-				}
+                            }
+                        }
 
-				double totalIntensity = 0;
+                        double totalIntensity = 0;
 				double[] intensity = peptide.getIntensity();
-				for (int j = 0; j < intensity.length; j++) {
-					totalIntensity += intensity[j];
-				}
+                        for (int j = 0; j < intensity.length; j++) {
+                            totalIntensity += intensity[j];
+                        }
 
 				sb.append(BigInteger.valueOf((long) Math.floor(totalIntensity))).append("\t");
 
-				for (int j = 0; j < intensity.length; j++) {
+                        for (int j = 0; j < intensity.length; j++) {
 					sb.append(BigInteger.valueOf((long) Math.floor(intensity[j]))).append("\t");
-				}
+                        }
 
-				sb.append("").append("\t");
-				sb.append("").append("\t");
+                        sb.append("").append("\t");
+                        sb.append("").append("\t");
 				sb.append(id).append("\t");
 
 				StringBuilder groupSb = new StringBuilder();
@@ -1542,12 +397,12 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 
 			writer.close();
 
-		} catch (Exception e) {
+            } catch (Exception e) {
 			LOGGER.error(taskName + ": error in writing the peptides to " + final_pep_txt, e);
-			System.err.println(
-					format.format(new Date()) + "\t" + taskName + ": error in writing the peptides to " + final_pep_txt);
-			return false;
-		}
+			System.err.println(format.format(new Date()) + "\t" + taskName + ": error in writing the peptides to "
+					+ final_pep_txt);
+                return false;
+            }
 
 		LOGGER.info(taskName + ": peptide report has been exported to " + final_pep_txt);
 		System.out.println(
@@ -1560,7 +415,7 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 		return true;
 	}
 
-	private boolean generateProteinReport(String[] proteins, HashMap<String, double[]> proteinIntensityMap,
+	protected boolean generateProteinReport(String[] proteins, HashMap<String, double[]> proteinIntensityMap,
 			HashMap<String, Double> proteinTotalIntensityMap, HashMap<String, HashSet<String>> totalPepCountMap,
 			HashMap<String, HashSet<String>> razorPepCountMap, HashMap<String, Integer> proteinPsmCountMap,
 			HashMap<String, Integer> proteinIdMap, String quanMode, String[] intensityTitle, String taskName) {
@@ -1572,23 +427,23 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 			final_pro_txt = new File(this.metaPar.getDbSearchResultFile(), "final_proteins.tsv");
 			PrintWriter writer = new PrintWriter(final_pro_txt);
 
-			StringBuilder titlesb = new StringBuilder();
-			titlesb.append("Protein IDs").append("\t");
-			titlesb.append("Peptide counts (all)").append("\t");
-			titlesb.append("Peptide counts (razor)").append("\t");
+                    StringBuilder titlesb = new StringBuilder();
+                    titlesb.append("Protein IDs").append("\t");
+                    titlesb.append("Peptide counts (all)").append("\t");
+                    titlesb.append("Peptide counts (razor)").append("\t");
 			titlesb.append("Number of PSMs").append("\t");
 			titlesb.append("PEP").append("\t");
-			titlesb.append("Intensity").append("\t");
+                    titlesb.append("Intensity").append("\t");
 
 			for (int i = 0; i < intensityTitle.length; i++) {
 				titlesb.append(intensityTitle[i]).append("\t");
-			}
+                    }
 
-			titlesb.append("Reverse").append("\t");
-			titlesb.append("Potential contaminant").append("\t");
-			titlesb.append("id").append("\t");
+                    titlesb.append("Reverse").append("\t");
+                    titlesb.append("Potential contaminant").append("\t");
+                    titlesb.append("id").append("\t");
 
-			writer.println(titlesb);
+                    writer.println(titlesb);
 
 			for (String protein : proteins) {
 				StringBuilder sb = new StringBuilder();
@@ -1638,12 +493,12 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 
 			writer.close();
 
-		} catch (Exception e) {
+            } catch (Exception e) {
 			LOGGER.error(taskName + ": error in writing the proteins to " + final_pro_txt, e);
-			System.err.println(
-					format.format(new Date()) + "\t" + taskName + ": error in writing the proteins to " + final_pro_txt);
-			return false;
-		}
+			System.err.println(format.format(new Date()) + "\t" + taskName + ": error in writing the proteins to "
+					+ final_pro_txt);
+                return false;
+            }
 
 		LOGGER.info(taskName + ": protein report has been exported to " + final_pro_txt);
 		System.out.println(
@@ -1656,7 +511,7 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 		return true;
 	}
 
-	private boolean performFunctionalAnnotation(String[] proteins, HashMap<String, double[]> proteinIntensityMap,
+	protected boolean performFunctionalAnnotation(String[] proteins, HashMap<String, double[]> proteinIntensityMap,
 			HashMap<String, Double> proteinTotalIntensityMap, HashMap<String, HashSet<String>> totalPepCountMap,
 			HashMap<String, UnipProInfo> proteinInfoMap, String[] intensityTitle, String taskName) {
 
@@ -1680,7 +535,7 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 			header.append("Taxonomic ID\t");
 			header.append("Peptide Count\t");
 			header.append("Total Intensity");
-			
+
 			// Add intensity columns
 			for (String intensity : intensityTitle) {
 				if (intensity.startsWith("Intensity ")) {
@@ -1689,7 +544,7 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 					header.append("\tIntensity ").append(intensity);
 				}
 			}
-			
+
 			writer.println(header);
 
 			// Write protein data
@@ -1702,36 +557,36 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 				StringBuilder sb = new StringBuilder();
 				sb.append(protein).append("\t");
 				sb.append(info.getName() != null ? info.getName() : "").append("\t");
-				
+
 				// Extract EC numbers (if available)
 				String ecNumbers = "";
 				if (info.getEc() != null && info.getEc().length > 0) {
 					ecNumbers = String.join(";", info.getEc());
 				}
 				sb.append(ecNumbers).append("\t");
-				
+
 				// Extract GO terms (if available)
 				String goTerms = "";
 				if (info.getGo() != null && info.getGo().length > 0) {
 					goTerms = String.join(";", info.getGo());
 				}
 				sb.append(goTerms).append("\t");
-				
+
 				sb.append(info.getTaxId()).append("\t");
-				
+
 				// Add peptide count and intensity data
 				if (totalPepCountMap.containsKey(protein)) {
 					sb.append(totalPepCountMap.get(protein).size()).append("\t");
 				} else {
 					sb.append("0").append("\t");
 				}
-				
+
 				if (proteinTotalIntensityMap.containsKey(protein)) {
 					sb.append(proteinTotalIntensityMap.get(protein));
 				} else {
 					sb.append("0");
 				}
-				
+
 				// Add individual intensity values
 				if (proteinIntensityMap.containsKey(protein)) {
 					double[] intensities = proteinIntensityMap.get(protein);
@@ -1739,24 +594,25 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 						sb.append("\t").append(intensity);
 					}
 				}
-				
+
 				writer.println(sb);
 			}
 
-		} catch (IOException e) {
+        } catch (IOException e) {
 			LOGGER.error(taskName + ": error in writing functional annotation to " + funTsv.getName(), e);
-			System.err.println(format.format(new Date()) + "\t" + taskName 
+			System.err.println(format.format(new Date()) + "\t" + taskName
 					+ ": error in writing functional annotation to " + funTsv.getName());
-			return false;
-		}
+            return false;
+        }
 
-		LOGGER.info(taskName + ": functional annotation completed - wrote " + proteins.length + " proteins to " + funTsv.getName());
+		LOGGER.info(taskName + ": functional annotation completed - wrote " + proteins.length + " proteins to "
+				+ funTsv.getName());
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": functional annotation completed");
 
 		return true;
 	}
 
-	private boolean performTaxonomyAnalysis(String[] proteins, HashMap<String, double[]> proteinIntensityMap,
+	protected boolean performTaxonomyAnalysis(String[] proteins, HashMap<String, double[]> proteinIntensityMap,
 			HashMap<String, Integer> proteinPsmCountMap, HashMap<String, HashSet<String>> totalPepCountMap,
 			HashMap<String, HashSet<String>> razorPepCountMap, HashMap<String, UnipProInfo> proteinInfoMap,
 			String[] intensityTitle, String taskName) {
@@ -1803,8 +659,8 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 		} catch (Exception e) {
 			LOGGER.error(taskName + ": Error accessing taxonomy database", e);
 			System.err.println(format.format(new Date()) + "\t" + taskName + ": Error accessing taxonomy database");
-			return false;
-		}
+                return false;
+            }
 
 		// Build taxonomic rank maps (similar to MAG workflow but protein-based)
 		TaxonomyRanks[] mainRanks = TaxonomyRanks.getMainRanks();
@@ -1858,6 +714,34 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 				continue;
 			}
 
+			// Process lineage - handle missing ranks gracefully
+			// Note: -1 values indicate missing intermediate ranks, not errors
+			ArrayList<Integer> validTaxonIds = new ArrayList<Integer>();
+			for (int lineageTaxonId : mainTaxonIds) {
+				if (lineageTaxonId > 0) {
+					validTaxonIds.add(lineageTaxonId);
+				} else if (lineageTaxonId == -1) {
+					LOGGER.debug(taskName + ": Missing rank in lineage for taxon " + taxonId + " (sparse lineage)");
+				} else if (lineageTaxonId == 0) {
+					LOGGER.debug(taskName + ": Invalid taxon ID 0 in lineage for taxon " + taxonId + " (data corruption)");
+				}
+			}
+			
+			if (validTaxonIds.isEmpty()) {
+				LOGGER.warn(taskName + ": No valid taxon IDs found in lineage for taxon " + taxonId + " (lineage contained only missing ranks or invalid IDs), skipping");
+				
+				// Debug this specific taxon to understand the issue
+				if (taxonId == 9606) { // Homo sapiens
+					LOGGER.warn(taskName + ": Debugging Homo sapiens lineage issue - this should not happen!");
+					// Enable detailed debugging to see what's going wrong
+					((TaxonomyDatabaseSQL) taxDb).debugTaxonLineage(taxonId);
+				}
+				continue; // Skip if no valid taxon IDs in lineage
+			}
+			
+			// Convert back to array for processing
+			mainTaxonIds = validTaxonIds.stream().mapToInt(Integer::intValue).toArray();
+
 			// Process each taxonomic rank in the lineage
 			for (int rankIndex = 0; rankIndex < mainTaxonIds.length && rankIndex < mainRanks.length; rankIndex++) {
 				int parentTaxonId = mainTaxonIds[rankIndex];
@@ -1879,7 +763,8 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 				}
 
 				String taxonName = parentTaxon.getName();
-				if (taxonName == null || taxonName.isEmpty()) {
+				if (taxonName == null || taxonName.isEmpty() || taxonName.trim().isEmpty()) {
+					// Skip taxa with empty names - don't aggregate intensities under ""
 					continue;
 				}
 
@@ -1887,9 +772,20 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 				String[] lineage = new String[rankIndex + 1];
 				for (int i = 0; i <= rankIndex && i < mainTaxonIds.length; i++) {
 					int lineageTaxonId = mainTaxonIds[i];
-					Taxon lineageTaxon = taxonInfoMap.get(lineageTaxonId);
-					if (lineageTaxon != null) {
-						lineage[i] = lineageTaxon.getName();
+					if (lineageTaxonId > 0) { // Only process valid taxon IDs
+						Taxon lineageTaxon = taxonInfoMap.get(lineageTaxonId);
+						if (lineageTaxon != null) {
+							String lineageTaxonName = lineageTaxon.getName();
+							if (lineageTaxonName != null && !lineageTaxonName.isEmpty()) {
+								lineage[i] = lineageTaxonName;
+							} else {
+								lineage[i] = ""; // Missing rank name
+							}
+						} else {
+							lineage[i] = ""; // Missing taxon
+						}
+					} else {
+						lineage[i] = ""; // Missing rank (-1)
 					}
 				}
 
@@ -1929,7 +825,7 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 				for (String intensity : intensityTitle) {
 					if (intensity.startsWith("Intensity ")) {
 						header.append("\t").append(intensity);
-					} else {
+                } else {
 						header.append("\tIntensity ").append(intensity);
 					}
 				}
@@ -1969,7 +865,7 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 					+ " taxonomic IDs to " + taxaFile.getName());
 			System.out.println(format.format(new Date()) + "\t" + taskName + ": taxonomy analysis completed");
 
-		} catch (IOException e) {
+            } catch (IOException e) {
 			LOGGER.error(taskName + ": error in writing taxonomy information", e);
 			System.err.println(format.format(new Date()) + "\t" + taskName + ": error in writing taxonomy information");
 			return false;
@@ -1978,7 +874,7 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 		return true;
 	}
 
-	private boolean generateFinalReports(String taskName) {
+	protected boolean generateFinalReports(String taskName) {
 
 		updateMessage(taskName + ": exporting report");
 
@@ -2006,7 +902,7 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 		}
 
 		// Generate summary report
-		MetaPythonReportTask reportTask = new MetaPythonReportTask(threadCount, mrp);
+		MetaPythonReportTask reportTask = new MetaPythonReportTask(metaPar.getThreadCount(), mrp);
 		this.exportSummary(reportTask);
 
 		// Add individual report tasks
@@ -2026,50 +922,50 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 		}
 
 		// Add peptide report
-		if (final_pep_txt.exists() && final_pep_txt.length() > 0) {
-			File report_peptides_summary = new File(reportHtmlDir, "report_peptides_summary.html");
+        if (final_pep_txt.exists() && final_pep_txt.length() > 0) {
+            File report_peptides_summary = new File(reportHtmlDir, "report_peptides_summary.html");
 			if (summaryMetaFile != null && summaryMetaFile.exists()) {
 				reportSuccess &= reportTask.addTask(MetaPythonReportTask.PEPTIDE, final_pep_txt,
 						report_peptides_summary, summaryMetaFile);
-			} else {
+                } else {
 				reportSuccess &= reportTask.addTask(MetaPythonReportTask.PEPTIDE, final_pep_txt,
 						report_peptides_summary);
-			}
-		}
+            }
+        }
 
 		// Add protein report
-		if (final_pro_txt.exists() && final_pro_txt.length() > 0) {
-			File report_proteinGroups_summary = new File(reportHtmlDir, "report_proteinGroups_summary.html");
+        if (final_pro_txt.exists() && final_pro_txt.length() > 0) {
+            File report_proteinGroups_summary = new File(reportHtmlDir, "report_proteinGroups_summary.html");
 			if (summaryMetaFile != null && summaryMetaFile.exists()) {
 				reportSuccess &= reportTask.addTask(MetaPythonReportTask.PROTEIN, final_pro_txt,
 						report_proteinGroups_summary, summaryMetaFile);
-			} else {
+                } else {
 				reportSuccess &= reportTask.addTask(MetaPythonReportTask.PROTEIN, final_pro_txt,
 						report_proteinGroups_summary);
-			}
-		}
+            }
+        }
 
 		// Add taxonomy report
 		File taxaReportFile = new File(metaPar.getDbSearchResultFile(), "taxonomy_analysis\\Taxa.tsv");
 		if (taxaReportFile.exists() && taxaReportFile.length() > 0) {
-			File report_taxonomy_summary = new File(reportHtmlDir, "report_taxonomy_summary.html");
+        File report_taxonomy_summary = new File(reportHtmlDir, "report_taxonomy_summary.html");
 			if (summaryMetaFile != null && summaryMetaFile.exists()) {
 				reportSuccess &= reportTask.addTask(MetaPythonReportTask.TAXONOMY, taxaReportFile,
 						report_taxonomy_summary, summaryMetaFile);
-			} else {
+            } else {
 				reportSuccess &= reportTask.addTask(MetaPythonReportTask.TAXONOMY, taxaReportFile,
 						report_taxonomy_summary);
-			}
-		}
+            }
+        }
 
 		// Add function report
 		File funReportTsv = new File(metaPar.getDbSearchResultFile(), "functional_annotation\\functions.tsv");
 		if (funReportTsv.exists() && funReportTsv.length() > 0) {
-			File report_function_summary = new File(reportHtmlDir, "report_function_summary.html");
+        File report_function_summary = new File(reportHtmlDir, "report_function_summary.html");
 			if (summaryMetaFile != null && summaryMetaFile.exists()) {
 				reportSuccess &= reportTask.addTask(MetaPythonReportTask.FUNCTION, funReportTsv,
 						report_function_summary, summaryMetaFile);
-			} else {
+            } else {
 				reportSuccess &= reportTask.addTask(MetaPythonReportTask.FUNCTION, funReportTsv,
 						report_function_summary);
 			}
@@ -2090,17 +986,17 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 			System.out.println(
 					format.format(new Date()) + "\t" + taskName + ": Report generation thread was interrupted");
 			Thread.currentThread().interrupt();
-			return false;
-		}
+            return false;
+        }
 
 		try {
 			boolean finish = reportTask.get();
 			if (finish) {
 				LOGGER.info(taskName + ": report generation successes");
 				System.out.println(format.format(new Date()) + "\t" + taskName + ": report generation successes");
-				return true;
-			}
-		} catch (InterruptedException | ExecutionException e) {
+                return true;
+            }
+        } catch (InterruptedException | ExecutionException e) {
 			LOGGER.error(taskName + ": error in the report generation", e);
 			System.out.println(format.format(new Date()) + "\t" + taskName + ": error in the report generation");
 			return false;
@@ -2108,48 +1004,1463 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 
 		return true;
 	}
-	
-	private String buildSpeciesKey(int taxonId) {
-		if (taxonId <= 0) {
-			return "taxon_unknown";
+
+	/**
+	 * Helper method to update peptide protein mappings with final protein names.
+	 * 
+	 * @param peptides      Array of peptides to update
+	 * @param finalProteins Set of final selected protein names
+	 */
+	private void updatePeptideProteinMappings(MetaPeptide[] peptides, HashSet<String> finalProteins) {
+		int updatedCount = 0;
+
+		for (MetaPeptide peptide : peptides) {
+			if (peptide != null && peptide.getProteins() != null) {
+				ArrayList<String> newProteins = new ArrayList<String>();
+
+				for (String protein : peptide.getProteins()) {
+					if (finalProteins.contains(protein)) {
+						newProteins.add(protein);
+					}
+				}
+
+				if (!newProteins.isEmpty()) {
+					peptide.setProteins(newProteins.toArray(new String[newProteins.size()]));
+					updatedCount++;
+				}
+			}
 		}
-		return "taxon_" + taxonId;
+
+		LOGGER.info(getTaskName() + ": Updated " + updatedCount + " peptides with final protein mappings");
 	}
-	
+
+	/**
+	 * Save protinfo batch results to a temporary JSON file.
+	 * 
+	 * @param batchResult The batch results to save
+	 * @param tempFile    The temporary file to save to
+	 * @return true if successful, false otherwise
+	 */
+	private boolean saveProtinfoBatchToTemp(HashMap<String, UnipProInfo> batchResult, File tempFile) {
+		try {
+			// Create root JSON object
+			org.json.JSONObject rootObject = new org.json.JSONObject();
+
+			// Add each protein ID as a key with its UnipProInfo data
+			for (Map.Entry<String, UnipProInfo> entry : batchResult.entrySet()) {
+				String proteinId = entry.getKey();
+				UnipProInfo info = entry.getValue();
+
+				// Create JSON object for this protein
+				org.json.JSONObject proteinObject = new org.json.JSONObject();
+				proteinObject.put("pro", info.getPro() != null ? info.getPro() : "");
+				proteinObject.put("name", info.getName() != null ? info.getName() : "");
+				proteinObject.put("taxId", info.getTaxId());
+
+				// Add EC array
+				org.json.JSONArray ecArray = new org.json.JSONArray();
+				String[] ec = info.getEc();
+				if (ec != null) {
+					for (String ecTerm : ec) {
+						ecArray.put(ecTerm);
+					}
+				}
+				proteinObject.put("ec", ecArray);
+
+				// Add GO array
+				org.json.JSONArray goArray = new org.json.JSONArray();
+				String[] go = info.getGo();
+				if (go != null) {
+					for (String goTerm : go) {
+						goArray.put(goTerm);
+					}
+				}
+				proteinObject.put("go", goArray);
+
+				// Add to root object
+				rootObject.put(proteinId, proteinObject);
+			}
+
+			// Write JSON to file
+			java.io.FileWriter writer = new java.io.FileWriter(tempFile);
+			writer.write(rootObject.toString(2)); // Pretty print with 2-space indentation
+			writer.close();
+
+			return true;
+		} catch (Exception e) {
+			LOGGER.error(getTaskName() + ": Failed to save protinfo batch to temp file: " + e.getMessage());
+			return false;
+		}
+	}
+
+	/**
+	 * Load protinfo batch results from a temporary JSON file.
+	 * 
+	 * @param tempFile The temporary file to load from
+	 * @return The loaded batch results, or null if failed
+	 */
+	private HashMap<String, UnipProInfo> loadProtinfoBatchFromTemp(File tempFile) {
+		try {
+			HashMap<String, UnipProInfo> result = new HashMap<String, UnipProInfo>();
+
+			// Read JSON content
+			String content = new String(java.nio.file.Files.readAllBytes(tempFile.toPath()));
+
+			// Parse JSON using proper JSON library
+			org.json.JSONObject jsonObject = new org.json.JSONObject(content);
+
+			// Iterate through all keys (protein IDs)
+			for (String proteinId : jsonObject.keySet()) {
+				org.json.JSONObject proteinData = jsonObject.getJSONObject(proteinId);
+
+				// Extract data from JSON object
+				String pro = proteinData.optString("pro", "");
+				String name = proteinData.optString("name", "");
+				int taxId = proteinData.optInt("taxId", 0);
+
+				// Parse EC array
+				org.json.JSONArray ecArray = proteinData.optJSONArray("ec");
+				String[] ec = new String[0];
+				if (ecArray != null) {
+					ec = new String[ecArray.length()];
+					for (int i = 0; i < ecArray.length(); i++) {
+						ec[i] = ecArray.getString(i);
+					}
+				}
+
+				// Parse GO array
+				org.json.JSONArray goArray = proteinData.optJSONArray("go");
+				String[] go = new String[0];
+				if (goArray != null) {
+					go = new String[goArray.length()];
+					for (int i = 0; i < goArray.length(); i++) {
+						go[i] = goArray.getString(i);
+					}
+				}
+
+				// Create UnipProInfo object
+				UnipProInfo info = new UnipProInfo(pro, name, taxId, ec, go);
+				result.put(proteinId, info);
+			}
+
+			return result;
+		} catch (Exception e) {
+			LOGGER.error(getTaskName() + ": Failed to load protinfo batch from temp file: " + e.getMessage());
+			return null;
+		}
+	}
 
 
-    /**
-     * Helper method to update peptide protein mappings with final protein names.
-     * 
-     * @param peptides Array of peptides to update
-     * @param finalProteins Set of final selected protein names
-     */
-    private void updatePeptideProteinMappings(MetaPeptide[] peptides, HashSet<String> finalProteins) {
-        int updatedCount = 0;
-        
-        for (MetaPeptide peptide : peptides) {
-            if (peptide != null && peptide.getProteins() != null) {
-                ArrayList<String> newProteins = new ArrayList<String>();
-                
-                for (String protein : peptide.getProteins()) {
-                    if (finalProteins.contains(protein)) {
-                        newProteins.add(protein);
-                    }
-                }
-                
-                if (!newProteins.isEmpty()) {
-                    peptide.setProteins(newProteins.toArray(new String[newProteins.size()]));
-                    updatedCount++;
-                }
-            }
-        }
-        
-        LOGGER.info(getTaskName() + ": Updated " + updatedCount + " peptides with final protein mappings");
-    }
+	/**
+	 * Save pept2prot batch results to a temporary JSON file.
+	 * 
+	 * @param batchResult The batch results to save
+	 * @param tempFile    The temporary file to save to
+	 * @return true if successful, false otherwise
+	 */
+	private boolean savePept2protBatchToTemp(HashMap<String, UnipProResult> batchResult, File tempFile) {
+		try {
+			// Create root JSON object
+			org.json.JSONObject rootObject = new org.json.JSONObject();
+
+			// Add each peptide sequence as a key with its UnipProResult data
+			for (Map.Entry<String, UnipProResult> entry : batchResult.entrySet()) {
+				String sequence = entry.getKey();
+				UnipProResult result = entry.getValue();
+
+				// Create JSON object for this sequence
+				org.json.JSONObject sequenceObject = new org.json.JSONObject();
+				sequenceObject.put("sequence", result.getSequence() != null ? result.getSequence() : "");
+
+				// Add uniprotIds array
+				org.json.JSONArray uniprotIdsArray = new org.json.JSONArray();
+					String[] uniprotIds = result.getUniprotIds();
+				if (uniprotIds != null) {
+					for (String uniprotId : uniprotIds) {
+						uniprotIdsArray.put(uniprotId);
+					}
+				}
+				sequenceObject.put("uniprotIds", uniprotIdsArray);
+
+				// Add proNames array
+				org.json.JSONArray proNamesArray = new org.json.JSONArray();
+				String[] proNames = result.getProNames();
+				if (proNames != null) {
+					for (String proName : proNames) {
+						proNamesArray.put(proName);
+					}
+				}
+				sequenceObject.put("proNames", proNamesArray);
+
+				// Add taxonIds array
+				org.json.JSONArray taxonIdsArray = new org.json.JSONArray();
+				int[] taxonIds = result.getTaxonIds();
+				if (taxonIds != null) {
+					for (int taxonId : taxonIds) {
+						taxonIdsArray.put(taxonId);
+					}
+				}
+				sequenceObject.put("taxonIds", taxonIdsArray);
+
+				// Add to root object
+				rootObject.put(sequence, sequenceObject);
+			}
+
+			// Write JSON to file
+			java.io.FileWriter writer = new java.io.FileWriter(tempFile);
+			writer.write(rootObject.toString(2)); // Pretty print with 2-space indentation
+			writer.close();
+
+			return true;
+		} catch (Exception e) {
+			LOGGER.error(getTaskName() + ": Failed to save pept2prot batch to temp file: " + e.getMessage());
+			return false;
+		}
+	}
+
+	/**
+	 * Load pept2prot batch results from a temporary JSON file.
+	 * 
+	 * @param tempFile The temporary file to load from
+	 * @return The loaded batch results, or null if failed
+	 */
+	private HashMap<String, UnipProResult> loadPept2protBatchFromTemp(File tempFile) {
+		try {
+			HashMap<String, UnipProResult> result = new HashMap<String, UnipProResult>();
+
+			// Read JSON content
+			String content = new String(java.nio.file.Files.readAllBytes(tempFile.toPath()));
+
+			// Parse JSON using proper JSON library
+			org.json.JSONObject jsonObject = new org.json.JSONObject(content);
+
+			// Iterate through all keys (peptide sequences)
+			for (String sequence : jsonObject.keySet()) {
+				org.json.JSONObject sequenceData = jsonObject.getJSONObject(sequence);
+
+				// Extract data from JSON object
+				String seq = sequenceData.optString("sequence", "");
+
+				// Parse uniprotIds array
+				org.json.JSONArray uniprotIdsArray = sequenceData.optJSONArray("uniprotIds");
+				String[] uniprotIds = new String[0];
+				if (uniprotIdsArray != null) {
+					uniprotIds = new String[uniprotIdsArray.length()];
+					for (int i = 0; i < uniprotIdsArray.length(); i++) {
+						uniprotIds[i] = uniprotIdsArray.getString(i);
+					}
+				}
+
+				// Parse proNames array
+				org.json.JSONArray proNamesArray = sequenceData.optJSONArray("proNames");
+				String[] proNames = new String[0];
+				if (proNamesArray != null) {
+					proNames = new String[proNamesArray.length()];
+					for (int i = 0; i < proNamesArray.length(); i++) {
+						proNames[i] = proNamesArray.getString(i);
+					}
+				}
+
+				// Parse taxonIds array
+				org.json.JSONArray taxonIdsArray = sequenceData.optJSONArray("taxonIds");
+				int[] taxonIds = new int[0];
+				if (taxonIdsArray != null) {
+					taxonIds = new int[taxonIdsArray.length()];
+					for (int i = 0; i < taxonIdsArray.length(); i++) {
+						taxonIds[i] = taxonIdsArray.getInt(i);
+					}
+				}
+
+				// Create UnipProResult object
+				UnipProResult unipProResult = new UnipProResult(seq, uniprotIds, proNames, taxonIds);
+				result.put(sequence, unipProResult);
+			}
+
+			return result;
+		} catch (Exception e) {
+			LOGGER.error(getTaskName() + ": Failed to load pept2prot batch from temp file: " + e.getMessage());
+			return null;
+		}
+	}
+
+
+
+
+	/**
+	 * Task for post-analysis processing in DDA IGC workflows. Handles protein
+	 * inference, filtering, and report generation with proper progress tracking.
+	 */
+	public static class DDAIgcPostAnalysisTask extends MetaAbstractTask {
+
+		private MetaPeptide[] quanPeps;
+		private MetaPSM[] psms;
+		private HashMap<String, Integer> fileIdMap;
+		private ArrayList<String> fileList;
+		private String quanMode;
+		private String[] intensityTitle;
+		private String taskName;
+		private MetaPilotIgcTask parentTask;
+		private Logger logger;
+
+		public DDAIgcPostAnalysisTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
+				MetaPeptide[] quanPeps, MetaPSM[] psms, HashMap<String, Integer> fileIdMap, ArrayList<String> fileList,
+				String quanMode, String[] intensityTitle, String taskName, MetaPilotIgcTask parentTask) {
+			super(metaPar, mrp, progressBar);
+			this.quanPeps = quanPeps;
+			this.psms = psms;
+			this.fileIdMap = fileIdMap;
+			this.fileList = fileList;
+			this.quanMode = quanMode;
+			this.intensityTitle = intensityTitle;
+			this.taskName = taskName;
+			this.parentTask = parentTask;
+			this.logger = org.apache.logging.log4j.LogManager.getLogger(getClass());
+		}
+
+		@Override
+		protected String getTaskName() {
+			return taskName + " Post-Analysis";
+		}
+
+		@Override
+		protected Logger getLogger() {
+			return logger;
+		}
+
+		@Override
+		protected Boolean call() throws Exception {
+			updateMessage("Starting post-analysis processing...");
+
+			// Build PSM maps from the PSM array
+			updateMessage("Building PSM maps...");
+			updateProgress(0.05, 1.0);
+
+			HashMap<String, MetaPSM> psmMap = new HashMap<String, MetaPSM>();
+			HashMap<String, int[]> pepPsmCountMap = new HashMap<String, int[]>();
+			HashMap<String, int[]> pepChargeMap = new HashMap<String, int[]>();
+			HashMap<String, double[]> pepExpectMap = new HashMap<String, double[]>();
+
+			int[] filePsmCount = new int[fileIdMap.size()];
+			HashSet<String>[] fileSequenceSets = new HashSet[fileIdMap.size()];
+			for (int i = 0; i < fileSequenceSets.length; i++) {
+				fileSequenceSets[i] = new HashSet<String>();
+			}
+
+			// Process PSMs and build maps
+			for (MetaPSM psm : psms) {
+				String sequence = psm.getBaseSequence();
+				String fileName = psm.getFileName();
+				String modseq = psm.getModSeq();
+				int charge = psm.getCharge();
+				double PEP = psm.getPEP();
+				int fileId = fileIdMap.get(fileName);
+
+				// Build PSM count map per peptide per file
+				int[] psmCount;
+				if (pepPsmCountMap.containsKey(modseq)) {
+					psmCount = pepPsmCountMap.get(modseq);
+				} else {
+					psmCount = new int[fileIdMap.size()];
+					pepPsmCountMap.put(modseq, psmCount);
+				}
+				if (fileIdMap.containsKey(fileName)) {
+					psmCount[fileId]++;
+				}
+
+				filePsmCount[fileId]++;
+				fileSequenceSets[fileId].add(sequence);
+
+				// Build charge map
+				int[] charges;
+				if (pepChargeMap.containsKey(modseq)) {
+					charges = pepChargeMap.get(modseq);
+			} else {
+					charges = new int[7];
+					pepChargeMap.put(modseq, charges);
+				}
+				if (charge < charges.length) {
+					charges[charge] = 1;
+				}
+
+				// Build PEP map
+				double[] expect;
+				if (pepExpectMap.containsKey(modseq)) {
+					expect = pepExpectMap.get(modseq);
+				} else {
+					expect = new double[fileIdMap.size()];
+					Arrays.fill(expect, 1.0);
+					pepExpectMap.put(modseq, expect);
+				}
+				if (PEP < expect[fileId]) {
+					expect[fileId] = PEP;
+				}
+
+				// Store best PSM for each peptide
+				if (psmMap.containsKey(modseq)) {
+					if (PEP < psmMap.get(modseq).getPEP()) {
+						psmMap.put(modseq, psm);
+					}
+			} else {
+					psmMap.put(modseq, psm);
+				}
+			}
+
+			// Set individual PEP values for peptides
+			for (int i = 0; i < quanPeps.length; i++) {
+				String seq = quanPeps[i].getModSeq();
+				if (pepExpectMap.containsKey(seq)) {
+					quanPeps[i].setIndividualPEP(pepExpectMap.get(seq));
+				} else {
+					double[] expect = new double[fileIdMap.size()];
+					Arrays.fill(expect, 1.0);
+					quanPeps[i].setIndividualPEP(expect);
+				}
+			}
+
+			// Update progress: PSM maps built
+			updateMessage("PSM maps built, starting protein inference...");
+			updateProgress(0.15, 1.0);
+
+			// Perform protein inference and filtering directly in this task
+			HashMap<String, UnipProInfo> proteinInfoMap = performProteinInference(quanPeps);
+
+			if (proteinInfoMap.isEmpty()) {
+				updateMessage("No proteins found, skipping report generation");
+				return false;
+			}
+
+			// Update progress: Protein inference complete
+			updateMessage("Protein inference complete, updating peptide protein mappings...");
+			updateProgress(0.25, 1.0);
+
+			// Update peptide protein mappings with filtered proteins
+			HashSet<String> validProteins = new HashSet<String>(proteinInfoMap.keySet());
+			for (int i = 0; i < quanPeps.length; i++) {
+				String[] proteins = quanPeps[i].getProteins();
+				ArrayList<String> filteredProteins = new ArrayList<String>();
+				for (String protein : proteins) {
+					if (validProteins.contains(protein)) {
+						filteredProteins.add(protein);
+					}
+				}
+				quanPeps[i].setProteins(filteredProteins.toArray(new String[filteredProteins.size()]));
+			}
+
+			// Update progress: Peptide mapping complete
+			updateMessage("Peptide mapping complete, building PSM maps...");
+			updateProgress(0.40, 1.0);
+
+			// Refine genomes and proteins
+			HashMap<String, Double> speciesScoreMap = refineSpecies(quanPeps, proteinInfoMap);
+			String[] razorProteins = refineProteins(quanPeps, speciesScoreMap, proteinInfoMap);
+
+			// Build protein intensity maps
+			HashMap<String, double[]> proteinIntensityMap = new HashMap<String, double[]>();
+			HashMap<String, Double> proteinTotalIntenMap = new HashMap<String, Double>();
+			HashMap<String, HashSet<String>> totalPepCountMap = new HashMap<String, HashSet<String>>();
+			HashMap<String, HashSet<String>> razorPepCountMap = new HashMap<String, HashSet<String>>();
+			HashSet<String> pepSequenceSet = new HashSet<String>();
+			ArrayList<MetaPeptide> peptideList = new ArrayList<MetaPeptide>();
+			
+			HashMap<String, Integer> psmCountMap = new HashMap<String, Integer>();
+			
+			// Process peptides and build protein maps
+			for (int i = 0; i < quanPeps.length; i++) {
+				if (razorProteins[i] != null) {
+					String stripeSequence = quanPeps[i].getSequence();
+					pepSequenceSet.add(stripeSequence);
+					peptideList.add(quanPeps[i]);
+
+					// Build razor peptide count map
+					if (razorPepCountMap.containsKey(razorProteins[i])) {
+						razorPepCountMap.get(razorProteins[i]).add(stripeSequence);
+			} else {
+						HashSet<String> set = new HashSet<String>();
+						set.add(stripeSequence);
+						razorPepCountMap.put(razorProteins[i], set);
+					}
+
+					// Handle MAG database proteins
+					if (proteinInfoMap.containsKey(razorProteins[i])) {
+						String species = String.valueOf(proteinInfoMap.get(razorProteins[i]).getTaxId());
+						if (razorPepCountMap.containsKey(species)) {
+							razorPepCountMap.get(species).add(stripeSequence);
+						} else {
+							HashSet<String> set = new HashSet<String>();
+							set.add(stripeSequence);
+							razorPepCountMap.put(species, set);
+						}
+					}
+				}
+			}
+
+			// Calculate protein intensities
+			for (int i = 0; i < quanPeps.length; i++) {
+				String[] proteins = quanPeps[i].getProteins();
+				int count = 0;
+				for (int j = 0; j < proteins.length; j++) {
+					if (razorPepCountMap.containsKey(proteins[j])) {
+						count++;
+					}
+				}
+
+				if (count > 0) {
+					String sequence = quanPeps[i].getSequence();
+					String modSeq = quanPeps[i].getModSeq();
+					double[] pepIntensity = new double[quanPeps[i].getIntensity().length];
+					for (int j = 0; j < pepIntensity.length; j++) {
+						pepIntensity[j] = quanPeps[i].getIntensity()[j] / (double) count;
+					}
+
+					int totalPsmCount = 0;
+					int[] psmCount = pepPsmCountMap.get(modSeq);
+					if (psmCount != null) {
+						for (int j = 0; j < psmCount.length; j++) {
+							totalPsmCount += psmCount[j];
+						}
+					}
+
+					for (int j = 0; j < proteins.length; j++) {
+						if (razorPepCountMap.containsKey(proteins[j])) {
+							double proteinTotalInten;
+							double[] proteinIntensity;
+							if (proteinIntensityMap.containsKey(proteins[j])) {
+								proteinIntensity = proteinIntensityMap.get(proteins[j]);
+								proteinTotalInten = proteinTotalIntenMap.get(proteins[j]);
+							} else {
+								proteinIntensity = new double[pepIntensity.length];
+								proteinIntensityMap.put(proteins[j], proteinIntensity);
+								proteinTotalInten = 0.0;
+							}
+							for (int k = 0; k < pepIntensity.length; k++) {
+								proteinIntensity[k] += pepIntensity[k];
+								proteinTotalInten += pepIntensity[k];
+							}
+							proteinTotalIntenMap.put(proteins[j], proteinTotalInten);
+
+							if (totalPepCountMap.containsKey(proteins[j])) {
+								totalPepCountMap.get(proteins[j]).add(sequence);
+							} else {
+								HashSet<String> set = new HashSet<String>();
+								set.add(sequence);
+								totalPepCountMap.put(proteins[j], set);
+							}
+						}
+
+						if (proteinInfoMap.containsKey(proteins[j])) {
+							String species = String.valueOf(proteinInfoMap.get(proteins[j]).getTaxId());
+							if (speciesScoreMap.containsKey(species)) {
+								if (psmCountMap.containsKey(proteins[j])) {
+									psmCountMap.put(proteins[j], psmCountMap.get(proteins[j]) + totalPsmCount);
+			} else {
+									psmCountMap.put(proteins[j], totalPsmCount);
+								}
+
+								if (psmCountMap.containsKey(species)) {
+									psmCountMap.put(species, psmCountMap.get(species) + totalPsmCount);
+								} else {
+									psmCountMap.put(species, totalPsmCount);
+								}
+							}
+						}
+					}
+				}
+			}
+
+			// Update progress: Intensity calculations complete
+			updateMessage("Intensity calculations complete, sorting proteins...");
+			updateProgress(0.60, 1.0);
+
+			// Sort proteins by total intensity
+			String[] proteins = proteinTotalIntenMap.keySet().toArray(String[]::new);
+			Arrays.sort(proteins, new Comparator<String>() {
+				@Override
+				public int compare(String o1, String o2) {
+					if (proteinTotalIntenMap.get(o1) > proteinTotalIntenMap.get(o2))
+						return -1;
+					if (proteinTotalIntenMap.get(o1) < proteinTotalIntenMap.get(o2))
+						return 1;
+					return 0;
+				}
+			});
+
+			HashMap<String, Integer> proteinIdMap = new HashMap<String, Integer>();
+			for (int i = 0; i < proteins.length; i++) {
+				proteinIdMap.put(proteins[i], i);
+			}
+
+			// Generate identification summary
+			updateMessage("Generating identification summary...");
+			updateProgress(0.70, 1.0);
+			if (!parentTask.generateIdentificationSummary(fileIdMap, filePsmCount, fileSequenceSets, taskName)) {
+				return false;
+			}
+
+			// Generate peptide report
+			updateMessage("Generating peptide report...");
+			updateProgress(0.75, 1.0);
+			if (!parentTask.generatePeptideReport(peptideList, psmMap, pepPsmCountMap, pepChargeMap, proteinIdMap,
+					fileList, quanMode, intensityTitle, taskName)) {
+				return false;
+			}
+
+			// Generate protein report
+			updateMessage("Generating protein report...");
+			updateProgress(0.80, 1.0);
+			if (!parentTask.generateProteinReport(proteins, proteinIntensityMap, proteinTotalIntenMap, totalPepCountMap,
+					razorPepCountMap, psmCountMap, proteinIdMap, quanMode, intensityTitle, taskName)) {
+				return false;
+			}
+
+			// Functional annotation
+			updateMessage("Performing functional annotation...");
+			updateProgress(0.85, 1.0);
+			if (!parentTask.performFunctionalAnnotation(proteins, proteinIntensityMap, proteinTotalIntenMap,
+					totalPepCountMap, proteinInfoMap, intensityTitle, taskName)) {
+				return false;
+			}
+
+			// Taxonomy analysis
+			updateMessage("Performing taxonomy analysis...");
+			updateProgress(0.90, 1.0);
+			if (!parentTask.performTaxonomyAnalysis(proteins, proteinIntensityMap, psmCountMap, totalPepCountMap,
+					razorPepCountMap, proteinInfoMap, intensityTitle, taskName)) {
+				return false;
+			}
+
+			// Generate final reports
+			updateMessage("Generating final HTML reports...");
+			updateProgress(0.95, 1.0);
+			if (!parentTask.generateFinalReports(taskName)) {
+				return false;
+			}
+
+			// Complete
+			updateMessage("Report generation completed!");
+			updateProgress(1.0, 1.0);
+
+			return true;
+		}
+
+		/**
+		 * Performs protein inference and filtering using peptide and PSM data. This
+		 * method contains the logic previously in MetaPilotIgcTask.updateProtein().
+		 * 
+		 * @param peptides Array of MetaPeptide objects
+		 * @return Map of filtered protein names to their UnipProInfo objects
+		 */
+		private HashMap<String, UnipProInfo> performProteinInference(MetaPeptide[] peptides) {
+			logger.info(getTaskName() + ": Starting protein inference and filtering using peptide and PSM data");
+
+			// Step 1: Build peptide-to-protein mapping from MetaPeptide data
+			HashMap<String, HashSet<String>> peptideToProteins = new HashMap<String, HashSet<String>>();
+			HashMap<String, HashSet<String>> proteinToPeptides = new HashMap<String, HashSet<String>>();
+
+		for (MetaPeptide peptide : peptides) {
+				if (peptide != null && peptide.getSequence() != null && peptide.getProteins() != null) {
+					String sequence = peptide.getSequence();
+					String[] peptideProteins = peptide.getProteins();
+
+					if (!peptideToProteins.containsKey(sequence)) {
+						peptideToProteins.put(sequence, new HashSet<String>());
+					}
+
+					for (String protein : peptideProteins) {
+						if (protein != null && !protein.isEmpty()) {
+							peptideToProteins.get(sequence).add(protein);
+
+							if (!proteinToPeptides.containsKey(protein)) {
+								proteinToPeptides.put(protein, new HashSet<String>());
+							}
+							proteinToPeptides.get(protein).add(sequence);
+						}
+					}
+				}
+			}
+
+			logger.info(getTaskName() + ": Found " + proteinToPeptides.size() + " proteins with "
+					+ peptideToProteins.size() + " unique peptides");
+
+			// Step 2: Extract unique peptide sequences for Unipept API call
+			HashSet<String> uniqueSequences = new HashSet<String>(peptideToProteins.keySet());
+			if (uniqueSequences.isEmpty()) {
+				logger.warn(getTaskName() + ": No valid peptide sequences found for protein inference");
+				return new HashMap<String, UnipProInfo>();
+			}
+
+			String[] sequences = uniqueSequences.toArray(new String[uniqueSequences.size()]);
+			logger.info(getTaskName() + ": Calling Unipept API for " + sequences.length + " unique peptide sequences");
+
+			// Step 3: Call UnipeptRequester.pept2prot to get protein mappings with
+			// resumable batching
+			HashMap<String, UnipProResult> pept2protMap = new HashMap<String, UnipProResult>();
+
+			// Process peptides in batches to avoid server timeout (500 error)
+			int batchSize = 1000; // Process 1000 peptides at a time
+			int totalBatches = (int) Math.ceil((double) sequences.length / batchSize);
+
+			// Create temp directory for batch results
+			File pept2protTempDir = new File(metaPar.getDbSearchResultFile(), "pept2prot_temp");
+			if (!pept2protTempDir.exists()) {
+				pept2protTempDir.mkdirs();
+				logger.info(getTaskName() + ": Created temp directory for pept2prot batches: "
+						+ pept2protTempDir.getAbsolutePath());
+			}
+
+			int completedBatches = 0;
+			int skippedBatches = 0;
+
+			// Update message for pept2prot phase
+			updateMessage("Processing pept2prot API requests (" + totalBatches + " batches)...");
+
+			for (int batch = 0; batch < totalBatches; batch++) {
+				int startIndex = batch * batchSize;
+				int endIndex = Math.min(startIndex + batchSize, sequences.length);
+
+				String[] batchSequences = new String[endIndex - startIndex];
+				System.arraycopy(sequences, startIndex, batchSequences, 0, endIndex - startIndex);
+
+				// Create temp file for this batch
+				File batchTempFile = new File(pept2protTempDir, "pept2prot_batch_" + batch + ".json");
+
+				// Check if this batch was already completed
+				if (batchTempFile.exists() && batchTempFile.length() > 0) {
+					logger.info(getTaskName() + ": Skipping pept2prot batch " + (batch + 1) + "/" + totalBatches
+							+ " (already completed, temp file exists)");
+
+					// Load existing results from temp file
+					try {
+						HashMap<String, UnipProResult> existingResult = parentTask
+								.loadPept2protBatchFromTemp(batchTempFile);
+						if (existingResult != null && !existingResult.isEmpty()) {
+							pept2protMap.putAll(existingResult);
+							skippedBatches++;
+							logger.info(getTaskName() + ": Loaded " + existingResult.size()
+									+ " pept2prot mappings from temp file");
+						}
+					} catch (Exception e) {
+						logger.warn(getTaskName() + ": Failed to load temp file for batch " + (batch + 1)
+								+ ", will reprocess: " + e.getMessage());
+						// Continue to process this batch
+					}
+
+					if (batchTempFile.exists()) {
+						// Update progress for skipped batch
+						int processedBatches = completedBatches + skippedBatches + 1;
+						double pept2protProgress = (double) processedBatches / totalBatches * 0.4;
+						updateProgress(0.15 + pept2protProgress, 1.0);
+						updateMessage("pept2prot: " + processedBatches + "/" + totalBatches
+								+ " batches completed (skipped: " + (skippedBatches + 1) + ")");
+						continue; // Skip this batch as it's already completed
+					}
+				}
+
+				logger.info(getTaskName() + ": Processing batch " + (batch + 1) + "/" + totalBatches + " ("
+						+ batchSequences.length + " peptides)");
+
+				HashMap<String, UnipProResult> batchResult = UnipeptRequester.pept2prot(batchSequences);
+
+				if (batchResult != null && !batchResult.isEmpty()) {
+					// Save batch result to temp file
+					if (parentTask.savePept2protBatchToTemp(batchResult, batchTempFile)) {
+						pept2protMap.putAll(batchResult);
+						completedBatches++;
+						logger.info(getTaskName() + ": Batch " + (batch + 1) + " returned " + batchResult.size()
+								+ " mappings and saved to temp file");
+			} else {
+						logger.warn(getTaskName() + ": Failed to save temp file for batch " + (batch + 1)
+								+ ", but adding results to map");
+						pept2protMap.putAll(batchResult);
+						completedBatches++;
+					}
+				} else {
+					logger.warn(getTaskName() + ": Batch " + (batch + 1) + " returned no mappings");
+					// Create empty temp file to mark this batch as completed
+					try {
+						batchTempFile.createNewFile();
+						completedBatches++;
+					} catch (Exception e) {
+						logger.warn(getTaskName() + ": Failed to create empty temp file for batch " + (batch + 1));
+					}
+				}
+
+				// Update progress for pept2prot phase (0-40% of total protein inference)
+				int processedBatches = completedBatches + skippedBatches;
+				double pept2protProgress = (double) processedBatches / totalBatches * 0.4; // 40% of protein inference
+				updateProgress(0.15 + pept2protProgress, 1.0); // Start from 15%, add pept2prot progress
+				updateMessage("pept2prot: " + processedBatches + "/" + totalBatches + " batches completed");
+
+				// Add a small delay between batches to be respectful to the API
+				if (batch < totalBatches - 1) {
+					try {
+						Thread.sleep(1000); // 1 second delay between batches
+					} catch (InterruptedException e) {
+						logger.warn(getTaskName() + ": Interrupted during batch processing");
+						Thread.currentThread().interrupt();
+						break;
+					}
+				}
+			}
+
+			// Note: Don't clean up temp files here - keep them for debugging until the
+			// entire workflow completes
+			// Temp files are preserved for user inspection and debugging
+			logger.info(getTaskName() + ": Pept2prot processing complete, temp files preserved for user inspection");
+
+			if (pept2protMap.isEmpty()) {
+				logger.warn(
+						getTaskName() + ": No protein mappings returned from Unipept API after processing all batches");
+				return new HashMap<String, UnipProInfo>();
+			}
+
+			logger.info(getTaskName() + ": Received " + pept2protMap.size()
+					+ " protein mappings from Unipept API across " + totalBatches + " batches " + "(completed: "
+					+ completedBatches + ", skipped: " + skippedBatches + ")");
+
+			// Step 4: Build Uniprot protein-to-peptide mapping from pept2prot results
+			HashMap<String, HashSet<String>> uniprotProteinToPeptides = new HashMap<String, HashSet<String>>();
+			HashSet<String> tempPepSet1 = new HashSet<String>();
+			for (String peptide : pept2protMap.keySet()) {
+				UnipProResult result = pept2protMap.get(peptide);
+				if (result != null && result.getUniprotIds() != null) {
+					String[] uniprotIds = result.getUniprotIds();
+					for (String uniprotId : uniprotIds) {
+						if (!uniprotProteinToPeptides.containsKey(uniprotId)) {
+							uniprotProteinToPeptides.put(uniprotId, new HashSet<String>());
+						}
+						uniprotProteinToPeptides.get(uniprotId).add(peptide);
+					}
+					tempPepSet1.add(peptide);
+				}
+			}
+
+			logger.info(getTaskName() + ": Built Uniprot protein mapping with " + uniprotProteinToPeptides.size()
+					+ " proteins");
+
+			File razorProteinFile1 = new File(parentTask.combinedFile, "razorProteins1.tsv");
+			HashSet<String> selectedUniprotProteins = parentTask.applyOccamsRazor(uniprotProteinToPeptides, tempPepSet1,
+					1.0, razorProteinFile1);
+			logger.info(getTaskName() + ": Protein-level filtering selected " + selectedUniprotProteins.size()
+					+ " Uniprot proteins");
+
+			// Step 5: Get taxonomic information for selected Uniprot proteins using
+			// protinfo
+			String[] proteinArray = selectedUniprotProteins.toArray(new String[selectedUniprotProteins.size()]);
+			logger.info(getTaskName() + ": Calling Unipept protinfo API for " + proteinArray.length
+					+ " unique protein IDs");
+
+			HashMap<String, UnipProInfo> proteinInfoMap = new HashMap<String, UnipProInfo>();
+
+			// Process proteins in batches to avoid server timeout (500 error)
+			totalBatches = (int) Math.ceil((double) proteinArray.length / batchSize);
+
+			// Update message for protinfo phase
+			updateMessage("Processing protinfo API requests (" + totalBatches + " batches)...");
+
+			// Create temp directory for batch results
+			File tempDir = new File(metaPar.getDbSearchResultFile(), "protinfo_temp");
+			if (!tempDir.exists()) {
+				tempDir.mkdirs();
+				logger.info(
+						getTaskName() + ": Created temp directory for protinfo batches: " + tempDir.getAbsolutePath());
+			}
+
+			completedBatches = 0;
+			skippedBatches = 0;
+
+			for (int batch = 0; batch < totalBatches; batch++) {
+				int startIndex = batch * batchSize;
+				int endIndex = Math.min(startIndex + batchSize, proteinArray.length);
+
+				String[] batchProteinIds = new String[endIndex - startIndex];
+				System.arraycopy(proteinArray, startIndex, batchProteinIds, 0, endIndex - startIndex);
+
+				// Create temp file for this batch
+				File batchTempFile = new File(tempDir, "protinfo_batch_" + batch + ".json");
+
+				// Check if this batch was already completed
+				if (batchTempFile.exists() && batchTempFile.length() > 0) {
+					logger.info(getTaskName() + ": Skipping protinfo batch " + (batch + 1) + "/" + totalBatches
+							+ " (already completed, temp file exists)");
+
+					// Load existing results from temp file
+					try {
+						HashMap<String, UnipProInfo> existingResult = parentTask
+								.loadProtinfoBatchFromTemp(batchTempFile);
+						if (existingResult != null && !existingResult.isEmpty()) {
+							proteinInfoMap.putAll(existingResult);
+							skippedBatches++;
+							logger.info(getTaskName() + ": Loaded " + existingResult.size()
+									+ " protein infos from temp file");
+						}
+					} catch (Exception e) {
+						logger.warn(getTaskName() + ": Failed to load temp file for batch " + (batch + 1)
+								+ ", will reprocess: " + e.getMessage());
+						// Continue to process this batch
+					}
+
+					if (batchTempFile.exists()) {
+						// Update progress for skipped protinfo batch (55-95% of total protein
+						// inference)
+						int processedBatches = completedBatches + skippedBatches + 1;
+						double protinfoProgress = (double) processedBatches / totalBatches * 0.4; // 40% of protein
+																									// inference
+						updateProgress(0.55 + protinfoProgress, 1.0); // Start from 55%, add protinfo progress
+						updateMessage("protinfo: " + processedBatches + "/" + totalBatches
+								+ " batches completed (skipped: " + (skippedBatches + 1) + ")");
+						continue; // Skip this batch as it's already completed
+					}
+				}
+
+				logger.info(getTaskName() + ": Processing protinfo batch " + (batch + 1) + "/" + totalBatches + " ("
+						+ batchProteinIds.length + " proteins)");
+
+				HashMap<String, UnipProInfo> batchResult = UnipeptRequester.protinfo(batchProteinIds);
+
+				if (batchResult != null && !batchResult.isEmpty()) {
+					// Save batch result to temp file
+					if (parentTask.saveProtinfoBatchToTemp(batchResult, batchTempFile)) {
+						proteinInfoMap.putAll(batchResult);
+						completedBatches++;
+						logger.info(getTaskName() + ": Protinfo batch " + (batch + 1) + " returned "
+								+ batchResult.size() + " protein infos and saved to temp file");
+					} else {
+						logger.warn(getTaskName() + ": Failed to save temp file for batch " + (batch + 1)
+								+ ", but adding results to map");
+						proteinInfoMap.putAll(batchResult);
+						completedBatches++;
+					}
+				} else {
+					logger.warn(getTaskName() + ": Protinfo batch " + (batch + 1) + " returned no protein infos");
+					// Create empty temp file to mark this batch as completed
+					try {
+						batchTempFile.createNewFile();
+						completedBatches++;
+					} catch (Exception e) {
+						logger.warn(getTaskName() + ": Failed to create empty temp file for batch " + (batch + 1));
+					}
+				}
+
+				// Update progress for protinfo phase (55-95% of total protein inference)
+				int processedBatches = completedBatches + skippedBatches;
+				double protinfoProgress = (double) processedBatches / totalBatches * 0.4; // 40% of protein inference
+				updateProgress(0.55 + protinfoProgress, 1.0); // Start from 55%, add protinfo progress
+				updateMessage("protinfo: " + processedBatches + "/" + totalBatches + " batches completed");
+
+				// Add a small delay between batches to be respectful to the API
+				if (batch < totalBatches - 1) {
+					try {
+						Thread.sleep(1000); // 1 second delay between batches
+					} catch (InterruptedException e) {
+						logger.warn(getTaskName() + ": Interrupted during protinfo batch processing");
+						Thread.currentThread().interrupt();
+						break;
+					}
+				}
+			}
+
+			// Note: Don't clean up temp files here - keep them for debugging until the
+			// entire workflow completes
+			// Temp files are preserved for user inspection and debugging
+			logger.info(getTaskName() + ": Protinfo processing complete, temp files preserved for user inspection");
+
+			if (proteinInfoMap.isEmpty()) {
+				logger.warn(getTaskName()
+						+ ": No protein information returned from Unipept protinfo API after processing all batches");
+			return new HashMap<String, UnipProInfo>();
+		}
+		
+			logger.info(getTaskName() + ": Successfully retrieved information for " + proteinInfoMap.size()
+					+ " proteins from Unipept protinfo API across " + totalBatches + " batches " + "(completed: "
+					+ completedBatches + ", skipped: " + skippedBatches + ")");
+
+			HashMap<String, HashSet<String>> sepcies2PeptideMap = new HashMap<String, HashSet<String>>();
+			HashSet<String> tempPepSet2 = new HashSet<String>();
+			for (String key : peptideToProteins.keySet()) {
+				boolean use = false;
+				if (pept2protMap.containsKey(key)) {
+					UnipProResult proResult = pept2protMap.get(key);
+					String[] proIds = proResult.getUniprotIds();
+					for (String proId : proIds) {
+						if (proteinInfoMap.containsKey(proId)) {
+							UnipProInfo proInfo = proteinInfoMap.get(proId);
+							int taxId = proInfo.getTaxId();
+							if (sepcies2PeptideMap.containsKey(String.valueOf(taxId))) {
+								sepcies2PeptideMap.get(String.valueOf(taxId)).add(key);
+							} else {
+								HashSet<String> pepSet = new HashSet<String>();
+								pepSet.add(key);
+								sepcies2PeptideMap.put(String.valueOf(taxId), pepSet);
+							}
+							use = true;
+						}
+					}
+				}
+				if (use) {
+					tempPepSet2.add(key);
+				}
+			}
+
+			File razorSpeciesFile = new File(parentTask.combinedFile, "razorSpecies.tsv");
+			HashSet<String> speciesSet = parentTask.applyOccamsRazor(sepcies2PeptideMap, tempPepSet2, 0.99,
+					razorSpeciesFile);
+			logger.info(getTaskName() + ": Species-level filtering selected " + speciesSet.size() + " species");
+
+			tempPepSet2 = new HashSet<String>();
+			HashMap<String, HashSet<String>> protein2PeptideMap = new HashMap<String, HashSet<String>>();
+			for (String key : peptideToProteins.keySet()) {
+				boolean use = false;
+				if (pept2protMap.containsKey(key)) {
+					UnipProResult proResult = pept2protMap.get(key);
+					String[] proIds = proResult.getUniprotIds();
+					for (String proId : proIds) {
+						if (proteinInfoMap.containsKey(proId)) {
+							UnipProInfo proInfo = proteinInfoMap.get(proId);
+							int taxId = proInfo.getTaxId();
+							if (speciesSet.contains(String.valueOf(taxId))) {
+								if (protein2PeptideMap.containsKey(proId)) {
+									protein2PeptideMap.get(proId).add(key);
+								} else {
+									HashSet<String> pepSet = new HashSet<String>();
+									pepSet.add(key);
+									protein2PeptideMap.put(proId, pepSet);
+								}
+								use = true;
+							}
+						}
+					}
+				}
+				if (use) {
+					tempPepSet2.add(key);
+				}
+			}
+
+			// Step 6: Apply protein-level Occam's razor on Uniprot proteins with ranking
+			// file output
+			File razorProteinFile = new File(parentTask.combinedFile, "razorProteins.tsv");
+			HashSet<String> finalProteinSet = parentTask.applyOccamsRazor(protein2PeptideMap, tempPepSet2, 0.99,
+					razorProteinFile);
+			logger.info(getTaskName() + ": Protein-level filtering selected " + finalProteinSet.size()
+					+ " Uniprot proteins");
+
+			// Step 11: Update peptide protein mappings with final protein names
+			parentTask.updatePeptideProteinMappings(quanPeps, finalProteinSet);
+
+			// Step 12: Build final protein info map with only filtered proteins
+			HashMap<String, UnipProInfo> finalProteinInfoMap = new HashMap<String, UnipProInfo>();
+			for (String protein : finalProteinSet) {
+				UnipProInfo info = proteinInfoMap.get(protein);
+				if (info != null) {
+					finalProteinInfoMap.put(protein, info);
+				}
+			}
+
+			for (MetaPeptide peptide : peptides) {
+				String seq = peptide.getSequence();
+				if (pept2protMap.containsKey(seq)) {
+					ArrayList<String> prolist = new ArrayList<String>();
+					UnipProResult proResult = pept2protMap.get(seq);
+					String[] proIds = proResult.getUniprotIds();
+					for (String proId : proIds) {
+						if (finalProteinInfoMap.containsKey(proId)) {
+							prolist.add(proId);
+						}
+					}
+
+					if (prolist.size() > 0) {
+						String[] pros = prolist.toArray(String[]::new);
+						peptide.setProteins(pros);
+					}
+				}
+			}
+
+			logger.info(getTaskName() + ": Protein inference complete - returning " + finalProteinInfoMap.size()
+					+ " filtered proteins with taxonomic information");
+
+			return finalProteinInfoMap;
+		}
+		
+
+		/**
+		 * Refines genomes based on peptide intensity and FDR calculation. Uses default
+		 * decoy symbol (PFindResultReader.REV). Reverser proteins are also included to
+		 * calculate the FDR of genomes.
+		 * 
+		 * USED BY: - DDAMagPfindTask: Line 1330 (genome scoring for protein inference)
+		 * - DDAMagSageTask: Line 1237 (genome scoring for protein inference)
+		 * 
+		 * @param quanPeps Array of quantified peptides
+		 * @return Map of genome names to their FDR scores
+		 */
+		protected HashMap<String, Double> refineSpecies(MetaPeptide[] quanPeps,
+				HashMap<String, UnipProInfo> uniProInfoMap) {
+			return refineSpecies(quanPeps, uniProInfoMap, PFindResultReader.REV);
+		}
+
+		/**
+		 * Refines genomes based on peptide intensity and FDR calculation with custom
+		 * decoy symbol. Reverser proteins are also included to calculate the FDR of
+		 * genomes.
+		 * 
+		 * USED BY: - DDAMagFragPipeTask: Line 1182 (genome scoring with
+		 * FastaManager.shuffle decoy symbol)
+		 * 
+		 * @param quanPeps    Array of quantified peptides
+		 * @param decoySymble Custom decoy symbol for FDR calculation
+		 * @return Map of genome names to their FDR scores
+		 */
+		protected HashMap<String, Double> refineSpecies(MetaPeptide[] quanPeps,
+				HashMap<String, UnipProInfo> uniProInfoMap, String decoySymble) {
+
+			HashMap<String, Double> speciesIntensityMap = new HashMap<String, Double>();
+			double[] peptideIntensity = new double[quanPeps.length];
+
+			for (int i = 0; i < quanPeps.length; i++) {
+				double[] pepIntensity = quanPeps[i].getIntensity();
+				double totalIntensity = MathTool.getTotal(pepIntensity);
+				int[] idenType = quanPeps[i].getIdenType();
+				int idenCount = 0;
+				for (int j = 0; j < idenType.length; j++) {
+					if (idenType[j] == 0) {
+						idenCount++;
+					}
+				}
+
+				if (totalIntensity == 0 || idenCount == 0) {
+					continue;
+				}
+
+				double[] indiPEP = quanPeps[i].getIndividualPEP();
+				for (int j = 0; j < pepIntensity.length; j++) {
+					if (idenType[j] == 0) {
+						if (indiPEP[j] == 0) {
+							peptideIntensity[i] += pepIntensity[j] * 1.0E7;
+						} else {
+							peptideIntensity[i] += pepIntensity[j] / indiPEP[j];
+						}
+					}
+				}
+
+				String[] proteins = quanPeps[i].getProteins();
+				for (int j = 0; j < proteins.length; j++) {
+					if (uniProInfoMap.containsKey(proteins[j])) {
+						String species = String.valueOf(uniProInfoMap.get(proteins[j]).getTaxId());
+						if (speciesIntensityMap.containsKey(species)) {
+							speciesIntensityMap.put(species, speciesIntensityMap.get(species) + peptideIntensity[i]);
+						} else {
+							speciesIntensityMap.put(species, peptideIntensity[i]);
+						}
+					} else if (proteins[j].startsWith(decoySymble)) {
+						if (speciesIntensityMap.containsKey(proteins[j])) {
+							speciesIntensityMap.put(proteins[j],
+									speciesIntensityMap.get(proteins[j]) + peptideIntensity[i]);
+						} else {
+							speciesIntensityMap.put(proteins[j], peptideIntensity[i]);
+						}
+					}
+				}
+			}
+
+			LOGGER.info(getTaskName() + ": species before filtering: " + speciesIntensityMap.size());
+
+			HashMap<String, Double> razorSpeciesIntenMap = new HashMap<String, Double>();
+			for (int i = 0; i < quanPeps.length; i++) {
+				if (peptideIntensity[i] > 0) {
+					String[] proteins = quanPeps[i].getProteins();
+					String razorSpecies = "";
+					double razorSpeciesIntensity = 0;
+					boolean use = false;
+					for (int j = 0; j < proteins.length; j++) {
+						if (uniProInfoMap.containsKey(proteins[j])) {
+							String species = String.valueOf(uniProInfoMap.get(proteins[j]).getTaxId());
+							if (speciesIntensityMap.containsKey(species)) {
+								double speciesIntensity = speciesIntensityMap.get(species);
+								if (speciesIntensity > razorSpeciesIntensity) {
+									razorSpecies = species;
+									razorSpeciesIntensity = speciesIntensity;
+								}
+								use = true;
+							}
+						} else if (proteins[j].startsWith(decoySymble)) {
+							if (speciesIntensityMap.containsKey(proteins[j])) {
+								double speciesIntensity = speciesIntensityMap.get(proteins[j]);
+								if (speciesIntensity > razorSpeciesIntensity) {
+									razorSpecies = proteins[j];
+									razorSpeciesIntensity = speciesIntensity;
+								}
+							}
+							use = true;
+						}
+					}
+
+					if (use) {
+						razorSpeciesIntenMap.put(razorSpecies, 0.0);
+					}
+				}
+			}
+
+			LOGGER.info(getTaskName() + ": razor species before filtering: " + razorSpeciesIntenMap.size());
+
+			for (int i = 0; i < quanPeps.length; i++) {
+				if (peptideIntensity[i] > 0) {
+					String[] proteins = quanPeps[i].getProteins();
+
+					int count = 0;
+					for (int j = 0; j < proteins.length; j++) {
+						if (uniProInfoMap.containsKey(proteins[j])) {
+							String species = String.valueOf(uniProInfoMap.get(proteins[j]).getTaxId());
+							if (razorSpeciesIntenMap.containsKey(species)) {
+								count++;
+							}
+						} else if (proteins[j].startsWith(decoySymble)) {
+							if (razorSpeciesIntenMap.containsKey(proteins[j])) {
+								count++;
+							}
+						}
+					}
+
+					if (count > 0) {
+						for (int j = 0; j < proteins.length; j++) {
+							if (uniProInfoMap.containsKey(proteins[j])) {
+								String species = String.valueOf(uniProInfoMap.get(proteins[j]).getTaxId());
+								if (razorSpeciesIntenMap.containsKey(species)) {
+									razorSpeciesIntenMap.put(species,
+											razorSpeciesIntenMap.get(species) + peptideIntensity[i]);
+								}
+							} else if (proteins[j].startsWith(decoySymble)) {
+								if (razorSpeciesIntenMap.containsKey(proteins[j])) {
+									razorSpeciesIntenMap.put(proteins[j],
+											razorSpeciesIntenMap.get(proteins[j]) + peptideIntensity[i]);
+								}
+							}
+						}
+					}
+				}
+			}
+
+			List<Map.Entry<String, Double>> sortedRazorSpeciesList = razorSpeciesIntenMap.entrySet().stream()
+					.sorted(Map.Entry.comparingByValue(Collections.reverseOrder())).collect(Collectors.toList());
+			String[] razorSpecies = sortedRazorSpeciesList.stream().map(Map.Entry::getKey).toArray(String[]::new);
+
+			ArrayList<Double> revLogIntenList = new ArrayList<Double>();
+			for (int i = 0; i < razorSpecies.length; i++) {
+				if (razorSpecies[i].startsWith(decoySymble)) {
+					double intensity = razorSpeciesIntenMap.get(razorSpecies[i]);
+					if (intensity > 0) {
+						revLogIntenList.add(Math.log10(intensity));
+					}
+				}
+			}
+
+			LOGGER.info(getTaskName() + ": decoy species count: " + revLogIntenList.size());
+
+			HashMap<String, Double> genomeScoreMap = new HashMap<String, Double>();
+
+			if (revLogIntenList.size() == 0) {
+				LOGGER.info(getTaskName()
+						+ ": no decoy genome were found, the p-Value for the genome identifications will be set as 0");
+
+				for (int i = 0; i < razorSpecies.length; i++) {
+					double intensity = razorSpeciesIntenMap.get(razorSpecies[i]);
+					if (intensity == 0) {
+						break;
+					}
+					genomeScoreMap.put(razorSpecies[i], intensity);
+				}
+			} else {
+				TTest tTest = new TTest();
+				double[] revLogIntensities = new double[revLogIntenList.size()];
+				for (int i = 2; i < revLogIntenList.size(); i++) {
+					revLogIntensities = new double[i];
+					for (int j = 0; j < revLogIntensities.length; j++) {
+						revLogIntensities[j] = revLogIntenList.get(j);
+					}
+
+					double pValue = tTest.tTest(revLogIntensities[0], revLogIntensities);
+					if (pValue < 0.01) {
+						break;
+					}
+				}
+				LOGGER.info(getTaskName() + ": refined decoy genome:" + revLogIntensities.length);
+				LOGGER.info(Arrays.toString(revLogIntensities));
+
+				if (revLogIntensities.length == 0) {
+					LOGGER.info(getTaskName() + ": the number of decoy genome was not sufficient for the t-test, "
+							+ "the p-Value for the genome identifications will be set as 0");
+					for (int i = 0; i < razorSpecies.length; i++) {
+						double intensity = razorSpeciesIntenMap.get(razorSpecies[i]);
+						if (razorSpecies[i].startsWith(decoySymble) || intensity == 0) {
+							break;
+						}
+						genomeScoreMap.put(razorSpecies[i], 0.0);
+					}
+				} else if (revLogIntensities.length < 6) {
+					double[] extended = new double[6];
+					for (int i = 0; i < extended.length; i++) {
+						extended[i] = revLogIntensities[i % revLogIntensities.length];
+					}
+
+					LOGGER.info(getTaskName() + ": decoy genome used for scoring: " + extended.length);
+
+					for (int i = 0; i < razorSpecies.length; i++) {
+						double intensity = razorSpeciesIntenMap.get(razorSpecies[i]);
+
+						if (razorSpecies[i].startsWith(decoySymble) || intensity == 0) {
+							break;
+						}
+
+						double pvalue = tTest.tTest(Math.log10(intensity), extended);
+						LOGGER.info(getTaskName() + ": pvalue for genome " + razorSpecies[i] + ": " + pvalue);
+
+						if (pvalue < 0.01) {
+							genomeScoreMap.put(razorSpecies[i], pvalue);
+						} else {
+//							break;
+						}
+					}
+				} else {
+					LOGGER.info(getTaskName() + ": decoy genome used for scoring: " + revLogIntensities.length);
+
+					for (int i = 0; i < razorSpecies.length; i++) {
+						double intensity = razorSpeciesIntenMap.get(razorSpecies[i]);
+
+						if (razorSpecies[i].startsWith(decoySymble) || intensity == 0) {
+							break;
+						}
+
+						double pvalue = tTest.tTest(Math.log10(intensity), revLogIntensities);
+						LOGGER.info(getTaskName() + ": pvalue for genome " + razorSpecies[i] + ": " + pvalue);
+
+						if (pvalue < 0.01) {
+							genomeScoreMap.put(razorSpecies[i], pvalue);
+						} else {
+//							break;
+						}
+					}
+				}
+			}
+
+			LOGGER.info(getTaskName() + ": species after filtering: " + genomeScoreMap.size());
+
+			return genomeScoreMap;
+		}
+
+		/**
+		 * Refines proteins using razor protein selection with default decoy symbol.
+		 * Selects the best protein for each peptide based on genome scores and
+		 * intensity.
+		 * 
+		 * USED BY: - DDAMagPfindTask: Line 1332 (razor protein selection for protein
+		 * inference) - DDAMagSageTask: Line 1238 (razor protein selection for protein
+		 * inference)
+		 * 
+		 * @param quanPeps       Array of quantified peptides
+		 * @param genomeScoreMap Map of genome names to their FDR scores
+		 * @return Array of selected razor proteins (one per peptide)
+		 */
+		protected String[] refineProteins(MetaPeptide[] quanPeps, HashMap<String, Double> genomeScoreMap,
+				HashMap<String, UnipProInfo> uniProInfoMap) {
+			return refineProteins(quanPeps, genomeScoreMap, uniProInfoMap, PFindResultReader.REV);
+		}
+
+		/**
+		 * Refines proteins using razor protein selection with custom decoy symbol.
+		 * Selects the best protein for each peptide based on genome scores and
+		 * intensity.
+		 * 
+		 * USED BY: - DDAMagFragPipeTask: Line 1184 (razor protein selection with
+		 * FastaManager.shuffle decoy symbol)
+		 * 
+		 * @param quanPeps       Array of quantified peptides
+		 * @param genomeScoreMap Map of genome names to their FDR scores
+		 * @param decoySymble    Custom decoy symbol for protein filtering
+		 * @return Array of selected razor proteins (one per peptide)
+		 */
+		protected String[] refineProteins(MetaPeptide[] quanPeps, HashMap<String, Double> speciesScoreMap,
+				HashMap<String, UnipProInfo> uniProInfoMap, String decoySymble) {
+
+			HashMap<String, Double> proteinIntensityMap = new HashMap<String, Double>();
+			for (int i = 0; i < quanPeps.length; i++) {
+				double[] pepIntensity = quanPeps[i].getIntensity();
+				String[] proteins = quanPeps[i].getProteins();
+
+				int count = 0;
+				for (int j = 0; j < proteins.length; j++) {
+					if (!proteins[j].startsWith(decoySymble)) {
+						if (uniProInfoMap.containsKey(proteins[j])) {
+							String species = String.valueOf(uniProInfoMap.get(proteins[j]).getTaxId());
+							if (speciesScoreMap.containsKey(species)) {
+								count++;
+							}
+        } else {
+							count++;
+						}
+					}
+				}
+
+				if (count > 0) {
+					double intensity = MathTool.getTotal(pepIntensity) / (double) count;
+					for (int j = 0; j < proteins.length; j++) {
+						if (!proteins[j].startsWith(decoySymble)) {
+							if (uniProInfoMap.containsKey(proteins[j])) {
+								String species = String.valueOf(uniProInfoMap.get(proteins[j]).getTaxId());
+								if (speciesScoreMap.containsKey(species)) {
+									if (proteinIntensityMap.containsKey(proteins[j])) {
+										proteinIntensityMap.put(proteins[j],
+												proteinIntensityMap.get(proteins[j]) + intensity);
+            } else {
+										proteinIntensityMap.put(proteins[j], intensity);
+									}
+								}
+							} else {
+								if (proteinIntensityMap.containsKey(proteins[j])) {
+									proteinIntensityMap.put(proteins[j],
+											proteinIntensityMap.get(proteins[j]) + intensity);
+								} else {
+									proteinIntensityMap.put(proteins[j], intensity);
+								}
+							}
+						}
+					}
+				}
+			}
+
+			String[] razorProteins = new String[quanPeps.length];
+
+			for (int i = 0; i < quanPeps.length; i++) {
+				String[] proteins = quanPeps[i].getProteins();
+				double genomeScore = Double.MAX_VALUE;
+				double proteinIntensity = 0;
+
+				for (int j = 0; j < proteins.length; j++) {
+
+					if (!proteins[j].startsWith(decoySymble)) {
+						if (uniProInfoMap.containsKey(proteins[j])) {
+							String species = String.valueOf(uniProInfoMap.get(proteins[j]).getTaxId());
+							if (speciesScoreMap.containsKey(species)) {
+								if (speciesScoreMap.get(species) < genomeScore) {
+									genomeScore = speciesScoreMap.get(species);
+									razorProteins[i] = proteins[j];
+									proteinIntensity = proteinIntensityMap.get(proteins[j]);
+								} else if (speciesScoreMap.get(species) == genomeScore) {
+									if (proteinIntensityMap.get(proteins[j]) > proteinIntensity) {
+										proteinIntensity = proteinIntensityMap.get(proteins[j]);
+										razorProteins[i] = proteins[j];
+									}
+								}
+							}
+						} else {
+							if (proteinIntensityMap.get(proteins[j]) > proteinIntensity) {
+								proteinIntensity = proteinIntensityMap.get(proteins[j]);
+								razorProteins[i] = proteins[j];
+							}
+						}
+					}
+				}
+			}
+
+			return razorProteins;
+		}
+
+	}
 }
-
-
-
-
-
-

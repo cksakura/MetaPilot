@@ -726,7 +726,7 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 			LOGGER.info("  Starting sample-specific database generation for {}", separateResultFolders[i].getName());
 
 			File hapGenomeFile = new File(hapFile, "hap_genomes.tsv");
-			HashSet<String> genomeSet = refineGenomes(genomeMap, pepSet.size(), psmCoverThreshold, hapGenomeFile);
+			HashSet<String> genomeSet = applyOccamsRazor(genomeMap, pepSet, psmCoverThreshold, hapGenomeFile);
 			LOGGER.info("  Refined genome set contains {} genomes", genomeSet.size());
 
 			try (PrintWriter writer = new PrintWriter(dbFile)) {
@@ -1090,7 +1090,7 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 
 		ArrayList<PFindPSM[]> psmList = new ArrayList<PFindPSM[]>();
 		HashMap<String, HashSet<String>> pepProMap = new HashMap<String, HashSet<String>>();
-
+		HashMap<String, HashSet<String>> proPepMap = new HashMap<String, HashSet<String>>();
 		for (int i = 0; i < this.separateResultFolders.length; i++) {
 			PFindPsmReader psmReader = new PFindPsmReader(new File(this.separateResultFolders[i], "pFind.spectra"));
 
@@ -1114,10 +1114,23 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 				for (int k = 0; k < proteins.length; k++) {
 					proSet.add(proteins[k]);
 				}
+
+				for (int k = 0; k < proteins.length; k++) {
+					if (proPepMap.containsKey(proteins[k])) {
+						proPepMap.get(proteins[k]).add(sequence);
+					} else {
+						HashSet<String> pSet = new HashSet<String>();
+						pSet.add(sequence);
+						proPepMap.put(proteins[k], pSet);
+					}
+				}
 			}
 
 			psmList.add(psms);
 		}
+
+		File razorProteinFile = new File(combinedFile, "razorProteins.tsv");
+		HashSet<String> proteinSet = applyOccamsRazor(proPepMap, pepProMap.keySet(), 1.0, razorProteinFile);
 
 		OpenPsmTsvWriter msmsWriter = new OpenPsmTsvWriter(msms, OpenPsmTsvWriter.pFindFormat);
 		for (int i = 0; i < psmList.size(); i++) {
@@ -1127,14 +1140,23 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 
 				if (pepProMap.containsKey(sequence)) {
 					HashSet<String> proSet = pepProMap.get(sequence);
-					String[] proteins = proSet.toArray(new String[proSet.size()]);
-					psms[j].setProteins(proteins);
+					ArrayList<String> proList = new ArrayList<String>();
+					for (String pro : proSet) {
+						if (proteinSet.contains(pro)) {
+							proList.add(pro);
+						}
+					}
 
-					String scanKey = psms[j].getFileName() + "_" + psms[j].getScan();
+					if (proList.size() > 0) {
+						String[] proteins = proList.toArray(new String[proList.size()]);
+						psms[j].setProteins(proteins);
 
-					if (rtMap.containsKey(scanKey)) {
-						psms[j].setRt(rtMap.get(scanKey));
-						msmsWriter.addPFindPSM(psms[j]);
+						String scanKey = psms[j].getFileName() + "_" + psms[j].getScan();
+
+						if (rtMap.containsKey(scanKey)) {
+							psms[j].setRt(rtMap.get(scanKey));
+							msmsWriter.addPFindPSM(psms[j]);
+						}
 					}
 				}
 			}
@@ -1237,9 +1259,34 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 			return false;
 		}
 
-		// Call the common method to process peptides and generate reports
-		return processPeptideListAndGenerateReports(quanPeps, psms, fileIdMap, fileList, quanMode, intensityTitle,
-				getTaskName());
+		// Create and execute the post-analysis task directly
+		DDAMagPostAnalysisTask postAnalysisTask = new DDAMagPostAnalysisTask(
+			metaPar, mrp, secondBar, quanPeps, psms, fileIdMap, fileList, quanMode, intensityTitle, getTaskName(), this);
+		
+		// Execute the task and wait for completion
+		Thread taskThread = new Thread(postAnalysisTask);
+		taskThread.setDaemon(true);
+		taskThread.start();
+		
+		try {
+			taskThread.join();
+			boolean success = postAnalysisTask.get();
+			
+			if (success) {
+				LOGGER.info(getTaskName() + ": Post-analysis completed successfully");
+				return true;
+			} else {
+				LOGGER.error(getTaskName() + ": Post-analysis task failed");
+				return false;
+			}
+		} catch (InterruptedException e) {
+			LOGGER.error(getTaskName() + ": Post-analysis task was interrupted", e);
+			Thread.currentThread().interrupt();
+			return false;
+		} catch (ExecutionException e) {
+			LOGGER.error(getTaskName() + ": Post-analysis task failed with exception", e);
+			return false;
+		}
 	}
 
 	@Override

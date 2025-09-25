@@ -78,53 +78,203 @@ public class TaxonomyDatabaseSQL extends TaxonomyDatabase {
 
 	private void buildHierarchyCache() {
 		try {
-			// Cache all main taxonomic ranks (most commonly accessed)
-			String[] mainRanks = { "superkingdom", "phylum", "class", "order", "family", "genus", "species" };
-
-			for (String rank : mainRanks) {
-				getTaxonByRankStmt.setString(1, rank);
-				ResultSet rs = getTaxonByRankStmt.executeQuery();
-
+			LOGGER.info("Loading all taxonomy data into RAM for better performance and reliability...");
+			
+			// Load ALL taxonomy data into RAM at startup
+			// This eliminates database query issues and invalid parent references
+			try (Statement stmt = connection.createStatement()) {
+				ResultSet rs = stmt.executeQuery("SELECT * FROM taxonomy ORDER BY taxon_id");
+				
+				int totalLoaded = 0;
+				int invalidParentCount = 0;
+				
 				while (rs.next()) {
 					Taxon taxon = createTaxonFromResultSet(rs);
 					hierarchyCache.put(taxon.getId(), taxon);
 					nameCache.put(taxon.getName(), taxon.getId());
 					taxonNameMapCache.put(taxon.getName() + "_" + taxon.getRankId(), taxon.getId());
-				}
-				rs.close();
-			}
-
-			LOGGER.info("Built hierarchy cache with " + hierarchyCache.size() + " main rank taxa");
-
-			// Also cache taxons that are commonly referenced as parents
-			// This helps with hierarchy traversal
-			try (Statement stmt = connection.createStatement()) {
-				// Cache taxons that are referenced as parents by many other taxons
-				ResultSet rs = stmt.executeQuery(
-					"SELECT t.* FROM taxonomy t " +
-					"WHERE t.taxon_id IN (" +
-					"  SELECT parent FROM taxonomy " +
-					"  WHERE parent IS NOT NULL " +
-					"  GROUP BY parent " +
-					"  HAVING COUNT(*) > 100" +
-					")"
-				);
-				
-				int parentCacheCount = 0;
-				while (rs.next()) {
-					Taxon taxon = createTaxonFromResultSet(rs);
-					if (!hierarchyCache.containsKey(taxon.getId())) {
-						hierarchyCache.put(taxon.getId(), taxon);
-						parentCacheCount++;
+					totalLoaded++;
+					
+					// Track invalid parent references for debugging
+					// Note: We have multiple root nodes: 10239 (viruses), 131567 (cellular organisms), unclassified, other entries
+					if (taxon.getParentId() == -1) { // -1 means no parent (root node)
+						LOGGER.debug("Root taxon: " + taxon.getId() + " (" + taxon.getName() + ")");
+					} else if (taxon.getParentId() == 0) { // 0 indicates a data corruption issue
+						invalidParentCount++;
+						if (invalidParentCount <= 10) { // Log first 10 examples
+							LOGGER.debug("Taxon " + taxon.getId() + " (" + taxon.getName() + ") has corrupted parent ID: 0 (should be -1 for no parent or valid parent ID)");
+						}
 					}
 				}
-				LOGGER.info("Added " + parentCacheCount + " frequently referenced parent taxons to hierarchy cache");
+				
+				LOGGER.info("Loaded " + totalLoaded + " taxa into RAM");
+				if (invalidParentCount > 0) {
+					LOGGER.warn("Found " + invalidParentCount + " taxa with invalid parent IDs (parent <= 0)");
+				}
 			}
 
-			LOGGER.info("Total hierarchy cache size: " + hierarchyCache.size() + " taxa");
+			LOGGER.info("Total taxonomy cache size: " + hierarchyCache.size() + " taxa");
+			
+			// Identify and log all root nodes
+			identifyRootNodes();
+			
+			// Check what rank names are used in the database
+			checkRankNamesInDatabase();
+			
+			// Validate taxonomy data integrity
+			validateTaxonomyData();
 
 		} catch (SQLException e) {
 			LOGGER.error("Error building hierarchy cache", e);
+		}
+	}
+	
+	/**
+	 * Identify and log all root nodes in the taxonomy
+	 */
+	private void identifyRootNodes() {
+		LOGGER.info("Identifying root nodes in taxonomy...");
+		
+		int rootCount = 0;
+		for (Taxon taxon : hierarchyCache.values()) {
+			if (taxon.getParentId() == -1) {
+				rootCount++;
+				LOGGER.info("  Root " + rootCount + ": ID=" + taxon.getId() + ", Name=" + taxon.getName());
+			}
+		}
+		
+		LOGGER.info("Found " + rootCount + " root nodes in taxonomy");
+	}
+	
+	/**
+	 * Map unrecognized rank names to appropriate rank IDs
+	 */
+	private int mapUnrecognizedRank(String rankStr) {
+		if (rankStr == null) return -1;
+		
+		String rank = rankStr.toLowerCase().trim();
+		
+		// Map common unrecognized ranks to known ranks
+		switch (rank) {
+		case "clade":
+			// Clade is a general term - try to map based on context
+			// For now, treat as intermediate rank (continue traversal)
+			return -1;
+		case "no rank":
+		case "unclassified":
+			// These should continue traversal but not be stored
+			return -1;
+		default:
+			// For other unrecognized ranks, return -1 (intermediate rank)
+			return -1;
+		}
+	}
+	
+	/**
+	 * Check what rank names are actually used in the database
+	 */
+	private void checkRankNamesInDatabase() {
+		LOGGER.info("Checking rank names used in database...");
+		
+		// Check what rank names exist in the database
+		HashMap<String, Integer> rankNameCounts = new HashMap<String, Integer>();
+		for (Taxon taxon : hierarchyCache.values()) {
+			String rankName = taxon.getRank();
+			if (rankName != null) {
+				rankNameCounts.put(rankName, rankNameCounts.getOrDefault(rankName, 0) + 1);
+			}
+		}
+		
+		// Log the most common rank names
+		LOGGER.info("Most common rank names in database:");
+		rankNameCounts.entrySet().stream()
+			.sorted((e1, e2) -> e2.getValue().compareTo(e1.getValue()))
+			.limit(15)
+			.forEach(entry -> LOGGER.info("  " + entry.getKey() + ": " + entry.getValue() + " taxa"));
+		
+		// Check specifically for domain vs superkingdom
+		if (rankNameCounts.containsKey("domain")) {
+			LOGGER.info("Database uses 'domain' instead of 'superkingdom' - " + rankNameCounts.get("domain") + " taxa");
+		}
+		if (rankNameCounts.containsKey("superkingdom")) {
+			LOGGER.info("Database uses 'superkingdom' - " + rankNameCounts.get("superkingdom") + " taxa");
+		}
+		
+		// Check for unrecognized ranks
+		HashMap<String, Integer> unrecognizedRanks = new HashMap<String, Integer>();
+		for (String rankName : rankNameCounts.keySet()) {
+			if (!TaxonomyRanks.getRankIdMap().containsKey(rankName)) {
+				unrecognizedRanks.put(rankName, rankNameCounts.get(rankName));
+			}
+		}
+		
+		if (!unrecognizedRanks.isEmpty()) {
+			LOGGER.warn("Found " + unrecognizedRanks.size() + " unrecognized rank names:");
+			unrecognizedRanks.entrySet().stream()
+				.sorted((e1, e2) -> e2.getValue().compareTo(e1.getValue()))
+				.forEach(entry -> LOGGER.warn("  " + entry.getKey() + ": " + entry.getValue() + " taxa"));
+		}
+	}
+	
+	/**
+	 * Validate taxonomy data integrity and report issues
+	 */
+	private void validateTaxonomyData() {
+		LOGGER.info("Validating taxonomy data integrity...");
+		
+		int totalTaxa = hierarchyCache.size();
+		int taxaWithInvalidParents = 0;
+		int taxaWithValidLineage = 0;
+		int taxaWithBrokenLineage = 0;
+		
+		// Sample some common taxa for validation
+		int[] testTaxa = {9606, 10090, 10116, 3702, 559292}; // Human, Mouse, Rat, Arabidopsis, S. cerevisiae
+		
+		for (int testTaxonId : testTaxa) {
+			Taxon taxon = hierarchyCache.get(testTaxonId);
+			if (taxon != null) {
+				LOGGER.info("Testing lineage for taxon " + testTaxonId + " (" + taxon.getName() + ")");
+				LOGGER.info("  Taxon rank ID: " + taxon.getRankId() + ", Rank name: " + taxon.getRank() + ", Parent ID: " + taxon.getParentId());
+				int[] lineage = getMainParentTaxonIds(taxon);
+				LOGGER.info("  Lineage array: " + java.util.Arrays.toString(lineage));
+				
+				int validIds = 0;
+				int missingIds = 0;
+				for (int id : lineage) {
+					if (id > 0) {
+						validIds++;
+					} else if (id == -1) {
+						missingIds++;
+					}
+				}
+				if (validIds > 0) {
+					taxaWithValidLineage++;
+					LOGGER.info("  Result: " + validIds + " valid lineage entries, " + missingIds + " missing ranks");
+				} else {
+					taxaWithBrokenLineage++;
+					LOGGER.warn("  Result: BROKEN lineage (no valid entries found) - all entries are -1");
+				}
+			} else {
+				LOGGER.warn("Test taxon " + testTaxonId + " not found in cache");
+			}
+		}
+		
+		// Count taxa with invalid parents
+		for (Taxon taxon : hierarchyCache.values()) {
+			if (taxon.getParentId() == 0) { // 0 indicates data corruption
+				taxaWithInvalidParents++;
+			}
+			// Note: -1 is valid for multiple root nodes (viruses, cellular organisms, unclassified, other)
+		}
+		
+		LOGGER.info("Taxonomy validation results:");
+		LOGGER.info("  Total taxa: " + totalTaxa);
+		LOGGER.info("  Taxa with invalid parents: " + taxaWithInvalidParents);
+		LOGGER.info("  Test taxa with valid lineage: " + taxaWithValidLineage);
+		LOGGER.info("  Test taxa with broken lineage: " + taxaWithBrokenLineage);
+		
+		if (taxaWithBrokenLineage > 0) {
+			LOGGER.warn("Some taxa have broken lineages - this may cause issues in taxonomic analysis");
 		}
 	}
 
@@ -133,12 +283,29 @@ public class TaxonomyDatabaseSQL extends TaxonomyDatabase {
 		String name = rs.getString("scientific_name");
 		String rankStr = rs.getString("rank");
 		String lineage = rs.getString("lineage");
-		int parent = rs.getInt("parent");
+		
+		// Handle NULL parent values properly - use getObject() to detect NULL
+		Object parentObj = rs.getObject("parent");
+		int parent = -1; // Default for no parent
+		if (parentObj != null) {
+			parent = ((Number) parentObj).intValue();
+		}
 
 		// Parse rank
 		int rank = -1;
-		if (rankStr != null && TaxonomyRanks.getRankIdMap().containsKey(rankStr)) {
-			rank = TaxonomyRanks.getRankIdMap().get(rankStr);
+		if (rankStr != null && !rankStr.trim().isEmpty()) {
+			if (TaxonomyRanks.getRankIdMap().containsKey(rankStr)) {
+				rank = TaxonomyRanks.getRankIdMap().get(rankStr);
+			} else {
+				// Handle unrecognized rank names by mapping them to appropriate IDs
+				rank = mapUnrecognizedRank(rankStr);
+				if (rank == -1) {
+					// Log unrecognized ranks for debugging
+					if (taxonId == 9606 || taxonId == 10090 || taxonId == 10116 || taxonId == 3702 || taxonId == 559292) {
+						LOGGER.debug("Unrecognized rank '" + rankStr + "' for taxon " + taxonId + " (" + name + ")");
+					}
+				}
+			}
 		}
 
 		// Parse root type from lineage
@@ -164,56 +331,20 @@ public class TaxonomyDatabaseSQL extends TaxonomyDatabase {
 
 	@Override
 	public Taxon getTaxonFromId(int taxonId) {
-		// Check hierarchy cache first (fastest)
+		// Since all data is now loaded into RAM, check cache directly
 		if (hierarchyCache.containsKey(taxonId)) {
-			LOGGER.debug("Found taxon ID " + taxonId + " in hierarchy cache");
+			LOGGER.debug("Found taxon ID " + taxonId + " in RAM cache");
 			return hierarchyCache.get(taxonId);
 		}
 
-		// Check LRU cache
-		synchronized (lruCache) {
-			if (lruCache.containsKey(taxonId)) {
-				LOGGER.debug("Found taxon ID " + taxonId + " in LRU cache");
-				return lruCache.get(taxonId);
-			}
-		}
-
-		// Query database
-		try {
-			LOGGER.debug("Querying database for taxon ID: " + taxonId);
-			getTaxonStmt.setInt(1, taxonId);
-			ResultSet rs = getTaxonStmt.executeQuery();
-
-			if (rs.next()) {
-				Taxon taxon = createTaxonFromResultSet(rs);
-				LOGGER.debug("Found taxon ID " + taxonId + " in database: " + taxon.getName());
-
-				// Add to LRU cache
-				synchronized (lruCache) {
-					lruCache.put(taxonId, taxon);
-				}
-
-				// Update name cache
-				nameCache.put(taxon.getName(), taxonId);
-				taxonNameMapCache.put(taxon.getName() + "_" + taxon.getRankId(), taxonId);
-
-				rs.close();
-				return taxon;
-			} else {
-				LOGGER.warn("No taxon found in database for ID: " + taxonId);
-			}
-			rs.close();
-
-		} catch (SQLException e) {
-			LOGGER.error("Error querying taxon by ID: " + taxonId, e);
-		}
-
+		// Taxon not found in cache (shouldn't happen if database is complete)
+		LOGGER.warn("No taxon found in RAM cache for ID: " + taxonId + " (database may be incomplete)");
 		return null;
 	}
 
 	@Override
 	public Taxon getTaxonFromName(String name_rankId) {
-		// Check cache first
+		// Since all data is now loaded into RAM, check cache directly
 		if (taxonNameMapCache.containsKey(name_rankId)) {
 			return getTaxonFromId(taxonNameMapCache.get(name_rankId));
 		}
@@ -231,38 +362,14 @@ public class TaxonomyDatabaseSQL extends TaxonomyDatabase {
 
 	@Override
 	public Taxon getTaxonFromName(String name, int rankId) {
-		// Check cache first
+		// Since all data is now loaded into RAM, check cache directly
 		String key = name + "_" + rankId;
 		if (taxonNameMapCache.containsKey(key)) {
 			return getTaxonFromId(taxonNameMapCache.get(key));
 		}
 
-		// Query database
-		try {
-			String rankStr = TaxonomyRanks.getRankFromId(rankId).toString().toLowerCase();
-			getTaxonByNameStmt.setString(1, name);
-			getTaxonByNameStmt.setString(2, rankStr);
-			ResultSet rs = getTaxonByNameStmt.executeQuery();
-
-			if (rs.next()) {
-				Taxon taxon = createTaxonFromResultSet(rs);
-
-				// Add to caches
-				synchronized (lruCache) {
-					lruCache.put(taxon.getId(), taxon);
-				}
-				nameCache.put(name, taxon.getId());
-				taxonNameMapCache.put(key, taxon.getId());
-
-				rs.close();
-				return taxon;
-			}
-			rs.close();
-
-		} catch (SQLException e) {
-			LOGGER.error("Error querying taxon by name: " + name, e);
-		}
-
+		// Taxon not found in cache (shouldn't happen if database is complete)
+		LOGGER.debug("No taxon found in RAM cache for name: " + name + " with rank ID: " + rankId);
 		return null;
 	}
 
@@ -372,46 +479,57 @@ public class TaxonomyDatabaseSQL extends TaxonomyDatabase {
 			LOGGER.debug("Traversal depth " + traversalDepth + ": Processing taxon " + taxon.getId() + 
 						" (" + taxon.getName() + ") with rank ID " + rankid);
 			
+			// Map rank IDs to array positions based on TaxonomyRanks enum
+			// Main ranks: Domain(0), Kingdom(1), Phylum(4), Class(7), Order(11), Family(16), Genus(20), Species(23)
 			switch (rankid) {
-			case -1:
+			case -1: // Root or unrecognized rank - continue traversal
+				LOGGER.debug("Root or unrecognized rank " + rankid + " for taxon " + taxon.getId() + ", continuing traversal");
 				break;
-			case 0:
+			case 0: // Domain
 				taxonomy[0] = taxon.getId();
 				break;
-			case 1:
+			case 1: // Kingdom
 				taxonomy[1] = taxon.getId();
 				break;
-			case 4:
+			case 4: // Phylum
 				taxonomy[2] = taxon.getId();
 				break;
-			case 7:
+			case 7: // Class
 				taxonomy[3] = taxon.getId();
 				break;
-			case 11:
+			case 11: // Order
 				taxonomy[4] = taxon.getId();
 				break;
-			case 16:
+			case 16: // Family
 				taxonomy[5] = taxon.getId();
 				break;
-			case 20:
+			case 20: // Genus
 				taxonomy[6] = taxon.getId();
 				break;
-			case 23:
+			case 23: // Species
 				taxonomy[7] = taxon.getId();
+				break;
+			default:
+				// Intermediate ranks - continue traversal but don't store
+				LOGGER.debug("Intermediate rank " + rankid + " for taxon " + taxon.getId() + ", continuing traversal");
 				break;
 			}
 			int parentId = taxon.getParentId();
 			LOGGER.debug("Looking up parent taxon ID: " + parentId + " for taxon: " + taxon.getId());
 			
-			// Check if parent is in cache first
-			boolean inHierarchyCache = hierarchyCache.containsKey(parentId);
-			boolean inLruCache = lruCache.containsKey(parentId);
-			LOGGER.debug("Parent " + parentId + " in hierarchy cache: " + inHierarchyCache + 
-						", in LRU cache: " + inLruCache);
+			// Handle root nodes (parent ID = -1) and invalid parent IDs (parent ID = 0)
+			if (parentId == -1) {
+				LOGGER.debug("Reached root taxon " + taxon.getId() + " (" + taxon.getName() + "), stopping traversal");
+				break;
+			} else if (parentId == 0) {
+				LOGGER.debug("Taxon " + taxon.getId() + " has corrupted parent ID 0, stopping traversal");
+				break;
+			}
 			
-			taxon = getTaxonFromId(parentId);
+			// Since all data is now in RAM, get taxon directly from cache
+			taxon = hierarchyCache.get(parentId);
 			if (taxon == null) {
-				LOGGER.warn("Parent taxon ID " + parentId + " not found in database, stopping hierarchy traversal at depth " + traversalDepth);
+				LOGGER.warn("Parent taxon ID " + parentId + " not found in cache, stopping hierarchy traversal at depth " + traversalDepth);
 				break;
 			}
 			traversalDepth++;
@@ -436,37 +554,24 @@ public class TaxonomyDatabaseSQL extends TaxonomyDatabase {
 	@Override
 	public String[] getTaxonArrays(Taxon taxon) {
 		String[] taxonomy = new String[8];
-		while (taxon != null) {
-			int rankid = taxon.getRankId();
-			switch (rankid) {
-			case 0:
-				taxonomy[0] = taxon.getName();
-				break;
-			case 1:
-				taxonomy[1] = taxon.getName();
-				break;
-			case 4:
-				taxonomy[2] = taxon.getName();
-				break;
-			case 7:
-				taxonomy[3] = taxon.getName();
-				break;
-			case 11:
-				taxonomy[4] = taxon.getName();
-				break;
-			case 16:
-				taxonomy[5] = taxon.getName();
-				break;
-			case 20:
-				taxonomy[6] = taxon.getName();
-				break;
-			case 23:
-				taxonomy[7] = taxon.getName();
-				break;
+		
+		// Get the lineage IDs first
+		int[] lineageIds = getMainParentTaxonIds(taxon);
+		
+		// Convert IDs to names, using empty string for missing ranks (-1)
+		for (int i = 0; i < lineageIds.length && i < taxonomy.length; i++) {
+			if (lineageIds[i] > 0) {
+				Taxon lineageTaxon = getTaxonFromId(lineageIds[i]);
+				if (lineageTaxon != null) {
+					taxonomy[i] = lineageTaxon.getName();
+				} else {
+					taxonomy[i] = ""; // Missing taxon
+				}
+			} else {
+				taxonomy[i] = ""; // Missing rank (-1)
 			}
-			int parentId = taxon.getParentId();
-			taxon = getTaxonFromId(parentId);
 		}
+		
 		return taxonomy;
 	}
 
@@ -614,6 +719,60 @@ public class TaxonomyDatabaseSQL extends TaxonomyDatabase {
 				LOGGER.info("Found " + count + " taxons with invalid parent IDs (showing first 10)");
 			}
 			
+			// Check for taxons with parent ID = 0 (invalid)
+			try (Statement stmt = connection.createStatement()) {
+				ResultSet rs = stmt.executeQuery(
+					"SELECT taxon_id, scientific_name, parent, rank " +
+					"FROM taxonomy " +
+					"WHERE parent = 0 " +
+					"LIMIT 10"
+				);
+				LOGGER.info("Sample taxons with parent ID = 0 (invalid):");
+				int count = 0;
+				while (rs.next()) {
+					count++;
+					LOGGER.info("  ID: " + rs.getInt("taxon_id") + ", Name: " + rs.getString("scientific_name") + 
+							   ", Rank: " + rs.getString("rank") + ", Parent: " + rs.getInt("parent"));
+				}
+				LOGGER.info("Found " + count + " taxons with parent ID = 0 (showing first 10)");
+			}
+			
+			// Check for taxons with parent ID = -1 (invalid)
+			try (Statement stmt = connection.createStatement()) {
+				ResultSet rs = stmt.executeQuery(
+					"SELECT taxon_id, scientific_name, parent, rank " +
+					"FROM taxonomy " +
+					"WHERE parent = -1 " +
+					"LIMIT 10"
+				);
+				LOGGER.info("Sample taxons with parent ID = -1 (invalid):");
+				int count = 0;
+				while (rs.next()) {
+					count++;
+					LOGGER.info("  ID: " + rs.getInt("taxon_id") + ", Name: " + rs.getString("scientific_name") + 
+							   ", Rank: " + rs.getString("rank") + ", Parent: " + rs.getInt("parent"));
+				}
+				LOGGER.info("Found " + count + " taxons with parent ID = -1 (showing first 10)");
+			}
+			
+			// Check parent ID distribution
+			try (Statement stmt = connection.createStatement()) {
+				ResultSet rs = stmt.executeQuery(
+					"SELECT parent, COUNT(*) as count " +
+					"FROM taxonomy " +
+					"WHERE parent IS NOT NULL " +
+					"GROUP BY parent " +
+					"ORDER BY count DESC " +
+					"LIMIT 20"
+				);
+				LOGGER.info("Top 20 parent IDs by frequency:");
+				while (rs.next()) {
+					int parentId = rs.getInt("parent");
+					int count = rs.getInt("count");
+					LOGGER.info("  Parent ID " + parentId + ": " + count + " children");
+				}
+			}
+			
 			// Check minimum and maximum taxon IDs
 			try (Statement stmt = connection.createStatement()) {
 				ResultSet rs = stmt.executeQuery("SELECT MIN(taxon_id) as min_id, MAX(taxon_id) as max_id FROM taxonomy");
@@ -639,6 +798,66 @@ public class TaxonomyDatabaseSQL extends TaxonomyDatabase {
 			getTaxonByRankStmt.close();
 		if (connection != null)
 			connection.close();
+	}
+
+	/**
+	 * Debug method to investigate specific taxon lineage issues
+	 */
+	public void debugTaxonLineage(int taxonId) {
+		LOGGER.info("=== Debugging lineage for taxon " + taxonId + " ===");
+		
+		Taxon taxon = getTaxonFromId(taxonId);
+		if (taxon == null) {
+			LOGGER.warn("Taxon " + taxonId + " not found in database");
+			return;
+		}
+		
+		LOGGER.info("Taxon " + taxonId + ": " + taxon.getName() + " (rank: " + taxon.getRankId() + ")");
+		LOGGER.info("Parent ID: " + taxon.getParentId());
+		
+		// Trace the lineage step by step
+		int depth = 0;
+		Taxon currentTaxon = taxon;
+		
+		while (currentTaxon != null && depth < 20) {
+			LOGGER.info("  Depth " + depth + ": ID=" + currentTaxon.getId() + 
+					   ", Name=" + currentTaxon.getName() + 
+					   ", Rank=" + currentTaxon.getRankId() + 
+					   ", Parent=" + currentTaxon.getParentId());
+			
+			int parentId = currentTaxon.getParentId();
+			if (parentId <= 0) {
+				LOGGER.warn("    Invalid parent ID " + parentId + " - stopping traversal");
+				break;
+			}
+			
+			currentTaxon = getTaxonFromId(parentId);
+			if (currentTaxon == null) {
+				LOGGER.warn("    Parent taxon " + parentId + " not found in database - stopping traversal");
+				break;
+			}
+			
+			depth++;
+		}
+		
+		// Now try the getMainParentTaxonIds method
+		LOGGER.info("Testing getMainParentTaxonIds method:");
+		int[] lineage = getMainParentTaxonIds(taxon);
+		LOGGER.info("Lineage array: " + java.util.Arrays.toString(lineage));
+		
+		int validCount = 0;
+		for (int i = 0; i < lineage.length; i++) {
+			if (lineage[i] > 0) {
+				validCount++;
+				Taxon lineageTaxon = getTaxonFromId(lineage[i]);
+				if (lineageTaxon != null) {
+					LOGGER.info("  Position " + i + ": ID=" + lineage[i] + ", Name=" + lineageTaxon.getName());
+				}
+			}
+		}
+		
+		LOGGER.info("Valid lineage entries: " + validCount + " out of " + lineage.length);
+		LOGGER.info("=== End lineage debug for taxon " + taxonId + " ===");
 	}
 
 	/**
