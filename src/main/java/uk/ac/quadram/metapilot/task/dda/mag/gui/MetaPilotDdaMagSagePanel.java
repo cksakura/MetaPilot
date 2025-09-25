@@ -30,26 +30,25 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.io.File;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagSageParameters;
 import uk.ac.quadram.metapilot.task.dda.mag.task.DDAMagSageTask;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagSageParameterIO;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagVersion;
+import uk.ac.quadram.metapilot.task.common.gui.AbstractWorkflowPanel;
 
 /**
  * Comprehensive JavaFX panel for DDA MAG Sage workflow configuration
  * Mirrors the functionality of MetaPilotDdaMagPfindPanel with Sage-specific parameters
  */
-public class MetaPilotDdaMagSagePanel extends VBox {
+public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSageParameters> {
     // UI Components - Database specific
     private MetaPilotIOPanelFX ioPanel;
     private MagDatabaseSettingsPanel magDatabasePanel;
     private ToggleGroup quantModeGroup;
 
     // Reusable UI Components
-    private ConsolePanel consolePanel;
     private MetadataConfigurationPanel metadataPanel;
     private IsobaricLabelingPanel isobaricPanel;
     
@@ -95,6 +94,9 @@ public class MetaPilotDdaMagSagePanel extends VBox {
     private static final Logger LOGGER = LoggerFactory.getLogger(MetaPilotDdaMagSagePanel.class);
     
     public MetaPilotDdaMagSagePanel(MagDbItem[] magDbItems) {
+        // Call parent constructor first
+        super();
+        
         System.out.println("DEBUG: MetaPilotDdaMagSagePanel() constructor started");
         try {
         // Initialize parameter IO instance
@@ -103,7 +105,7 @@ public class MetaPilotDdaMagSagePanel extends VBox {
         loadEnzymesFromIni();
             System.out.println("DEBUG: Loading MAG databases...");
             System.out.println("DEBUG: Found " + (magDbItems != null ? magDbItems.length : 0) + " MAG database items");
-        initializeUI();
+        initializeSpecificUI();
             setAvailableMagDatabases(magDbItems);
             System.out.println("DEBUG: MetaPilotDdaMagSagePanel constructor completed successfully");
         } catch (Exception e) {
@@ -113,7 +115,7 @@ public class MetaPilotDdaMagSagePanel extends VBox {
         }
     }
 
-    private void initializeUI() {
+    private void initializeSpecificUI() {
 		System.out.println("DEBUG: initializeUI() started");
 		try {
         setSpacing(10);
@@ -224,7 +226,13 @@ public class MetaPilotDdaMagSagePanel extends VBox {
 		}
 	}
 
-    private VBox createIOTab() {
+    @Override
+    protected String getWorkflowName() {
+        return "DDA MAG Sage";
+    }
+    
+    @Override
+    public VBox createIOTab() {
         VBox tabContent = new VBox(10);
         tabContent.setPadding(new Insets(10));
         ioPanel = new MetaPilotIOPanelFX();
@@ -237,7 +245,8 @@ public class MetaPilotDdaMagSagePanel extends VBox {
         return tabContent;
     }
 
-    private VBox createParametersTab() {
+    @Override
+    public VBox createParametersTab() {
         VBox tabContent = new VBox(10);
         tabContent.setPadding(new Insets(10));
         tabContent.setMinWidth(960);
@@ -664,7 +673,8 @@ public class MetaPilotDdaMagSagePanel extends VBox {
         }
     }
 
-    private void startAnalysis() {
+    @Override
+    protected void startAnalysis() {
         try {
             consolePanel.appendConsoleText("Starting MAG Sage analysis...\n");
             System.out.println("DEBUG: startAnalysis called - MAG Sage workflow");
@@ -788,7 +798,8 @@ public class MetaPilotDdaMagSagePanel extends VBox {
         }
     }
 
-    private void stopAnalysis() {
+    @Override
+    protected void stopAnalysis() {
         consolePanel.appendConsoleText("Stopping MAG Sage analysis...\n");
         System.out.println("DEBUG: stopAnalysis called");
         
@@ -801,46 +812,6 @@ public class MetaPilotDdaMagSagePanel extends VBox {
         }
     }
 
-    private void viewReport() {
-        try {
-            consolePanel.appendConsoleText("Opening report in default browser...\n");
-            
-            if (currentAnalysisParams == null) {
-                consolePanel.appendConsoleText("ERROR: No analysis parameters available. Please run analysis first.\n");
-                return;
-            }
-            
-            File reportDir = currentAnalysisParams.getReportDir();
-            if (reportDir == null || !reportDir.exists()) {
-                consolePanel.appendConsoleText("ERROR: Report directory not available or does not exist.\n");
-                consolePanel.appendConsoleText("Please ensure the analysis has completed successfully.\n");
-                return;
-            }
-            
-            File indexFile = new File(reportDir, "index.html");
-            
-            if (!indexFile.exists()) {
-                consolePanel.appendConsoleText("ERROR: Main report index.html not found in " + reportDir.getAbsolutePath() + "\n");
-                consolePanel.appendConsoleText("Please ensure the analysis has completed successfully.\n");
-                return;
-            }
-            
-            consolePanel.appendConsoleText("Opening main report: index.html\n");
-            
-            if (java.awt.Desktop.isDesktopSupported()) {
-                java.awt.Desktop.getDesktop().browse(indexFile.toURI());
-                consolePanel.appendConsoleText("✓ Report opened in default browser\n");
-            } else {
-                consolePanel.appendConsoleText("ERROR: Desktop not supported. Please open manually: " + indexFile.getAbsolutePath() + "\n");
-            }
-            
-        } catch (Exception e) {
-            String errorMsg = "ERROR: Failed to open report: " + e.getMessage();
-            consolePanel.appendConsoleText(errorMsg + "\n");
-            System.err.println("Failed to open report: " + e.getMessage());
-            e.printStackTrace();
-        }
-    }
 
     private void updateMetadataTableFromIOPanel() {
         if (ioPanel == null || metadataPanel == null) {
@@ -889,7 +860,8 @@ public class MetaPilotDdaMagSagePanel extends VBox {
         }
     }
 
-    private void updateParameterView() {
+    @Override
+    protected void updateParameterView() {
         // Update the console panel's parameter view
         if (consolePanel != null) {
             consolePanel.setParameterText(getParameterDisplay());
@@ -1186,7 +1158,8 @@ public class MetaPilotDdaMagSagePanel extends VBox {
     /**
      * Collect all parameters from the UI into a DDAMagSageParameters object
      */
-    private DDAMagSageParameters collectParametersFromUI() {
+    @Override
+    protected DDAMagSageParameters collectParametersFromUI() {
         try {
             LOGGER.info("Starting parameter collection from UI for MAG Sage workflow");
             
@@ -1442,22 +1415,14 @@ public class MetaPilotDdaMagSagePanel extends VBox {
     /**
      * Show error dialog
      */
-    private void showError(String title, String content) {
-        Platform.runLater(() -> {
-            Alert alert = new Alert(Alert.AlertType.ERROR);
-            alert.setTitle(title);
-            alert.setHeaderText(null);
-            alert.setContentText(content);
-            alert.showAndWait();
-        });
-    }
     
 
     
     /**
      * Load last used parameters and apply them to the UI
      */
-    private void loadLastUsedParameters() {
+    @Override
+    protected void loadLastUsedParameters() {
         try {
             LOGGER.info("Attempting to load last used parameters for DDA MAG Sage workflow");
             DDAMagSageParameters params = (DDAMagSageParameters) parameterIO.loadLastUsedParameters();
@@ -1495,7 +1460,8 @@ public class MetaPilotDdaMagSagePanel extends VBox {
     /**
      * Apply parameters to the UI components
      */
-    private void applyParametersToUI(DDAMagSageParameters params) {
+    @Override
+    protected void applyParametersToUI(DDAMagSageParameters params) {
         if (params == null) return;
         
         // Apply metadata to IO panel if available
@@ -1698,56 +1664,4 @@ public class MetaPilotDdaMagSagePanel extends VBox {
         }
     }
     
-	private void setupWindowCloseHandler() {
-		Platform.runLater(() -> {
-			try {
-				// Get the current scene and window
-				if (getScene() != null) {
-					javafx.stage.Window window = getScene().getWindow();
-					if (window != null) {
-						window.setOnCloseRequest(event -> {
-							try {
-								consolePanel.appendConsoleText("Saving parameters on window close...\n");
-								DDAMagSageParameters currentParams = collectParametersFromUIForSaving();
-								if (currentParams != null) {
-									boolean saved = parameterIO.saveLastUsedParameters(currentParams);
-									if (saved) {
-										consolePanel.appendConsoleText(
-												"✓ Parameters saved to config folder: last_used_mag_sage_parameters.json\n");
-										LOGGER.info("Successfully saved parameters on window close to config folder");
-									} else {
-										consolePanel.appendConsoleText(
-												"WARNING: Failed to save parameters to config folder\n");
-										LOGGER.warn("Failed to save parameters to config folder on window close");
-									}
-
-									// Also save preferences
-									boolean prefsSaved = parameterIO.savePreferences(currentParams);
-									if (prefsSaved) {
-										consolePanel.appendConsoleText("✓ Preferences saved\n");
-									} else {
-										consolePanel.appendConsoleText("WARNING: Failed to save preferences\n");
-									}
-								} else {
-									consolePanel.appendConsoleText("WARNING: No parameters to save on window close\n");
-									LOGGER.warn("No parameters to save on window close");
-								}
-							} catch (Exception e) {
-								String errorMsg = "ERROR: Failed to save parameters on window close: " + e.getMessage();
-								consolePanel.appendConsoleText(errorMsg + "\n");
-								LOGGER.error("Failed to save parameters on window close", e);
-							}
-						});
-						LOGGER.info("Window close handler set up successfully");
-					} else {
-						LOGGER.warn("Window is null, cannot set close handler");
-					}
-				} else {
-					LOGGER.warn("Scene is null, cannot set close handler");
-				}
-			} catch (Exception e) {
-				LOGGER.error("Failed to set up window close handler", e);
-			}
-		});
-	}
 }
