@@ -21,6 +21,7 @@ import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
 import uk.ac.quadram.metapilot.task.dda.igc.DDAIgcFragPipeTask;
 import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcFragPipeParameters;
 import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcFragPipeParameterIO;
+import uk.ac.quadram.metapilot.task.common.gui.AbstractWorkflowPanel;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.MetaPilotApp;
 import java.util.ArrayList;
@@ -35,7 +36,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.io.File;
 
-public class MetaPilotDdaIgcFragPipePanel extends VBox {
+public class MetaPilotDdaIgcFragPipePanel extends AbstractWorkflowPanel<DDAIgcFragPipeParameters> {
     private static final Logger LOGGER = LogManager.getLogger(MetaPilotDdaIgcFragPipePanel.class);
     
     // UI Components (similar to pFind panel)

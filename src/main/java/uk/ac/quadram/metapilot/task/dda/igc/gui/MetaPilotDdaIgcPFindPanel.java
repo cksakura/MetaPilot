@@ -14,16 +14,15 @@ import javafx.scene.paint.Color;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.util.converter.DefaultStringConverter;
-import javafx.scene.control.Alert.AlertType;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
 import uk.ac.quadram.metapilot.task.common.gui.IsobaricLabelingPanel;
 import uk.ac.quadram.metapilot.task.common.gui.DdaIgcInputOutputPanel;
-import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.MetaPilotApp;
 import uk.ac.quadram.metapilot.task.dda.igc.DDAIgcPFindTask;
 import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcPFindParameters;
 import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcPFindParameterIO;
+import uk.ac.quadram.metapilot.task.common.gui.AbstractWorkflowPanel;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -35,11 +34,10 @@ import java.util.regex.Pattern;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-public class MetaPilotDdaIgcPFindPanel extends VBox {
+public class MetaPilotDdaIgcPFindPanel extends AbstractWorkflowPanel<DDAIgcPFindParameters> {
     private static final Logger LOGGER = LogManager.getLogger(MetaPilotDdaIgcPFindPanel.class);
     // UI Components (similar to MaxQuant panel)
     private DdaIgcInputOutputPanel ioPanel;
-    private ConsolePanel consolePanel;
     private ToggleGroup quantModeGroup;
 
     // Parameter Panel Components
@@ -77,10 +75,10 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
     private Button removeMetadataColumnButton;
     private Button resetMetadataButton;
 
-    // Add parameter IO instance
-    private DDAIgcPFindParameterIO parameterIO;
-    
     public MetaPilotDdaIgcPFindPanel() {
+        // Call parent constructor first
+        super();
+        
         // Initialize parameter IO instance
         parameterIO = new DDAIgcPFindParameterIO();
         
@@ -94,79 +92,40 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
         // Initialize unified IO panel
         ioPanel = new DdaIgcInputOutputPanel(this::updateParameterView);
         
-        
-        // Initialize console panel
-        consolePanel = new ConsolePanel();
-        consolePanel.setStartCallback(this::startAnalysis);
-        consolePanel.setStopCallback(this::stopAnalysis);
-        consolePanel.setViewReportCallback(this::viewReport);
-        
-        initializeUI();
-        
-        // Note: Parameters are only saved when starting analysis or explicitly requested
+        // Initialize specific UI components
+        initializeSpecificUI();
         
         // Load parameters after UI is fully initialized
         Platform.runLater(() -> {
             loadLastUsedParameters();
-            
-            // Add window close event handler to save parameters
-            setupWindowCloseHandler();
         });
     }
 
-    private void initializeUI() {
-        setSpacing(10);
-        setPadding(new Insets(10));
-        setMinWidth(1200);
-        setMinHeight(800);
-        setPrefWidth(1600);
-        setPrefHeight(900);
-
-        // Create tab pane with responsive sizing
-        TabPane tabPane = new TabPane();
-        tabPane.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
-        tabPane.setMinWidth(980);
-        tabPane.setMinHeight(780);
-        VBox.setVgrow(tabPane, Priority.ALWAYS);
-
-        // Create tabs
-        Tab ioTab = new Tab("Input/Output");
+    private void initializeSpecificUI() {
+        // Create main tab pane using parent method
+        TabPane tabPane = createMainTabPane();
+        
+        // Replace the default IO tab content with IGC-specific content
+        Tab ioTab = tabPane.getTabs().get(0);
         ioTab.setContent(createIOTab());
-
-        Tab paramTab = new Tab("Parameters");
+        
+        // Replace the default Parameters tab content with IGC-specific content  
+        Tab paramTab = tabPane.getTabs().get(1);
         paramTab.setContent(createParametersTab());
-
-        Tab consoleTab = new Tab("Console");
-        consoleTab.setContent(consolePanel);
-
-        tabPane.getTabs().addAll(ioTab, paramTab, consoleTab);
-
-        // Add tab change listener to update metadata when Parameters tab is selected
-        // and save parameters when Console tab is selected
-        tabPane.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, newTab) -> {
-            if (newTab == paramTab) {
-                updateMetadataTableFromIOPanel();
-            } else if (newTab == consoleTab) {
-                // Save current parameters when Console tab is selected
-                try {
-                    DDAIgcPFindParameters currentParams = collectParametersFromUI();
-                    if (currentParams != null) {
-                        parameterIO.saveLastUsedParameters(currentParams);
-                        parameterIO.savePreferences(currentParams);
-                        LOGGER.info("Saved current parameters when Console tab was selected");
-                    }
-                } catch (Exception e) {
-                    LOGGER.warn("Failed to save parameters when Console tab was selected: " + e.getMessage());
-                }
-            }
-        });
-
+        
         // Add tab pane to main panel
         getChildren().add(tabPane);
     }
+    
+    // Override parent method to provide IGC-specific behavior
+    @Override
+    protected void onParametersTabSelected() {
+        updateMetadataTableFromIOPanel();
+    }
 
     // --- BEGIN: Methods adapted from MetaPilotDdaIgcMaxQuantPanel ---
-    private VBox createIOTab() {
+    @Override
+    public VBox createIOTab() {
         VBox tabContent = new VBox(10);
         tabContent.setPadding(new Insets(10));
         
@@ -175,7 +134,8 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
         
         return tabContent;
     }
-    private VBox createParametersTab() {
+    @Override
+    public VBox createParametersTab() {
         VBox tabContent = new VBox(10);
         tabContent.setPadding(new Insets(10));
         tabContent.setMinWidth(960);
@@ -565,7 +525,8 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
         updateMetadataTable();
         return section;
     }
-    private void updateParameterView() {
+    @Override
+    protected void updateParameterView() {
         StringBuilder sb = new StringBuilder();
         // Enzyme settings
         sb.append("=== ENZYME SETTINGS ===\n");
@@ -740,7 +701,8 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
         metadataTable.getColumns().add(column);
     }
 
-    private void startAnalysis() {
+    @Override
+    protected void startAnalysis() {
         // Clear console and show starting message
         if (consolePanel != null) {
             consolePanel.clearConsole();
@@ -866,18 +828,12 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
     }
 
 
-    private void showAlert(String title, String message) {
-        Alert alert = new Alert(AlertType.INFORMATION);
-        alert.setTitle(title);
-        alert.setHeaderText(null);
-        alert.setContentText(message);
-        alert.showAndWait();
-    }
     
     /**
      * Collect all parameters from the UI into a parameters object
      */
-    private DDAIgcPFindParameters collectParametersFromUI() {
+    @Override
+    protected DDAIgcPFindParameters collectParametersFromUI() {
         // Collect required parameters for DDAIgcPFindParameters constructor
         String result = ioPanel.getIoPanel().getOutputDirectory();
         String microDb = ioPanel.getMicrobiomeDBPath();
@@ -979,7 +935,8 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
     /**
      * Load last used parameters and apply them to the UI
      */
-    private void loadLastUsedParameters() {
+    @Override
+    protected void loadLastUsedParameters() {
         try {
             DDAIgcPFindParameters params = (DDAIgcPFindParameters) parameterIO.loadLastUsedParameters();
             if (params != null) {
@@ -1015,7 +972,8 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
     /**
      * Apply parameters to the UI components
      */
-    private void applyParametersToUI(DDAIgcPFindParameters params) {
+    @Override
+    protected void applyParametersToUI(DDAIgcPFindParameters params) {
         if (params == null) return;
         
         // Apply metadata to IO panel if available
@@ -1171,93 +1129,17 @@ public class MetaPilotDdaIgcPFindPanel extends VBox {
         LOGGER.info("=== Metadata Flow Test Complete ===");
     }
     
-    /**
-     * Set up window close handler to save parameters when the window is closed
-     */
-    private void setupWindowCloseHandler() {
-        Platform.runLater(() -> {
-            try {
-                // Get the current scene and window
-                if (getScene() != null) {
-                    javafx.stage.Window window = getScene().getWindow();
-                    if (window != null) {
-                        window.setOnCloseRequest(event -> {
-                            try {
-                                DDAIgcPFindParameters currentParams = collectParametersFromUI();
-                                if (currentParams != null) {
-                                    parameterIO.saveLastUsedParameters(currentParams);
-                                    parameterIO.savePreferences(currentParams);
-                                    LOGGER.info("Saved current parameters when window was closed");
-                                }
-                            } catch (Exception e) {
-                                LOGGER.warn("Failed to save parameters when window was closed: " + e.getMessage(), e);
-                            }
-                        });
-                        LOGGER.info("Window close handler set up successfully");
-                    } else {
-                        LOGGER.warn("Window is null, cannot set close handler");
-                    }
-                } else {
-                    LOGGER.warn("Scene is null, cannot set close handler");
-                }
-            } catch (Exception e) {
-                LOGGER.error("Failed to set up window close handler", e);
-            }
-        });
-    }
     
-    private void stopAnalysis() {
+    @Override
+    protected void stopAnalysis() {
         if (consolePanel != null) {
             consolePanel.appendConsoleText("Stopping pFind analysis...\n");
         }
         System.out.println("DEBUG: stopAnalysis called");
     }
     
-    private void viewReport() {
-        if (consolePanel != null) {
-            consolePanel.appendConsoleText("Opening report in default browser...\n");
-        }
-        
-        // Get the output directory from the IO panel
-        String outputDir = ioPanel.getIoPanel().getOutputDirectory();
-        if (outputDir == null || outputDir.trim().isEmpty()) {
-            if (consolePanel != null) {
-                consolePanel.appendConsoleText("ERROR: No output directory specified.\n");
-            }
-            return;
-        }
-        
-        java.io.File reportDir = new java.io.File(outputDir);
-        if (!reportDir.exists()) {
-            if (consolePanel != null) {
-                consolePanel.appendConsoleText("ERROR: Report directory does not exist: " + outputDir + "\n");
-            }
-            return;
-        }
-        
-        java.io.File indexFile = new java.io.File(reportDir, "index.html");
-        if (!indexFile.exists()) {
-            if (consolePanel != null) {
-                consolePanel.appendConsoleText("ERROR: Report index.html not found in " + outputDir + "\n");
-            }
-            return;
-        }
-        
-        try {
-            if (java.awt.Desktop.isDesktopSupported()) {
-                java.awt.Desktop.getDesktop().browse(indexFile.toURI());
-                if (consolePanel != null) {
-                    consolePanel.appendConsoleText("✓ Report opened in default browser\n");
-                }
-            } else {
-                if (consolePanel != null) {
-                    consolePanel.appendConsoleText("ERROR: Desktop not supported. Please open manually: " + indexFile.getAbsolutePath() + "\n");
-                }
-            }
-        } catch (Exception e) {
-            if (consolePanel != null) {
-                consolePanel.appendConsoleText("ERROR: Failed to open report: " + e.getMessage() + "\n");
-            }
-        }
+    @Override
+    protected String getWorkflowName() {
+        return "DDA IGC pFind";
     }
 } 
