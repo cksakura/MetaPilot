@@ -42,15 +42,15 @@ import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagPfindParameters;
 import uk.ac.quadram.metapilot.task.dda.mag.task.DDAMagPfindTask;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagPfindParameterIO;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagVersion;
+import uk.ac.quadram.metapilot.task.common.gui.AbstractWorkflowPanel;
 
-public class MetaPilotDdaMagPfindPanel extends VBox {
+public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfindParameters> {
     // UI Components - Database specific
     private MetaPilotIOPanelFX ioPanel;
     private MagDatabaseSettingsPanel magDatabasePanel;
     private ToggleGroup quantModeGroup;
 
     // Reusable UI Components
-    private ConsolePanel consolePanel;
     private MetadataConfigurationPanel metadataPanel;
     private IsobaricLabelingPanel isobaricPanel;
     // pFind uses a different modification system - no modifications panel needed
@@ -82,6 +82,9 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
     private DDAMagPfindTask currentTask;
     
     public MetaPilotDdaMagPfindPanel(MagDbItem[] magDbItems) {
+        // Call parent constructor first
+        super();
+        
         // Initialize parameter IO instance
         parameterIO = new DDAMagPfindParameterIO();
         
@@ -91,7 +94,7 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
             // Initialize MAG databases from parameter
             System.out.println("DEBUG: Loading MAG databases...");
             System.out.println("DEBUG: Found " + (magDbItems != null ? magDbItems.length : 0) + " MAG database items");
-            initializeUI();
+            initializeSpecificUI();
             // Now set MAG databases after UI is initialized
             setAvailableMagDatabases(magDbItems);
             System.out.println("DEBUG: MetaPilotDdaMagPfindPanel(MetaParameterMag) constructor completed successfully");
@@ -102,7 +105,7 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
         }
     }
 
-    private void initializeUI() {
+    private void initializeSpecificUI() {
         System.out.println("DEBUG: initializeUI() started");
         try {
             System.out.println("DEBUG: Setting basic panel properties...");
@@ -217,7 +220,13 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
         }
     }
 
-    private VBox createIOTab() {
+    @Override
+    protected String getWorkflowName() {
+        return "DDA MAG pFind";
+    }
+    
+    @Override
+    public VBox createIOTab() {
         System.out.println("DEBUG: createIOTab() started");
         try {
             VBox tabContent = new VBox(10);
@@ -253,7 +262,8 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
     }
     
 
-    private VBox createParametersTab() {
+    @Override
+    public VBox createParametersTab() {
         VBox tabContent = new VBox(10);
         tabContent.setPadding(new Insets(10));
         tabContent.setMinWidth(960);
@@ -481,7 +491,8 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
     }
     
     
-    private void startAnalysis() {
+    @Override
+    protected void startAnalysis() {
         try {
             consolePanel.appendConsoleText("Starting MAG pFind analysis...\n");
             System.out.println("DEBUG: startAnalysis called - MAG pFind workflow");
@@ -606,7 +617,8 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
         }
     }
 
-    private void stopAnalysis() {
+    @Override
+    protected void stopAnalysis() {
         consolePanel.appendConsoleText("Stopping MAG pFind analysis...\n");
         System.out.println("DEBUG: stopAnalysis called");
         
@@ -619,46 +631,6 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
         }
     }
 
-    private void viewReport() {
-        try {
-            consolePanel.appendConsoleText("Opening report in default browser...\n");
-            
-            if (currentAnalysisParams == null) {
-                consolePanel.appendConsoleText("ERROR: No analysis parameters available. Please run analysis first.\n");
-                return;
-            }
-            
-            File reportDir = currentAnalysisParams.getReportDir();
-            if (reportDir == null || !reportDir.exists()) {
-                consolePanel.appendConsoleText("ERROR: Report directory not available or does not exist.\n");
-                consolePanel.appendConsoleText("Please ensure the analysis has completed successfully.\n");
-                return;
-            }
-            
-            File indexFile = new File(reportDir, "index.html");
-            
-            if (!indexFile.exists()) {
-                consolePanel.appendConsoleText("ERROR: Main report index.html not found in " + reportDir.getAbsolutePath() + "\n");
-                consolePanel.appendConsoleText("Please ensure the analysis has completed successfully.\n");
-                return;
-            }
-            
-            consolePanel.appendConsoleText("Opening main report: index.html\n");
-            
-            if (java.awt.Desktop.isDesktopSupported()) {
-                java.awt.Desktop.getDesktop().browse(indexFile.toURI());
-                consolePanel.appendConsoleText("✓ Report opened in default browser\n");
-            } else {
-                consolePanel.appendConsoleText("ERROR: Desktop not supported. Please open manually: " + indexFile.getAbsolutePath() + "\n");
-            }
-            
-        } catch (Exception e) {
-            String errorMsg = "ERROR: Failed to open report: " + e.getMessage();
-            consolePanel.appendConsoleText(errorMsg + "\n");
-            System.err.println("Failed to open report: " + e.getMessage());
-            e.printStackTrace();
-        }
-    }
 
     private void updateMetadataTableFromIOPanel() {
         if (ioPanel == null || metadataPanel == null) {
@@ -708,7 +680,8 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
     }
     
 
-    private void updateParameterView() {
+    @Override
+    protected void updateParameterView() {
         if (consolePanel == null) {
             System.out.println("DEBUG: updateParameterView called but consolePanel is null - UI not initialized yet");
             return;
@@ -792,7 +765,8 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
     /**
      * Collect all parameters from the UI into a parameters object
      */
-    private DDAMagPfindParameters collectParametersFromUI() {
+    @Override
+    protected DDAMagPfindParameters collectParametersFromUI() {
         try {
             LOGGER.info("Starting parameter collection from UI for MAG pFind workflow");
             
@@ -1084,15 +1058,6 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
     /**
      * Show error dialog
      */
-    private void showError(String title, String content) {
-        Platform.runLater(() -> {
-            Alert alert = new Alert(Alert.AlertType.ERROR);
-            alert.setTitle(title);
-            alert.setHeaderText(null);
-            alert.setContentText(content);
-            alert.showAndWait();
-        });
-    }
     
     /**
      * Save parameters to a JSON file
@@ -1182,7 +1147,8 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
     /**
      * Load last used parameters and apply them to the UI
      */
-    private void loadLastUsedParameters() {
+    @Override
+    protected void loadLastUsedParameters() {
         try {
             DDAMagPfindParameters params = (DDAMagPfindParameters) parameterIO.loadLastUsedParameters();
             if (params != null) {
@@ -1218,7 +1184,8 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
     /**
      * Apply parameters to the UI components
      */
-    private void applyParametersToUI(DDAMagPfindParameters params) {
+    @Override
+    protected void applyParametersToUI(DDAMagPfindParameters params) {
         if (params == null) return;
         
         // Apply metadata to IO panel if available
@@ -1361,54 +1328,4 @@ public class MetaPilotDdaMagPfindPanel extends VBox {
         }
     }
 
-    private void setupWindowCloseHandler() {
-        Platform.runLater(() -> {
-            try {
-                // Get the current scene and window
-                if (getScene() != null) {
-                    javafx.stage.Window window = getScene().getWindow();
-                    if (window != null) {
-                        window.setOnCloseRequest(event -> {
-                            try {
-                                consolePanel.appendConsoleText("Saving parameters on window close...\n");
-                                DDAMagPfindParameters currentParams = collectParametersFromUI();
-                                if (currentParams != null) {
-                                    boolean saved = parameterIO.saveLastUsedParameters(currentParams);
-                                    if (saved) {
-                                        consolePanel.appendConsoleText("✓ Parameters saved to config folder: last_used_mag_pfind_parameters.json\n");
-                                        LOGGER.info("Successfully saved parameters on window close to config folder");
-                                    } else {
-                                        consolePanel.appendConsoleText("WARNING: Failed to save parameters to config folder\n");
-                                        LOGGER.warn("Failed to save parameters to config folder on window close");
-                                    }
-                                    
-                                    // Also save preferences
-                                    boolean prefsSaved = parameterIO.savePreferences(currentParams);
-                                    if (prefsSaved) {
-                                        consolePanel.appendConsoleText("✓ Preferences saved\n");
-                                    } else {
-                                        consolePanel.appendConsoleText("WARNING: Failed to save preferences\n");
-                                    }
-                                } else {
-                                    consolePanel.appendConsoleText("WARNING: No parameters to save on window close\n");
-                                    LOGGER.warn("No parameters to save on window close");
-                                }
-                            } catch (Exception e) {
-                                String errorMsg = "ERROR: Failed to save parameters on window close: " + e.getMessage();
-                                consolePanel.appendConsoleText(errorMsg + "\n");
-                                LOGGER.error("Failed to save parameters on window close", e);
-                            }
-                        });
-                        LOGGER.info("Window close handler set up successfully");
-                    } else {
-                        LOGGER.warn("Window is null, cannot set close handler");
-                    }
-                } else {
-                    LOGGER.warn("Scene is null, cannot set close handler");
-                }
-            } catch (Exception e) {
-                LOGGER.error("Failed to set up window close handler", e);
-            }
-        });
-    }
 } 
