@@ -105,6 +105,7 @@ class TaxonomySummaryGenerator(BaseReportGenerator):
                     fig.add_trace(
                         go.Violin(
                             y=intensities,
+                            x=[sample_name] * len(intensities),
                             name=sample_name,
                             box_visible=True,
                             meanline_visible=True,
@@ -112,8 +113,7 @@ class TaxonomySummaryGenerator(BaseReportGenerator):
                             pointpos=0,
                             jitter=0.3,
                             marker_color=self.colors["primary"],
-                            showlegend=False,
-                            x0=sample_name
+                            showlegend=False
                         ),
                         row=current_row,
                         col=1
@@ -135,18 +135,45 @@ class TaxonomySummaryGenerator(BaseReportGenerator):
             # 2. PCA scatter
             if log_intensity_matrix.shape[0] >= 2 and log_intensity_matrix.shape[1] >= 2:
                 try:
-                    scaled = StandardScaler().fit_transform(log_intensity_matrix)
+                    # Filter out zero/near-zero variance rows (all-zero taxa)
+                    row_variances = np.var(log_intensity_matrix, axis=1)
+                    non_zero_var_mask = row_variances > 0
+                    filtered_matrix = log_intensity_matrix[non_zero_var_mask]
+                    filtered_taxon_labels = [taxon_labels[i] for i in range(len(taxon_labels)) if non_zero_var_mask[i]]
+                    
+                    # Filter out zero-variance sample columns
+                    if filtered_matrix.shape[0] > 0:
+                        col_variances = np.var(filtered_matrix, axis=0)
+                        non_zero_col_mask = col_variances > 0
+                        filtered_matrix = filtered_matrix[:, non_zero_col_mask]
+                    
+                    # Check if we still have enough data after filtering
+                    if filtered_matrix.shape[0] < 2 or filtered_matrix.shape[1] < 2:
+                        raise ValueError("Insufficient data after filtering zero variance")
+                    
+                    scaled = StandardScaler().fit_transform(filtered_matrix)
                     pca = PCA(n_components=2)
                     components = pca.fit_transform(scaled)
+                    taxon_labels = filtered_taxon_labels
                     explained = pca.explained_variance_ratio_
 
+                    # Convert to lists explicitly for better Plotly compatibility
+                    x_coords = components[:, 0].tolist()
+                    y_coords = components[:, 1].tolist()
+                    
                     fig.add_trace(
                         go.Scatter(
-                            x=components[:, 0],
-                            y=components[:, 1],
-                            mode='markers',
-                            marker=dict(color=self.colors['secondary'], size=9, line=dict(width=1, color='#333333')),
+                            x=x_coords,
+                            y=y_coords,
+                            mode='markers+text',
+                            marker=dict(
+                                color=self.colors['secondary'], 
+                                size=12,  # Larger markers
+                                opacity=0.8,  # Higher opacity
+                                line=dict(width=2, color='#333333')  # Thicker border
+                            ),
                             text=taxon_labels,
+                            textposition='top center',
                             hovertemplate='<b>%{text}</b><br>PC1: %{x:.2f}<br>PC2: %{y:.2f}<br><extra></extra>',
                             showlegend=False
                         ),
@@ -195,10 +222,13 @@ class TaxonomySummaryGenerator(BaseReportGenerator):
 
             # 3. Heatmap
             if log_intensity_matrix.size > 0 and log_intensity_matrix.shape[1] > 0:
-                heatmap_values = log_intensity_matrix.copy()
-                heatmap_labels = taxon_labels.copy()
+                # Filter out zero/near-zero variance rows (all-zero taxa) before clustering
+                row_variances = np.var(log_intensity_matrix, axis=1)
+                non_zero_var_mask = row_variances > 0
+                heatmap_values = log_intensity_matrix[non_zero_var_mask].copy()
+                heatmap_labels = [taxon_labels[i] for i in range(len(taxon_labels)) if non_zero_var_mask[i]]
 
-                if heatmap_values.shape[0] > 1:
+                if heatmap_values.shape[0] > 1 and heatmap_values.size > 0:
                     from scipy.cluster.hierarchy import linkage, dendrogram
                     from scipy.spatial.distance import pdist
                     row_linkage = linkage(pdist(heatmap_values), method='ward')
@@ -310,11 +340,15 @@ class TaxonomySummaryGenerator(BaseReportGenerator):
                             y=abundances,
                             name=taxon,
                             marker_color=color_palette[idx % len(color_palette)],
-                            showlegend=False
+                            showlegend=True,
+                            hovertemplate=f'<b>{taxon}</b><br>Sample: %{{x}}<br>Abundance: %{{y:.1f}}%<extra></extra>'
                         ),
                         row=current_row,
                         col=1
                     )
+                
+                # Constrain y-axis to [0, 100] for percentage display
+                fig.update_yaxes(range=[0, 100], row=current_row, col=1)
             else:
                 fig.add_annotation(
                     text="Insufficient data",

@@ -401,7 +401,7 @@ public class MetaPythonReportTask extends Task<Boolean> {
                     
                 case FUNCTION:
                     pythonScript.append("df = pd.read_csv('").append(inputPath).append("', sep='\\t')\n");
-                    pythonScript.append("fig = rg.create_function_summary(df, metadata)\n");
+                    pythonScript.append("fig = rg.create_function_summary(df, metadata, input_file_path='").append(inputPath).append("')\n");
                     pythonScript.append("rg.generate_html_report(fig, 'Function Summary Report', '").append(outputPath).append("')\n");
                     break;
                     

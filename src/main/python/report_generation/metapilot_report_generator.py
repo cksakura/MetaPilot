@@ -36,9 +36,9 @@ class MetaPilotReportGenerator(BaseReportGenerator):
         """Enhanced taxonomy summary with rank-specific analysis for all taxonomic ranks."""
         return self.taxonomy_generator.create_taxonomy_summary(taxa_df, metadata)
 
-    def create_function_summary(self, func_df, metadata=None):
+    def create_function_summary(self, func_df, metadata=None, input_file_path=None):
         """Enhanced function summary with category analysis and dimensionality reduction."""
-        return self.function_generator.create_function_summary(func_df, metadata)
+        return self.function_generator.create_function_summary(func_df, metadata, input_file_path)
 
     def create_bubble_chart_summary(self, tree_data, metadata=None, max_depth=4, min_abundance=0.001):
         """TEMPORARILY DISABLED: Generate bubble chart from hierarchical tree data."""
