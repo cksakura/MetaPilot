@@ -27,6 +27,8 @@ import uk.ac.quadram.metapilot.dbSearch.deepDetect.DeepDetectTask;
 import uk.ac.quadram.metapilot.dbSearch.deepDetect.DeepDetectParameter;
 import uk.ac.quadram.metapilot.task.common.gui.AbstractWorkflowPanel;
 import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.io.File;
 import java.time.LocalDateTime;
@@ -34,6 +36,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameterDia> {
+    private static final Logger LOGGER = LogManager.getLogger(MetaPilotDiaNormalPanel.class);
+    
     // UI Components - Database specific for MAG (like DIA workflows)
     private MetaPilotIOPanelFX ioPanel;
     private MagDatabaseSettingsPanel magDatabasePanel;
@@ -50,10 +54,8 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
     private MetaResourceParameters resourceParams;
     
     // MetaDiaTask for DIA analysis
-    private MetaDiaTask metaDiaTask;
+    private MetaDiaTask currentTask;
     
-    // Store the last used analysis parameters for viewReport
-    private MetaParameterDia currentAnalysisParams;
     
 
     // DIA-specific mode selection
@@ -75,7 +77,6 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
     // MAG database items (now handled by MagDatabaseSettingsPanel)
     
     // Add parameter IO instance
-    private DiaParameterIO parameterIO;
 
     public MetaPilotDiaNormalPanel(MagDbItem[] magDbItems, MetaResourceParameters resourceParams) {
         // Call parent constructor first
@@ -203,7 +204,7 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
 
         // Initialize reusable components
         consolePanel = new ConsolePanel();
-        magDatabasePanel = new MagDatabaseSettingsPanel();
+        magDatabasePanel = new MagDatabaseSettingsPanel(false);
         magDatabasePanel.setParameterUpdateCallback(() -> {
             updateParameterView();
             // Update status when database or version selection changes
@@ -552,7 +553,7 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
             return;
         }
         
-        System.out.println("DEBUG: updateParameterView() called");
+        LOGGER.debug("updateParameterView() called");
         
         StringBuilder sb = new StringBuilder();
         sb.append("=== DIA Analysis Parameters ===\n\n");
@@ -588,9 +589,9 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
         // Library configuration
         sb.append("Spectral Libraries:\n");
         if (libraryGenerationPanel != null) {
-            System.out.println("DEBUG: updateParameterView - libraryGenerationPanel is not null");
+            LOGGER.debug("updateParameterView - libraryGenerationPanel is not null");
             String[] selectedLibs = libraryGenerationPanel.getSelectedLibraryNames();
-            System.out.println("DEBUG: updateParameterView - selectedLibs.length = " + selectedLibs.length);
+            LOGGER.debug("updateParameterView - selectedLibs.length = " + selectedLibs.length);
             if (selectedLibs.length > 0) {
                 for (String libName : selectedLibs) {
                     sb.append("  ").append(libName).append("\n");
@@ -599,7 +600,7 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
                 sb.append("  No libraries selected\n");
             }
         } else {
-            System.out.println("DEBUG: updateParameterView - libraryGenerationPanel is null");
+            LOGGER.debug("updateParameterView - libraryGenerationPanel is null");
             sb.append("  Library panel not available\n");
         }
         sb.append("\n");
@@ -608,18 +609,18 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
         sb.append("ML Models:\n");
         if (modelGenerationPanel != null) {
             String[] selectedModels = modelGenerationPanel.getSelectedModelNames();
-            System.out.println("DEBUG: updateParameterView - selectedModels.length = " + selectedModels.length);
+            LOGGER.debug("updateParameterView - selectedModels.length = " + selectedModels.length);
             if (selectedModels.length > 0) {
                 for (String modelName : selectedModels) {
                     sb.append("  ").append(modelName).append("\n");
-                    System.out.println("DEBUG: updateParameterView - selected model: " + modelName);
+                    LOGGER.debug("updateParameterView - selected model: " + modelName);
                 }
             } else {
                 sb.append("  No models selected (models are optional)\n");
-                System.out.println("DEBUG: updateParameterView - no models selected");
+                LOGGER.debug("updateParameterView - no models selected");
             }
         } else {
-            System.out.println("DEBUG: updateParameterView - modelGenerationPanel is null");
+            LOGGER.debug("updateParameterView - modelGenerationPanel is null");
         }
         sb.append("\n");
 
@@ -660,118 +661,120 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
 
     @Override
     protected void startAnalysis() {
-        System.out.println("DEBUG: startAnalysis called - DIA Normal workflow");
-        
-        // Validate inputs before starting analysis
-        if (!validateInputs()) {
-            showError("Validation Error", "Please check all required inputs before starting analysis.");
-            return;
-        }
-        
-        // Generate MetaParameterDia from current UI state
-        MetaParameterDia metaParameterDia = collectParametersFromUI();
-        if (metaParameterDia == null) {
-            showError("Parameter Error", "Failed to generate analysis parameters. Please check your settings.");
-            return;
-        }
-        
-        // Store the parameters for later use (e.g., in viewReport)
-        currentAnalysisParams = metaParameterDia;
-        
-        // Load resource parameters from config file (same as DDA panel)
-        consolePanel.appendConsoleText("Loading resource parameters from config...\n");
-        MetaResourceIO resourceIO = new MetaResourceIO();
-        MetaResourceParameters mrp = resourceIO.loadParameters();
-        if (mrp == null) {
-            showError("Configuration Error", "Failed to load resource parameters from config file.");
-            return;
-        }
-        consolePanel.appendConsoleText("✓ Resource parameters loaded from config file\n");
-        
-        // Clear console and start analysis
-        consolePanel.clearConsole();
-        consolePanel.appendConsoleText("Starting DIA analysis...\n");
-        consolePanel.appendConsoleText("Parameters validated successfully.\n");
-        consolePanel.appendConsoleText("Result directory: " + metaParameterDia.getResult() + "\n");
-        
-        // Create and configure MetaDiaTask
-        metaDiaTask = new MetaDiaTask(
-            metaParameterDia,
-            mrp,
-            consolePanel.getOverallProgressBar(),
-            consolePanel.getCurrentTaskProgressBar()
-        );
-        
-        // Set up task event handlers
-        metaDiaTask.setOnRunning(e -> {
-            Platform.runLater(() -> {
-                consolePanel.appendConsoleText("DIA analysis task started.\n");
-            });
-        });
-        
-        metaDiaTask.setOnSucceeded(e -> {
-            Platform.runLater(() -> {
-                Boolean result = metaDiaTask.getValue();
-                if (result != null && result) {
-                    // Task completed successfully
-                    consolePanel.appendConsoleText("✓ Analysis completed successfully!\n");
-                    consolePanel.appendConsoleText("Results saved to: " + currentAnalysisParams.getResult() + "\n");
-                    consolePanel.enableViewReportButton();
-                    consolePanel.setButtonsEnabled(true, false, true);
-                } else {
-                    // Task completed but returned false (failed)
-                    consolePanel.appendConsoleText("✗ Analysis failed. Check console output for details.\n");
-                    consolePanel.setButtonsEnabled(true, false, false);
-                }
-            });
-        });
-        
-        metaDiaTask.setOnFailed(e -> {
-            Platform.runLater(() -> {
-                Throwable exception = metaDiaTask.getException();
-                String errorMessage = exception != null ? exception.getMessage() : "Unknown error occurred";
-                consolePanel.appendConsoleText("✗ Analysis failed: " + errorMessage + "\n");
-                consolePanel.setButtonsEnabled(true, false, false);
-                showError("Analysis Failed", "DIA analysis failed: " + errorMessage);
-            });
-        });
-        
-        metaDiaTask.setOnCancelled(e -> {
-            Platform.runLater(() -> {
-                consolePanel.appendConsoleText("DIA analysis was cancelled.\n");
-                consolePanel.setButtonsEnabled(true, false, false);
-            });
-        });
-        
-        // Set up progress monitoring
-        metaDiaTask.messageProperty().addListener((obs, oldMsg, newMsg) -> {
-            if (newMsg != null && !newMsg.isEmpty()) {
-                Platform.runLater(() -> {
-                    consolePanel.appendConsoleText("Progress: " + newMsg + "\n");
-                    consolePanel.updateCurrentTaskFromMessage(newMsg);
-                });
+        try {
+            consolePanel.appendConsoleText("Starting DIA Normal analysis...\n");
+            LOGGER.info("startAnalysis called - DIA Normal workflow");
+            
+            // 1. Validate inputs (if applicable)
+            if (!validateInputs()) {
+                showError("Validation Error", "Please check all required inputs before starting analysis.");
+                return;
             }
-        });
+            
+            // 2. Collect parameters from UI
+            consolePanel.appendConsoleText("Collecting parameters from UI...\n");
+            MetaParameterDia metaParameterDia = collectParametersFromUI();
+            if (metaParameterDia == null) {
+                consolePanel.appendConsoleText("ERROR: Failed to collect parameters from UI.\n");
+                LOGGER.error("Failed to collect parameters from UI in startAnalysis");
+                showError("Parameter Error", "Failed to generate analysis parameters. Please check your settings.");
+                return;
+            }
+            
+            consolePanel.appendConsoleText("✓ Successfully collected parameters from UI\n");
+            LOGGER.info("Successfully collected parameters from UI for DIA Normal workflow");
+            
+            // 3. Store parameters for later use
+            currentAnalysisParams = metaParameterDia;
+            
+            // 4. Load resource parameters from config file
+            consolePanel.appendConsoleText("Loading resource parameters from config...\n");
+            MetaResourceIO resourceIO = new MetaResourceIO();
+            MetaResourceParameters mrp = resourceIO.loadParameters();
+            if (mrp == null) {
+                showError("Configuration Error", "Failed to load resource parameters from config file.");
+                return;
+            }
+            consolePanel.appendConsoleText("✓ Resource parameters loaded from config file\n");
+            
+            // Clear console and start analysis
+            consolePanel.clearConsole();
+            consolePanel.appendConsoleText("Parameters validated successfully.\n");
+            consolePanel.appendConsoleText("Result directory: " + metaParameterDia.getResult() + "\n");
         
-        // Start the task in a background thread
-        if (taskExecutor == null) {
-            taskExecutor = Executors.newSingleThreadExecutor();
+            // 5. Create and configure task
+            currentTask = new MetaDiaTask(
+                metaParameterDia,
+                mrp,
+                consolePanel.getOverallProgressBar(),
+                consolePanel.getCurrentTaskProgressBar()
+            );
+            
+            // 6. Set up task event handlers
+            currentTask.setOnSucceeded(e -> {
+                Platform.runLater(() -> {
+                    Boolean result = currentTask.getValue();
+                    if (result != null && result) {
+                        // Task completed successfully
+                        consolePanel.appendConsoleText("✓ Analysis completed successfully!\n");
+                        consolePanel.appendConsoleText("Results saved to: " + currentAnalysisParams.getResult() + "\n");
+                        consolePanel.enableViewReportButton();
+                        consolePanel.setButtonsEnabled(true, false, true);
+                    } else {
+                        // Task completed but returned false (failed)
+                        consolePanel.appendConsoleText("✗ Analysis failed. Check console output for details.\n");
+                        consolePanel.setButtonsEnabled(true, false, false);
+                    }
+                    consolePanel.stopStatusTimer(); // Stop the timer when task completes
+                });
+            });
+            
+            currentTask.setOnFailed(e -> {
+                Platform.runLater(() -> {
+                    Throwable exception = currentTask.getException();
+                    String errorMessage = exception != null ? exception.getMessage() : "Unknown error occurred";
+                    consolePanel.appendConsoleText("✗ Analysis failed: " + errorMessage + "\n");
+                    consolePanel.setButtonsEnabled(true, false, false);
+                    consolePanel.stopStatusTimer(); // Stop the timer when task fails
+                    showError("Analysis Failed", "DIA Normal analysis failed: " + errorMessage);
+                });
+            });
+            
+            currentTask.setOnCancelled(e -> {
+                Platform.runLater(() -> {
+                    consolePanel.appendConsoleText("DIA Normal analysis was cancelled.\n");
+                    consolePanel.setButtonsEnabled(true, false, false);
+                    consolePanel.stopStatusTimer(); // Stop the timer when task is cancelled
+                });
+            });
+            
+            // 7. Run task in background thread
+            Thread taskThread = new Thread(currentTask);
+            taskThread.setDaemon(true);
+            taskThread.start();
+            
+            consolePanel.appendConsoleText("✓ Analysis task started successfully.\n");
+            LOGGER.info("DIA Normal analysis task started successfully");
+            
+        } catch (Exception e) {
+            String errorMsg = "ERROR: Failed to start analysis: " + e.getMessage();
+            consolePanel.appendConsoleText(errorMsg + "\n");
+            LOGGER.error("Failed to start DIA Normal analysis", e);
+            showError("Start Error", "Failed to start DIA Normal analysis: " + e.getMessage());
         }
-        taskExecutor.submit(metaDiaTask);
-        
-        consolePanel.appendConsoleText("MetaDiaTask submitted to executor.\n");
     }
 
     @Override
     protected void stopAnalysis() {
-        System.out.println("DEBUG: stopAnalysis called");
+        consolePanel.appendConsoleText("Stopping DIA analysis...\n");
+        LOGGER.info("stopAnalysis called");
         
-        if (metaDiaTask != null && metaDiaTask.isRunning()) {
-            consolePanel.appendConsoleText("Stopping DIA analysis...\n");
-            metaDiaTask.forceStop();
-            consolePanel.appendConsoleText("DIA analysis stop requested.\n");
+        if (currentTask != null && currentTask.isRunning()) {
+            consolePanel.appendConsoleText("Force stopping DIA task...\n");
+            currentTask.forceStop();
+            consolePanel.appendConsoleText("DIA task stop requested.\n");
         } else {
-            consolePanel.appendConsoleText("No running DIA analysis to stop.\n");
+            consolePanel.appendConsoleText("No running DIA task to stop.\n");
         }
     }
     
@@ -1090,20 +1093,28 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
      * @return MetaParameterDia object with all current UI parameters, or null if validation fails
      */
     public MetaParameterDia collectParametersFromUI() {
-        System.out.println("DEBUG: generateMetaParameterDia() called");
         try {
+            consolePanel.appendConsoleText("Collecting parameters from UI...\n");
+            LOGGER.info("Starting parameter collection from UI for DIA Normal workflow");
+            
             // Validate inputs first
-            System.out.println("DEBUG: Starting input validation...");
+            consolePanel.appendConsoleText("Validating UI inputs...\n");
+            LOGGER.info("Starting input validation...");
             if (!validateInputs()) {
-                System.err.println("Input validation failed - cannot generate MetaParameterDia");
+                consolePanel.appendConsoleText("ERROR: Input validation failed\n");
+                LOGGER.error("Input validation failed - cannot generate MetaParameterDia");
                 return null;
             }
-            System.out.println("DEBUG: Input validation passed");
+            consolePanel.appendConsoleText("✓ Input validation passed\n");
+            LOGGER.info("Input validation passed");
             
             // Collect experiment data from ioPanel
+            consolePanel.appendConsoleText("Collecting experiment data from IO panel...\n");
             ObservableList<MetaPilotIOPanelFX.ExperimentRow> fileRows = ioPanel.getExperimentData();
+            consolePanel.appendConsoleText("Found " + fileRows.size() + " experiment rows\n");
             if (fileRows.isEmpty()) {
-                System.err.println("No experiment data found in IO panel");
+                consolePanel.appendConsoleText("ERROR: No experiment data found in IO panel\n");
+                LOGGER.error("No experiment data found in IO panel");
                 return null;
             }
             
@@ -1230,11 +1241,14 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
             System.out.println("  - MAG Database: " + selectedMagDb.getCatalogueID());
             System.out.println("  - Threads: " + threadCount);
             
+            consolePanel.appendConsoleText("✓ Successfully collected parameters from UI\n");
+            LOGGER.info("Successfully collected parameters from UI for DIA Normal workflow");
             return metaParameterDia;
             
         } catch (Exception e) {
-            System.err.println("Error generating MetaParameterDia: " + e.getMessage());
-            e.printStackTrace();
+            String errorMsg = "ERROR: Failed to collect parameters from UI: " + e.getMessage();
+            consolePanel.appendConsoleText(errorMsg + "\n");
+            LOGGER.error("Error generating MetaParameterDia: " + e.getMessage(), e);
             return null;
         }
     }
@@ -1324,25 +1338,29 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
      */
     @Override
     protected void loadLastUsedParameters() {
-        System.out.println("DEBUG: loadLastUsedParameters() called");
         try {
+            consolePanel.appendConsoleText("Loading last used parameters...\n");
+            LOGGER.info("loadLastUsedParameters() called");
             MetaParameterDia params = (MetaParameterDia) parameterIO.loadLastUsedParameters();
             if (params != null) {
-                System.out.println("DEBUG: Successfully loaded parameters from file");
-                System.out.println("DEBUG: Parameters contain:");
-                System.out.println("  - Output directory: " + (params.getResult() != null ? params.getResult() : "null"));
-                System.out.println("  - Raw files count: " + (params.getMetadata() != null && params.getMetadata().getRawFiles() != null ? params.getMetadata().getRawFiles().length : 0));
-                System.out.println("  - MAG database: " + (params.getMagDbItem() != null ? params.getMagDbItem().getCatalogueID() : "null"));
-                System.out.println("  - Thread count: " + params.getThreadCount());
+                consolePanel.appendConsoleText("✓ Successfully loaded last used parameters\n");
+                LOGGER.info("Successfully loaded parameters from file");
+                LOGGER.info("Parameters contain:");
+                LOGGER.info("  - Output directory: {}", params.getResult() != null ? params.getResult() : "null");
+                LOGGER.info("  - Raw files count: {}", params.getMetadata() != null && params.getMetadata().getRawFiles() != null ? params.getMetadata().getRawFiles().length : 0);
+                LOGGER.info("  - MAG database: {}", params.getMagDbItem() != null ? params.getMagDbItem().getCatalogueID() : "null");
+                LOGGER.info("  - Thread count: {}", params.getThreadCount());
                 
                 applyParametersToUI(params);
-                System.out.println("DEBUG: Applied parameters to UI successfully");
+                LOGGER.info("Applied parameters to UI successfully");
             } else {
-                System.out.println("DEBUG: No parameters loaded from file, using defaults");
+                consolePanel.appendConsoleText("No previous parameters found, using defaults\n");
+                LOGGER.info("No parameters loaded from file, using defaults");
             }
         } catch (Exception e) {
-            System.err.println("WARNING: Failed to load last used DIA parameters: " + e.getMessage());
-            e.printStackTrace();
+            String errorMsg = "WARNING: Failed to load last used parameters: " + e.getMessage();
+            consolePanel.appendConsoleText(errorMsg + "\n");
+            LOGGER.warn("Failed to load last used DIA parameters: " + e.getMessage(), e);
             // Continue with default UI state
         }
     }
@@ -1352,12 +1370,15 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
      */
     @Override
     protected void applyParametersToUI(MetaParameterDia params) {
-        if (params == null) {
-            System.out.println("DEBUG: applyParametersToUI called with null params");
-            return;
-        }
-        
-        System.out.println("DEBUG: applyParametersToUI called with valid params");
+        try {
+            consolePanel.appendConsoleText("Applying parameters to UI...\n");
+            if (params == null) {
+                consolePanel.appendConsoleText("WARNING: No parameters to apply\n");
+                LOGGER.warn("applyParametersToUI called with null params");
+                return;
+            }
+            
+            LOGGER.info("applyParametersToUI called with valid params");
         
         // Apply metadata to IO panel if available
         if (params.getMetadata() != null) {
@@ -1441,6 +1462,15 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
         
         // Update parameter view after applying parameters
         Platform.runLater(() -> updateParameterView());
+        
+        consolePanel.appendConsoleText("✓ Successfully applied parameters to UI\n");
+        LOGGER.info("Successfully applied parameters to UI for DIA Normal workflow");
+        
+        } catch (Exception e) {
+            String errorMsg = "ERROR: Failed to apply parameters to UI: " + e.getMessage();
+            consolePanel.appendConsoleText(errorMsg + "\n");
+            LOGGER.error("Failed to apply parameters to UI for DIA Normal workflow", e);
+        }
     }
     
     /**
@@ -1473,5 +1503,13 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
             System.err.println("ERROR: Failed to save current parameters: " + e.getMessage());
             e.printStackTrace();
         }
+    }
+    
+    /**
+     * Get the parameter class for this workflow
+     */
+    @Override
+    protected Class<MetaParameterDia> getParameterClass() {
+        return MetaParameterDia.class;
     }
 } 

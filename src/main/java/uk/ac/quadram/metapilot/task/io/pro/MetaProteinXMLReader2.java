@@ -1049,6 +1049,350 @@ public class MetaProteinXMLReader2 {
 		htmlWriter.close();
 	}
 
+	public void exportGOReport(String tsv) throws IOException {
+		exportGOReport(new File(tsv));
+	}
+
+	public void exportGOReport(File tsv) throws IOException {
+		PrintWriter writer = new PrintWriter(tsv);
+		StringBuilder title = new StringBuilder();
+		title.append("Gene_Ontology_id").append("\t");
+
+		if (this.searchType.equals(MetaConstants.maxQuant) && this.quanMode.equals(MetaConstants.labelFree)) {
+			for (String exp : fileNames) {
+				if (exp.startsWith("LFQ intensity")) {
+					title.append(exp.replace("LFQ intensity", "Intensity")).append("\t");
+				} else {
+					title.append("Intensity ").append(exp).append("\t");
+				}
+			}
+		} else {
+			for (String exp : fileNames) {
+				if (!exp.startsWith("Intensity")) {
+					title.append("Intensity ").append(exp).append("\t");
+				} else {
+					title.append(exp).append("\t");
+				}
+			}
+		}
+
+		title.deleteCharAt(title.length() - 1);
+		writer.println(title);
+
+		// HashMap to store GO ID -> intensity arrays
+		HashMap<String, double[]> goIntensityMap = new HashMap<String, double[]>();
+
+		for (MetaProteinAnnoEggNog protein : proteins) {
+			String goIds = protein.getGene_Ontology();
+			if (goIds == null || goIds.trim().isEmpty() || goIds.equals("-")) {
+				continue;
+			}
+
+			double[] intensities = protein.getPro().getIntensities();
+			
+			// Split GO IDs by comma
+			String[] goIdArray = goIds.split(",");
+			int numIds = goIdArray.length;
+			
+			if (numIds > 0) {
+				// Calculate equal share of intensity for each GO ID
+				double[] sharedIntensities = new double[intensities.length];
+				for (int i = 0; i < intensities.length; i++) {
+					sharedIntensities[i] = intensities[i] / numIds;
+				}
+
+				// Add to hashmap for each GO ID
+				for (String goId : goIdArray) {
+					goId = goId.trim();
+					if (!goId.isEmpty()) {
+						if (goIntensityMap.containsKey(goId)) {
+							// Sum with existing intensities
+							double[] existingIntensities = goIntensityMap.get(goId);
+							for (int i = 0; i < sharedIntensities.length; i++) {
+								existingIntensities[i] += sharedIntensities[i];
+							}
+						} else {
+							// Create new entry
+							goIntensityMap.put(goId, sharedIntensities.clone());
+						}
+					}
+				}
+			}
+		}
+
+		// Write results
+		for (String goId : goIntensityMap.keySet()) {
+			StringBuilder sb = new StringBuilder();
+			sb.append(goId).append("\t");
+			double[] intensities = goIntensityMap.get(goId);
+			for (double intensity : intensities) {
+				sb.append(intensity).append("\t");
+			}
+			sb.deleteCharAt(sb.length() - 1);
+			writer.println(sb);
+		}
+
+		writer.close();
+	}
+
+	public void exportECReport(String tsv) throws IOException {
+		exportECReport(new File(tsv));
+	}
+
+	public void exportECReport(File tsv) throws IOException {
+		PrintWriter writer = new PrintWriter(tsv);
+		StringBuilder title = new StringBuilder();
+		title.append("EC_id").append("\t");
+
+		if (this.searchType.equals(MetaConstants.maxQuant) && this.quanMode.equals(MetaConstants.labelFree)) {
+			for (String exp : fileNames) {
+				if (exp.startsWith("LFQ intensity")) {
+					title.append(exp.replace("LFQ intensity", "Intensity")).append("\t");
+				} else {
+					title.append("Intensity ").append(exp).append("\t");
+				}
+			}
+		} else {
+			for (String exp : fileNames) {
+				if (!exp.startsWith("Intensity")) {
+					title.append("Intensity ").append(exp).append("\t");
+				} else {
+					title.append(exp).append("\t");
+				}
+			}
+		}
+
+		title.deleteCharAt(title.length() - 1);
+		writer.println(title);
+
+		// HashMap to store EC ID -> intensity arrays
+		HashMap<String, double[]> ecIntensityMap = new HashMap<String, double[]>();
+
+		for (MetaProteinAnnoEggNog protein : proteins) {
+			String ecIds = protein.getEC();
+			if (ecIds == null || ecIds.trim().isEmpty() || ecIds.equals("-")) {
+				continue;
+			}
+
+			double[] intensities = protein.getPro().getIntensities();
+			
+			// Split EC IDs by comma
+			String[] ecIdArray = ecIds.split(",");
+			int numIds = ecIdArray.length;
+			
+			if (numIds > 0) {
+				// Calculate equal share of intensity for each EC ID
+				double[] sharedIntensities = new double[intensities.length];
+				for (int i = 0; i < intensities.length; i++) {
+					sharedIntensities[i] = intensities[i] / numIds;
+				}
+
+				// Add to hashmap for each EC ID
+				for (String ecId : ecIdArray) {
+					ecId = ecId.trim();
+					if (!ecId.isEmpty()) {
+						if (ecIntensityMap.containsKey(ecId)) {
+							// Sum with existing intensities
+							double[] existingIntensities = ecIntensityMap.get(ecId);
+							for (int i = 0; i < sharedIntensities.length; i++) {
+								existingIntensities[i] += sharedIntensities[i];
+							}
+						} else {
+							// Create new entry
+							ecIntensityMap.put(ecId, sharedIntensities.clone());
+						}
+					}
+				}
+			}
+		}
+
+		// Write results
+		for (String ecId : ecIntensityMap.keySet()) {
+			StringBuilder sb = new StringBuilder();
+			sb.append(ecId).append("\t");
+			double[] intensities = ecIntensityMap.get(ecId);
+			for (double intensity : intensities) {
+				sb.append(intensity).append("\t");
+			}
+			sb.deleteCharAt(sb.length() - 1);
+			writer.println(sb);
+		}
+
+		writer.close();
+	}
+
+	public void exportKeggReport(String tsv) throws IOException {
+		exportKeggReport(new File(tsv));
+	}
+
+	public void exportKeggReport(File tsv) throws IOException {
+		PrintWriter writer = new PrintWriter(tsv);
+		StringBuilder title = new StringBuilder();
+		title.append("KEGG_ko").append("\t");
+
+		if (this.searchType.equals(MetaConstants.maxQuant) && this.quanMode.equals(MetaConstants.labelFree)) {
+			for (String exp : fileNames) {
+				if (exp.startsWith("LFQ intensity")) {
+					title.append(exp.replace("LFQ intensity", "Intensity")).append("\t");
+				} else {
+					title.append("Intensity ").append(exp).append("\t");
+				}
+			}
+		} else {
+			for (String exp : fileNames) {
+				if (!exp.startsWith("Intensity")) {
+					title.append("Intensity ").append(exp).append("\t");
+				} else {
+					title.append(exp).append("\t");
+				}
+			}
+		}
+
+		title.deleteCharAt(title.length() - 1);
+		writer.println(title);
+
+		// HashMap to store KEGG KO -> intensity arrays
+		HashMap<String, double[]> keggIntensityMap = new HashMap<String, double[]>();
+
+		for (MetaProteinAnnoEggNog protein : proteins) {
+			String keggIds = protein.getKEGG_ko();
+			if (keggIds == null || keggIds.trim().isEmpty() || keggIds.equals("-")) {
+				continue;
+			}
+
+			double[] intensities = protein.getPro().getIntensities();
+			
+			// Split KEGG KO IDs by comma
+			String[] keggIdArray = keggIds.split(",");
+			int numIds = keggIdArray.length;
+			
+			if (numIds > 0) {
+				// Calculate equal share of intensity for each KEGG KO ID
+				double[] sharedIntensities = new double[intensities.length];
+				for (int i = 0; i < intensities.length; i++) {
+					sharedIntensities[i] = intensities[i] / numIds;
+				}
+
+				// Add to hashmap for each KEGG KO ID
+				for (String keggId : keggIdArray) {
+					keggId = keggId.trim();
+					if (!keggId.isEmpty()) {
+						if (keggIntensityMap.containsKey(keggId)) {
+							// Sum with existing intensities
+							double[] existingIntensities = keggIntensityMap.get(keggId);
+							for (int i = 0; i < sharedIntensities.length; i++) {
+								existingIntensities[i] += sharedIntensities[i];
+							}
+						} else {
+							// Create new entry
+							keggIntensityMap.put(keggId, sharedIntensities.clone());
+						}
+					}
+				}
+			}
+		}
+
+		// Write results
+		for (String keggId : keggIntensityMap.keySet()) {
+			StringBuilder sb = new StringBuilder();
+			sb.append(keggId).append("\t");
+			double[] intensities = keggIntensityMap.get(keggId);
+			for (double intensity : intensities) {
+				sb.append(intensity).append("\t");
+			}
+			sb.deleteCharAt(sb.length() - 1);
+			writer.println(sb);
+		}
+
+		writer.close();
+	}
+
+	public void exportBriteReport(String tsv) throws IOException {
+		exportBriteReport(new File(tsv));
+	}
+
+	public void exportBriteReport(File tsv) throws IOException {
+		PrintWriter writer = new PrintWriter(tsv);
+		StringBuilder title = new StringBuilder();
+		title.append("BRITE").append("\t");
+
+		if (this.searchType.equals(MetaConstants.maxQuant) && this.quanMode.equals(MetaConstants.labelFree)) {
+			for (String exp : fileNames) {
+				if (exp.startsWith("LFQ intensity")) {
+					title.append(exp.replace("LFQ intensity", "Intensity")).append("\t");
+				} else {
+					title.append("Intensity ").append(exp).append("\t");
+				}
+			}
+		} else {
+			for (String exp : fileNames) {
+				if (!exp.startsWith("Intensity")) {
+					title.append("Intensity ").append(exp).append("\t");
+				} else {
+					title.append(exp).append("\t");
+				}
+			}
+		}
+
+		title.deleteCharAt(title.length() - 1);
+		writer.println(title);
+
+		// HashMap to store BRITE -> intensity arrays
+		HashMap<String, double[]> briteIntensityMap = new HashMap<String, double[]>();
+
+		for (MetaProteinAnnoEggNog protein : proteins) {
+			String briteIds = protein.getBRITE();
+			if (briteIds == null || briteIds.trim().isEmpty() || briteIds.equals("-")) {
+				continue;
+			}
+
+			double[] intensities = protein.getPro().getIntensities();
+			
+			// Split BRITE IDs by comma
+			String[] briteIdArray = briteIds.split(",");
+			int numIds = briteIdArray.length;
+			
+			if (numIds > 0) {
+				// Calculate equal share of intensity for each BRITE ID
+				double[] sharedIntensities = new double[intensities.length];
+				for (int i = 0; i < intensities.length; i++) {
+					sharedIntensities[i] = intensities[i] / numIds;
+				}
+
+				// Add to hashmap for each BRITE ID
+				for (String briteId : briteIdArray) {
+					briteId = briteId.trim();
+					if (!briteId.isEmpty()) {
+						if (briteIntensityMap.containsKey(briteId)) {
+							// Sum with existing intensities
+							double[] existingIntensities = briteIntensityMap.get(briteId);
+							for (int i = 0; i < sharedIntensities.length; i++) {
+								existingIntensities[i] += sharedIntensities[i];
+							}
+						} else {
+							// Create new entry
+							briteIntensityMap.put(briteId, sharedIntensities.clone());
+						}
+					}
+				}
+			}
+		}
+
+		// Write results
+		for (String briteId : briteIntensityMap.keySet()) {
+			StringBuilder sb = new StringBuilder();
+			sb.append(briteId).append("\t");
+			double[] intensities = briteIntensityMap.get(briteId);
+			for (double intensity : intensities) {
+				sb.append(intensity).append("\t");
+			}
+			sb.deleteCharAt(sb.length() - 1);
+			writer.println(sb);
+		}
+
+		writer.close();
+	}
+
 	public String[] getFileNames() {
 		return fileNames;
 	}

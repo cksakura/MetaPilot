@@ -83,7 +83,9 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 			}
 		} else {
 			LOGGER.error("{}: Parameters object is null!", taskName);
+			return;
 		}
+		this.spectraDirFile = metaPar.getSpectraFile();
 
 		File pFindBin = (new File(mrp.getToolPath(ToolType.PFIND))).getParentFile();
 		pFindTask = new PFindTask(pFindBin, metaPar.getThreadCount());
@@ -237,7 +239,7 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 		}
 
 		metaPar.setDbSearchResultFile(pfindSearchFile);
-		
+
 		this.combinedFile = new File(pfindSearchFile, "combined");
 		if (!combinedFile.exists()) {
 			combinedFile.mkdir();
@@ -526,8 +528,8 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 
 	protected boolean exportReport() {
 
-			LOGGER.info(getTaskName() + ": exporting peptide report started");
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting peptide report started");
+		LOGGER.info(getTaskName() + ": exporting peptide report started");
+		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting peptide report started");
 
 		// Build file list and mapping
 		ArrayList<String> fileList = new ArrayList<String>();
@@ -563,7 +565,7 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 		try {
 			FlashLfqPsmReader flashLfqPsmReader = new FlashLfqPsmReader(new File(combinedFile, "psms.tsv"));
 			psms = flashLfqPsmReader.getPSMs();
-			} catch (IOException e) {
+		} catch (IOException e) {
 			LOGGER.error(getTaskName() + ": error in reading the PSMs from " + (new File(combinedFile, "psms.tsv")), e);
 			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in reading the PSMs from "
 					+ (new File(combinedFile, "psms.tsv")));
@@ -599,32 +601,32 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 					intensityTitle[i * repoTitle.length + j] = fileList.get(i) + "_" + repoTitle[j];
 				}
 			}
-						} else {
+		} else {
 			LOGGER.error(getTaskName() + ": unknown quantitative type");
 			return false;
 		}
 
 		// Create and execute the post-analysis task directly
-		DDAIgcPostAnalysisTask postAnalysisTask = new DDAIgcPostAnalysisTask(
-			metaPar, mrp, secondBar, quanPeps, psms, fileIdMap, fileList, quanMode, intensityTitle, getTaskName(), this);
-		
+		DDAIgcPostAnalysisTask postAnalysisTask = new DDAIgcPostAnalysisTask(metaPar, mrp, secondBar, quanPeps, psms,
+				fileIdMap, fileList, quanMode, intensityTitle, getTaskName(), this);
+
 		// Execute the task and wait for completion
 		Thread taskThread = new Thread(postAnalysisTask);
 		taskThread.setDaemon(true);
 		taskThread.start();
-		
+
 		try {
 			taskThread.join();
 			boolean success = postAnalysisTask.get();
-			
-            if (success) {
-                LOGGER.info(getTaskName() + ": Post-analysis completed successfully");
-                return true;
-					} else {
+
+			if (success) {
+				LOGGER.info(getTaskName() + ": Post-analysis completed successfully");
+				return true;
+			} else {
 				LOGGER.error(getTaskName() + ": Post-analysis task failed");
-			return false;
+				return false;
 			}
-				} catch (InterruptedException e) {
+		} catch (InterruptedException e) {
 			LOGGER.error(getTaskName() + ": Post-analysis task was interrupted", e);
 			Thread.currentThread().interrupt();
 			return false;

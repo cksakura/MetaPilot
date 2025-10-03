@@ -61,7 +61,7 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
     private ComboBox<String> digestionModeComboBox;
 
     // Additional parameters
-    private Spinner<Integer> threadsSpinner;
+    private ComboBox<Integer> threadsComboBox;
     private ComboBox<String> ms2ScanModeComboBox;
     private CheckBox generateSampleSpecificDBCheckBox;
     private CheckBox spectraClusteringCheckBox;
@@ -72,14 +72,7 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
     // Data
     private ObservableList<String> enzymes = FXCollections.observableArrayList();
     
-    // Add parameter IO instance
-    private DDAMagPfindParameterIO parameterIO;
-    
-    // Store the last used analysis parameters for viewReport
-    private DDAMagPfindParameters currentAnalysisParams;
-    
-    // Current task reference
-    private DDAMagPfindTask currentTask;
+
     
     public MetaPilotDdaMagPfindPanel(MagDbItem[] magDbItems) {
         // Call parent constructor first
@@ -462,14 +455,22 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
         
         Label threadsLabel = new Label("Threads:");
         threadsLabel.setStyle("-fx-font-weight: bold;");
-        threadsSpinner = new Spinner<>(1, Runtime.getRuntime().availableProcessors(), 4);
-        threadsSpinner.setMinWidth(100);
-        threadsSpinner.setPrefWidth(100);
-        threadsSpinner.setMaxWidth(Double.MAX_VALUE);
-        threadsSpinner.valueProperty().addListener((obs, oldVal, newVal) -> updateParameterView());
+        threadsComboBox = new ComboBox<>();
+        threadsComboBox.setMinWidth(100);
+        threadsComboBox.setPrefWidth(100);
+        threadsComboBox.setMaxWidth(Double.MAX_VALUE);
+        
+        // Populate with thread count options (1 to available processors)
+        ObservableList<Integer> threadOptions = FXCollections.observableArrayList();
+        for (int i = 1; i <= Runtime.getRuntime().availableProcessors(); i++) {
+            threadOptions.add(i);
+        }
+        threadsComboBox.setItems(threadOptions);
+        threadsComboBox.setValue(4); // Default value
+        threadsComboBox.valueProperty().addListener((obs, oldVal, newVal) -> updateParameterView());
         
         VBox threadsBox = new VBox(5);
-        threadsBox.getChildren().addAll(threadsLabel, threadsSpinner);
+        threadsBox.getChildren().addAll(threadsLabel, threadsComboBox);
         
         Label ms2Label = new Label("MS2 Scan Mode:");
         ms2Label.setStyle("-fx-font-weight: bold;");
@@ -585,9 +586,20 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
             // Set up task completion callback to enable View Report button
             currentTask.setOnSucceeded(e -> {
                 Platform.runLater(() -> {
-                    consolePanel.appendConsoleText("✓ Analysis completed successfully!\n");
-                    consolePanel.enableViewReportButton();
+                    // Check if the task actually succeeded by examining the result
+                    try {
+                        Boolean result = currentTask.get();
+                        if (result != null && result) {
+                            consolePanel.appendConsoleText("✓ Analysis completed successfully!\n");
+                            consolePanel.enableViewReportButton();
+                        } else {
+                            consolePanel.appendConsoleText("⚠ Analysis completed but may not have been fully successful.\n");
+                        }
+                    } catch (Exception ex) {
+                        consolePanel.appendConsoleText("✗ Analysis failed: " + ex.getMessage() + "\n");
+                    }
                     consolePanel.setButtonsEnabled(true, false, true);
+                    consolePanel.stopStatusTimer(); // Stop the timer when task completes
                 });
             });
             
@@ -595,6 +607,7 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
                 Platform.runLater(() -> {
                     consolePanel.appendConsoleText("✗ Analysis failed. Check console output for details.\n");
                     consolePanel.setButtonsEnabled(true, false, false);
+                    consolePanel.stopStatusTimer(); // Stop the timer when task fails
                 });
             });
             
@@ -723,8 +736,8 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
         
         // Additional parameters
         sb.append("Additional Parameters:\n");
-        if (threadsSpinner != null) {
-            sb.append("  Threads: ").append(threadsSpinner.getValue()).append("\n");
+        if (threadsComboBox != null) {
+            sb.append("  Threads: ").append(threadsComboBox.getValue()).append("\n");
         }
         if (ms2ScanModeComboBox != null) {
             sb.append("  MS2 Scan Mode: ").append(ms2ScanModeComboBox.getValue()).append("\n");
@@ -768,19 +781,25 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
     @Override
     protected DDAMagPfindParameters collectParametersFromUI() {
         try {
+            consolePanel.appendConsoleText("Collecting parameters from UI...\n");
             LOGGER.info("Starting parameter collection from UI for MAG pFind workflow");
             
             // Validate inputs first
+            consolePanel.appendConsoleText("Validating UI inputs...\n");
             LOGGER.info("Validating UI inputs...");
             if (!validateInputs()) {
+                consolePanel.appendConsoleText("ERROR: Input validation failed\n");
                 LOGGER.error("Input validation failed");
                 return null;
             }
+            consolePanel.appendConsoleText("✓ Input validation passed\n");
             LOGGER.info("Input validation passed");
             
             // Collect experiment data from ioPanel
+            consolePanel.appendConsoleText("Collecting experiment data from IO panel...\n");
             LOGGER.info("Collecting experiment data from IO panel...");
             ObservableList<ExperimentRow> fileRows = ioPanel.getExperimentData();
+            consolePanel.appendConsoleText("Found " + fileRows.size() + " experiment rows\n");
             LOGGER.info("Found {} experiment rows", fileRows.size());
             
             if (fileRows.isEmpty()) {
@@ -839,7 +858,7 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
             String digestMode = digestionModeComboBox.getValue() != null ? digestionModeComboBox.getValue() : "Specific";
             LOGGER.info("Digestion mode: {}", digestMode);
             
-            int threadCount = threadsSpinner.getValue() != null ? threadsSpinner.getValue() : 4;
+            int threadCount = threadsComboBox.getValue() != null ? threadsComboBox.getValue() : 4;
             LOGGER.info("Thread count: {}", threadCount);
             
             String ms2ScanMode = ms2ScanModeComboBox.getValue() != null ? ms2ScanModeComboBox.getValue() : "HCD-FTMS";
@@ -964,10 +983,13 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
                 analysisParams.setMetadataTableData(new ArrayList<>(metadataRows));
             }
             
+            consolePanel.appendConsoleText("✓ Successfully collected parameters from UI\n");
             LOGGER.info("Successfully collected parameters from UI for MAG pFind workflow");
             return analysisParams;
             
         } catch (Exception e) {
+            String errorMsg = "ERROR: Failed to collect parameters from UI: " + e.getMessage();
+            consolePanel.appendConsoleText(errorMsg + "\n");
             LOGGER.error("Failed to collect parameters from UI: " + e.getMessage(), e);
             return null;
         }
@@ -1150,20 +1172,24 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
     @Override
     protected void loadLastUsedParameters() {
         try {
+            consolePanel.appendConsoleText("Loading last used parameters...\n");
             DDAMagPfindParameters params = (DDAMagPfindParameters) parameterIO.loadLastUsedParameters();
             if (params != null) {
                 applyParametersToUI(params);
+                consolePanel.appendConsoleText("✓ Successfully loaded last used parameters\n");
                 LOGGER.info("Loaded last used parameters for DDA MAG pFind workflow");
                 
                 // Also apply experiment data to the IO panel if available
                 if (params.getExperimentData() != null && !params.getExperimentData().isEmpty()) {
                     ioPanel.setExperimentData(params.getExperimentData());
+                    consolePanel.appendConsoleText("Applied " + params.getExperimentData().size() + " experiment rows to IO panel\n");
                     LOGGER.info("Applied {} experiment rows to IO panel", params.getExperimentData().size());
                 }
                 
                 // Apply output directory if available
                 if (params.getResult() != null && !params.getResult().trim().isEmpty()) {
                     ioPanel.setOutputDirectory(params.getResult());
+                    consolePanel.appendConsoleText("Applied output directory: " + params.getResult() + "\n");
                     LOGGER.info("Applied output directory: {}", params.getResult());
                 }
                 
@@ -1173,9 +1199,12 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
                     updateParameterView();
                 });
             } else {
+                consolePanel.appendConsoleText("No previous parameters found, using defaults\n");
                 LOGGER.warn("No parameters loaded, using defaults");
             }
         } catch (Exception e) {
+            String errorMsg = "WARNING: Failed to load last used parameters: " + e.getMessage();
+            consolePanel.appendConsoleText(errorMsg + "\n");
             LOGGER.warn("Failed to load last used MAG pFind parameters: " + e.getMessage(), e);
             // Continue with default UI state
         }
@@ -1186,7 +1215,13 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
      */
     @Override
     protected void applyParametersToUI(DDAMagPfindParameters params) {
-        if (params == null) return;
+        try {
+            consolePanel.appendConsoleText("Applying parameters to UI...\n");
+            if (params == null) {
+                consolePanel.appendConsoleText("WARNING: No parameters to apply\n");
+                LOGGER.warn("No parameters to apply to UI");
+                return;
+            }
         
         // Apply metadata to IO panel if available
         if (params.getMetadata() != null) {
@@ -1216,8 +1251,8 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
         if (params.getDigestModeString() != null && digestionModeComboBox != null) {
             digestionModeComboBox.setValue(params.getDigestModeString());
         }
-        if (threadsSpinner != null) {
-            threadsSpinner.getValueFactory().setValue(params.getThreadCount());
+        if (threadsComboBox != null) {
+            threadsComboBox.setValue(params.getThreadCount());
         }
         if (params.getMs2ScanMode() != null && ms2ScanModeComboBox != null) {
             ms2ScanModeComboBox.setValue(params.getMs2ScanMode());
@@ -1306,6 +1341,15 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
         
         // Update parameter view after applying parameters
         Platform.runLater(() -> updateParameterView());
+        
+        consolePanel.appendConsoleText("✓ Successfully applied parameters to UI\n");
+        LOGGER.info("Successfully applied parameters to UI for MAG pFind workflow");
+        
+        } catch (Exception e) {
+            String errorMsg = "ERROR: Failed to apply parameters to UI: " + e.getMessage();
+            consolePanel.appendConsoleText(errorMsg + "\n");
+            LOGGER.error("Failed to apply parameters to UI for MAG pFind workflow", e);
+        }
     }
     
     /**
@@ -1326,6 +1370,14 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
             showError("Error", "Failed to load MAG pFind analysis parameters: " + e.getMessage());
             LOGGER.error("Failed to load MAG pFind analysis parameters from " + resultDirectory, e);
         }
+    }
+    
+    /**
+     * Get the parameter class for this workflow
+     */
+    @Override
+    protected Class<DDAMagPfindParameters> getParameterClass() {
+        return DDAMagPfindParameters.class;
     }
 
 } 

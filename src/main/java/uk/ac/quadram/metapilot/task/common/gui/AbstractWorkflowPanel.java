@@ -11,6 +11,7 @@ import javafx.application.Platform;
 import java.io.File;
 import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.par.BaseParameterIO;
+import uk.ac.quadram.metapilot.task.MetaPilotTask;
 
 /**
  * Abstract base class for workflow panels that provides common functionality
@@ -25,7 +26,7 @@ public abstract class AbstractWorkflowPanel<T extends MetaBaseParameter> extends
     protected BaseParameterIO parameterIO;
     
     // Current task reference for common operations
-    protected Object currentTask;
+    protected MetaPilotTask currentTask;
     
     // Current analysis parameters for viewReport
     protected T currentAnalysisParams;
@@ -206,6 +207,44 @@ public abstract class AbstractWorkflowPanel<T extends MetaBaseParameter> extends
     }
     
     /**
+     * Common failure handling for all workflow tasks
+     */
+    protected void handleTaskFailure() {
+        Platform.runLater(() -> {
+            consolePanel.appendConsoleText("✗ Analysis failed. Check console output for details.\n");
+            consolePanel.appendConsoleText("For technical support, please contact: kai.cheng@quadram.ac.uk\n");
+            consolePanel.appendConsoleText("When reporting issues, please include:\n");
+            consolePanel.appendConsoleText("• The console output above\n");
+            consolePanel.appendConsoleText("• The logging.log file from the logs directory\n");
+            consolePanel.appendConsoleText("• The analysis parameters JSON file from the output directory\n");
+            consolePanel.setButtonsEnabled(true, false, false);
+            consolePanel.stopStatusTimer();
+        });
+    }
+    
+    /**
+     * Common success handling that checks if the task actually succeeded
+     */
+    protected void handleTaskSuccess(MetaPilotTask task) {
+        Platform.runLater(() -> {
+            Boolean result = task.getValue();
+            if (result != null && result) {
+                // Task completed successfully
+                consolePanel.appendConsoleText("✓ Analysis completed successfully!\n");
+                if (currentAnalysisParams != null && currentAnalysisParams.getResult() != null) {
+                    consolePanel.appendConsoleText("Results saved to: " + currentAnalysisParams.getResult() + "\n");
+                }
+                consolePanel.enableViewReportButton();
+                consolePanel.setButtonsEnabled(true, false, true);
+            } else {
+                // Task completed but returned false (failed)
+                handleTaskFailure();
+            }
+            consolePanel.stopStatusTimer();
+        });
+    }
+    
+    /**
      * Setup window close handler - common behavior
      */
     protected void setupWindowCloseHandler() {
@@ -273,6 +312,33 @@ public abstract class AbstractWorkflowPanel<T extends MetaBaseParameter> extends
     protected abstract void applyParametersToUI(T params);
     
     /**
+     * Load parameters from a loaded parameter object
+     * This method is called when loading parameters from a file
+     */
+    public void loadParametersFromObject(Object parameters) {
+        try {
+            if (parameters != null && parameters.getClass().isAssignableFrom(getParameterClass())) {
+                @SuppressWarnings("unchecked")
+                T typedParams = (T) parameters;
+                applyParametersToUI(typedParams);
+                consolePanel.appendConsoleText("✓ Successfully loaded parameters from file\n");
+            } else {
+                consolePanel.appendConsoleText("ERROR: Parameter type mismatch. Expected: " + 
+                    getParameterClass().getSimpleName() + ", Got: " + 
+                    (parameters != null ? parameters.getClass().getSimpleName() : "null") + "\n");
+            }
+        } catch (Exception e) {
+            consolePanel.appendConsoleText("ERROR: Failed to load parameters: " + e.getMessage() + "\n");
+            e.printStackTrace();
+        }
+    }
+    
+    /**
+     * Get the parameter class for this workflow
+     */
+    protected abstract Class<T> getParameterClass();
+    
+    /**
      * Start the analysis - implementation specific to each workflow
      */
     protected abstract void startAnalysis();
@@ -323,14 +389,14 @@ public abstract class AbstractWorkflowPanel<T extends MetaBaseParameter> extends
     /**
      * Get the current task
      */
-    public Object getCurrentTask() {
+    public MetaPilotTask getCurrentTask() {
         return currentTask;
     }
     
     /**
      * Set the current task
      */
-    public void setCurrentTask(Object task) {
+    public void setCurrentTask(MetaPilotTask task) {
         this.currentTask = task;
     }
 }

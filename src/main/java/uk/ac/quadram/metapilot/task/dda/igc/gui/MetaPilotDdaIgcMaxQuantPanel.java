@@ -29,14 +29,10 @@ import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcMaxQuantParameters;
 import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcMaxQuantParameterIO;
 import uk.ac.quadram.metapilot.task.common.gui.AbstractWorkflowPanel;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedReader;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -61,7 +57,7 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
     private Button removeVariableModButton;
     
     // Additional parameters
-    private Spinner<Integer> threadsSpinner;
+    private ComboBox<Integer> threadsComboBox;
     private ComboBox<String> ms2ScanModeComboBox;
     private CheckBox generateSampleSpecificDBCheckBox;
     private CheckBox spectraClusteringCheckBox;
@@ -100,11 +96,7 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
     private Button resetMetadataButton;
     
     
-    // Add parameter IO instance
-    private DDAIgcMaxQuantParameterIO parameterIO;
     
-    // Current running task
-    private DDAIgcMaxQuantTask currentTask;
     
     public MetaPilotDdaIgcMaxQuantPanel() {
         // Call parent constructor first
@@ -176,45 +168,6 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
         getChildren().addAll(tabPane);
     }
     
-    private int ProcessorCount() {
-		int total = 0;
-		try {
-			String[] args = { "wmic", "cpu", "get", "NumberOfLogicalProcessors" };
-			ProcessBuilder pb = new ProcessBuilder(args);
-			Process p = pb.start();
-			BufferedInputStream in = new BufferedInputStream(p.getInputStream());
-			BufferedReader inBr = new BufferedReader(new InputStreamReader(in));
-			String lineStr = null;
-			L: while ((lineStr = inBr.readLine()) != null) {
-				String trimLine = lineStr.trim();
-				if (trimLine.length() > 0) {
-					int oneCore = 0;
-					for (int i = 0; i < trimLine.length(); i++) {
-						char aa = trimLine.charAt(i);
-						if (aa >= '0' && aa <= '9') {
-							oneCore += ((int) (aa - '0')) * Math.pow(10, (trimLine.length() - i - 1));
-						} else {
-							continue L;
-						}
-					}
-					total += oneCore;
-				}
-			}
-			if (p.waitFor() != 0) {
-				if (p.exitValue() == 1)
-					System.err.println("false");
-			}
-			inBr.close();
-			in.close();
-		} catch (IOException | InterruptedException e) {
-			System.err.println("Failed to get logical processors using wmic: " + e.getMessage());
-		}
-
-		if (total == 0) {
-			total = Runtime.getRuntime().availableProcessors();
-		}
-		return total;
-	}
     
     @Override
     public VBox createIOTab() {
@@ -392,14 +345,22 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
         // Threads
         Label threadsLabel = new Label("Threads:");
         threadsLabel.setStyle("-fx-font-weight: bold;");
-        threadsSpinner = new Spinner<>(1, ProcessorCount(), 4);
-        threadsSpinner.setMinWidth(100);
-        threadsSpinner.setPrefWidth(100);
-        threadsSpinner.setMaxWidth(Double.MAX_VALUE);
-        threadsSpinner.valueProperty().addListener((obs, oldVal, newVal) -> updateParameterView());
+        threadsComboBox = new ComboBox<>();
+        threadsComboBox.setMinWidth(100);
+        threadsComboBox.setPrefWidth(100);
+        threadsComboBox.setMaxWidth(Double.MAX_VALUE);
+        
+        // Populate with thread count options (1 to available processors)
+        ObservableList<Integer> threadOptions = FXCollections.observableArrayList();
+        for (int i = 1; i <= Runtime.getRuntime().availableProcessors(); i++) {
+            threadOptions.add(i);
+        }
+        threadsComboBox.setItems(threadOptions);
+        threadsComboBox.setValue(4); // Default value
+        threadsComboBox.valueProperty().addListener((obs, oldVal, newVal) -> updateParameterView());
         
         VBox threadsBox = new VBox(5);
-        threadsBox.getChildren().addAll(threadsLabel, threadsSpinner);
+        threadsBox.getChildren().addAll(threadsLabel, threadsComboBox);
         
         // MS2 Scan Mode
         Label ms2Label = new Label("MS2 Scan Mode:");
@@ -1251,7 +1212,7 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
         
         // Additional parameters
         sb.append("=== ADDITIONAL PARAMETERS ===\n");
-        sb.append("Threads: ").append(threadsSpinner.getValue()).append("\n");
+        sb.append("Threads: ").append(threadsComboBox.getValue()).append("\n");
         sb.append("MS2 Scan Mode: ").append(ms2ScanModeComboBox.getValue()).append("\n");
         sb.append("Generate Sample Specific DB: ").append(generateSampleSpecificDBCheckBox.isSelected() ? "Yes" : "No").append("\n");
         sb.append("Spectra Clustering: ").append(spectraClusteringCheckBox.isSelected() ? "Yes" : "No").append("\n\n");
@@ -1326,6 +1287,13 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
             
             // Collect ALL parameters from UI into a single object
             DDAIgcMaxQuantParameters analysisParams = collectParametersFromUI();
+            if (analysisParams == null) {
+                showAlert("Error", "Failed to collect parameters from UI. Please check your settings.");
+                return;
+            }
+            
+            // Store analysis parameters for viewReport
+            this.currentAnalysisParams = analysisParams;
             
             // Save parameters for this analysis and as last used
             String outputDir = analysisParams.getResult();
@@ -1665,8 +1633,12 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
      */
     @Override
     protected DDAIgcMaxQuantParameters collectParametersFromUI() {
-        // Collect experiment data from ioPanel
-        ObservableList<ExperimentRow> fileRows = ioPanel.getIoPanel().getExperimentData();
+        try {
+            consolePanel.appendConsoleText("Collecting parameters from UI...\n");
+            
+            // Collect experiment data from ioPanel
+            ObservableList<ExperimentRow> fileRows = ioPanel.getIoPanel().getExperimentData();
+            consolePanel.appendConsoleText("Found " + fileRows.size() + " experiment rows\n");
         String[] rawFiles = new String[fileRows.size()];
         String[] expNames = new String[fileRows.size()];
         int[] fractions = new int[fileRows.size()];
@@ -1706,7 +1678,7 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
         if (ms2ScanMode == null) {
             ms2ScanMode = MetaConstants.HCD_FTMS; // Default
         }
-        int threadCount = threadsSpinner.getValue();
+        int threadCount = threadsComboBox.getValue() != null ? threadsComboBox.getValue() : 4;
         boolean spectraCluster = spectraClusteringCheckBox.isSelected();
         
         // Create DDAIgcMaxQuantParameters using parameterized constructor
@@ -1796,7 +1768,16 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
         // Metadata
         params.setMetadataTableData(new ArrayList<>(metadataTableData));
         
+        consolePanel.appendConsoleText("✓ Successfully collected parameters from UI\n");
+        LOGGER.info("Successfully collected parameters from UI for IGC MaxQuant workflow");
         return params;
+        
+        } catch (Exception e) {
+            String errorMsg = "ERROR: Failed to collect parameters from UI: " + e.getMessage();
+            consolePanel.appendConsoleText(errorMsg + "\n");
+            LOGGER.error("Failed to collect parameters from UI for IGC MaxQuant workflow", e);
+            return null;
+        }
     }
     
     /**
@@ -1805,10 +1786,19 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
     @Override
     protected void loadLastUsedParameters() {
         try {
+            consolePanel.appendConsoleText("Loading last used parameters...\n");
             DDAIgcMaxQuantParameters params = (DDAIgcMaxQuantParameters) parameterIO.loadLastUsedParameters();
-            applyParametersToUI(params);
-            LOGGER.info("Loaded last used parameters for DDA IGC MaxQuant workflow");
+            if (params != null) {
+                applyParametersToUI(params);
+                consolePanel.appendConsoleText("✓ Successfully loaded last used parameters\n");
+                LOGGER.info("Loaded last used parameters for DDA IGC MaxQuant workflow");
+            } else {
+                consolePanel.appendConsoleText("No previous parameters found, using defaults\n");
+                LOGGER.warn("No parameters loaded, using defaults");
+            }
         } catch (Exception e) {
+            String errorMsg = "WARNING: Failed to load last used parameters: " + e.getMessage();
+            consolePanel.appendConsoleText(errorMsg + "\n");
             LOGGER.warn("Failed to load last used parameters: " + e.getMessage());
             // Continue with default UI state
         }
@@ -1819,7 +1809,13 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
      */
     @Override
     protected void applyParametersToUI(DDAIgcMaxQuantParameters params) {
-        if (params == null) return;
+        try {
+            consolePanel.appendConsoleText("Applying parameters to UI...\n");
+            if (params == null) {
+                consolePanel.appendConsoleText("WARNING: No parameters to apply\n");
+                LOGGER.warn("No parameters to apply to UI");
+                return;
+            }
         
         // Apply Input/Output settings
         if (params.getResult() != null && ioPanel != null) {
@@ -1873,8 +1869,8 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
         if (params.getDigestModeString() != null && digestionModeComboBox != null) {
             digestionModeComboBox.setValue(params.getDigestModeString());
         }
-        if (threadsSpinner != null) {
-            threadsSpinner.getValueFactory().setValue(params.getThreadCount());
+        if (threadsComboBox != null) {
+            threadsComboBox.setValue(params.getThreadCount());
         }
         if (params.getMs2ScanMode() != null && ms2ScanModeComboBox != null) {
             ms2ScanModeComboBox.setValue(params.getMs2ScanMode());
@@ -1944,6 +1940,15 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
             updateParameterView();
             updateMetadataTable();
         });
+        
+        consolePanel.appendConsoleText("✓ Successfully applied parameters to UI\n");
+        LOGGER.info("Successfully applied parameters to UI for IGC MaxQuant workflow");
+        
+        } catch (Exception e) {
+            String errorMsg = "ERROR: Failed to apply parameters to UI: " + e.getMessage();
+            consolePanel.appendConsoleText(errorMsg + "\n");
+            LOGGER.error("Failed to apply parameters to UI for IGC MaxQuant workflow", e);
+        }
     }
     
     /**
@@ -1959,6 +1964,14 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
             showAlert("Error", "Failed to load analysis parameters: " + e.getMessage());
             LOGGER.error("Failed to load analysis parameters from " + resultDirectory, e);
         }
+    }
+    
+    /**
+     * Get the parameter class for this workflow
+     */
+    @Override
+    protected Class<DDAIgcMaxQuantParameters> getParameterClass() {
+        return DDAIgcMaxQuantParameters.class;
     }
     
     /**

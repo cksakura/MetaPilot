@@ -29,7 +29,7 @@ public class MetaPythonReportCopyTask extends Task<Boolean> {
     public MetaPythonReportCopyTask(File resultDirectory) {
         this.resultDirectory = resultDirectory;
         this.reportDirectory = new File(resultDirectory, "report");
-        this.htmlReportDirectory = new File(reportDirectory, "reports/rmd_html");
+        this.htmlReportDirectory = new File(reportDirectory, "reports");
         
         LOGGER.info("{}: Initialized for {}", TASK_NAME, resultDirectory.getAbsolutePath());
     }

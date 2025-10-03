@@ -6,6 +6,10 @@ import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
+import uk.ac.quadram.metapilot.task.io.ReportManifestGenerator;
+import uk.ac.quadram.metapilot.task.MetaPythonReportTask;
 import java.sql.SQLException;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
@@ -35,8 +39,6 @@ import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.task.MetaPilotTask;
 import uk.ac.quadram.metapilot.task.MetaAbstractTask;
-import uk.ac.quadram.metapilot.task.MetaPythonReportCopyTask;
-import uk.ac.quadram.metapilot.task.MetaPythonReportTask;
 import uk.ac.quadram.metapilot.task.io.MetaTreeHandler;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPSM;
@@ -268,7 +270,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 		String revIdentifier = decoySymble + this.magDb.getIdentifier();
 		HashMap<String, Double> genomeIntensityMap = new HashMap<String, Double>();
 		double[] peptideIntensity = new double[quanPeps.length];
-
+		LOGGER.info(getTaskName() + ": quanPeps: " + quanPeps.length);
 		for (int i = 0; i < quanPeps.length; i++) {
 			double[] pepIntensity = quanPeps[i].getIntensity();
 			double totalIntensity = MathTool.getTotal(pepIntensity);
@@ -279,7 +281,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 					idenCount++;
 				}
 			}
-
+			LOGGER.info(totalIntensity+"\t"+idenCount);
 			if (totalIntensity == 0 || idenCount == 0) {
 				continue;
 			}
@@ -653,6 +655,20 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			HMGenomeHtmlWriter htmlWriter = new HMGenomeHtmlWriter(genomeHtmlFile);
 			htmlWriter.write(genomeTaxaMap);
 			htmlWriter.close();
+
+			// Copy the generated Genome.html to the reports directory
+			File reportGenomeHtml = new File(metaPar.getReportDir(), "reports/Genome.html");
+			if (reportGenomeHtml.getParentFile() != null && !reportGenomeHtml.getParentFile().exists()) {
+				reportGenomeHtml.getParentFile().mkdirs();
+			}
+			Files.copy(genomeHtmlFile.toPath(), reportGenomeHtml.toPath(), StandardCopyOption.REPLACE_EXISTING);
+			LOGGER.info("Copied Genome.html to reports directory: " + reportGenomeHtml.getAbsolutePath());
+
+			// Add to manifest
+			File reportsDir = new File(metaPar.getReportDir(), "reports");
+			ReportManifestGenerator manifestGen = new ReportManifestGenerator(reportsDir);
+			manifestGen.addGenomeReport(reportGenomeHtml);
+
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
 			LOGGER.error("Error in writing genome information to " + genomeHtmlFile, e);
@@ -923,13 +939,27 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 
 		taxaReportWriter.close();
 
-		File jsOutput = new File(metaPar.getReportDir() + "\\reports\\metamap\\data\\tree.js");
+		File jsOutput = new File(metaPar.getReportDir() + "\\reports\\tree.js");
 		if (!jsOutput.getParentFile().exists()) {
 			jsOutput.getParentFile().mkdirs();
 		}
 
 		if (!jsOutput.exists() || jsOutput.length() == 0) {
 			MetaTreeHandler.exportJS(taxRankMaps, taxIntensityMaps, cellularIntensity, expNames, jsOutput);
+		}
+
+		// Generate bubble chart report from tree.js data (optional - don't fail if this
+		// doesn't work)
+		File bubbleChartOutput = new File(metaPar.getReportDir() + "\\reports\\bubble_chart_report.html");
+		if (!bubbleChartOutput.exists() || bubbleChartOutput.length() == 0) {
+			try {
+				generateBubbleChartReport(jsOutput, bubbleChartOutput);
+			} catch (Exception e) {
+				LOGGER.warn(getTaskName() + ": Bubble chart generation failed, continuing with other reports: "
+						+ e.getMessage());
+				System.out.println(format.format(new Date()) + "\t" + getTaskName()
+						+ ": Bubble chart generation failed, continuing with other reports");
+			}
 		}
 
 		boolean finished = false;
@@ -1054,142 +1084,32 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 		return metapros;
 	}
 
-	protected boolean exportReport() {
+	/**
+	 * Generate identification summary report
+	 */
+	private boolean generateIdentificationSummary(HashMap<String, Integer> fileIdMap, int[] filePsmCount,
+			HashSet<String>[] fileSequenceSets, String taskName) {
 
-		updateMessage(getTaskName() + ": exporting report");
+		try (PrintWriter idWriter = new PrintWriter(new File(combinedFile, "id.tsv"))) {
+			idWriter.println("Raw file\tUnique peptide count\tPSM count");
 
-		LOGGER.info(getTaskName() + ": exporting report started");
-		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting report started");
-
-		File reportDir = new File(metaPar.getResult(), "report");
-		if (!reportDir.exists()) {
-			reportDir.mkdirs();
-		}
-
-		MetaPythonReportCopyTask reportCopyTask = new MetaPythonReportCopyTask(new File(metaPar.getResult()));
-		Thread reportCopyThread = new Thread(reportCopyTask);
-		reportCopyThread.start();
-		try {
-			reportCopyThread.join();
-			if (!reportCopyTask.get()) {
-				LOGGER.error(getTaskName() + ": error in copying report template");
-				System.err.println(
-						format.format(new Date()) + "\t" + getTaskName() + ": error in copying report template");
-			}
-		} catch (Exception e) {
-			LOGGER.error(getTaskName() + ": error in copying report template", e);
-			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in copying report template: "
-					+ e.getMessage());
-		}
-
-		metaPar.setReportDir(reportDir);
-
-		File reportHtmlDir = new File(reportDir + "\\reports\\rmd_html");
-
-		if (!reportDir.exists()) {
-			reportDir.mkdirs();
-		}
-
-		File summaryMetaFile = new File(metaPar.getDbSearchResultFile(), "metainfo.tsv");
-		try {
-			metaPar.getMetadata().exportMetadata(summaryMetaFile);
-		} catch (FileNotFoundException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-
-		MetaPythonReportTask task = new MetaPythonReportTask(metaPar.getThreadCount(), mrp);
-
-		boolean summayrFinished = this.exportSummary(task);
-
-		updateProgress(82, 100);
-
-		File final_pep_txt = new File(metaPar.getResult(), "final_peptides.tsv");
-
-		if (!final_pep_txt.exists() || final_pep_txt.length() == 0) {
-//			this.exportPeptideTxt();
-		}
-
-		boolean pepReportOk = false;
-		if (!final_pep_txt.exists() || final_pep_txt.length() == 0) {
-			return false;
-		} else {
-			File report_peptides_summary = new File(reportHtmlDir, "report_peptides_summary.html");
-			if (!report_peptides_summary.exists() || report_peptides_summary.length() == 0) {
-
-				if (summaryMetaFile.exists()) {
-					pepReportOk = task.addTask(MetaPythonReportTask.PEPTIDE, final_pep_txt, report_peptides_summary,
-							summaryMetaFile);
-				} else {
-					pepReportOk = task.addTask(MetaPythonReportTask.PEPTIDE, final_pep_txt, report_peptides_summary);
+			String[] rawNames = fileIdMap.keySet().toArray(new String[fileIdMap.size()]);
+			Arrays.sort(rawNames, new Comparator<String>() {
+				@Override
+				public int compare(String o1, String o2) {
+					return fileIdMap.get(o1) - fileIdMap.get(o2);
 				}
+			});
+
+			for (int i = 0; i < rawNames.length; i++) {
+				idWriter.println(rawNames[i] + "\t" + fileSequenceSets[i].size() + "\t" + filePsmCount[i]);
 			}
-		}
-
-		updateProgress(84, 100);
-
-		File final_pro_txt = new File(metaPar.getResult(), "final_proteins.tsv");
-
-		if (!final_pro_txt.exists() || final_pro_txt.length() == 0) {
-//			this.exportProteinsTxt();
-		}
-
-		boolean proReportOk = false;
-		if (!final_pro_txt.exists() || final_pro_txt.length() == 0) {
-			return false;
-		} else {
-			File report_proteinGroups_summary = new File(reportHtmlDir, "report_proteinGroups_summary.html");
-			if (!report_proteinGroups_summary.exists() || report_proteinGroups_summary.length() == 0) {
-				if (summaryMetaFile.exists()) {
-					proReportOk = task.addTask(MetaPythonReportTask.PROTEIN, final_pro_txt,
-							report_proteinGroups_summary, summaryMetaFile);
-				} else {
-					proReportOk = task.addTask(MetaPythonReportTask.PROTEIN, final_pro_txt,
-							report_proteinGroups_summary);
-				}
-			}
-		}
-
-		updateProgress(86, 100);
-
-		boolean taxFuncReportOk = false;
-		if (metaPar.isMetaWorkflow()) {
-//			taxFuncReportOk = exportTaxaFunc(task);
-		} else {
-			taxFuncReportOk = true;
-		}
-
-		if (!summayrFinished || !pepReportOk || !proReportOk || !taxFuncReportOk) {
-			updateProgress(99, 100);
-
-			LOGGER.info(getTaskName() + ": error in generating the reports");
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": error in generating the reports");
-
+		} catch (IOException e) {
+			LOGGER.error(taskName + ": error in writing identification information", e);
+			System.err.println(
+					format.format(new Date()) + "\t" + taskName + ": error in writing identification information");
 			return false;
 		}
-
-		task.run();
-
-		try {
-			boolean finish = task.get();
-			if (finish) {
-
-				LOGGER.info(getTaskName() + ": report generation successes");
-				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": report generation successes");
-
-				updateProgress(100, 100);
-				return true;
-			}
-
-		} catch (InterruptedException | ExecutionException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-
-		return false;
-	}
-
-	protected boolean exportSummary(MetaPythonReportTask task) {
 
 		File final_summary_txt = new File(this.metaPar.getDbSearchResultFile(), "final_summary.tsv");
 		try {
@@ -1209,8 +1129,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			int totalpsmCount = 0;
 			int totalUnipepCount = 0;
 
-			BufferedReader idReader = new BufferedReader(
-					new FileReader(new File(metaPar.getDbSearchResultFile(), "id.tsv")));
+			BufferedReader idReader = new BufferedReader(new FileReader(new File(combinedFile, "id.tsv")));
 			HashMap<String, int[]> idMap = new HashMap<String, int[]>();
 			String line = idReader.readLine();
 			while ((line = idReader.readLine()) != null) {
@@ -1294,62 +1213,8 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			return false;
 
 		} else {
-			boolean finish = false;
-			File report_ID_summary = new File(metaPar.getReportDir(), "report_ID_summary.html");
-			if (summaryMetaFile != null && summaryMetaFile.exists()) {
-				finish = task.addTask(MetaPythonReportTask.ID_SUMMARY, final_summary_txt, report_ID_summary,
-						summaryMetaFile);
-			} else {
-				finish = task.addTask(MetaPythonReportTask.ID_SUMMARY, final_summary_txt, report_ID_summary);
-			}
-
-			return finish;
+			return true;
 		}
-	}
-
-	/**
-	 * Common method to process peptide list and generate all reports. This method
-	 * handles the common workflow steps that are identical across different DDA MAG
-	 * workflows (pFind, Sage, etc.).
-	 * 
-	 * @param quanPeps         Array of quantified peptides
-	 * @param psms             Array of PSMs for building validation maps
-	 * @param fileIdMap        Map of file names to IDs
-	 * @param fileList         List of file names
-	 * @param quanMode         Quantitative mode (label-free or isobaric)
-	 * @param intensityTitle   Array of intensity column titles
-	 * @param taskName         Name of the calling task for logging
-	 * @return true if successful, false otherwise
-	 */
-
-
-	/**
-	 * Generate identification summary report
-	 */
-	private boolean generateIdentificationSummary(HashMap<String, Integer> fileIdMap, int[] filePsmCount,
-			HashSet<String>[] fileSequenceSets, String taskName) {
-
-		try (PrintWriter idWriter = new PrintWriter(new File(combinedFile, "id.tsv"))) {
-			idWriter.println("Raw file\tUnique peptide count\tPSM count");
-
-			String[] rawNames = fileIdMap.keySet().toArray(new String[fileIdMap.size()]);
-			Arrays.sort(rawNames, new Comparator<String>() {
-				@Override
-				public int compare(String o1, String o2) {
-					return fileIdMap.get(o1) - fileIdMap.get(o2);
-				}
-			});
-
-			for (int i = 0; i < rawNames.length; i++) {
-				idWriter.println(rawNames[i] + "\t" + fileSequenceSets[i].size() + "\t" + filePsmCount[i]);
-			}
-		} catch (IOException e) {
-			LOGGER.error(taskName + ": error in writing identification information", e);
-			System.err.println(
-					format.format(new Date()) + "\t" + taskName + ": error in writing identification information");
-			return false;
-		}
-		return true;
 	}
 
 	/**
@@ -1390,16 +1255,8 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			titlesb.append("Intensity").append("\t");
 
 			if (quanMode.equals(MetaConstants.labelFree)) {
-				for (int i = 0; i < fileList.size(); i++) {
-					titlesb.append("Intensity " + fileList.get(i)).append("\t");
-				}
-			} else if (quanMode.equals(MetaConstants.isobaricLabel)) {
-				// Note: This would need access to isobaric tag information
-				// For now, using generic approach
-				for (int i = 0; i < fileList.size(); i++) {
-					for (int j = 0; j < intensityTitle.length / fileList.size(); j++) {
-						titlesb.append("Intensity " + fileList.get(i) + "_" + j).append("\t");
-					}
+				for (int i = 0; i < intensityTitle.length; i++) {
+					titlesb.append("Intensity " + intensityTitle[i]).append("\t");
 				}
 			}
 
@@ -1419,6 +1276,10 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 				MetaPSM psm = psmMap.get(fullSeq);
 				// Note: This would need to be adapted based on the specific PSM type
 				// For now, using basic peptide information
+				if (psm == null) {
+					LOGGER.info(getTaskName() + ": no PSM was found for peptide " + fullSeq);
+					continue;
+				}
 				StringBuilder sb = new StringBuilder();
 				sb.append(fullSeq).append("\t");
 				sb.append(sequence).append("\t");
@@ -1666,6 +1527,18 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 				MetaProteinXMLReader2 funReader = new MetaProteinXMLReader2(final_pro_xml_file);
 				funReader.exportTsv(funTsv);
 				funReader.exportTsvReport(funReportTsv);
+				
+				// Export separate functional category reports
+				File goReportTsv = new File(funcFile, "Gene_Ontology_id_report.tsv");
+				File ecReportTsv = new File(funcFile, "EC_id_report.tsv");
+				File keggReportTsv = new File(funcFile, "KEGG_ko_report.tsv");
+				File briteReportTsv = new File(funcFile, "BRITE_report.tsv");
+				
+				funReader.exportGOReport(goReportTsv);
+				funReader.exportECReport(ecReportTsv);
+				funReader.exportKeggReport(keggReportTsv);
+				funReader.exportBriteReport(briteReportTsv);
+				
 			} catch (Exception e) {
 				LOGGER.error(taskName + ": error in writing protein function information to " + funTsv.getName(), e);
 				System.err.println(format.format(new Date()) + "\t" + taskName
@@ -1730,7 +1603,8 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			genomeTaxaMap = searcher.matchGenome(genomes);
 		} catch (IOException e) {
 			LOGGER.error(taskName + ": Error in searching the genome2taxa database", e);
-			System.err.println(format.format(new Date()) + "\t" + taskName + ": error in searching the genome2taxa database");
+			System.err.println(
+					format.format(new Date()) + "\t" + taskName + ": error in searching the genome2taxa database");
 			return false;
 		}
 
@@ -1741,7 +1615,8 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			htmlWriter.close();
 		} catch (IOException e) {
 			LOGGER.error("Error in writing genome information to " + genomeHtmlFile, e);
-			System.err.println(format.format(new Date()) + "\t" + "Error in writing genome information to " + genomeHtmlFile);
+			System.err.println(
+					format.format(new Date()) + "\t" + "Error in writing genome information to " + genomeHtmlFile);
 			return false;
 		}
 
@@ -1863,7 +1738,8 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 
 		} catch (FileNotFoundException e) {
 			LOGGER.error("Error in writing genome information to " + genomeFile, e);
-			System.err.println(format.format(new Date()) + "\t" + "Error in writing genome information to " + genomeFile);
+			System.err
+					.println(format.format(new Date()) + "\t" + "Error in writing genome information to " + genomeFile);
 			return false;
 		}
 
@@ -1969,13 +1845,27 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 		}
 
 		// Export JS for taxonomy visualization
-		File jsOutput = new File(metaPar.getReportDir() + "\\reports\\metamap\\data\\tree.js");
+		File jsOutput = new File(metaPar.getReportDir() + "\\reports\\tree.js");
 		if (!jsOutput.getParentFile().exists()) {
 			jsOutput.getParentFile().mkdirs();
 		}
 
 		if (!jsOutput.exists() || jsOutput.length() == 0) {
 			MetaTreeHandler.exportJS(taxRankMaps, taxIntensityMaps, cellularIntensity, intensityTitle, jsOutput);
+		}
+
+		// Generate bubble chart report from tree.js data (optional - don't fail if this
+		// doesn't work)
+		File bubbleChartOutput = new File(metaPar.getReportDir() + "\\reports\\bubble_chart_report.html");
+		if (!bubbleChartOutput.exists() || bubbleChartOutput.length() == 0) {
+			try {
+				generateBubbleChartReport(jsOutput, bubbleChartOutput);
+			} catch (Exception e) {
+				LOGGER.warn(getTaskName() + ": Bubble chart generation failed, continuing with other reports: "
+						+ e.getMessage());
+				System.out.println(format.format(new Date()) + "\t" + getTaskName()
+						+ ": Bubble chart generation failed, continuing with other reports");
+			}
 		}
 
 		LOGGER.info(taskName + ": taxonomy analysis finished");
@@ -1991,6 +1881,12 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 
 		updateMessage(taskName + ": exporting report");
 
+		// Copy report templates in background
+		if (!copyReportTemplatesInBackground()) {
+			LOGGER.error(getTaskName() + ": Failed to copy report templates");
+			return false;
+		}
+
 		LOGGER.info(taskName + ": exporting report started");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": exporting report started");
 
@@ -2001,7 +1897,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			reportDir.mkdirs();
 		}
 
-		File reportHtmlDir = new File(reportDir + "\\reports\\rmd_html");
+		File reportHtmlDir = new File(reportDir + "\\reports");
 		if (!reportHtmlDir.exists()) {
 			reportHtmlDir.mkdirs();
 		}
@@ -2016,8 +1912,12 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 
 		// Generate summary report
 		MetaPythonReportTask reportTask = new MetaPythonReportTask(threadCount, mrp);
-		this.exportSummary(reportTask);
+		reportTask.setWorkflowType("MAG");
+		reportTask.initializeManifestGenerator(reportHtmlDir);
 
+		// Create initial manifest file to ensure index page can load
+		ReportManifestGenerator manifestGen = new ReportManifestGenerator(reportHtmlDir);
+		manifestGen.createInitialManifest();
 		// Add individual report tasks
 		boolean reportSuccess = true;
 
@@ -2071,6 +1971,23 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			}
 		}
 
+		File genomeHtmlFile = new File(metaPar.getDbSearchResultFile(), "taxonomy_analysis\\Genome.html");
+		if (genomeHtmlFile.exists()) {
+			File reportGenomeHtml = new File(reportHtmlDir, "Genome.html");
+			if (reportGenomeHtml.getParentFile() != null && !reportGenomeHtml.getParentFile().exists()) {
+				reportGenomeHtml.getParentFile().mkdirs();
+			}
+			try {
+				Files.copy(genomeHtmlFile.toPath(), reportGenomeHtml.toPath(), StandardCopyOption.REPLACE_EXISTING);
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				LOGGER.error("Copied Genome.html to reports directory failed", e);
+			}
+			LOGGER.info("Copied Genome.html to reports directory: " + reportGenomeHtml.getAbsolutePath());
+		} else {
+			LOGGER.info("Genome.html was not exist in " + genomeHtmlFile.getAbsolutePath());
+		}
+
 		// Add function report
 		File funReportTsv = new File(metaPar.getDbSearchResultFile(), "functional_annotation\\functions_report.tsv");
 		if (funReportTsv.exists() && funReportTsv.length() > 0) {
@@ -2082,6 +1999,20 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 				reportSuccess &= reportTask.addTask(MetaPythonReportTask.FUNCTION, funReportTsv,
 						report_function_summary);
 			}
+		}
+
+		File funcHtmlFile = new File(metaPar.getDbSearchResultFile(), "functional_annotation\\functions.html");
+		if (funcHtmlFile.exists()) {
+			File reportFunctionsHtml = new File(reportHtmlDir, "reports/functions.html");
+			try {
+				Files.copy(funcHtmlFile.toPath(), reportFunctionsHtml.toPath(), StandardCopyOption.REPLACE_EXISTING);
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				LOGGER.error("Copied functions.html to reports directory failed", e);
+			}
+			LOGGER.info("Copied functions.html to reports directory: " + reportFunctionsHtml.getAbsolutePath());
+		} else {
+			LOGGER.info("functions.html was not exist in " + funcHtmlFile.getAbsolutePath());
 		}
 
 		if (!reportSuccess) {
@@ -2116,6 +2047,52 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 		}
 
 		return true;
+	}
+
+	/**
+	 * Generate bubble chart report from tree.js data using Python.
+	 */
+	private void generateBubbleChartReport(File treeJsFile, File outputFile) {
+		try {
+			LOGGER.info(getTaskName() + ": Generating bubble chart report from " + treeJsFile.getName());
+			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Generating bubble chart report");
+
+			// Use MetaPythonReportTask to generate the bubble chart
+			MetaPythonReportTask reportTask = new MetaPythonReportTask(1, mrp);
+			boolean success = reportTask.addTask(MetaPythonReportTask.BUBBLE_CHART, treeJsFile, outputFile);
+
+			if (success) {
+				// Wait for completion
+				reportTask.run();
+				boolean result = reportTask.get();
+
+				if (result) {
+					LOGGER.info(
+							getTaskName() + ": Bubble chart report generated successfully: " + outputFile.getName());
+					System.out.println(format.format(new Date()) + "\t" + getTaskName()
+							+ ": Bubble chart report generated successfully");
+
+					// Add to manifest
+					File reportsDir = new File(metaPar.getReportDir(), "reports");
+					ReportManifestGenerator manifestGen = new ReportManifestGenerator(reportsDir);
+					manifestGen.addReportEntry("Bubble Chart Report", "bubble_chart_report.html",
+							"Interactive hierarchical bubble chart showing taxonomic abundance with treemap, sunburst, and distribution visualizations.",
+							new String[] { "bubble-chart", "taxonomy", "hierarchical", "treemap" });
+				} else {
+					LOGGER.error(getTaskName() + ": Failed to generate bubble chart report");
+					System.err.println(format.format(new Date()) + "\t" + getTaskName()
+							+ ": Failed to generate bubble chart report");
+				}
+			} else {
+				LOGGER.error(getTaskName() + ": Failed to add bubble chart task");
+				System.err.println(
+						format.format(new Date()) + "\t" + getTaskName() + ": Failed to add bubble chart task");
+			}
+		} catch (Exception e) {
+			LOGGER.error(getTaskName() + ": Error generating bubble chart report", e);
+			System.err.println(format.format(new Date()) + "\t" + getTaskName()
+					+ ": Error generating bubble chart report: " + e.getMessage());
+		}
 	}
 
 	/**
@@ -2453,8 +2430,8 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			// Generate peptide report
 			updateMessage("Generating peptide report...");
 			updateProgress(0.75, 1.0);
-			if (!parentTask.generatePeptideReport(peptideList, psmMap, pepPsmCountMap, pepChargeMap, proteinIdMap, fileList,
-					quanMode, intensityTitle, taskName)) {
+			if (!parentTask.generatePeptideReport(peptideList, psmMap, pepPsmCountMap, pepChargeMap, proteinIdMap,
+					fileList, quanMode, intensityTitle, taskName)) {
 				return false;
 			}
 

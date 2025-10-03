@@ -22,6 +22,8 @@ import uk.ac.quadram.metapilot.MetaPilotApp;
 import uk.ac.quadram.metapilot.task.dda.igc.DDAIgcPFindTask;
 import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcPFindParameters;
 import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcPFindParameterIO;
+import uk.ac.quadram.metapilot.resources.MetaResourceIO;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.common.gui.AbstractWorkflowPanel;
 import java.io.BufferedReader;
 import java.io.InputStream;
@@ -36,6 +38,8 @@ import org.apache.logging.log4j.Logger;
 
 public class MetaPilotDdaIgcPFindPanel extends AbstractWorkflowPanel<DDAIgcPFindParameters> {
     private static final Logger LOGGER = LogManager.getLogger(MetaPilotDdaIgcPFindPanel.class);
+    
+    
     // UI Components (similar to MaxQuant panel)
     private DdaIgcInputOutputPanel ioPanel;
     private ToggleGroup quantModeGroup;
@@ -53,7 +57,7 @@ public class MetaPilotDdaIgcPFindPanel extends AbstractWorkflowPanel<DDAIgcPFind
     private Button removeVariableModButton;
 
     // Additional parameters
-    private Spinner<Integer> threadsSpinner;
+    private ComboBox<Integer> threadsComboBox;
     private ComboBox<String> ms2ScanModeComboBox;
     private CheckBox generateSampleSpecificDBCheckBox;
     private CheckBox spectraClusteringCheckBox;
@@ -344,13 +348,21 @@ public class MetaPilotDdaIgcPFindPanel extends AbstractWorkflowPanel<DDAIgcPFind
         paramGrid.getColumnConstraints().addAll(col1, col2);
         Label threadsLabel = new Label("Threads:");
         threadsLabel.setStyle("-fx-font-weight: bold;");
-        threadsSpinner = new Spinner<>(1, Runtime.getRuntime().availableProcessors(), 4);
-        threadsSpinner.setMinWidth(100);
-        threadsSpinner.setPrefWidth(100);
-        threadsSpinner.setMaxWidth(Double.MAX_VALUE);
-        threadsSpinner.valueProperty().addListener((obs, oldVal, newVal) -> updateParameterView());
+        threadsComboBox = new ComboBox<>();
+        threadsComboBox.setMinWidth(100);
+        threadsComboBox.setPrefWidth(100);
+        threadsComboBox.setMaxWidth(Double.MAX_VALUE);
+        
+        // Populate with thread count options (1 to available processors)
+        ObservableList<Integer> threadOptions = FXCollections.observableArrayList();
+        for (int i = 1; i <= Runtime.getRuntime().availableProcessors(); i++) {
+            threadOptions.add(i);
+        }
+        threadsComboBox.setItems(threadOptions);
+        threadsComboBox.setValue(4); // Default value
+        threadsComboBox.valueProperty().addListener((obs, oldVal, newVal) -> updateParameterView());
         VBox threadsBox = new VBox(5);
-        threadsBox.getChildren().addAll(threadsLabel, threadsSpinner);
+        threadsBox.getChildren().addAll(threadsLabel, threadsComboBox);
         Label ms2Label = new Label("MS2 Scan Mode:");
         ms2Label.setStyle("-fx-font-weight: bold;");
         ms2ScanModeComboBox = new ComboBox<>(FXCollections.observableArrayList("HCD-FTMS", "HCD-ITMS", "CID-FTMS", "CID-ITMS"));
@@ -535,7 +547,7 @@ public class MetaPilotDdaIgcPFindPanel extends AbstractWorkflowPanel<DDAIgcPFind
         sb.append("Digestion Mode: ").append(digestionModeComboBox.getValue()).append("\n\n");
         // Additional parameters
         sb.append("=== ADDITIONAL PARAMETERS ===\n");
-        sb.append("Threads: ").append(threadsSpinner.getValue()).append("\n");
+        sb.append("Threads: ").append(threadsComboBox.getValue()).append("\n");
         sb.append("MS2 Scan Mode: ").append(ms2ScanModeComboBox.getValue()).append("\n");
         sb.append("Generate Sample Specific DB: ").append(generateSampleSpecificDBCheckBox.isSelected() ? "Yes" : "No").append("\n");
         sb.append("Spectra Clustering: ").append(spectraClusteringCheckBox.isSelected() ? "Yes" : "No").append("\n\n");
@@ -701,130 +713,167 @@ public class MetaPilotDdaIgcPFindPanel extends AbstractWorkflowPanel<DDAIgcPFind
         metadataTable.getColumns().add(column);
     }
 
+    private boolean validateInputs() {
+        if (ioPanel.getIoPanel().getExperimentData().isEmpty()) {
+            showAlert("Validation Error", "Please select at least one raw file for analysis.");
+            return false;
+        }
+        if (ioPanel.getIoPanel().getOutputDirectory().isEmpty()) {
+            showAlert("Validation Error", "Please select an output directory.");
+            return false;
+        }
+        if (ioPanel.getMicrobiomeDBPath().isEmpty()) {
+            showAlert("Validation Error", "Please select a microbiome database file.");
+            return false;
+        }
+        if (ioPanel.isHostDBEnabled() && ioPanel.getHostDBPath().isEmpty()) {
+            showAlert("Validation Error", "Please select a host database file.");
+            return false;
+        }
+        if (enzymeComboBox.getValue() == null) {
+            showAlert("Validation Error", "Please select an enzyme.");
+            return false;
+        }
+        return true;
+    }
+
     @Override
     protected void startAnalysis() {
-        // Clear console and show starting message
-        if (consolePanel != null) {
-            consolePanel.clearConsole();
-            consolePanel.appendConsoleText("Starting pFind analysis...\n");
-        }
-
-        // Gather parameters from UI
-        ObservableList<MetaPilotIOPanelFX.ExperimentRow> fileRows = ioPanel.getIoPanel().getExperimentData();
-        if (fileRows.isEmpty()) {
-            showAlert("Error", "No files selected for analysis.");
-            return;
-        }
-        
-        LOGGER.info("Starting pFind analysis with {} experiment rows", fileRows.size());
-        for (int i = 0; i < fileRows.size(); i++) {
-            MetaPilotIOPanelFX.ExperimentRow row = fileRows.get(i);
-            LOGGER.info("Experiment row {}: file={}, name={}", i, row.getFilePath(), row.getExperimentName());
-        }
-        
-        // Save parameters for this analysis and as last used
-        DDAIgcPFindParameters analysisParams = collectParametersFromUI();
-        
-        // Debug logging for the collected parameters
-        LOGGER.info("Collected parameters object: {}", analysisParams);
-        if (analysisParams.getMetadata() != null) {
-            MetaData metadata = analysisParams.getMetadata();
-            String[] rawFiles = metadata.getRawFiles();
-            String[] expNames = metadata.getExpNames();
-            LOGGER.info("Parameters metadata contains {} raw files", rawFiles != null ? rawFiles.length : 0);
-            if (rawFiles != null) {
-                for (int i = 0; i < rawFiles.length; i++) {
-                    LOGGER.info("Parameters raw file {}: {} -> {}", i, rawFiles[i], expNames != null && i < expNames.length ? expNames[i] : "N/A");
-                }
-            }
-        } else {
-            LOGGER.warn("Parameters metadata is null!");
-        }
-        
-        String outputDir = ioPanel.getIoPanel().getOutputDirectory();
-        if (outputDir != null && !outputDir.trim().isEmpty()) {
-            // Save analysis-specific parameters
-            boolean analysisParamsSaved = parameterIO.saveAnalysisParameters(outputDir, analysisParams);
-            if (!analysisParamsSaved) {
-                LOGGER.warn("Failed to save analysis parameters to {}/analysis_parameters_pfind.json", outputDir);
-                showAlert("Warning", "Failed to save analysis parameters to result directory. Analysis will continue but parameters may not be preserved.");
-            } else {
-                LOGGER.info("Saved analysis parameters to {}/analysis_parameters_pfind.json", outputDir);
+        try {
+            consolePanel.appendConsoleText("Starting IGC pFind analysis...\n");
+            System.out.println("DEBUG: startAnalysis called - IGC pFind workflow");
+            
+            // Validate inputs first
+            if (!validateInputs()) {
+                return;
             }
             
-            // Save as last used parameters
-            parameterIO.saveLastUsedParameters(analysisParams);
-            
-            // Also save to preferences for quick defaults
-            parameterIO.savePreferences(analysisParams);
-        }
-
-        // Load resource parameters
-        uk.ac.quadram.metapilot.resources.MetaResourceParameters mrp = (new uk.ac.quadram.metapilot.resources.MetaResourceIO()).loadParameters();
-
-		// Create and run the DDAIgcPFindTask
-		LOGGER.info("Creating DDAIgcPFindTask with analysisParams: {}", analysisParams);
-		DDAIgcPFindTask task = new DDAIgcPFindTask(analysisParams, mrp, consolePanel.getOverallProgressBar(),
-				consolePanel.getCurrentTaskProgressBar());
-		// Bind progress and messages
-		if (consolePanel != null) {
-			task.messageProperty().addListener((obs, oldMsg, newMsg) -> {
-				Platform.runLater(() -> {
-					if (newMsg != null && !newMsg.isEmpty()) {
-						consolePanel.appendConsoleText(newMsg + "\n");
-						consolePanel.updateCurrentTaskFromMessage(newMsg);
-					}
-				});
-			});
-		}
-        // Start status timer in console panel
-        if (consolePanel != null) {
-            consolePanel.startStatusTimer();
-        }
-        // On succeeded/failed/cancelled
-        task.setOnSucceeded(e -> {
-            if (consolePanel != null) {
-                consolePanel.setButtonsEnabled(true, false, true);
-                consolePanel.stopStatusTimer();
+            // Collect parameters from UI
+            consolePanel.appendConsoleText("Collecting parameters from UI...\n");
+            DDAIgcPFindParameters analysisParams = collectParametersFromUI();
+            if (analysisParams == null) {
+                consolePanel.appendConsoleText("ERROR: Failed to collect parameters from UI.\n");
+                LOGGER.error("Failed to collect parameters from UI in startAnalysis");
+                return;
             }
             
-            // Check if the task actually succeeded by examining the result
-            try {
-                Boolean result = task.get();
-                if (result != null && result) {
-                    if (consolePanel != null) {
-                        consolePanel.appendConsoleText("\nAnalysis completed successfully.\n");
-                        consolePanel.enableViewReportButton();
-                    }
+            consolePanel.appendConsoleText("✓ Successfully collected parameters from UI\n");
+            LOGGER.info("Successfully collected parameters from UI for IGC pFind workflow");
+            
+            // Store analysis parameters for viewReport
+            this.currentAnalysisParams = analysisParams;
+        
+            // Save parameters to file
+            String outputDir = analysisParams.getResult();
+            if (outputDir != null && !outputDir.trim().isEmpty()) {
+                consolePanel.appendConsoleText("Saving parameters to file...\n");
+                boolean paramsSaved = parameterIO.saveAnalysisParameters(outputDir, analysisParams);
+                if (!paramsSaved) {
+                    consolePanel.appendConsoleText("WARNING: Failed to save parameters to file. Analysis will continue.\n");
+                    LOGGER.warn("Failed to save analysis parameters to file: {}", outputDir);
                 } else {
-                    if (consolePanel != null) {
-                        consolePanel.appendConsoleText("\nAnalysis completed but may not have been fully successful.\n");
+                    consolePanel.appendConsoleText("✓ Parameters saved to: " + outputDir + "/analysis_parameters_pfind.json\n");
+                    LOGGER.info("Successfully saved analysis parameters to: {}", outputDir);
+                }
+                
+                // Also save as last used parameters
+                boolean lastParamsSaved = parameterIO.saveLastUsedParameters(analysisParams);
+                if (lastParamsSaved) {
+                    consolePanel.appendConsoleText("✓ Last used parameters saved\n");
+                    LOGGER.info("Successfully saved last used parameters");
+                } else {
+                    consolePanel.appendConsoleText("WARNING: Failed to save last used parameters\n");
+                    LOGGER.warn("Failed to save last used parameters");
+                }
+                
+                // Save to preferences
+                boolean prefsSaved = parameterIO.savePreferences(analysisParams);
+                if (prefsSaved) {
+                    consolePanel.appendConsoleText("✓ Preferences saved\n");
+                    LOGGER.info("Successfully saved preferences");
+                } else {
+                    consolePanel.appendConsoleText("WARNING: Failed to save preferences\n");
+                    LOGGER.warn("Failed to save preferences");
+                }
+            } else {
+                consolePanel.appendConsoleText("WARNING: No output directory specified, skipping parameter save\n");
+                LOGGER.warn("No output directory specified, skipping parameter save");
+            }
+            
+            // Load resource parameters
+            consolePanel.appendConsoleText("Loading resource parameters from config...\n");
+            MetaResourceIO resourceIO = new MetaResourceIO();
+            MetaResourceParameters mrp = resourceIO.loadParameters();
+            consolePanel.appendConsoleText("✓ Resource parameters loaded from config file\n");
+
+            // Set up progress tracking
+            consolePanel.appendConsoleText("Setting up progress tracking...\n");
+            Label statusLabel = new Label("Ready to start analysis...");
+            consolePanel.appendConsoleText("✓ Progress bars and status label initialized\n");
+            
+            // Create and run the DDAIgcPFindTask
+            consolePanel.appendConsoleText("Creating IGC pFind task...\n");
+            currentTask = new DDAIgcPFindTask(analysisParams, mrp, consolePanel.getOverallProgressBar(),
+                    consolePanel.getCurrentTaskProgressBar());
+            consolePanel.appendConsoleText("✓ Task created successfully\n");
+            
+            // Set up task callbacks
+            consolePanel.appendConsoleText("Setting up task callbacks...\n");
+            currentTask.messageProperty().addListener((obs, oldMsg, newMsg) -> {
+                Platform.runLater(() -> {
+                    if (newMsg != null) {
+                        consolePanel.appendConsoleText("Current Task: " + newMsg + "\n");
+                        consolePanel.updateCurrentTaskFromMessage(newMsg);
+                        statusLabel.setText(newMsg);
                     }
-                }
-            } catch (Exception ex) {
-                if (consolePanel != null) {
-                    consolePanel.appendConsoleText("\nAnalysis failed: " + ex.getMessage() + "\n");
-                }
-            }
-        });
-        task.setOnFailed(e -> {
-            if (consolePanel != null) {
-                consolePanel.setButtonsEnabled(true, false, false);
-                consolePanel.stopStatusTimer();
-                consolePanel.appendConsoleText("\nAnalysis failed: " + task.getException() + "\n");
-            }
-        });
-        task.setOnCancelled(e -> {
-            if (consolePanel != null) {
-                consolePanel.setButtonsEnabled(true, false, false);
-                consolePanel.stopStatusTimer();
-                consolePanel.appendConsoleText("\nAnalysis cancelled.\n");
-            }
-        });
-        // Run the task
-        Thread t = new Thread(task);
-        t.setDaemon(true);
-        t.start();
+                });
+            });
+            
+            // Set up task completion callback to enable View Report button
+            currentTask.setOnSucceeded(e -> {
+                Platform.runLater(() -> {
+                    // Check if the task actually succeeded by examining the result
+                    try {
+                        Boolean result = currentTask.get();
+                        if (result != null && result) {
+                            consolePanel.appendConsoleText("✓ Analysis completed successfully!\n");
+                            consolePanel.enableViewReportButton();
+                        } else {
+                            consolePanel.appendConsoleText("⚠ Analysis completed but may not have been fully successful.\n");
+                        }
+                    } catch (Exception ex) {
+                        consolePanel.appendConsoleText("✗ Analysis failed: " + ex.getMessage() + "\n");
+                    }
+                    consolePanel.setButtonsEnabled(true, false, true);
+                    consolePanel.stopStatusTimer(); // Stop the timer when task completes
+                });
+            });
+            
+            currentTask.setOnFailed(e -> {
+                Platform.runLater(() -> {
+                    consolePanel.appendConsoleText("✗ Analysis failed. Check console output for details.\n");
+                    consolePanel.setButtonsEnabled(true, false, false);
+                    consolePanel.stopStatusTimer(); // Stop the timer when task fails
+                });
+            });
+            
+            consolePanel.appendConsoleText("✓ Task callbacks configured\n");
+            
+            // Run task in background thread
+            consolePanel.appendConsoleText("Starting task execution...\n");
+            Thread taskThread = new Thread(currentTask);
+            taskThread.setDaemon(true);
+            taskThread.start();
+            
+            consolePanel.appendConsoleText("✓ Analysis task started successfully.\n");
+            LOGGER.info("IGC pFind analysis task started successfully");
+            
+        } catch (Exception e) {
+            String errorMsg = "ERROR: Failed to start analysis: " + e.getMessage();
+            consolePanel.appendConsoleText(errorMsg + "\n");
+            LOGGER.error("Failed to start IGC pFind analysis", e);
+            e.printStackTrace();
+        }
     }
 
 
@@ -834,22 +883,26 @@ public class MetaPilotDdaIgcPFindPanel extends AbstractWorkflowPanel<DDAIgcPFind
      */
     @Override
     protected DDAIgcPFindParameters collectParametersFromUI() {
-        // Collect required parameters for DDAIgcPFindParameters constructor
-        String result = ioPanel.getIoPanel().getOutputDirectory();
-        String microDb = ioPanel.getMicrobiomeDBPath();
-        boolean appendHostDb = ioPanel.isHostDBEnabled();
-        String hostDb = ioPanel.getHostDBPath();
-        String enzyme = enzymeComboBox.getValue();
-        int missCleavages = missedCleavagesSpinner.getValue();
-        String digestMode = digestionModeComboBox.getValue();
-        int threadCount = threadsSpinner.getValue();
-        String ms2ScanMode = ms2ScanModeComboBox.getValue();
-        boolean reduceDb = generateSampleSpecificDBCheckBox.isSelected();
-        boolean spectraCluster = spectraClusteringCheckBox.isSelected();
+        try {
+            consolePanel.appendConsoleText("Collecting parameters from UI...\n");
+            
+            // Collect required parameters for DDAIgcPFindParameters constructor
+            String result = ioPanel.getIoPanel().getOutputDirectory();
+            String microDb = ioPanel.getMicrobiomeDBPath();
+            boolean appendHostDb = ioPanel.isHostDBEnabled();
+            String hostDb = ioPanel.getHostDBPath();
+            String enzyme = enzymeComboBox.getValue();
+            int missCleavages = missedCleavagesSpinner.getValue();
+            String digestMode = digestionModeComboBox.getValue();
+            int threadCount = threadsComboBox.getValue() != null ? threadsComboBox.getValue() : 4;
+            String ms2ScanMode = ms2ScanModeComboBox.getValue();
+            boolean reduceDb = generateSampleSpecificDBCheckBox.isSelected();
+            boolean spectraCluster = spectraClusteringCheckBox.isSelected();
 
-        // Create MetaData object from experiment data
-        ObservableList<MetaPilotIOPanelFX.ExperimentRow> fileRows = ioPanel.getIoPanel().getExperimentData();
-        LOGGER.info("collectParametersFromUI: Found {} experiment rows", fileRows.size());
+            // Create MetaData object from experiment data
+            ObservableList<MetaPilotIOPanelFX.ExperimentRow> fileRows = ioPanel.getIoPanel().getExperimentData();
+            consolePanel.appendConsoleText("Found " + fileRows.size() + " experiment rows\n");
+            LOGGER.info("collectParametersFromUI: Found {} experiment rows", fileRows.size());
         
         MetaData metaData;
         if (!fileRows.isEmpty()) {
@@ -929,7 +982,16 @@ public class MetaPilotDdaIgcPFindPanel extends AbstractWorkflowPanel<DDAIgcPFind
         // Metadata table data
         params.setMetadataTableData(new ArrayList<>(metadataTableData));
         
+        consolePanel.appendConsoleText("✓ Successfully collected parameters from UI\n");
+        LOGGER.info("Successfully collected parameters from UI for IGC pFind workflow");
         return params;
+        
+        } catch (Exception e) {
+            String errorMsg = "ERROR: Failed to collect parameters from UI: " + e.getMessage();
+            consolePanel.appendConsoleText(errorMsg + "\n");
+            LOGGER.error("Failed to collect parameters from UI for IGC pFind workflow", e);
+            return null;
+        }
     }
     
     /**
@@ -938,20 +1000,24 @@ public class MetaPilotDdaIgcPFindPanel extends AbstractWorkflowPanel<DDAIgcPFind
     @Override
     protected void loadLastUsedParameters() {
         try {
+            consolePanel.appendConsoleText("Loading last used parameters...\n");
             DDAIgcPFindParameters params = (DDAIgcPFindParameters) parameterIO.loadLastUsedParameters();
             if (params != null) {
                 applyParametersToUI(params);
+                consolePanel.appendConsoleText("✓ Successfully loaded last used parameters\n");
                 LOGGER.info("Loaded last used parameters for DDA IGC pFind workflow");
                 
                 // Also apply experiment data to the IO panel if available
                 if (params.getExperimentData() != null && !params.getExperimentData().isEmpty()) {
                     ioPanel.getIoPanel().setExperimentData(params.getExperimentData());
+                    consolePanel.appendConsoleText("Applied " + params.getExperimentData().size() + " experiment rows to IO panel\n");
                     LOGGER.info("Applied {} experiment rows to IO panel", params.getExperimentData().size());
                 }
                 
                 // Apply output directory if available
                 if (params.getResult() != null && !params.getResult().trim().isEmpty()) {
                     ioPanel.getIoPanel().setOutputDirectory(params.getResult());
+                    consolePanel.appendConsoleText("Applied output directory: " + params.getResult() + "\n");
                     LOGGER.info("Applied output directory: {}", params.getResult());
                 }
                 
@@ -961,9 +1027,12 @@ public class MetaPilotDdaIgcPFindPanel extends AbstractWorkflowPanel<DDAIgcPFind
                     updateParameterView();
                 });
             } else {
+                consolePanel.appendConsoleText("No previous parameters found, using defaults\n");
                 LOGGER.warn("No parameters loaded, using defaults");
             }
         } catch (Exception e) {
+            String errorMsg = "WARNING: Failed to load last used parameters: " + e.getMessage();
+            consolePanel.appendConsoleText(errorMsg + "\n");
             LOGGER.warn("Failed to load last used pFind parameters: " + e.getMessage(), e);
             // Continue with default UI state
         }
@@ -974,7 +1043,13 @@ public class MetaPilotDdaIgcPFindPanel extends AbstractWorkflowPanel<DDAIgcPFind
      */
     @Override
     protected void applyParametersToUI(DDAIgcPFindParameters params) {
-        if (params == null) return;
+        try {
+            consolePanel.appendConsoleText("Applying parameters to UI...\n");
+            if (params == null) {
+                consolePanel.appendConsoleText("WARNING: No parameters to apply\n");
+                LOGGER.warn("No parameters to apply to UI");
+                return;
+            }
         
         // Apply metadata to IO panel if available
         if (params.getMetadata() != null) {
@@ -1004,8 +1079,8 @@ public class MetaPilotDdaIgcPFindPanel extends AbstractWorkflowPanel<DDAIgcPFind
         if (params.getDigestModeString() != null && digestionModeComboBox != null) {
             digestionModeComboBox.setValue(params.getDigestModeString());
         }
-        if (threadsSpinner != null) {
-            threadsSpinner.getValueFactory().setValue(params.getThreadCount());
+        if (threadsComboBox != null) {
+            threadsComboBox.setValue(params.getThreadCount());
         }
         if (params.getMs2ScanMode() != null && ms2ScanModeComboBox != null) {
             ms2ScanModeComboBox.setValue(params.getMs2ScanMode());
@@ -1074,6 +1149,15 @@ public class MetaPilotDdaIgcPFindPanel extends AbstractWorkflowPanel<DDAIgcPFind
         
         // Update parameter view after applying parameters
         Platform.runLater(() -> updateParameterView());
+        
+        consolePanel.appendConsoleText("✓ Successfully applied parameters to UI\n");
+        LOGGER.info("Successfully applied parameters to UI for IGC pFind workflow");
+        
+        } catch (Exception e) {
+            String errorMsg = "ERROR: Failed to apply parameters to UI: " + e.getMessage();
+            consolePanel.appendConsoleText(errorMsg + "\n");
+            LOGGER.error("Failed to apply parameters to UI for IGC pFind workflow", e);
+        }
     }
     
     /**
@@ -1089,6 +1173,14 @@ public class MetaPilotDdaIgcPFindPanel extends AbstractWorkflowPanel<DDAIgcPFind
             showAlert("Error", "Failed to load pFind analysis parameters: " + e.getMessage());
             LOGGER.error("Failed to load pFind analysis parameters from " + resultDirectory, e);
         }
+    }
+    
+    /**
+     * Get the parameter class for this workflow
+     */
+    @Override
+    protected Class<DDAIgcPFindParameters> getParameterClass() {
+        return DDAIgcPFindParameters.class;
     }
     
     /**

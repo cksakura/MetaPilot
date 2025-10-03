@@ -1,20 +1,18 @@
 package uk.ac.quadram.metapilot.task.dia;
 
-import javax.swing.DefaultListModel;
-import javax.swing.SwingUtilities;
-import javax.swing.table.DefaultTableModel;
-
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import javafx.application.Platform;
+// import javafx.collections.FXCollections; // Not used
+import javafx.collections.ObservableList;
 import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNParquetReader;
-import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNTask;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiannParameter;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
-import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaRT;
+import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -42,8 +40,9 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 	private File destinationFolder;
 	private ExecutorService executorService;
 	private HashSet<String> fileNameSet;
-	private DefaultTableModel resultTableModel;
-	private DefaultListModel<String> rawListModel;
+	private ObservableList<TableRowData> resultTableItems;
+	private ObservableList<String> rawListItems;
+	private ConsolePanel consolePanel;
 	
 	private DiaLibSearchPar diaLibSearchPar;
 	private DiannParameter diannPar;
@@ -53,10 +52,30 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 	
 	private static final Logger LOGGER = LogManager.getLogger(MetaDiaMonitorTask.class);
 	private static final String taskName = "Realtime DIA data analysis";
+	
+	/**
+	 * Helper method to update table row status
+	 */
+	private void updateTableRowStatus(String fileName, int columnIndex, String status) {
+		Platform.runLater(() -> {
+			for (TableRowData row : resultTableItems) {
+				if (row.matchesFileName(fileName)) {
+					switch (columnIndex) {
+						case 1: row.setRound1Status(status); break;
+						case 2: row.setRound2Status(status); break;
+						case 3: row.setRound3Status(status); break;
+						case 4: row.setRound4Status(status); break;
+						case 5: row.setRound5Status(status); break;
+					}
+					break;
+				}
+			}
+		});
+	}
 
 	public MetaDiaMonitorTask(MetaParameterDiaRT metaPar, MetaResourceParameters mrp, ProgressBar bar1,
 			ProgressBar bar2, File monitorFolder, File destinationFolder,
-			DefaultTableModel resultTableModel, DefaultListModel<String> rawListModel) {
+			ObservableList<TableRowData> resultTableItems, ObservableList<String> rawListItems, ConsolePanel consolePanel) {
 
 		super(metaPar, mrp, bar1, bar2);
 		this.monitorFolderPath = Paths.get(monitorFolder.getAbsolutePath());
@@ -65,12 +84,12 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 		this.monitorFolder = monitorFolder;
 		this.destinationFolder = destinationFolder;
 
-		this.resultTableModel = resultTableModel;
-		this.rawListModel = rawListModel;
+		this.resultTableItems = resultTableItems;
+		this.rawListItems = rawListItems;
+		this.consolePanel = consolePanel;
 	}
 
 	protected void initial() {
-
 		this.magDb = ((MetaParameterDiaRT) metaPar).getMagDbItem();
 		this.threadCount = metaPar.getThreadCount();
 
@@ -81,11 +100,20 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 		this.diannPar.setThreads(metaPar.getThreadCount());
 
 		setTaskCount();
+		
+		// Debug: Verify DiaNN task is initialized (should be initialized in parent constructor)
+		System.out.println("DEBUG: MetaDiaMonitorTask.initial() - diaNNTask: " + (this.diaNNTask != null ? "initialized" : "NULL"));
+		System.out.println("DEBUG: MetaDiaMonitorTask.initial() - diannPar: " + (this.diannPar != null ? "initialized" : "NULL"));
 	}
 
 	@SuppressWarnings("unchecked")
 	@Override
 	protected Boolean call() throws IOException {
+		
+		System.out.println("DEBUG: MetaDiaMonitorTask.call() started");
+		System.out.println("DEBUG: Calling initial() method...");
+		initial();
+		System.out.println("DEBUG: initial() method completed");
 
 		File magDbFile = this.magDb.getCurrentFile();
 		this.libFolderFile = new File(magDbFile, "libraries");
@@ -122,11 +150,25 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 
 			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": " + files.length
 					+ " files already in the monitor folder, processing started");
+			
+			// List the files that will be processed
+			for (File file : files) {
+				if (file.isFile()) {
+					String fileName = file.getName().toLowerCase();
+					if (fileName.endsWith(".raw") || fileName.endsWith(".d") || 
+						fileName.endsWith(".dia") || fileName.endsWith(".mzml")) {
+						System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Found existing file: " + file.getName());
+						LOGGER.info(getTaskName() + ": Found existing file: " + file.getName());
+					}
+				}
+			}
 
 			for (int i = 0; i < files.length; i++) {
 				final int index = i;
+				System.out.println("DEBUG: Submitting file " + files[index].getName() + " to executor service");
 				Future<String> future = executorService.submit(() -> process(files[index]));
 				futures.add(future);
+				System.out.println("DEBUG: File " + files[index].getName() + " submitted successfully");
 			}
 		}
 
@@ -154,11 +196,17 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 				Path filePath = monitorFolderPath.resolve(filename);
 
 				if (Files.isRegularFile(filePath)) {
+					String fileName = filename.toString().toLowerCase();
+					// Only process supported spectra file types
+					if (fileName.endsWith(".raw") || fileName.endsWith(".d") || 
+						fileName.endsWith(".dia") || fileName.endsWith(".mzml")) {
 
-					LOGGER.info(getTaskName() + ": found new file " + filePath);
+						LOGGER.info(getTaskName() + ": found new file " + filePath);
+						System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": New file detected: " + filename);
 
-					Future<String> future = executorService.submit(() -> waitForFileCompletionAndProcess(filePath));
-					futures.add(future);
+						Future<String> future = executorService.submit(() -> waitForFileCompletionAndProcess(filePath));
+						futures.add(future);
+					}
 				}
 			}
 
@@ -265,41 +313,123 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 	
 	private String process(File file) {
 		try {
+			System.out.println("DEBUG: process() method called for file: " + file.getName());
 
 			String fileAbPath = file.getAbsolutePath();
 			String fileName = file.getName();
+			
+			// Extract base filename for UI display (remove extensions)
+			String baseFileName = fileName;
+			if (fileName.endsWith(".raw")) {
+				baseFileName = fileName.substring(0, fileName.length() - 4);
+			} else if (fileName.endsWith(".d")) {
+				baseFileName = fileName.substring(0, fileName.length() - 2);
+			} else if (fileName.endsWith(".dia")) {
+				if (fileName.endsWith(".raw.dia")) {
+					baseFileName = fileName.substring(0, fileName.length() - 8);
+				} else if (fileName.endsWith(".raw.d")) {
+					baseFileName = fileName.substring(0, fileName.length() - 6);
+				} else {
+					baseFileName = fileName.substring(0, fileName.length() - 4);
+				}
+			}
+			
+			// Check if this base filename is already being processed to avoid duplicates
+			synchronized (fileNameSet) {
+				if (fileNameSet.contains(baseFileName)) {
+					System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Duplicate file detected, skipping: " + fileName + " (base: " + baseFileName + ")");
+					LOGGER.info(getTaskName() + ": Duplicate file detected, skipping: " + fileName + " (base: " + baseFileName + ")");
+					return null;
+				}
+				// Add to set immediately to prevent other threads from processing the same base filename
+				fileNameSet.add(baseFileName);
+			}
+			
+			// IMMEDIATE UI UPDATE - Add file to UI as soon as processing starts
+			final String finalBaseFileName = baseFileName;
+			Platform.runLater(() -> {
+				// Add to list if not already present
+				if (!rawListItems.contains(finalBaseFileName)) {
+					rawListItems.add(finalBaseFileName);
+					System.out.println("DEBUG: IMMEDIATE UI UPDATE - Added file to list: " + finalBaseFileName);
+				}
+				
+				// Add to table if not already present
+				boolean existsInTable = resultTableItems.stream().anyMatch(row -> row.matchesFileName(finalBaseFileName));
+				if (!existsInTable) {
+					TableRowData newRow = new TableRowData(finalBaseFileName, "Processing...", "Waiting", "Waiting", "Waiting", "Waiting");
+					resultTableItems.add(newRow);
+					System.out.println("DEBUG: IMMEDIATE UI UPDATE - Added file to table: " + finalBaseFileName);
+				}
+			});
 
 			LOGGER.info(getTaskName() + ": processing raw files " + fileName + " started");
 			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": processing raw files " + fileName
 					+ " started");
 
-			DiaNNTask diaNNTask = new DiaNNTask(mrp.getToolPath(ToolType.DIANN));
-			diannPar.setThreads(threadCount / maxTaskCount + 1);
+			// Use the DiaNN task initialized in the constructor, not create a new one
+			System.out.println(
+					"DEBUG: Using DiaNN task from constructor: " + (this.diaNNTask != null ? "available" : "NULL"));
+			System.out.println(
+					"DEBUG: Using diannPar from constructor: " + (this.diannPar != null ? "available" : "NULL"));
+
+			// Create a new DiannParameter for this specific conversion task
+			DiannParameter conversionDiannPar = new DiannParameter();
+			conversionDiannPar.setThreads(threadCount / maxTaskCount + 1);
 
 			File diaFile = new File(fileAbPath);
 			if (fileName.endsWith(".raw") || fileName.endsWith(".RAW")) {
 
 				diaFile = new File(file + ".dia");
 				fileName = fileName.substring(0, fileName.length() - 4);
-				fileNameSet.add(fileName);
+				// fileNameSet.add() already done earlier in the method
 
 				if (!diaFile.exists()) {
 					LOGGER.info(getTaskName() + ": converting raw files " + fileName + " started");
 					System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": converting raw files "
 							+ fileName + " started");
+					System.out.println("DEBUG: Input file: " + fileAbPath);
+					System.out.println("DEBUG: Expected output: " + diaFile.getAbsolutePath());
+					System.out.println("DEBUG: DiaNN task: " + (this.diaNNTask != null ? "initialized" : "NULL"));
+					System.out
+							.println("DEBUG: DiannParameter: " + (conversionDiannPar != null ? "initialized" : "NULL"));
 
-					diaNNTask.addTask(diannPar, new String[] { fileAbPath });
-					diaNNTask.run(1);
+					this.diaNNTask.addTask(conversionDiannPar, new String[] { fileAbPath });
+					System.out.println("DEBUG: DiaNN task added, about to run...");
+					this.diaNNTask.run(1);
+					System.out.println("DEBUG: DiaNN task run completed");
 
-					LOGGER.info(getTaskName() + ": converting raw files " + fileName + " finished");
-					System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": converting raw files "
-							+ fileName + " finished");
+					// Check if conversion was successful
+					if (diaFile.exists()) {
+						LOGGER.info(getTaskName() + ": converting raw files " + fileName + " finished successfully");
+						System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": converting raw files "
+								+ fileName + " finished successfully");
+						System.out.println("DEBUG: Output file created: " + diaFile.getAbsolutePath() + " (size: "
+								+ diaFile.length() + " bytes)");
+					} else {
+						LOGGER.error(getTaskName() + ": converting raw files " + fileName
+								+ " FAILED - output file not created");
+						System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": converting raw files "
+								+ fileName + " FAILED - output file not created");
+						System.out.println("DEBUG: Expected output file does not exist: " + diaFile.getAbsolutePath());
+						System.out.println("DEBUG: Check DiaNN installation and .NET Runtime");
+						System.out.println(
+								"DEBUG: Download .NET Runtime 8.0.407 or later from: https://dotnet.microsoft.com/en-us/download/dotnet/8.0");
+					}
+				} else {
+					LOGGER.info(getTaskName() + ": .dia file already exists for " + fileName);
+					System.out.println(format.format(new Date()) + "\t" + getTaskName()
+							+ ": .dia file already exists for " + fileName);
+					System.out.println("DEBUG: Using existing file: " + diaFile.getAbsolutePath() + " (size: "
+							+ diaFile.length() + " bytes)");
 				}
-				return null;
+
+				// Continue processing the .dia file instead of returning null
+				// The rest of the method will process the diaFile
 
 			} else if (fileName.endsWith(".d") || fileName.endsWith(".D")) {
 				fileName = fileName.substring(0, fileName.length() - 2);
-				fileNameSet.add(fileName);
+				// fileNameSet.add() already done earlier in the method
 			} else if (fileName.endsWith(".dia") || fileName.endsWith(".DIA")) {
 				if (fileName.endsWith(".raw.dia") || fileName.endsWith(".RAW.DIA")) {
 					fileName = fileName.substring(0, fileName.length() - 8);
@@ -308,40 +438,21 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 				} else {
 					fileName = fileName.substring(0, fileName.length() - 4);
 				}
-				fileNameSet.add(fileName);
+				// fileNameSet.add() already done earlier in the method
 			} else {
+				// Only process supported spectra file types
+				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Unsupported file type, skipping: " + fileName);
+				LOGGER.info(getTaskName() + ": Unsupported file type, skipping: " + fileName);
 				return null;
 			}
 
-			final String finalFileName = fileName;
-			SwingUtilities.invokeLater(() -> {
-				boolean add1 = true;
-				for (int i = 0; i < rawListModel.size(); i++) {
-					String fileNameI = rawListModel.get(i);
-					if (fileNameI.equals(finalFileName)) {
-						add1 = false;
-						break;
-					}
-				}
-				if (add1) {
-					this.rawListModel.addElement(finalFileName);
-				}
+			final String finalFileName = baseFileName; // Use the base filename extracted earlier
+			
+			// UI updates already happened immediately at the start of processing
 
-				boolean add2 = true;
-				for (int i = 0; i < resultTableModel.getRowCount(); i++) {
-					String fileNameI = (String) resultTableModel.getValueAt(i, 0);
-					if (fileNameI.equals(finalFileName)) {
-						add2 = false;
-						break;
-					}
-				}
-
-				if (add2) {
-					String[] content = new String[] { finalFileName, "Waiting", "Waiting", "Waiting", "Waiting",
-							"Waiting" };
-					this.resultTableModel.addRow(content);
-				}
-			});
+			// JavaFX models updated directly via Platform.runLater()
+			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Added file to JavaFX models: "
+					+ finalFileName);
 
 			File resultFolderFile = new File(destinationFolderPath.toAbsolutePath().toString(), fileName);
 			if (!resultFolderFile.exists()) {
@@ -352,35 +463,11 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 			String[] libPath = new String[libPathList.size()];
 			for (int i = 0; i < libPathList.size(); i++) {
 				String usedLibIString = libPathList.get(i);
-				File libTsvFile = new File(new File(libFolderFile, usedLibIString), usedLibIString + ".tsv");
+				File libTsvFile = new File(new File(libFolderFile, usedLibIString), usedLibIString + ".parquet");
 				File libFile = new File(new File(libFolderFile, usedLibIString), usedLibIString + ".speclib");
-				if (libPath.length == 1) {
-					libPath[i] = libFile.getAbsolutePath();
-				} else {
-					libPath[i] = libTsvFile.getAbsolutePath();
-				}
+				libPath[i] = libFile.getAbsolutePath();
 
-				try (BufferedReader reader = new BufferedReader(new FileReader(libTsvFile))) {
-					String pline = reader.readLine();
-					String[] title = pline.split("\t");
-					int seqid = -1;
-					for (int j = 0; j < title.length; j++) {
-						if (title[j].equals("PeptideSequence")) {
-							seqid = j;
-						}
-					}
-					while ((pline = reader.readLine()) != null) {
-						String[] cs = pline.split("\t");
-						initialLibPepSet.add(cs[seqid]);
-					}
-					reader.close();
-				} catch (Exception e) {
-					LOGGER.error(getTaskName() + ": error in reading " + libTsvFile, e);
-					System.err.println(
-							format.format(new Date()) + "\t" + getTaskName() + ": error in reading " + libTsvFile);
-
-					return null;
-				}
+				initialLibPepSet.addAll(DiaNNParquetReader.getPeptideSet(libTsvFile.getAbsolutePath()));
 			}
 
 			File firstFile = new File(resultFolderFile, "firstSearch");
@@ -388,15 +475,12 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 				firstFile.mkdirs();
 			}
 
-			SwingUtilities.invokeLater(() -> {
-				for (int i = 0; i < resultTableModel.getRowCount(); i++) {
-					String fileNameI = (String) resultTableModel.getValueAt(i, 0);
-					if (fileNameI.equals(finalFileName)) {
-						resultTableModel.setValueAt("Working", i, 1);
-						break;
-					}
-				}
-			});
+			updateTableRowStatus(finalFileName, 1, "Working");
+			LOGGER.info(getTaskName() + ": Updated " + finalFileName + " Round 1 status to Working");
+
+			// JavaFX models updated directly via Platform.runLater()
+			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Updated " + finalFileName
+					+ " Round 1 status to Working");
 
 			File round1TsvFile = new File(firstFile, "firstSearch.parquet");
 			if (!round1TsvFile.exists()) {
@@ -411,7 +495,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 				diaLibSearchPar.setThreadCount(batchThreadCount);
 				diaLibSearchPar.setMbr(false);
 				diaLibSearchPar.setqValue(0.01);
-				
+
 				DiannParameter diannPar = new DiannParameter();
 				diannPar.setThreads(batchThreadCount);
 				diannPar.setMatrices(false);
@@ -430,25 +514,9 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 			}
 
 			if (round1TsvFile.exists()) {
-				SwingUtilities.invokeLater(() -> {
-					for (int i = 0; i < resultTableModel.getRowCount(); i++) {
-						String fileNameI = (String) resultTableModel.getValueAt(i, 0);
-						if (fileNameI.equals(finalFileName)) {
-							resultTableModel.setValueAt("Done", i, 1);
-							break;
-						}
-					}
-				});
+				updateTableRowStatus(finalFileName, 1, "Done");
 			} else {
-				SwingUtilities.invokeLater(() -> {
-					for (int i = 0; i < resultTableModel.getRowCount(); i++) {
-						String fileNameI = (String) resultTableModel.getValueAt(i, 0);
-						if (fileNameI.equals(finalFileName)) {
-							resultTableModel.setValueAt("Failed", i, 1);
-							break;
-						}
-					}
-				});
+				updateTableRowStatus(finalFileName, 1, "Failed");
 				return null;
 			}
 
@@ -457,7 +525,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 				modelFolderFile.mkdirs();
 			}
 
-			File rankedPepFile = new File(modelFolderFile, "pep_rank.tsv");
+			File rankedPepFile = new File(modelFolderFile, "model_pep_rank.tsv");
 			if (!rankedPepFile.exists()) {
 
 				LOGGER.info(getTaskName() + ": creating model for " + fileName + " started");
@@ -465,47 +533,19 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 						+ " started");
 
 				HashMap<String, Double> pepIntenMap = new HashMap<String, Double>();
-				try (BufferedReader reader = new BufferedReader(new FileReader(round1TsvFile))) {
-					String line = reader.readLine();
-					String[] title = line.split("\t");
-					int seqId = -1;
-					int intensityId = -1;
-					for (int j = 0; j < title.length; j++) {
-						if (title[j].equals("Stripped.Sequence")) {
-							seqId = j;
-						} else if (title[j].equals("Precursor.Normalised")) {
-							intensityId = j;
-						}
-					}
-					while ((line = reader.readLine()) != null) {
-						String[] cs = line.split("\t");
-						if (pepIntenMap.containsKey(cs[seqId])) {
-							pepIntenMap.put(cs[seqId],
-									pepIntenMap.get(cs[seqId]) + Double.parseDouble(cs[intensityId]));
-						} else {
-							pepIntenMap.put(cs[seqId], Double.parseDouble(cs[intensityId]));
-						}
-					}
-					reader.close();
+				try {
+					pepIntenMap = DiaNNParquetReader.getPeptideMap(round1TsvFile.getAbsolutePath());
 				} catch (IOException e) {
-					LOGGER.error(getTaskName() + ": error in combining the grouped quantitative information", e);
+					LOGGER.error(getTaskName() + ": error in reading parquet file " + round1TsvFile.getAbsolutePath(), e);
 					System.out.println(format.format(new Date()) + "\t" + getTaskName()
-							+ ": error in combining the grouped quantitative information");
+							+ ": error in reading parquet file " + round1TsvFile.getAbsolutePath());
 				}
 				int batchThreadCount = threadCount / maxTaskCount + 1;
-				DiaPyTorchModelTask diaModelTask = new DiaPyTorchModelTask((MetaParameterDia) metaPar,
-						mrp, secondBar, pepIntenMap, modelFolderFile, batchThreadCount);
+				DiaPyTorchModelTask diaModelTask = new DiaPyTorchModelTask((MetaParameterDia) metaPar, mrp, secondBar,
+						pepIntenMap, modelFolderFile, batchThreadCount);
 				diaModelTask.execute();
 
-				SwingUtilities.invokeLater(() -> {
-					for (int i = 0; i < resultTableModel.getRowCount(); i++) {
-						String fileNameI = (String) resultTableModel.getValueAt(i, 0);
-						if (fileNameI.equals(finalFileName)) {
-							resultTableModel.setValueAt("Working", i, 2);
-							break;
-						}
-					}
-				});
+				updateTableRowStatus(finalFileName, 2, "Working");
 
 				try {
 					if (diaModelTask.get()) {
@@ -532,25 +572,9 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 			}
 
 			if (rankedPepFile.exists()) {
-				SwingUtilities.invokeLater(() -> {
-					for (int i = 0; i < resultTableModel.getRowCount(); i++) {
-						String fileNameI = (String) resultTableModel.getValueAt(i, 0);
-						if (fileNameI.equals(finalFileName)) {
-							resultTableModel.setValueAt("Done", i, 2);
-							break;
-						}
-					}
-				});
+				updateTableRowStatus(finalFileName, 2, "Done");
 			} else {
-				SwingUtilities.invokeLater(() -> {
-					for (int i = 0; i < resultTableModel.getRowCount(); i++) {
-						String fileNameI = (String) resultTableModel.getValueAt(i, 0);
-						if (fileNameI.equals(finalFileName)) {
-							resultTableModel.setValueAt("Failed", i, 2);
-							break;
-						}
-					}
-				});
+				updateTableRowStatus(finalFileName, 2, "Failed");
 				return null;
 			}
 
@@ -586,15 +610,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 				secondFile.mkdirs();
 			}
 
-			SwingUtilities.invokeLater(() -> {
-				for (int i = 0; i < resultTableModel.getRowCount(); i++) {
-					String fileNameI = (String) resultTableModel.getValueAt(i, 0);
-					if (fileNameI.equals(finalFileName)) {
-						resultTableModel.setValueAt("Working", i, 3);
-						break;
-					}
-				}
-			});
+			updateTableRowStatus(finalFileName, 3, "Working");
 
 			File round2TsvFile = new File(secondFile, "secondSearch.parquet");
 			if (!round2TsvFile.exists()) {
@@ -634,7 +650,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 				diaLibSearchPar.setThreadCount(batchThreadCount);
 				diaLibSearchPar.setMbr(false);
 				diaLibSearchPar.setqValue(0.01);
-				
+
 				DiannParameter diannPar = new DiannParameter();
 				diannPar.setThreads(batchThreadCount);
 				diannPar.setMatrices(false);
@@ -655,25 +671,9 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 			}
 
 			if (round2TsvFile.exists()) {
-				SwingUtilities.invokeLater(() -> {
-					for (int i = 0; i < resultTableModel.getRowCount(); i++) {
-						String fileNameI = (String) resultTableModel.getValueAt(i, 0);
-						if (fileNameI.equals(finalFileName)) {
-							resultTableModel.setValueAt("Done", i, 3);
-							break;
-						}
-					}
-				});
+				updateTableRowStatus(finalFileName, 3, "Done");
 			} else {
-				SwingUtilities.invokeLater(() -> {
-					for (int i = 0; i < resultTableModel.getRowCount(); i++) {
-						String fileNameI = (String) resultTableModel.getValueAt(i, 0);
-						if (fileNameI.equals(finalFileName)) {
-							resultTableModel.setValueAt("Failed", i, 3);
-							break;
-						}
-					}
-				});
+				updateTableRowStatus(finalFileName, 3, "Failed");
 				return null;
 			}
 
@@ -734,17 +734,9 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 				thirdFile.mkdirs();
 			}
 
-			SwingUtilities.invokeLater(() -> {
-				for (int i = 0; i < resultTableModel.getRowCount(); i++) {
-					String fileNameI = (String) resultTableModel.getValueAt(i, 0);
-					if (fileNameI.equals(finalFileName)) {
-						resultTableModel.setValueAt("Working", i, 4);
-						break;
-					}
-				}
-			});
+			updateTableRowStatus(finalFileName, 4, "Working");
 
-			File round3TsvFile = new File(thirdFile, "thirdSearch.tsv");
+			File round3TsvFile = new File(thirdFile, "thirdSearch.parquet");
 			if (!round3TsvFile.exists()) {
 				LOGGER.info(getTaskName() + ": search raw files " + fileName + " round 3 started");
 				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": search raw files " + fileName
@@ -797,25 +789,9 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 			}
 
 			if (round3TsvFile.exists()) {
-				SwingUtilities.invokeLater(() -> {
-					for (int i = 0; i < resultTableModel.getRowCount(); i++) {
-						String fileNameI = (String) resultTableModel.getValueAt(i, 0);
-						if (fileNameI.equals(finalFileName)) {
-							resultTableModel.setValueAt("Done", i, 4);
-							break;
-						}
-					}
-				});
+				updateTableRowStatus(finalFileName, 4, "Done");
 			} else {
-				SwingUtilities.invokeLater(() -> {
-					for (int i = 0; i < resultTableModel.getRowCount(); i++) {
-						String fileNameI = (String) resultTableModel.getValueAt(i, 0);
-						if (fileNameI.equals(finalFileName)) {
-							resultTableModel.setValueAt("Failed", i, 4);
-							break;
-						}
-					}
-				});
+				updateTableRowStatus(finalFileName, 4, "Failed");
 				return null;
 			}
 
@@ -892,15 +868,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 				dbFromModelPeptide(modelPath, genomeSet3, pepSet3, initialLibPepSet, round3DbFile, 2500000);
 			}
 
-			SwingUtilities.invokeLater(() -> {
-				for (int i = 0; i < resultTableModel.getRowCount(); i++) {
-					String fileNameI = (String) resultTableModel.getValueAt(i, 0);
-					if (fileNameI.equals(finalFileName)) {
-						resultTableModel.setValueAt("Working", i, 5);
-						break;
-					}
-				}
-			});
+			updateTableRowStatus(finalFileName, 5, "Working");
 
 			File lastTsvFile = new File(resultFolderFile, "lastSearch.parquet");
 			if (!lastTsvFile.exists()) {
@@ -957,25 +925,9 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 			}
 
 			if (lastTsvFile.exists()) {
-				SwingUtilities.invokeLater(() -> {
-					for (int i = 0; i < resultTableModel.getRowCount(); i++) {
-						String fileNameI = (String) resultTableModel.getValueAt(i, 0);
-						if (fileNameI.equals(finalFileName)) {
-							resultTableModel.setValueAt("Done", i, 5);
-							break;
-						}
-					}
-				});
+				updateTableRowStatus(finalFileName, 5, "Done");
 			} else {
-				SwingUtilities.invokeLater(() -> {
-					for (int i = 0; i < resultTableModel.getRowCount(); i++) {
-						String fileNameI = (String) resultTableModel.getValueAt(i, 0);
-						if (fileNameI.equals(finalFileName)) {
-							resultTableModel.setValueAt("Failed", i, 5);
-							break;
-						}
-					}
-				});
+				updateTableRowStatus(finalFileName, 5, "Failed");
 				return null;
 			}
 
@@ -983,7 +935,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 			File[] destFiles = destinationFolder.listFiles();
 			for (int i = 0; i < destFiles.length; i++) {
 				if (destFiles[i].isDirectory()) {
-					File resultFileI = new File(destFiles[i], "lastSearch.tsv");
+					File resultFileI = new File(destFiles[i], "lastSearch.parquet");
 					if (resultFileI.exists() && resultFileI.length() > 0) {
 						count++;
 					}
@@ -991,12 +943,12 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 			}
 
 			LOGGER.info(getTaskName() + ": " + destFiles.length + " files are finished, the total number of file is "
-					+ this.rawListModel.size());
+					+ this.rawListItems.size());
 			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": " + destFiles.length
-					+ " files are finished, the total number of file is " + this.rawListModel.size());
+					+ " files are finished, the total number of file is " + this.rawListItems.size());
 
-			if (count <= this.rawListModel.size()) {
-				updateProgress((int) ((double) count / (double) this.rawListModel.size() * 100.0), 100);
+			if (count <= this.rawListItems.size()) {
+				updateProgress((int) ((double) count / (double) this.rawListItems.size() * 100.0), 100);
 			}
 
 			return diaFile.getAbsolutePath();
@@ -1004,6 +956,9 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 		} catch (InterruptedException e) {
 			e.printStackTrace();
 			Thread.currentThread().interrupt();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
 		}
 
 		return null;
@@ -1051,7 +1006,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 			if (!isCancelled()) {
 				get(); // Trigger any exceptions thrown in doInBackground
 				// Update GUI with completion status
-				System.out.println("Monitoring completed. Total files processed: " + rawListModel.size());
+				System.out.println("Monitoring completed. Total files processed: " + rawListItems.size());
 			}
 		} catch (Exception e) {
 			e.printStackTrace();

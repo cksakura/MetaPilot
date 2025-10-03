@@ -57,6 +57,7 @@ import uk.ac.quadram.metapilot.quant.flashLFQ.FlashLfqQuanPeptide;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.task.MetaPythonReportTask;
+import uk.ac.quadram.metapilot.task.io.ReportManifestGenerator;
 import uk.ac.quadram.metapilot.task.MetaPythonReportCopyTask;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaTg;
@@ -83,7 +84,6 @@ public class MetaDiaTask extends MetaPilotMagTask {
 	private boolean libSearch;
 	private boolean selfModelSearch;
 	
-	// Fields that were available in MagHapPFindTask but not in MetaPilotMagTask
 	protected MetaData metadata;
 	protected String[] expNames;
 	protected int[] fractions;
@@ -159,25 +159,33 @@ public class MetaDiaTask extends MetaPilotMagTask {
 		// Create result directory if not already set
 		if (metaPar.getDbSearchResultFile() == null) {
 			File diaResultDir;
-			if (this.libSearch) {
-				diaResultDir = new File(metaPar.getResult(), "library_analysis");
-				if (!diaResultDir.exists()) {
-					diaResultDir.mkdirs();
-					LOGGER.info("Created result directory: {}", diaResultDir.getAbsolutePath());
-				}
-			} else if (this.selfModelSearch) {
-				diaResultDir = new File(metaPar.getResult(), "self_model_analysis");
-				if (!diaResultDir.exists()) {
-					diaResultDir.mkdirs();
-					LOGGER.info("Created result directory: {}", diaResultDir.getAbsolutePath());
-				}
+
+			if (metaPar instanceof MetaParameterDiaTg) {
+				diaResultDir = (new File(((MetaParameterDiaTg) metaPar).getLibraryPath())).getParentFile();
 			} else {
-				diaResultDir = new File(metaPar.getResult(), "iterative_analysis");
-				if (!diaResultDir.exists()) {
-					diaResultDir.mkdirs();
-					LOGGER.info("Created result directory: {}", diaResultDir.getAbsolutePath());
+				if (this.libSearch) {
+					diaResultDir = new File(metaPar.getResult(), "library_analysis");
+					if (!diaResultDir.exists()) {
+						diaResultDir.mkdirs();
+						LOGGER.info("Created result directory: {}", diaResultDir.getAbsolutePath());
+					}
+				} else {
+					if (this.selfModelSearch) {
+						diaResultDir = new File(metaPar.getResult(), "self_model_analysis");
+						if (!diaResultDir.exists()) {
+							diaResultDir.mkdirs();
+							LOGGER.info("Created result directory: {}", diaResultDir.getAbsolutePath());
+						}
+					} else {
+						diaResultDir = new File(metaPar.getResult(), "iterative_analysis");
+						if (!diaResultDir.exists()) {
+							diaResultDir.mkdirs();
+							LOGGER.info("Created result directory: {}", diaResultDir.getAbsolutePath());
+						}
+					}
 				}
 			}
+
 			metaPar.setDbSearchResultFile(diaResultDir);
 		} else {
 			LOGGER.info("Result directory already exist: {}", metaPar.getDbSearchResultFile().getAbsolutePath());
@@ -882,7 +890,7 @@ public class MetaDiaTask extends MetaPilotMagTask {
 			if (!modelFolder.exists()) {
 				modelFolder.mkdir();
 			}
-			File rankFile = new File(modelFolder, "pep_rank.tsv");
+			File rankFile = new File(modelFolder, "model_pep_rank.tsv");
 			if (rankFile.exists()) {
 				LOGGER.info(getTaskName() + ": model files have been found in " + separateResultFolders[i].getName());
 				System.out.println(format.format(new Date()) + "\t" + getTaskName()
@@ -3255,18 +3263,27 @@ public class MetaDiaTask extends MetaPilotMagTask {
 
 		File html = new File(funcFile, "functions.html");
 		if (!html.exists()) {
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": writing results to " + html.getName()
-					+ " started");
+			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": writing results to "
+					+ html.getName() + " started");
 			try {
 				funReader.exportHtml(html);
+
+				// Copy the generated functions.html to the reports directory
+				File reportFunctionsHtml = new File(metaPar.getReportDir(), "reports/functions.html");
+				if (reportFunctionsHtml.getParentFile() != null && !reportFunctionsHtml.getParentFile().exists()) {
+					reportFunctionsHtml.getParentFile().mkdirs();
+				}
+				Files.copy(html.toPath(), reportFunctionsHtml.toPath(), StandardCopyOption.REPLACE_EXISTING);
+				LOGGER.info("Copied functions.html to reports directory: " + reportFunctionsHtml.getAbsolutePath());
+
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
 				LOGGER.error(getTaskName() + ": error in writing protein function information to " + html.getName(), e);
 				System.err.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": error in writing protein function information to " + html.getName());
 			}
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": writing results to " + html.getName()
-					+ " finished");
+			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": writing results to "
+					+ html.getName() + " finished");
 		}
 		
 		// Copy functions.html to report directory for navigation access
@@ -3326,6 +3343,14 @@ public class MetaDiaTask extends MetaPilotMagTask {
 			HMGenomeHtmlWriter htmlWriter = new HMGenomeHtmlWriter(genomeHtmlFile);
 			htmlWriter.write(genomeTaxaMap);
 			htmlWriter.close();
+
+			// Copy the generated Genome.html to the reports directory
+			File reportGenomeHtml = new File(metaPar.getReportDir(), "reports/Genome.html");
+			if (reportGenomeHtml.getParentFile() != null && !reportGenomeHtml.getParentFile().exists()) {
+				reportGenomeHtml.getParentFile().mkdirs();
+			}
+			Files.copy(genomeHtmlFile.toPath(), reportGenomeHtml.toPath(), StandardCopyOption.REPLACE_EXISTING);
+			LOGGER.info("Copied Genome.html to reports directory: " + reportGenomeHtml.getAbsolutePath());
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
 			LOGGER.error("Error in writing genome information to " + genomeHtmlFile, e);
@@ -3619,13 +3644,13 @@ public class MetaDiaTask extends MetaPilotMagTask {
 
 		metaPar.setReportDir(reportDir);
 
-		this.reportHtmlDir = new File(reportDir + "\\reports\\rmd_html");
+		this.reportHtmlDir = new File(reportDir + "\\reports");
 
 		if (!reportHtmlDir.exists()) {
 			reportHtmlDir.mkdirs();
 		}
 		
-		File jsOutput = new File(metaPar.getReportDir() + "\\reports\\metamap\\data\\tree.js");
+		File jsOutput = new File(metaPar.getReportDir() + "\\reports\\tree.js");
 		if (!jsOutput.getParentFile().exists()) {
 			jsOutput.getParentFile().mkdirs();
 		}
@@ -3633,9 +3658,26 @@ public class MetaDiaTask extends MetaPilotMagTask {
 		if (!jsOutput.exists() || jsOutput.length() == 0) {
 			MetaTreeHandler.exportJS(taxRankMaps, taxIntensityMaps, cellularIntensity, expNames, jsOutput);
 		}
+		
+		// Generate bubble chart report from tree.js data (optional - don't fail if this doesn't work)
+		File bubbleChartOutput = new File(metaPar.getReportDir() + "\\reports\\bubble_chart_report.html");
+		if (!bubbleChartOutput.exists() || bubbleChartOutput.length() == 0) {
+			try {
+				generateBubbleChartReport(jsOutput, bubbleChartOutput);
+			} catch (Exception e) {
+				LOGGER.warn(getTaskName() + ": Bubble chart generation failed, continuing with other reports: " + e.getMessage());
+				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Bubble chart generation failed, continuing with other reports");
+			}
+		}
 
 		MetaPythonReportTask task = new MetaPythonReportTask(metaPar.getThreadCount(), mrp);
-
+		task.setWorkflowType("DIA");
+		task.initializeManifestGenerator(new File(metaPar.getReportDir(), "reports"));
+		
+		// Create initial manifest file to ensure index page can load
+		ReportManifestGenerator manifestGen = new ReportManifestGenerator(new File(metaPar.getReportDir(), "reports"));
+		manifestGen.createInitialManifest();
+		
 		this.summaryMetaFile = new File(this.resultFolderFile, "metainfo.tsv");
 		try {
 			metadata.exportMetadata(summaryMetaFile);
@@ -3755,13 +3797,19 @@ public class MetaDiaTask extends MetaPilotMagTask {
 
 		metaPar.setReportDir(reportDir);
 
-		this.reportHtmlDir = new File(reportDir + "\\reports\\rmd_html");
+		this.reportHtmlDir = new File(reportDir + "\\reports");
 
 		if (!reportHtmlDir.exists()) {
 			reportHtmlDir.mkdirs();
 		}
 
 		MetaPythonReportTask task = new MetaPythonReportTask(metaPar.getThreadCount(), mrp);
+		task.setWorkflowType("DIA");
+		task.initializeManifestGenerator(new File(metaPar.getReportDir(), "reports"));
+		
+		// Create initial manifest file to ensure index page can load
+		ReportManifestGenerator manifestGen = new ReportManifestGenerator(new File(metaPar.getReportDir(), "reports"));
+		manifestGen.createInitialManifest();
 		
 		this.summaryMetaFile = new File(resultFolderFile, "metainfo.tsv");
 		try {
@@ -4236,6 +4284,18 @@ public class MetaDiaTask extends MetaPilotMagTask {
 			try {
 				funReader.exportTsv(funTsv);
 				funReader.exportTsvReport(funReportTsv);
+				
+				// Export separate functional category reports
+				File goReportTsv = new File(funcFile, "Gene_Ontology_id_report.tsv");
+				File ecReportTsv = new File(funcFile, "EC_id_report.tsv");
+				File keggReportTsv = new File(funcFile, "KEGG_ko_report.tsv");
+				File briteReportTsv = new File(funcFile, "BRITE_report.tsv");
+				
+				funReader.exportGOReport(goReportTsv);
+				funReader.exportECReport(ecReportTsv);
+				funReader.exportKeggReport(keggReportTsv);
+				funReader.exportBriteReport(briteReportTsv);
+				
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
 				LOGGER.error(getTaskName() + ": error in writing protein function information to " + funTsv.getName(),
@@ -4253,6 +4313,13 @@ public class MetaDiaTask extends MetaPilotMagTask {
 					+ html.getName() + " started");
 			try {
 				funReader.exportHtml(html);
+				// Copy the generated functions.html to the reports directory
+				File reportFunctionsHtml = new File(metaPar.getReportDir(), "reports/functions.html");
+				if (reportFunctionsHtml.getParentFile() != null && !reportFunctionsHtml.getParentFile().exists()) {
+					reportFunctionsHtml.getParentFile().mkdirs();
+				}
+				Files.copy(html.toPath(), reportFunctionsHtml.toPath(), StandardCopyOption.REPLACE_EXISTING);
+				LOGGER.info("Copied functions.html to reports directory: " + reportFunctionsHtml.getAbsolutePath());
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
 				LOGGER.error(getTaskName() + ": error in writing protein function information to " + html.getName(), e);
@@ -5421,7 +5488,7 @@ public class MetaDiaTask extends MetaPilotMagTask {
 		return proSet;
 	}
 	
-	private ConcurrentHashMap<String, HashMap<String, HashSet<String>>> getGenomeFromPep(HashSet<String> allPepSet,
+	protected ConcurrentHashMap<String, HashMap<String, HashSet<String>>> getGenomeFromPep(HashSet<String> allPepSet,
 			int threadCount) {
 		ConcurrentHashMap<String, HashMap<String, HashSet<String>>> genomePepMap = new ConcurrentHashMap<String, HashMap<String, HashSet<String>>>();
 		HashSet<String> matchedPepSet = new HashSet<String>();
@@ -7685,6 +7752,50 @@ System.out.println("8325\t"+genome+"\t"+usedLogInten.length+"\t"+mean1+"\t"+sd1+
 		}
 		
 		return success;
+	}
+
+	/**
+	 * Generate bubble chart report from tree.js data using Python.
+	 */
+	protected void generateBubbleChartReport(File treeJsFile, File outputFile) {
+		try {
+			LOGGER.info(taskName + ": Generating bubble chart report from " + treeJsFile.getName());
+			System.out.println(format.format(new Date()) + "\t" + taskName + ": Generating bubble chart report");
+			
+			// Use MetaPythonReportTask to generate the bubble chart
+			MetaPythonReportTask reportTask = new MetaPythonReportTask(1, mrp);
+			boolean success = reportTask.addTask(MetaPythonReportTask.BUBBLE_CHART, treeJsFile, outputFile);
+			
+			if (success) {
+				// Wait for completion
+				reportTask.run();
+				boolean result = reportTask.get();
+				
+				if (result) {
+					LOGGER.info(taskName + ": Bubble chart report generated successfully: " + outputFile.getName());
+					System.out.println(format.format(new Date()) + "\t" + taskName + ": Bubble chart report generated successfully");
+					
+					// Add to manifest
+					File reportsDir = new File(metaPar.getReportDir(), "reports");
+					ReportManifestGenerator manifestGen = new ReportManifestGenerator(reportsDir);
+					manifestGen.addReportEntry(
+						"Bubble Chart Report",
+						"bubble_chart_report.html",
+						"Interactive hierarchical bubble chart showing taxonomic abundance with treemap, sunburst, and distribution visualizations.",
+						new String[]{"bubble-chart", "taxonomy", "hierarchical", "treemap"}
+					);
+				} else {
+					LOGGER.error(taskName + ": Failed to generate bubble chart report");
+					System.err.println(format.format(new Date()) + "\t" + taskName + ": Failed to generate bubble chart report");
+				}
+			} else {
+				LOGGER.error(taskName + ": Failed to add bubble chart task");
+				System.err.println(format.format(new Date()) + "\t" + taskName + ": Failed to add bubble chart task");
+			}
+		} catch (Exception e) {
+			LOGGER.error(taskName + ": Error generating bubble chart report", e);
+			System.err.println(format.format(new Date()) + "\t" + taskName + ": Error generating bubble chart report: " + e.getMessage());
+		}
 	}
 	
 	public static void main(String[] args) {

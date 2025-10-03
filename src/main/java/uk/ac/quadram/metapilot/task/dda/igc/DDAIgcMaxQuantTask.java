@@ -270,7 +270,7 @@ public class DDAIgcMaxQuantTask extends MetaPilotIgcTask {
 
 				metaPar.setReportDir(reportDir);
 
-				File reportFolder = new File(reportDir + "\\reports\\rmd_html");
+				File reportFolder = new File(reportDir + "\\reports");
 
 				if (!reportFolder.exists()) {
 					reportFolder.mkdirs();

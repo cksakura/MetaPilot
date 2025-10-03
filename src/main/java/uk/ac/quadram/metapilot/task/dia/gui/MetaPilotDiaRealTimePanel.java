@@ -12,8 +12,8 @@ import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.scene.paint.Color;
 import javafx.scene.control.cell.PropertyValueFactory;
-import javafx.beans.property.SimpleStringProperty;
-import javafx.beans.property.StringProperty;
+// import javafx.beans.property.SimpleStringProperty; // Not used
+// import javafx.beans.property.StringProperty; // Not used
 import javafx.concurrent.Task;
 import uk.ac.quadram.metapilot.task.common.gui.MagDatabaseSettingsPanel;
 import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
@@ -22,24 +22,22 @@ import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagVersion;
-import uk.ac.quadram.metapilot.task.dia.par.DiaParameterIO;
-import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
+import uk.ac.quadram.metapilot.task.dia.par.DiaRTParameterIO;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaRT;
 import uk.ac.quadram.metapilot.task.dia.MetaDiaCombineTask;
 import uk.ac.quadram.metapilot.task.dia.MetaDiaMonitorTask;
 
-import javax.swing.DefaultListModel;
-import javax.swing.table.DefaultTableModel;
+import uk.ac.quadram.metapilot.task.dia.TableRowData;
+import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.List;
 import java.io.File;
 
 public class MetaPilotDiaRealTimePanel extends VBox {
     // UI Components - Database
     private MagDatabaseSettingsPanel magDatabasePanel;
-    private TextArea consoleOutput;
     private ConsolePanel consolePanel;
+    private TextArea consoleOutput;
 
     // Real-time monitoring components
     private TextField monitorFolderField;
@@ -47,8 +45,7 @@ public class MetaPilotDiaRealTimePanel extends VBox {
     private TextField resultFolderField;
     private Button browseResultFolderButton;
     private ListView<String> monitorFilesList;
-    private TableView<ProcessingRow> resultTable;
-    private ObservableList<ProcessingRow> resultData = FXCollections.observableArrayList();
+    private TableView<TableRowData> resultTable;
     
     // Control panel components
     private Button startMonitorButton;
@@ -68,15 +65,13 @@ public class MetaPilotDiaRealTimePanel extends VBox {
 
 
     // Parameter I/O
-    private DiaParameterIO parameterIO;
     private MetaParameterDiaRT currentAnalysisParameters;
     
     // Real-time task management
     private MetaDiaMonitorTask monitorTask;
     private MetaDiaCombineTask combineTask;
-    private ExecutorService taskExecutor;
-    private DefaultListModel<String> swingRawListModel;
-    private DefaultTableModel swingResultTableModel;
+    private ObservableList<String> javafxRawListItems;
+    private ObservableList<TableRowData> javafxResultTableItems;
     private HashMap<String, String[]> rawResultFileMap;
     
     // Resource parameters
@@ -86,30 +81,45 @@ public class MetaPilotDiaRealTimePanel extends VBox {
     private boolean isMonitoring = false;
     private int targetFileCount = 0;
     private boolean performAnalysisAfterComplete = false;
+    private DiaRTParameterIO parameterIO;
 
     public MetaPilotDiaRealTimePanel() {
         // Initialize parameter IO instance
-        parameterIO = new DiaParameterIO();
+        parameterIO = new DiaRTParameterIO();
+        
+        // Initialize JavaFX models
+        javafxRawListItems = FXCollections.observableArrayList();
+        javafxResultTableItems = FXCollections.observableArrayList();
         
         // Initialize console panel
         consolePanel = new ConsolePanel();
-        consolePanel.setStartCallback(this::startMonitoring);
-        consolePanel.setStopCallback(this::stopMonitoring);
+        // Don't set start/stop callbacks for real-time workflow - use custom buttons instead
         consolePanel.setViewReportCallback(this::viewReport);
+        // Hide the Start Analysis button since we use Start Monitor instead
+        consolePanel.setButtonsEnabled(false, false, true); // Disable start and stop, enable view report
+        // Explicitly hide progress indicator since we control it manually in real-time workflow
+        consolePanel.hideProgressIndicator();
         
         initializeUI();
     }
 
     public MetaPilotDiaRealTimePanel(MagDbItem[] magDbItems, MetaResourceParameters resourceParams) {
         // Initialize parameter IO instance
-        parameterIO = new DiaParameterIO();
+        parameterIO = new DiaRTParameterIO();
         this.resourceParams = resourceParams;
+        
+        // Initialize JavaFX models
+        javafxRawListItems = FXCollections.observableArrayList();
+        javafxResultTableItems = FXCollections.observableArrayList();
         
         // Initialize console panel
         consolePanel = new ConsolePanel();
-        consolePanel.setStartCallback(this::startMonitoring);
-        consolePanel.setStopCallback(this::stopMonitoring);
+        // Don't set start/stop callbacks for real-time workflow - use custom buttons instead
         consolePanel.setViewReportCallback(this::viewReport);
+        // Hide the Start Analysis button since we use Start Monitor instead
+        consolePanel.setButtonsEnabled(false, false, true); // Disable start and stop, enable view report
+        // Explicitly hide progress indicator since we control it manually in real-time workflow
+        consolePanel.hideProgressIndicator();
         
         initializeUI();
         // Set MAG databases after UI is initialized
@@ -140,7 +150,7 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         setPrefHeight(900);
 
         // Initialize reusable components
-        magDatabasePanel = new MagDatabaseSettingsPanel();
+        magDatabasePanel = new MagDatabaseSettingsPanel(false);
         magDatabasePanel.setParameterUpdateCallback(() -> {
             updateParameterView();
             // Update panels when database selection changes
@@ -199,48 +209,7 @@ public class MetaPilotDiaRealTimePanel extends VBox {
 
     // Create IO tab (same as DIA Normal Panel)
 
-    // Processing Row class for result table
-    public static class ProcessingRow {
-        private final SimpleStringProperty fileName;
-        private final SimpleStringProperty round1;
-        private final SimpleStringProperty model;
-        private final SimpleStringProperty round2;
-        private final SimpleStringProperty round3;
-        private final SimpleStringProperty round4;
-        
-        public ProcessingRow(String fileName) {
-            this.fileName = new SimpleStringProperty(fileName);
-            this.round1 = new SimpleStringProperty("Pending");
-            this.model = new SimpleStringProperty("Pending");
-            this.round2 = new SimpleStringProperty("Pending");
-            this.round3 = new SimpleStringProperty("Pending");
-            this.round4 = new SimpleStringProperty("Pending");
-        }
-        
-        public String getFileName() { return fileName.get(); }
-        public void setFileName(String value) { fileName.set(value); }
-        public StringProperty fileNameProperty() { return fileName; }
-        
-        public String getRound1() { return round1.get(); }
-        public void setRound1(String value) { round1.set(value); }
-        public StringProperty round1Property() { return round1; }
-        
-        public String getModel() { return model.get(); }
-        public void setModel(String value) { model.set(value); }
-        public StringProperty modelProperty() { return model; }
-        
-        public String getRound2() { return round2.get(); }
-        public void setRound2(String value) { round2.set(value); }
-        public StringProperty round2Property() { return round2; }
-        
-        public String getRound3() { return round3.get(); }
-        public void setRound3(String value) { round3.set(value); }
-        public StringProperty round3Property() { return round3; }
-        
-        public String getRound4() { return round4.get(); }
-        public void setRound4(String value) { round4.set(value); }
-        public StringProperty round4Property() { return round4; }
-    }
+    // ProcessingRow class removed - now using TableRowData from MetaDiaMonitorTask
 
     private VBox createParametersTab() {
         VBox tabContent = new VBox(10);
@@ -362,7 +331,7 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         folderSection.setMinHeight(80);
         folderSection.setMaxHeight(100);
         
-        monitorSection.setMinHeight(180);
+        monitorSection.setMinHeight(150);
         monitorSection.setPrefHeight(220);
         VBox.setVgrow(monitorSection, Priority.ALWAYS);
         
@@ -370,8 +339,8 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         resultSection.setPrefHeight(220);
         VBox.setVgrow(resultSection, Priority.ALWAYS);
         
-        controlSection.setMinHeight(100);
-        controlSection.setMaxHeight(120);
+        controlSection.setMinHeight(150);
+        controlSection.setMaxHeight(180);
 
         controlsPanel.getChildren().addAll(folderSection, monitorSection, resultSection, controlSection);
         return controlsPanel;
@@ -429,13 +398,25 @@ public class MetaPilotDiaRealTimePanel extends VBox {
 
         Label titleLabel = createSectionTitle("Monitor Folder Files");
 
+        // Create ListView and connect to JavaFX model
         monitorFilesList = new ListView<>();
+        monitorFilesList.setItems(javafxRawListItems);
         monitorFilesList.setMinHeight(150);
-        monitorFilesList.setPrefHeight(200);
-        monitorFilesList.setMaxHeight(Double.MAX_VALUE);
+        monitorFilesList.setPrefHeight(180);
+        monitorFilesList.setMaxHeight(300);
         VBox.setVgrow(monitorFilesList, Priority.ALWAYS);
 
+        // Add components only if they're not null
+        if (monitorFilesList != null) {
         section.getChildren().addAll(titleLabel, monitorFilesList);
+            System.out.println("DEBUG: Successfully added monitorFilesList to VBox");
+        } else {
+            // Fallback to label if ListView is null
+            Label fallbackLabel = new Label("Monitor Files List (Not Available)");
+            fallbackLabel.setStyle("-fx-background-color: #f0f0f0; -fx-border-color: #ccc; -fx-padding: 10;");
+            section.getChildren().addAll(titleLabel, fallbackLabel);
+            System.out.println("DEBUG: monitorFilesList is null, using fallback label");
+        }
         return section;
     }
 
@@ -447,7 +428,8 @@ public class MetaPilotDiaRealTimePanel extends VBox {
 
         Label titleLabel = createSectionTitle("Processing Results");
 
-        resultTable = new TableView<>(resultData);
+        // Restore TableView for the working sync solution
+        resultTable = new TableView<>(javafxResultTableItems);
         resultTable.setMinHeight(150);
         resultTable.setPrefHeight(200);
         resultTable.setMaxHeight(Double.MAX_VALUE);
@@ -455,38 +437,38 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         VBox.setVgrow(resultTable, Priority.ALWAYS);
 
         // File Name column
-        TableColumn<ProcessingRow, String> fileCol = new TableColumn<>("File");
+        TableColumn<TableRowData, String> fileCol = new TableColumn<>("File");
         fileCol.setCellValueFactory(new PropertyValueFactory<>("fileName"));
         fileCol.setMinWidth(150);
         fileCol.setPrefWidth(200);
 
         // Round 1 column
-        TableColumn<ProcessingRow, String> round1Col = new TableColumn<>("Round 1");
-        round1Col.setCellValueFactory(new PropertyValueFactory<>("round1"));
+        TableColumn<TableRowData, String> round1Col = new TableColumn<>("Round 1");
+        round1Col.setCellValueFactory(new PropertyValueFactory<>("round1Status"));
         round1Col.setMinWidth(80);
         round1Col.setPrefWidth(100);
 
         // Model column
-        TableColumn<ProcessingRow, String> modelCol = new TableColumn<>("Model");
-        modelCol.setCellValueFactory(new PropertyValueFactory<>("model"));
+        TableColumn<TableRowData, String> modelCol = new TableColumn<>("Model");
+        modelCol.setCellValueFactory(new PropertyValueFactory<>("round2Status"));
         modelCol.setMinWidth(80);
         modelCol.setPrefWidth(100);
 
         // Round 2 column
-        TableColumn<ProcessingRow, String> round2Col = new TableColumn<>("Round 2");
-        round2Col.setCellValueFactory(new PropertyValueFactory<>("round2"));
+        TableColumn<TableRowData, String> round2Col = new TableColumn<>("Round 2");
+        round2Col.setCellValueFactory(new PropertyValueFactory<>("round3Status"));
         round2Col.setMinWidth(80);
         round2Col.setPrefWidth(100);
 
         // Round 3 column
-        TableColumn<ProcessingRow, String> round3Col = new TableColumn<>("Round 3");
-        round3Col.setCellValueFactory(new PropertyValueFactory<>("round3"));
+        TableColumn<TableRowData, String> round3Col = new TableColumn<>("Round 3");
+        round3Col.setCellValueFactory(new PropertyValueFactory<>("round4Status"));
         round3Col.setMinWidth(80);
         round3Col.setPrefWidth(100);
 
         // Round 4 column
-        TableColumn<ProcessingRow, String> round4Col = new TableColumn<>("Round 4");
-        round4Col.setCellValueFactory(new PropertyValueFactory<>("round4"));
+        TableColumn<TableRowData, String> round4Col = new TableColumn<>("Round 4");
+        round4Col.setCellValueFactory(new PropertyValueFactory<>("round5Status"));
         round4Col.setMinWidth(80);
         round4Col.setPrefWidth(100);
 
@@ -498,7 +480,17 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         resultTable.getColumns().add(round3Col);
         resultTable.getColumns().add(round4Col);
 
+        // Add components only if they're not null
+        if (resultTable != null) {
         section.getChildren().addAll(titleLabel, resultTable);
+            System.out.println("DEBUG: Successfully added resultTable to VBox");
+        } else {
+            // Fallback to label if TableView is null
+            Label fallbackLabel = new Label("Processing Results Table (Not Available)");
+            fallbackLabel.setStyle("-fx-background-color: #f0f0f0; -fx-border-color: #ccc; -fx-padding: 10;");
+            section.getChildren().addAll(titleLabel, fallbackLabel);
+            System.out.println("DEBUG: resultTable is null, using fallback label");
+        }
         return section;
     }
 
@@ -567,6 +559,13 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         if (directory != null) {
             monitorFolderField.setText(directory.getAbsolutePath());
             updateParameterView();
+            
+            // If we're in the middle of starting monitoring and user changed folder,
+            // automatically restart the monitoring process with the new folder
+            if (isMonitoring) {
+                consolePanel.appendConsoleText("Monitor folder changed to: " + directory.getAbsolutePath() + "\n");
+                // The monitoring will continue with the new folder
+            }
         }
     }
 
@@ -585,20 +584,75 @@ public class MetaPilotDiaRealTimePanel extends VBox {
             return;
         }
 
+        // Check if monitor folder contains existing raw files
+        File monitorFolder = new File(monitorFolderField.getText());
+        List<String> existingRawFiles = findExistingRawFiles(monitorFolder);
+        
+        if (!existingRawFiles.isEmpty()) {
+            // Ask user what to do with existing files
+            String message = "The monitor folder contains " + existingRawFiles.size() + " existing raw file(s):\n\n";
+            for (int i = 0; i < Math.min(existingRawFiles.size(), 5); i++) {
+                message += "• " + existingRawFiles.get(i) + "\n";
+            }
+            if (existingRawFiles.size() > 5) {
+                message += "• ... and " + (existingRawFiles.size() - 5) + " more files\n";
+            }
+            message += "\nWhat would you like to do?";
+            
+            Alert choiceAlert = new Alert(Alert.AlertType.CONFIRMATION);
+            choiceAlert.setTitle("Existing Files Found");
+            choiceAlert.setHeaderText("Monitor folder contains existing raw files");
+            choiceAlert.setContentText(message);
+            
+            ButtonType continueButton = new ButtonType("Continue with existing files");
+            ButtonType changeFolderButton = new ButtonType("Change to another folder");
+            ButtonType cancelButton = new ButtonType("Cancel", ButtonBar.ButtonData.CANCEL_CLOSE);
+            
+            choiceAlert.getButtonTypes().setAll(continueButton, changeFolderButton, cancelButton);
+            
+            java.util.Optional<ButtonType> result = choiceAlert.showAndWait();
+            
+            if (result.get() == cancelButton) {
+                return; // User cancelled
+            } else if (result.get() == changeFolderButton) {
+                browseMonitorFolder(); // Let user select different folder
+                // After user selects new folder, check again for existing files
+                File newMonitorFolder = new File(monitorFolderField.getText());
+                List<String> newExistingFiles = findExistingRawFiles(newMonitorFolder);
+                if (!newExistingFiles.isEmpty()) {
+                    consolePanel.appendConsoleText("New folder also contains " + newExistingFiles.size() + " existing raw file(s), will process them first.\n");
+                }
+                // Continue with the new folder (don't return, let it proceed)
+            }
+            // If user chose continueButton, proceed with existing files
+        }
+
         isMonitoring = true;
+        
+        // Control console panel state - like other workflows do with Start Analysis
+        consolePanel.setButtonsEnabled(false, true, true); // Disable start, enable stop, enable view report
+        consolePanel.startStatusTimer(); // Start the status timer
         
         startMonitorButton.setDisable(true);
         stopMonitorButton.setDisable(false);
         stopAfterCountButton.setDisable(false);
         resetButton.setDisable(false);
 
-        // Clear previous results
-        monitorFilesList.getItems().clear();
-        resultData.clear();
+        // Clear previous results - with null checks
+        if (monitorFilesList != null && monitorFilesList.getItems() != null) {
+            monitorFilesList.getItems().clear();
+        }
+        if (javafxResultTableItems != null) {
+            javafxResultTableItems.clear();
+        }
 
         consolePanel.appendConsoleText("Starting real-time monitoring...\n");
         consolePanel.appendConsoleText("Monitor folder: " + monitorFolderField.getText() + "\n");
         consolePanel.appendConsoleText("Result folder: " + resultFolderField.getText() + "\n");
+        
+        if (!existingRawFiles.isEmpty()) {
+            consolePanel.appendConsoleText("Found " + existingRawFiles.size() + " existing raw file(s), will process them first.\n");
+        }
 
         // Store analysis preference
         performAnalysisAfterComplete = performAnalysisCheckBox.isSelected();
@@ -611,6 +665,10 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         isMonitoring = false;
         
         stopMonitorButton.setDisable(true);
+        
+        // Control console panel state - like other workflows do with Stop Analysis
+        consolePanel.setButtonsEnabled(false, false, true); // Disable both start and stop, enable view report
+        consolePanel.stopStatusTimer(); // Stop the status timer
         
         consolePanel.appendConsoleText("Stopping monitoring after current files are processed...\n");
         
@@ -666,6 +724,10 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         
         fileCountComboBox.setValue(10);
         
+        // Reset console panel state - like other workflows do when reset
+        consolePanel.setButtonsEnabled(true, false, true); // Enable start, disable stop, enable view report
+        consolePanel.stopStatusTimer(); // Stop the status timer
+        
         consolePanel.appendConsoleText("Monitoring reset.\n");
     }
 
@@ -692,6 +754,35 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         }
         
         return true;
+    }
+    
+    /**
+     * Find existing raw files in the monitor folder
+     * Supports .raw, .RAW, .d, .D, .dia, .DIA file extensions
+     */
+    private List<String> findExistingRawFiles(File monitorFolder) {
+        List<String> rawFiles = new ArrayList<>();
+        
+        if (monitorFolder == null || !monitorFolder.exists() || !monitorFolder.isDirectory()) {
+            return rawFiles;
+        }
+        
+        File[] files = monitorFolder.listFiles();
+        if (files == null) {
+            return rawFiles;
+        }
+        
+        for (File file : files) {
+            if (file.isFile()) {
+                String fileName = file.getName().toLowerCase();
+                if (fileName.endsWith(".raw") || fileName.endsWith(".d") || 
+                    fileName.endsWith(".dia") || fileName.endsWith(".mzml")) {
+                    rawFiles.add(file.getName());
+                }
+            }
+        }
+        
+        return rawFiles;
     }
 
     /**
@@ -757,6 +848,8 @@ public class MetaPilotDiaRealTimePanel extends VBox {
                 Platform.runLater(() -> {
                     consolePanel.appendConsoleText("Combined analysis completed successfully!\n");
                     consolePanel.appendConsoleText("Combined results saved to: " + resultFolder.getAbsolutePath() + "/combined\n");
+                    // Enable view report button when combined analysis completes
+                    consolePanel.enableViewReportButton();
                     stopCombineButton.setDisable(true);
                     resetMonitoring();
                 });
@@ -780,11 +873,18 @@ public class MetaPilotDiaRealTimePanel extends VBox {
                 });
             });
             
-            // Start the combine task
-            if (taskExecutor == null) {
-                taskExecutor = Executors.newSingleThreadExecutor();
-            }
-            taskExecutor.submit(combineTask);
+            // Set up progress monitoring for combine task
+            combineTask.messageProperty().addListener((obs, oldMsg, newMsg) -> {
+                if (newMsg != null && !newMsg.isEmpty()) {
+                    Platform.runLater(() -> {
+                        consolePanel.appendConsoleText("Combine: " + newMsg + "\n");
+                        consolePanel.updateCurrentTaskFromMessage(newMsg);
+                    });
+                }
+            });
+            
+            // Start the combine task properly as a JavaFX Task
+            new Thread(combineTask).start();
             
         } catch (Exception e) {
             consolePanel.appendConsoleText("ERROR: Failed to start combined analysis - " + e.getMessage() + "\n");
@@ -815,15 +915,7 @@ public class MetaPilotDiaRealTimePanel extends VBox {
             // Store current parameters for use in stop control
             currentAnalysisParameters = rtParams;
             
-            // Initialize Swing models for compatibility with MetaDiaMonitorTask
-            swingRawListModel = new DefaultListModel<>();
-            swingResultTableModel = new DefaultTableModel();
-            swingResultTableModel.addColumn("File Name");
-            swingResultTableModel.addColumn("Round 1");
-            swingResultTableModel.addColumn("Model");
-            swingResultTableModel.addColumn("Round 2");
-            swingResultTableModel.addColumn("Round 3");
-            swingResultTableModel.addColumn("Round 4");
+            // JavaFX models already initialized in constructor
             
             consolePanel.appendConsoleText("Starting MetaPilot DIA Real-time monitoring...\n");
             consolePanel.appendConsoleText("Monitor folder: " + rtParams.getMonitorFolder().getAbsolutePath() + "\n");
@@ -838,11 +930,18 @@ public class MetaPilotDiaRealTimePanel extends VBox {
                 consolePanel.getCurrentTaskProgressBar(),
                 rtParams.getMonitorFolder(),
                 rtParams.getResultFolder(),
-                swingResultTableModel,
-                swingRawListModel
+                javafxResultTableItems,
+                javafxRawListItems,
+                consolePanel
             );
             
             // Set up task monitoring callbacks
+            monitorTask.setOnRunning(e -> {
+                Platform.runLater(() -> {
+                    consolePanel.appendConsoleText("Real-time monitoring task started.\n");
+                });
+            });
+            
             monitorTask.setOnSucceeded(e -> {
                 Platform.runLater(() -> {
                     consolePanel.appendConsoleText("Real-time monitoring completed successfully!\n");
@@ -852,6 +951,8 @@ public class MetaPilotDiaRealTimePanel extends VBox {
                         startCombinedAnalysis();
                     } else {
                         consolePanel.appendConsoleText("Monitoring completed. No combined analysis requested.\n");
+                        // Enable view report button when monitoring completes
+                        consolePanel.enableViewReportButton();
                         resetMonitoring();
                     }
                 });
@@ -873,14 +974,32 @@ public class MetaPilotDiaRealTimePanel extends VBox {
                 });
             });
             
-            // Start progress sync task
-            startProgressSyncTask();
+            // Set up progress monitoring to capture task messages
+            monitorTask.messageProperty().addListener((obs, oldMsg, newMsg) -> {
+                if (newMsg != null && !newMsg.isEmpty()) {
+                    Platform.runLater(() -> {
+                        consolePanel.appendConsoleText("Monitor: " + newMsg + "\n");
+                        consolePanel.updateCurrentTaskFromMessage(newMsg);
+                    });
+                }
+            });
             
-            // Start the monitoring task in background
-            if (taskExecutor == null) {
-                taskExecutor = Executors.newSingleThreadExecutor();
-            }
-            taskExecutor.submit(monitorTask);
+            // Completely disable all sync tasks to isolate threading issues
+            // startProgressSyncTask();
+            // Sync mechanism removed - using direct JavaFX model updates
+            consolePanel.appendConsoleText("DEBUG: Using direct JavaFX model updates - no sync needed\n");
+            
+            // Manual refresh button removed - UI updates automatically now
+            
+            // Add a debug button to show Swing model contents
+            addDebugButton();
+            
+            // Start the monitoring task properly as a JavaFX Task
+            new Thread(monitorTask).start();
+            
+            // Enable the working safer sync task
+            // startSafeProgressSyncTask(); // Removed - using direct JavaFX model updates
+            consolePanel.appendConsoleText("DEBUG: Direct JavaFX model updates enabled\n");
             
         } catch (Exception e) {
             consolePanel.appendConsoleText("ERROR: Failed to start real-time monitoring - " + e.getMessage() + "\n");
@@ -902,8 +1021,8 @@ public class MetaPilotDiaRealTimePanel extends VBox {
             protected Void call() throws Exception {
                 while (isMonitoring && !isCancelled()) {
                     try {
-                        Platform.runLater(() -> syncProgressFromSwingToJavaFX());
-                        Thread.sleep(500); // Update every 500ms
+                        // Platform.runLater(() -> syncProgressFromSwingToJavaFX()); // Removed - using direct JavaFX model updates
+                        Thread.sleep(200); // Update every 200ms for more responsive UI
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                         break;
@@ -916,41 +1035,110 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         new Thread(syncTask).start();
     }
     
+    // startSafeProgressSyncTask method removed - using direct JavaFX model updates
+    
+    // syncProgressFromSwingToJavaFX method removed - using direct JavaFX model updates
+    
+    // safeSyncProgressFromSwingToJavaFX method removed - using direct JavaFX model updates
+    
+    // addManualRefreshButton method removed - UI updates automatically now
+    
     /**
-     * Synchronize progress from Swing models to JavaFX UI
+     * Add a debug button to show Swing model contents
      */
-    private void syncProgressFromSwingToJavaFX() {
-        if (swingRawListModel == null || swingResultTableModel == null) {
-            return;
+    private void addDebugButton() {
+        try {
+            Button debugButton = new Button("🐛 Debug Swing Models");
+            debugButton.setStyle("-fx-background-color: #FF9800; -fx-text-fill: white; -fx-font-weight: bold;");
+            debugButton.setOnAction(e -> {
+                try {
+                    consolePanel.appendConsoleText("=== DEBUG: Swing Model Contents ===\n");
+                    
+                    // Check monitor files list
+                    consolePanel.appendConsoleText("Monitor Files List Size: " + monitorFilesList.getItems().size() + "\n");
+                    for (int i = 0; i < monitorFilesList.getItems().size(); i++) {
+                        consolePanel.appendConsoleText("  [" + i + "] " + monitorFilesList.getItems().get(i) + "\n");
+                    }
+                    
+                    // Check result table
+                    consolePanel.appendConsoleText("Result Table Size: " + resultTable.getItems().size() + "\n");
+                    for (int i = 0; i < resultTable.getItems().size(); i++) {
+                        TableRowData row = resultTable.getItems().get(i);
+                        consolePanel.appendConsoleText("  [" + i + "] " + row.getFileName() + " - Round1: " + row.getRound1Status() + "\n");
+                    }
+                    
+                    // Check Swing models from monitor task
+                    if (monitorTask != null) {
+                        consolePanel.appendConsoleText("Monitor Task: " + (monitorTask.isRunning() ? "RUNNING" : "STOPPED") + "\n");
+                        // Try to access the Swing models if possible
+                        try {
+                            // Note: We can't directly access monitorTask's Swing models from here
+                            // They are encapsulated within the task for thread safety
+                            consolePanel.appendConsoleText("Monitor Task Swing Models: Encapsulated (cannot access directly)\n");
+                            consolePanel.appendConsoleText("Note: Swing models are updated correctly (see console output)\n");
+                            consolePanel.appendConsoleText("Issue: JavaFX sync is disabled to prevent crashes\n");
+                        } catch (Exception ex) {
+                            consolePanel.appendConsoleText("Monitor Task Swing Models: Error (" + ex.getMessage() + ")\n");
+                        }
+                    } else {
+                        consolePanel.appendConsoleText("Monitor Task: NULL\n");
+                    }
+                    
+                    consolePanel.appendConsoleText("=== END DEBUG ===\n");
+                } catch (Exception ex) {
+                    consolePanel.appendConsoleText("DEBUG: Error in debug button: " + ex.getMessage() + "\n");
+                }
+            });
+            
+            consolePanel.appendConsoleText("DEBUG: Debug button created\n");
+        } catch (Exception e) {
+            consolePanel.appendConsoleText("DEBUG: Error creating debug button: " + e.getMessage() + "\n");
         }
-        
-        // Sync file list
-        monitorFilesList.getItems().clear();
-        for (int i = 0; i < swingRawListModel.size(); i++) {
-            String fileName = swingRawListModel.getElementAt(i);
-            if (!monitorFilesList.getItems().contains(fileName)) {
-                monitorFilesList.getItems().add(fileName);
+    }
+    
+    /**
+     * Schedule a one-time sync after a delay to show initial data
+     */
+    private void scheduleOneTimeSync() {
+        try {
+            consolePanel.appendConsoleText("DEBUG: Scheduling one-time sync in 3 seconds...\n");
+            
+            // Use a simple timer for one-time sync
+            new Thread(() -> {
+                try {
+                    Thread.sleep(3000); // Wait 3 seconds
+                    
+                    Platform.runLater(() -> {
+                        try {
+                            consolePanel.appendConsoleText("DEBUG: Performing one-time sync...\n");
+                            // syncProgressFromSwingToJavaFX(); // Removed - using direct JavaFX model updates
+                            consolePanel.appendConsoleText("DEBUG: One-time sync completed\n");
+                        } catch (Exception e) {
+                            consolePanel.appendConsoleText("DEBUG: One-time sync error: " + e.getMessage() + "\n");
+                        }
+                    });
+                } catch (InterruptedException e) {
+                    consolePanel.appendConsoleText("DEBUG: One-time sync interrupted\n");
+                }
+            }).start();
+            
+        } catch (Exception e) {
+            consolePanel.appendConsoleText("DEBUG: Error scheduling one-time sync: " + e.getMessage() + "\n");
+        }
+    }
+    
+    /**
+     * Safely append text to console to prevent TextArea IndexOutOfBoundsException
+     */
+    private void safeAppendConsoleText(String text) {
+        try {
+            if (consolePanel != null && text != null) {
+                consolePanel.appendConsoleText(text);
             }
-        }
-        
-        // Sync result table
-        resultData.clear();
-        for (int row = 0; row < swingResultTableModel.getRowCount(); row++) {
-            String fileName = (String) swingResultTableModel.getValueAt(row, 0);
-            String round1 = (String) swingResultTableModel.getValueAt(row, 1);
-            String model = (String) swingResultTableModel.getValueAt(row, 2);
-            String round2 = (String) swingResultTableModel.getValueAt(row, 3);
-            String round3 = (String) swingResultTableModel.getValueAt(row, 4);
-            String round4 = (String) swingResultTableModel.getValueAt(row, 5);
-            
-            ProcessingRow javaFxRow = new ProcessingRow(fileName);
-            javaFxRow.setRound1(round1 != null ? round1 : "Pending");
-            javaFxRow.setModel(model != null ? model : "Pending");
-            javaFxRow.setRound2(round2 != null ? round2 : "Pending");
-            javaFxRow.setRound3(round3 != null ? round3 : "Pending");
-            javaFxRow.setRound4(round4 != null ? round4 : "Pending");
-            
-            resultData.add(javaFxRow);
+        } catch (Exception e) {
+            // If console panel fails, just log to system out
+            System.out.println("Console panel error: " + e.getMessage());
+            System.out.println("Original message: " + text);
         }
     }
 
@@ -1075,7 +1263,8 @@ public class MetaPilotDiaRealTimePanel extends VBox {
 
     private Label createSectionTitle(String title) {
         Label label = new Label(title);
-        label.setFont(Font.font("System", FontWeight.BOLD, 14));
+        // Use default font instead of "System" to avoid PrismTextLayout issues
+        label.setFont(Font.font(null, FontWeight.BOLD, 14));
         label.setTextFill(Color.DARKBLUE);
         return label;
     }
@@ -1188,6 +1377,19 @@ public class MetaPilotDiaRealTimePanel extends VBox {
                 models
             );
             
+            // Set real-time specific parameters
+            if (monitorFolderField != null && monitorFolderField.getText() != null && !monitorFolderField.getText().trim().isEmpty()) {
+                metaParameterDiaRT.setMonitorFolder(new File(monitorFolderField.getText()));
+            }
+            
+            if (resultFolderField != null && resultFolderField.getText() != null && !resultFolderField.getText().trim().isEmpty()) {
+                metaParameterDiaRT.setResultFolder(new File(resultFolderField.getText()));
+            }
+            
+            if (performAnalysisCheckBox != null) {
+                metaParameterDiaRT.setCombineResult(performAnalysisCheckBox.isSelected());
+            }
+            
             return metaParameterDiaRT;
             
         } catch (Exception e) {
@@ -1203,7 +1405,7 @@ public class MetaPilotDiaRealTimePanel extends VBox {
     private void loadLastUsedParameters() {
         System.out.println("DEBUG: loadLastUsedParameters() called for DIA Real-time panel");
         try {
-            MetaParameterDia params = (MetaParameterDia) parameterIO.loadLastUsedParameters();
+            MetaParameterDiaRT params = (MetaParameterDiaRT) parameterIO.loadLastUsedParameters();
             if (params != null) {
                 System.out.println("DEBUG: Successfully loaded parameters from file");
                 applyParametersToUI(params);
@@ -1212,7 +1414,7 @@ public class MetaPilotDiaRealTimePanel extends VBox {
                 System.out.println("DEBUG: No parameters loaded from file, using defaults");
             }
         } catch (Exception e) {
-            System.err.println("WARNING: Failed to load last used DIA parameters: " + e.getMessage());
+            System.err.println("WARNING: Failed to load last used DIA Real-time parameters: " + e.getMessage());
             e.printStackTrace();
             // Continue with default UI state
         }
@@ -1221,7 +1423,7 @@ public class MetaPilotDiaRealTimePanel extends VBox {
     /**
      * Apply parameters to the UI components
      */
-    private void applyParametersToUI(MetaParameterDia params) {
+    public void applyParametersToUI(MetaParameterDiaRT params) {
         if (params == null) {
             System.out.println("DEBUG: applyParametersToUI called with null params");
             return;
@@ -1235,6 +1437,26 @@ public class MetaPilotDiaRealTimePanel extends VBox {
                 resultFolderField.setText(params.getResult());
                 System.out.println("DEBUG: Applied result directory: " + params.getResult());
             }
+        }
+        
+        // Apply real-time specific parameters
+        if (params.getMonitorFolder() != null) {
+            if (monitorFolderField != null) {
+                monitorFolderField.setText(params.getMonitorFolder().getAbsolutePath());
+                System.out.println("DEBUG: Applied monitor folder: " + params.getMonitorFolder().getAbsolutePath());
+            }
+        }
+        
+        if (params.getResultFolder() != null) {
+            if (resultFolderField != null) {
+                resultFolderField.setText(params.getResultFolder().getAbsolutePath());
+                System.out.println("DEBUG: Applied result folder: " + params.getResultFolder().getAbsolutePath());
+            }
+        }
+        
+        if (performAnalysisCheckBox != null) {
+            performAnalysisCheckBox.setSelected(params.isCombineResult());
+            System.out.println("DEBUG: Applied combine result setting: " + params.isCombineResult());
         }
         
         // Apply thread count
@@ -1283,7 +1505,7 @@ public class MetaPilotDiaRealTimePanel extends VBox {
             if (currentParams != null) {
                 boolean saved = parameterIO.saveLastUsedParameters(currentParams);
                 if (saved) {
-                    System.out.println("DEBUG: Successfully saved current parameters to last_used_dia_parameters.json");
+                    System.out.println("DEBUG: Successfully saved current parameters to last_used_dia_rt_parameters.json");
                 } else {
                     System.err.println("WARNING: Failed to save current parameters");
                 }
@@ -1343,4 +1565,5 @@ public class MetaPilotDiaRealTimePanel extends VBox {
             }
         }
     }
+    
 } 

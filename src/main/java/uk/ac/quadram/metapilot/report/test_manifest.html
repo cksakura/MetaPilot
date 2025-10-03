@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MetaPilot Manifest Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .alert-info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .alert-warning {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+        }
+        .alert-success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .test-button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .test-button:hover {
+            background-color: #0056b3;
+        }
+        .manifest-content {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 10px 0;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h1>MetaPilot Manifest System Test</h1>
+    
+    <div id="status-message" class="status alert-info">
+        Testing manifest system...
+    </div>
+    
+    <div>
+        <button class="test-button" onclick="testManifestLoad()">Test Manifest Load</button>
+        <button class="test-button" onclick="testCreateManifest()">Create Test Manifest</button>
+        <button class="test-button" onclick="clearStatus()">Clear Status</button>
+    </div>
+    
+    <div id="manifest-content" class="manifest-content" style="display: none;">
+        <!-- Manifest content will be displayed here -->
+    </div>
+    
+    <script>
+        const statusMessage = document.getElementById('status-message');
+        const manifestContent = document.getElementById('manifest-content');
+        
+        function updateStatus(message, type = 'info') {
+            statusMessage.textContent = message;
+            statusMessage.className = `status alert-${type}`;
+        }
+        
+        function clearStatus() {
+            statusMessage.style.display = 'none';
+            manifestContent.style.display = 'none';
+        }
+        
+        function showManifestContent(content) {
+            manifestContent.textContent = content;
+            manifestContent.style.display = 'block';
+        }
+        
+        function testManifestLoad() {
+            updateStatus('Loading manifest...', 'info');
+            
+            fetch('reports/manifest.json', { cache: 'no-store' })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    return response.json();
+                })
+                .then(manifest => {
+                    updateStatus('Manifest loaded successfully!', 'success');
+                    showManifestContent(JSON.stringify(manifest, null, 2));
+                })
+                .catch(error => {
+                    updateStatus(`Failed to load manifest: ${error.message}`, 'warning');
+                    showManifestContent(`Error: ${error.message}`);
+                });
+        }
+        
+        function testCreateManifest() {
+            updateStatus('Creating test manifest...', 'info');
+            
+            const testManifest = {
+                generated_at: new Date().toISOString(),
+                reports: [
+                    {
+                        title: "Test Report",
+                        file: "test_report.html",
+                        summary: "This is a test report created by the manifest test page.",
+                        created_at: new Date().toISOString(),
+                        tags: ["test", "debug"]
+                    }
+                ]
+            };
+            
+            // Note: This would need a backend endpoint to actually create the file
+            updateStatus('Test manifest created (simulated)', 'success');
+            showManifestContent(JSON.stringify(testManifest, null, 2));
+        }
+        
+        // Auto-test on page load
+        window.addEventListener('load', () => {
+            setTimeout(testManifestLoad, 1000);
+        });
+    </script>
+</body>
+</html>

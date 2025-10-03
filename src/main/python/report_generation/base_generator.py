@@ -1,8 +1,11 @@
+import json
 import os
+from pathlib import Path
+
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import numpy as np
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
@@ -10,8 +13,12 @@ class BaseReportGenerator:
     """Base class for MetaPilot report generators with common functionality."""
     
     def __init__(self, output_dir="reports"):
-        self.output_dir = output_dir
-        os.makedirs(output_dir, exist_ok=True)
+        output_path = Path(output_dir).resolve()
+        if output_path.name == 'rmd_html':
+            output_path = output_path.parent
+        output_path.mkdir(parents=True, exist_ok=True)
+        self.output_dir = str(output_path)
+        self._output_path = output_path
         
         # Base color scheme (kept for backward compatibility)
         self.colors = {
@@ -19,6 +26,8 @@ class BaseReportGenerator:
             'secondary': '#8ED1FC',
             'tertiary': '#000000',
             'success': '#B5BD00',
+            'warning': '#FFA500',
+            'danger': '#DC3545',
             'background': '#f8f9fa',
             'text': '#000000',
             'light_blue': '#8ED1FC',
@@ -82,8 +91,34 @@ class BaseReportGenerator:
         # Detect intensity/sample columns across common tools
         intensity_cols = self._detect_intensity_columns(df)
 
+        if not intensity_cols and metadata is not None:
+            metadata_name_columns = ['Raw file', 'Raw File', 'Raw', 'RawFile', 'File', 'File Name', 'Sample']
+            metadata_candidates = []
+            for name_col in metadata_name_columns:
+                if name_col in metadata.columns:
+                    metadata_candidates.extend(metadata[name_col].dropna().astype(str).tolist())
+            metadata_candidates = [name.strip() for name in metadata_candidates if isinstance(name, str)]
+            if metadata_candidates:
+                intensity_cols = [col for col in df.columns if col in metadata_candidates]
+
+        if not intensity_cols and 'Intensity' in df.columns:
+            try:
+                intensity_index = df.columns.get_loc('Intensity')
+                fallback_cols = []
+                for col in df.columns[intensity_index + 1:]:
+                    series = df[col]
+                    if pd.api.types.is_numeric_dtype(series):
+                        fallback_cols.append(col)
+                    else:
+                        break
+                intensity_cols = fallback_cols
+            except KeyError:
+                pass
+
+        intensity_cols = list(dict.fromkeys(intensity_cols))
+
         # Derive sample names by stripping known prefixes
-        sample_names = [
+        raw_sample_names = [
             (
                 col.replace('LFQ intensity ', '')
                    .replace('iBAQ ', '')
@@ -92,6 +127,39 @@ class BaseReportGenerator:
             )
             for col in intensity_cols
         ]
+        
+        # Use experiment names from metadata if available, otherwise use raw sample names
+        sample_names = raw_sample_names
+        if metadata is not None and len(raw_sample_names) > 0:
+            try:
+                # Create mapping from raw file names to experiment names
+                raw_to_exp = {}
+                if 'Raw' in metadata.columns and 'Experiment' in metadata.columns:
+                    for _, row in metadata.iterrows():
+                        raw_name = row['Raw']
+                        exp_name = row['Experiment']
+                        raw_to_exp[raw_name] = exp_name
+                
+                # Map sample names to experiment names
+                sample_names = []
+                for raw_name in raw_sample_names:
+                    # Try exact match first
+                    if raw_name in raw_to_exp:
+                        sample_names.append(raw_to_exp[raw_name])
+                    else:
+                        # Try partial match (in case of slight differences)
+                        matched = False
+                        for raw_key, exp_name in raw_to_exp.items():
+                            if raw_name in raw_key or raw_key in raw_name:
+                                sample_names.append(exp_name)
+                                matched = True
+                                break
+                        if not matched:
+                            sample_names.append(raw_name)  # Fallback to original name
+                            
+            except Exception as e:
+                print(f"Warning: Could not map to experiment names: {e}")
+                sample_names = raw_sample_names
         
         # Extract group information from metadata
         groups = None
@@ -122,6 +190,7 @@ class BaseReportGenerator:
             'LFQ intensity ', 'iBAQ ', 'Intensity ',
         ]
         # DIA-NN/other tools may produce columns like "Intensity RawFile"; include generic contains rule
+        # IGC format uses "Intensity SampleName" pattern
         for col in df.columns:
             if col == 'Intensity':
                 continue
@@ -227,15 +296,50 @@ class BaseReportGenerator:
         )
         return fig
 
-    def generate_html_report(self, fig, title, output_file):
+    def generate_html_report(self, fig, title, output_file, summary=None, tags=None):
         """Generate a consistent HTML report using Plotly CDN and a light Bootstrap style."""
         try:
+            output_path = Path(output_file)
+            if not output_path.is_absolute():
+                output_path = output_path.resolve()
+            if not output_path.is_relative_to(self._output_path):
+                output_path = (self._output_path / output_path.name).resolve()
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+
             fig.update_layout(title_text=title)
-            fig_html = fig.to_html(full_html=False, include_plotlyjs='cdn', config={
-                'displayModeBar': True,
-                'displaylogo': False,
-                'modeBarButtonsToRemove': ['pan2d', 'lasso2d', 'select2d']
-            })
+            
+            # Force conversion of all numpy arrays to plain Python lists to prevent binary encoding
+            # Plotly's automatic binary encoding (bdata format) causes rendering issues with histograms
+            import numpy as np
+            import plotly.io as pio
+            
+            # Get the figure as a dict
+            fig_dict = fig.to_dict()
+            
+            # Recursively convert all numpy arrays to plain Python lists
+            def convert_numpy_to_list(obj):
+                if isinstance(obj, np.ndarray):
+                    return obj.tolist()
+                elif isinstance(obj, dict):
+                    return {k: convert_numpy_to_list(v) for k, v in obj.items()}
+                elif isinstance(obj, list):
+                    return [convert_numpy_to_list(item) for item in obj]
+                else:
+                    return obj
+            
+            fig_dict = convert_numpy_to_list(fig_dict)
+            
+            # Now generate HTML from the converted dict
+            fig_html = pio.to_html(
+                fig_dict,
+                full_html=False,
+                include_plotlyjs=False,
+                config={
+                    'displayModeBar': True,
+                    'displaylogo': False,
+                    'modeBarButtonsToRemove': ['pan2d', 'lasso2d', 'select2d']
+                }
+            )
 
             full_html = f"""
 <!DOCTYPE html>
@@ -244,6 +348,8 @@ class BaseReportGenerator:
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{title}</title>
+    <link rel="icon" type="image/x-icon" href="assets/img/favicon.ico" />
+    <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body {{ background-color: {self.colors['background']}; color: {self.colors['text']}; padding: 20px; }}
@@ -251,8 +357,6 @@ class BaseReportGenerator:
         .content {{ background-color: #ffffff; border-radius: 10px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }}
         .footer {{ text-align: center; margin-top: 16px; color: #666; font-size: 12px; }}
     </style>
-    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-    
     <!-- MetaPilot Report -->
 </head>
 <body>
@@ -270,10 +374,74 @@ class BaseReportGenerator:
 </html>
 """
 
-            with open(output_file, 'w', encoding='utf-8') as f:
-                f.write(full_html)
-            print(f"HTML report generated successfully: {output_file}")
+            output_path.write_text(full_html, encoding='utf-8')
+            self._update_manifest(
+                title=title,
+                output_path=output_path,
+                summary=summary,
+                tags=tags,
+            )
+            print(f"HTML report generated successfully: {output_path}")
             return True
         except Exception as e:
             print(f"Error generating HTML report: {e}")
             return False
+
+    def _update_manifest(self, title: str, output_path: Path, summary: Optional[str] = None, tags: Optional[list] = None) -> None:
+        """Persist a manifest alongside generated reports for the web catalogue."""
+        manifest_path = self._output_path / 'manifest.json'
+        timestamp = datetime.utcnow().isoformat()
+        manifest = {'generated_at': timestamp, 'reports': []}
+        if manifest_path.exists():
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+            except Exception:
+                manifest = {'generated_at': timestamp, 'reports': []}
+        reports = manifest.get('reports', [])
+        try:
+            relative_path = output_path.relative_to(self._output_path)
+        except ValueError:
+            relative_path = Path(output_path.name)
+        folder_name = self._output_path.name
+        if folder_name and folder_name != '.' and folder_name != 'reports':
+            href = f"reports/{folder_name}/{relative_path.as_posix()}"
+        else:
+            href = f"reports/{relative_path.as_posix()}"
+        filename = output_path.name
+        entry = {
+            'title': title,
+            'file': href,
+            'created_at': timestamp,
+            'source': filename
+        }
+        if folder_name and folder_name not in {'.', ''}:
+            entry['folder'] = folder_name
+        if summary:
+            entry['summary'] = summary
+        if tags:
+            cleaned_tags = sorted({str(tag) for tag in tags if tag})
+            if cleaned_tags:
+                entry['tags'] = cleaned_tags
+        reports = [item for item in reports if item.get('source') != filename]
+        reports.append(entry)
+        dedup = {}
+        for item in reports:
+            key = item.get('source')
+            if not key:
+                file_field = item.get('file', '')
+                key = Path(file_field).name if file_field else item.get('title')
+            dedup[key] = item
+        reports = list(dedup.values())
+        reports.sort(key=lambda item: item.get('created_at', ''), reverse=True)
+        manifest['generated_at'] = timestamp
+        manifest['reports'] = reports
+        manifest_path.write_text(json.dumps(manifest, indent=2), encoding='utf-8')
+        manifest_js_path = manifest_path.with_suffix('.js')
+        manifest_js = "window.METAPILOT_MANIFEST = " + json.dumps(manifest, indent=2) + ';\n'
+        manifest_js_path.write_text(manifest_js, encoding='utf-8')
+
+
+
+
+
+

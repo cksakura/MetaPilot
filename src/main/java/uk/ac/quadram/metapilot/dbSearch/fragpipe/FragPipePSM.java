@@ -8,6 +8,7 @@ import uk.ac.quadram.metapilot.task.io.pep.MetaPSM;
 public class FragPipePSM extends MetaPSM {
     
     private String spectrum;
+    private String mod;
     private double expMass;
     private double calMass;
     private double massDiff;
@@ -34,26 +35,31 @@ public class FragPipePSM extends MetaPSM {
      * @param qValue        Q-value
      * @param proteins      Protein identifiers
      */
-    public FragPipePSM(String fileName, String spectrum, String sequence, String modSeq, int charge,
+    public FragPipePSM(String fileName, String spectrum, String sequence, String modSeq, String mod, int charge,
             double expMass, double calMass, double massDiff, int miss, double rt, double score,
-            double probability, double qValue, String[] proteins) {
-        super(fileName, sequence, modSeq, charge, proteins, score, qValue);
-        this.spectrum = spectrum;
-        this.expMass = expMass;
-        this.calMass = calMass;
-        this.massDiff = massDiff;
-        this.miss = miss;
-        this.rt = rt;
-        this.probability = probability;
-        this.qValue = qValue;
-    }
+			double probability, double qValue, String[] proteins) {
+		super(fileName, sequence, modSeq, charge, proteins, score, qValue);
+		this.spectrum = spectrum;
+		this.mod = mod;
+		this.expMass = expMass;
+		this.calMass = calMass;
+		this.massDiff = massDiff;
+		this.miss = miss;
+		this.rt = rt;
+		this.probability = probability;
+		this.qValue = qValue;
+	}
     
     // Getters for FragPipe-specific fields
     public String getSpectrum() {
         return spectrum;
     }
     
-    public double getProbability() {
+    public String getMod() {
+		return mod;
+	}
+
+	public double getProbability() {
         return probability;
     }
     

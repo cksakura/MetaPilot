@@ -60,6 +60,12 @@ public class DDAIgcSageParameters extends MetaBaseParameter {
 	private double maxQ = 0.01; // FDR threshold
 	private boolean writeCheckpoint = false;
 
+	// LFQ-specific parameters
+	private String peakScoring = "Hybrid";
+	private String integration = "Sum";
+	private double spectralAngle = 0.6;
+	private double lfqPpmTolerance = 5.0;
+	
 	// Default constructor with sensible defaults for IGC Sage
 	public DDAIgcSageParameters() {
 		super(uk.ac.quadram.metapilot.MetaPilotApp.WorkflowType.DDA_IGC_SAGE.getAnalysisType(), new MetaData(), "", "",
@@ -317,6 +323,39 @@ public class DDAIgcSageParameters extends MetaBaseParameter {
 
 	public void setMaxQ(double maxQ) {
 		this.maxQ = maxQ;
+	}
+
+	// LFQ parameter getters and setters
+	public String getPeakScoring() {
+		return peakScoring;
+	}
+
+	public void setPeakScoring(String peakScoring) {
+		this.peakScoring = peakScoring;
+	}
+
+	public String getIntegration() {
+		return integration;
+	}
+
+	public void setIntegration(String integration) {
+		this.integration = integration;
+	}
+
+	public double getSpectralAngle() {
+		return spectralAngle;
+	}
+
+	public void setSpectralAngle(double spectralAngle) {
+		this.spectralAngle = spectralAngle;
+	}
+
+	public double getLfqPpmTolerance() {
+		return lfqPpmTolerance;
+	}
+
+	public void setLfqPpmTolerance(double lfqPpmTolerance) {
+		this.lfqPpmTolerance = lfqPpmTolerance;
 	}
 
 	public boolean isWriteCheckpoint() {

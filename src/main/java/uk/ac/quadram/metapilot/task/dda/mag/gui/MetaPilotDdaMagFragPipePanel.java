@@ -53,7 +53,7 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
     private ModificationsPanel modificationsPanel;
 
     // Additional parameters
-    private Spinner<Integer> threadsSpinner;
+    private ComboBox<Integer> threadsComboBox;
     private ComboBox<String> workflowComboBox;
     private ComboBox<String> msDataTypeComboBox;
 
@@ -61,15 +61,9 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
     private ObservableList<String> enzymes = FXCollections.observableArrayList();
     private ObservableList<String> workflows = FXCollections.observableArrayList();
 
-    // Add parameter IO instance
-    private DDAMagFragPipeParameterIO parameterIO;
     private MetaResourceParameters resourceParams;
     
-    // Store the last used analysis parameters for viewReport
-    private DDAMagFragPipeParameters currentAnalysisParams;
     
-    // Current task reference
-    private DDAMagFragPipeTask currentTask;
     
     // Logger
     private static final Logger LOGGER = LoggerFactory.getLogger(MetaPilotDdaMagFragPipePanel.class);
@@ -426,14 +420,22 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
         
         Label threadsLabel = new Label("Threads:");
         threadsLabel.setStyle("-fx-font-weight: bold;");
-        threadsSpinner = new Spinner<>(1, Runtime.getRuntime().availableProcessors(), 4);
-        threadsSpinner.setMinWidth(100);
-        threadsSpinner.setPrefWidth(100);
-        threadsSpinner.setMaxWidth(Double.MAX_VALUE);
-        threadsSpinner.valueProperty().addListener((obs, oldVal, newVal) -> updateParameterView());
+        threadsComboBox = new ComboBox<>();
+        threadsComboBox.setMinWidth(100);
+        threadsComboBox.setPrefWidth(100);
+        threadsComboBox.setMaxWidth(Double.MAX_VALUE);
+        
+        // Populate with thread count options (1 to available processors)
+        ObservableList<Integer> threadOptions = FXCollections.observableArrayList();
+        for (int i = 1; i <= Runtime.getRuntime().availableProcessors(); i++) {
+            threadOptions.add(i);
+        }
+        threadsComboBox.setItems(threadOptions);
+        threadsComboBox.setValue(4); // Default value
+        threadsComboBox.valueProperty().addListener((obs, oldVal, newVal) -> updateParameterView());
         
         VBox threadsBox = new VBox(5);
-        threadsBox.getChildren().addAll(threadsLabel, threadsSpinner);
+        threadsBox.getChildren().addAll(threadsLabel, threadsComboBox);
         
         Label workflowLabel = new Label("Workflow:");
         workflowLabel.setStyle("-fx-font-weight: bold;");
@@ -552,8 +554,8 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
 
         // Additional parameters
         sb.append("Additional Parameters:\n");
-        if (threadsSpinner != null) {
-            sb.append("  Threads: ").append(threadsSpinner.getValue()).append("\n");
+        if (threadsComboBox != null) {
+            sb.append("  Threads: ").append(threadsComboBox.getValue()).append("\n");
         }
         if (workflowComboBox != null) {
             sb.append("  Workflow: ").append(workflowComboBox.getValue()).append("\n");
@@ -677,9 +679,20 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
             // Set up task completion callback to enable View Report button
             currentTask.setOnSucceeded(e -> {
                 Platform.runLater(() -> {
-                    consolePanel.appendConsoleText("✓ Analysis completed successfully!\n");
-                    consolePanel.enableViewReportButton();
+                    // Check if the task actually succeeded by examining the result
+                    try {
+                        Boolean result = currentTask.get();
+                        if (result != null && result) {
+                            consolePanel.appendConsoleText("✓ Analysis completed successfully!\n");
+                            consolePanel.enableViewReportButton();
+                        } else {
+                            consolePanel.appendConsoleText("⚠ Analysis completed but may not have been fully successful.\n");
+                        }
+                    } catch (Exception ex) {
+                        consolePanel.appendConsoleText("✗ Analysis failed: " + ex.getMessage() + "\n");
+                    }
                     consolePanel.setButtonsEnabled(true, false, true);
+                    consolePanel.stopStatusTimer(); // Stop the timer when task completes
                 });
             });
             
@@ -687,6 +700,7 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
                 Platform.runLater(() -> {
                     consolePanel.appendConsoleText("✗ Analysis failed. Check console output for details.\n");
                     consolePanel.setButtonsEnabled(true, false, false);
+                    consolePanel.stopStatusTimer(); // Stop the timer when task fails
                 });
             });
             
@@ -730,17 +744,23 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
     @Override
     protected DDAMagFragPipeParameters collectParametersFromUI() {
         try {
+            consolePanel.appendConsoleText("Collecting parameters from UI...\n");
             LOGGER.info("Starting parameter collection from UI for MAG FragPipe workflow");
             
             // Validate inputs first
+            consolePanel.appendConsoleText("Validating UI inputs...\n");
             if (!validateInputs()) {
+                consolePanel.appendConsoleText("ERROR: Input validation failed\n");
                 LOGGER.error("Input validation failed");
                 return null;
             }
+            consolePanel.appendConsoleText("✓ Input validation passed\n");
             LOGGER.info("Input validation passed");
             
             // Collect experiment data from ioPanel
+            consolePanel.appendConsoleText("Collecting experiment data from IO panel...\n");
             ObservableList<MetaPilotIOPanelFX.ExperimentRow> fileRows = ioPanel.getExperimentData();
+            consolePanel.appendConsoleText("Found " + fileRows.size() + " experiment rows\n");
             LOGGER.info("Found {} experiment rows", fileRows.size());
             
             if (fileRows.isEmpty()) {
@@ -788,21 +808,15 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
             String enzyme = enzymeComboBox.getValue() != null ? enzymeComboBox.getValue() : "Trypsin";
             int missCleavages = missedCleavagesSpinner.getValue() != null ? missedCleavagesSpinner.getValue() : 2;
             String digestMode = digestionModeComboBox.getValue() != null ? digestionModeComboBox.getValue() : "Specific";
-            int threadCount = threadsSpinner.getValue() != null ? threadsSpinner.getValue() : 4;
+            int threadCount = threadsComboBox.getValue() != null ? threadsComboBox.getValue() : 4;
             String workflow = workflowComboBox.getValue() != null ? workflowComboBox.getValue() : "Standard";
             String msDataType = msDataTypeComboBox.getValue() != null ? msDataTypeComboBox.getValue() : "Regular MS";
             
             // Create DDAMagFragPipeParameters with required constructor parameters
-            DDAMagFragPipeParameters analysisParams = new DDAMagFragPipeParameters(
-                MetaPilotApp.WorkflowType.DDA_MAG_FRAGPIPE.getAnalysisType(),
-                metaData,
-                result,
-                microDb,
-                appendHostDb,
-                hostDB,
-                "HCD-FTMS", // Default MS2 scan mode for FragPipe
-                threadCount
-            );
+			DDAMagFragPipeParameters analysisParams = new DDAMagFragPipeParameters(
+					MetaPilotApp.WorkflowType.DDA_MAG_FRAGPIPE.getAnalysisType(), metaData, result, microDb,
+					appendHostDb, hostDB, msDataType, // Default MS2 scan mode for FragPipe
+					threadCount);
             LOGGER.info("DDAMagFragPipeParameters object created successfully");
             
             // Set additional parameters
@@ -914,10 +928,13 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
                 LOGGER.error("Failed to configure FragPipe workflow: " + e.getMessage(), e);
             }
             
+            consolePanel.appendConsoleText("✓ Successfully collected parameters from UI\n");
             LOGGER.info("Successfully collected parameters from UI for MAG FragPipe workflow");
             return analysisParams;
             
         } catch (Exception e) {
+            String errorMsg = "ERROR: Failed to collect parameters from UI: " + e.getMessage();
+            consolePanel.appendConsoleText(errorMsg + "\n");
             LOGGER.error("Failed to collect parameters from UI: " + e.getMessage(), e);
             return null;
         }
@@ -976,9 +993,11 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
     @Override
     protected void loadLastUsedParameters() {
         try {
+            consolePanel.appendConsoleText("Loading last used parameters...\n");
             LOGGER.info("Attempting to load last used parameters for DDA MAG FragPipe workflow");
             DDAMagFragPipeParameters params = (DDAMagFragPipeParameters) parameterIO.loadLastUsedParameters();
             if (params != null) {
+                consolePanel.appendConsoleText("✓ Successfully loaded last used parameters\n");
                 LOGGER.info("Successfully loaded parameters from file");
                 applyParametersToUI(params);
                 LOGGER.info("Applied parameters to UI for DDA MAG FragPipe workflow");
@@ -986,12 +1005,14 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
                 // Also apply experiment data to the IO panel if available
                 if (params.getExperimentData() != null && !params.getExperimentData().isEmpty()) {
                     ioPanel.setExperimentData(params.getExperimentData());
+                    consolePanel.appendConsoleText("Applied " + params.getExperimentData().size() + " experiment rows to IO panel\n");
                     LOGGER.info("Applied {} experiment rows to IO panel", params.getExperimentData().size());
                 }
                 
                 // Apply output directory if available
                 if (params.getResult() != null && !params.getResult().trim().isEmpty()) {
                     ioPanel.setOutputDirectory(params.getResult());
+                    consolePanel.appendConsoleText("Applied output directory: " + params.getResult() + "\n");
                     LOGGER.info("Applied output directory: {}", params.getResult());
                 }
                 
@@ -1001,9 +1022,12 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
                     updateParameterView();
                 });
             } else {
+                consolePanel.appendConsoleText("No previous parameters found, using defaults\n");
                 LOGGER.warn("No parameters loaded from file, using defaults");
             }
         } catch (Exception e) {
+            String errorMsg = "WARNING: Failed to load last used parameters: " + e.getMessage();
+            consolePanel.appendConsoleText(errorMsg + "\n");
             LOGGER.error("Failed to load last used MAG FragPipe parameters: " + e.getMessage(), e);
             // Continue with default UI state
         }
@@ -1014,7 +1038,13 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
      */
     @Override
     protected void applyParametersToUI(DDAMagFragPipeParameters params) {
-        if (params == null) return;
+        try {
+            consolePanel.appendConsoleText("Applying parameters to UI...\n");
+            if (params == null) {
+                consolePanel.appendConsoleText("WARNING: No parameters to apply\n");
+                LOGGER.warn("No parameters to apply to UI");
+                return;
+            }
         
         // Apply metadata to IO panel if available
         if (params.getMetadata() != null) {
@@ -1036,8 +1066,8 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
         
         // Apply only essential parameters from saved settings
         // Thread count is the only parameter that should be loaded from saved parameters
-        if (threadsSpinner != null) {
-            threadsSpinner.getValueFactory().setValue(params.getThreadCount());
+        if (threadsComboBox != null) {
+            threadsComboBox.setValue(params.getThreadCount());
         }
         
         // Workflow selection - don't update since workflow is not saved in parameters
@@ -1146,6 +1176,15 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
         
         // Update parameter view after applying parameters
         Platform.runLater(() -> updateParameterView());
+        
+        consolePanel.appendConsoleText("✓ Successfully applied parameters to UI\n");
+        LOGGER.info("Successfully applied parameters to UI for MAG FragPipe workflow");
+        
+        } catch (Exception e) {
+            String errorMsg = "ERROR: Failed to apply parameters to UI: " + e.getMessage();
+            consolePanel.appendConsoleText(errorMsg + "\n");
+            LOGGER.error("Failed to apply parameters to UI for MAG FragPipe workflow", e);
+        }
     }
     
     /**
@@ -1183,6 +1222,14 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
                 // Default to trypsin
                 return new String[]{"stricttrypsin", "KR", ""};
         }
+    }
+    
+    /**
+     * Get the parameter class for this workflow
+     */
+    @Override
+    protected Class<DDAMagFragPipeParameters> getParameterClass() {
+        return DDAMagFragPipeParameters.class;
     }
     
     /**

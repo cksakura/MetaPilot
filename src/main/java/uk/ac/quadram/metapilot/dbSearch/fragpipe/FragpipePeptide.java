@@ -7,8 +7,6 @@ import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
 
 public class FragpipePeptide extends MetaPeptide {
 
-	private String[] proteins;
-
 	public FragpipePeptide(String sequence, String[] proteins, int[] spCount, double[] intensity) {
 		super(sequence);
 		// TODO Auto-generated constructor stub
@@ -162,10 +160,4 @@ public class FragpipePeptide extends MetaPeptide {
 			return peptide;
 		}
 	}
-
-	public String[] getProteins() {
-		return proteins;
-	}
-
-
 }

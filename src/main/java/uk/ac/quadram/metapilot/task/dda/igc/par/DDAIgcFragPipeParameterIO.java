@@ -173,6 +173,14 @@ public class DDAIgcFragPipeParameterIO extends BaseParameterIO {
                 JSONObject metaRow = new JSONObject();
                 metaRow.put("sample_name", row.getSampleName());
                 metaRow.put("label_type", row.getLabelType());
+                metaRow.put("age", row.getAge());
+                metaRow.put("gender", row.getGender());
+                metaRow.put("condition", row.getCondition());
+                metaRow.put("treatment", row.getTreatment());
+                metaRow.put("time_point", row.getTimePoint());
+                metaRow.put("custom_field_1", row.getCustomField1());
+                metaRow.put("custom_field_2", row.getCustomField2());
+                metaRow.put("custom_field_3", row.getCustomField3());
                 metadata.put(metaRow);
             }
             json.put("metadata", metadata);
@@ -326,6 +334,14 @@ public class DDAIgcFragPipeParameterIO extends BaseParameterIO {
                         metaRow.optString("sample_name", "")
                     );
                     row.setLabelType(metaRow.optString("label_type", ""));
+                    row.setAge(metaRow.optString("age", ""));
+                    row.setGender(metaRow.optString("gender", ""));
+                    row.setCondition(metaRow.optString("condition", ""));
+                    row.setTreatment(metaRow.optString("treatment", ""));
+                    row.setTimePoint(metaRow.optString("time_point", ""));
+                    row.setCustomField1(metaRow.optString("custom_field_1", ""));
+                    row.setCustomField2(metaRow.optString("custom_field_2", ""));
+                    row.setCustomField3(metaRow.optString("custom_field_3", ""));
                     metadataData.add(row);
                 }
                 params.setMetadataTableData(metadataData);

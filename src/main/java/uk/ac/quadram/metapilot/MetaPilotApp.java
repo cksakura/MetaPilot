@@ -15,6 +15,7 @@ import javafx.scene.layout.*;
 import javafx.stage.Stage;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
+import javafx.stage.FileChooser;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.prefs.Preferences;
@@ -41,6 +42,8 @@ import uk.ac.quadram.metapilot.task.dda.mag.gui.MetaPilotDdaMagSagePanel;
 import uk.ac.quadram.metapilot.task.dia.gui.MetaPilotDiaNormalPanel;
 import uk.ac.quadram.metapilot.task.dia.gui.MetaPilotDiaTargetPanel;
 import uk.ac.quadram.metapilot.task.dia.gui.MetaPilotDiaRealTimePanel;
+import uk.ac.quadram.metapilot.task.par.BaseParameterIO;
+import uk.ac.quadram.metapilot.task.par.ParameterIORegistry;
 
 /**
  * MetaPilot Main Application - A Comprehensive Metaproteomics Analysis Platform
@@ -864,6 +867,417 @@ public class MetaPilotApp extends Application {
         }
     }
     
+    /**
+     * Load parameter file and launch the corresponding workflow panel
+     */
+    private void loadParameterFile(Stage primaryStage) {
+        // Initialize parameter IO registry if not already done
+        ParameterIORegistry.registerAllParameterIOs();
+        
+        // Create file chooser
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.setTitle("Load Parameter File");
+        fileChooser.getExtensionFilters().addAll(
+            new FileChooser.ExtensionFilter("JSON Files", "*.json"),
+            new FileChooser.ExtensionFilter("All Files", "*.*")
+        );
+        
+        // Set initial directory to config folder if it exists
+        File configDir = new File("config");
+        if (configDir.exists() && configDir.isDirectory()) {
+            fileChooser.setInitialDirectory(configDir);
+        }
+        
+        // Show file chooser dialog
+        File selectedFile = fileChooser.showOpenDialog(primaryStage);
+        if (selectedFile == null) {
+            return; // User cancelled
+        }
+        
+        try {
+            // Load parameters from file
+            Object parameters = BaseParameterIO.loadParametersFromFilePath(selectedFile.getAbsolutePath());
+            if (parameters == null) {
+                showWarning("Load Parameter File", 
+                    "Failed to load parameters from file. The file may be corrupted or not a valid parameter file.");
+                return;
+            }
+            
+            // Get workflow type from parameters
+            String workflowType = BaseParameterIO.getWorkflowTypeFromParameters(parameters);
+            if (workflowType == null) {
+                showWarning("Load Parameter File", 
+                    "Could not determine workflow type from parameter file.");
+                return;
+            }
+            
+            // Map workflow type string to WorkflowType enum
+            WorkflowType type = getWorkflowTypeFromString(workflowType);
+            if (type == null) {
+                showWarning("Load Parameter File", 
+                    "Unsupported workflow type: " + workflowType);
+                return;
+            }
+            
+            // Launch the workflow with loaded parameters
+            launchWorkflowWithParameters(type, parameters);
+            
+        } catch (Exception e) {
+            showError("Load Parameter File Error", 
+                "Failed to load parameter file: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Map workflow type string to WorkflowType enum
+     */
+    private WorkflowType getWorkflowTypeFromString(String workflowType) {
+        for (WorkflowType type : WorkflowType.values()) {
+            if (type.getAnalysisType().equals(workflowType)) {
+                return type;
+            }
+        }
+        return null;
+    }
+    
+    /**
+     * Launch workflow with pre-loaded parameters
+     */
+    private void launchWorkflowWithParameters(WorkflowType type, Object parameters) {
+        // First check if registration is required and enabled
+        if (REGISTRATION_ENABLED && !checkRegistration()) {
+            showWarning("Registration Required", 
+                      "Registration is required to use this workflow. " +
+                      "Please register the application first.");
+            return;
+        }
+        
+        // Then check if all required resources are available
+        if (!checkRequiredResources(type)) {
+            showWarning("Missing Resources", 
+                      "Some required resources are missing for this workflow. " +
+                      "Please configure all required resources first.");
+            return;
+        }
+        
+        ArrayList<MagDbItem> list = new ArrayList<MagDbItem>();
+        if (magDbItems != null && magDbItems.length > 0) {
+            for (int i = 0; i < magDbItems.length; i++) {
+                for (int j = 0; j < magDbItems[i].length; j++) {
+                    boolean use = false;
+                    ArrayList<MagVersion> verlist = magDbItems[i][j].getVersionList();
+                    for (int k = 0; k < verlist.size(); k++) {
+                        if (verlist.get(k).isLocalAvailable()) {
+                            use = true;
+                            break;
+                        }
+                    }
+
+                    if (use) {
+                        list.add(magDbItems[i][j]);
+                    }
+                }
+            }
+        }
+        MagDbItem[] items = list.toArray(new MagDbItem[list.size()]);
+        
+        try {
+            switch (type) {
+                case DDA_IGC_MAXQUANT:
+                    launchDdaIgcMaxQuantWithParameters(parameters);
+                    break;
+                case DDA_IGC_PFIND:
+                    launchDdaIgcPFindWithParameters(parameters);
+                    break;
+                case DDA_IGC_FRAGPIPE:
+                    launchDdaIgcFragPipeWithParameters(parameters);
+                    break;
+                case DDA_IGC_SAGE:
+                    launchDdaIgcSageWithParameters(parameters);
+                    break;
+                case DDA_MAG_PFIND:
+                    launchDdaMagPFindWithParameters(parameters, items);
+                    break;
+                case DDA_MAG_FRAGPIPE:
+                    launchDdaMagFragPipeWithParameters(parameters, items);
+                    break;
+                case DDA_MAG_SAGE:
+                    launchDdaMagSageWithParameters(parameters, items);
+                    break;
+                case DIA_NORMAL:
+                    launchDiaNormalWithParameters(parameters, items);
+                    break;
+                case DIA_TARGET:
+                    launchDiaTargetWithParameters(parameters, items);
+                    break;
+                case DIA_REALTIME:
+                    launchDiaRealTimeWithParameters(parameters, items);
+                    break;
+            }
+        } catch (Exception ex) {
+            showError("Workflow Launch Error", 
+                    "Failed to launch workflow with parameters", ex);
+        }
+    }
+    
+    // Individual workflow launch methods with parameters
+    
+    private void launchDdaIgcMaxQuantWithParameters(Object parameters) {
+        Stage maxQuantStage = new Stage();
+        maxQuantStage.setTitle("DDA IGC MaxQuant Workflow");
+        
+        MetaPilotDdaIgcMaxQuantPanel maxQuantPanel = new MetaPilotDdaIgcMaxQuantPanel();
+        
+        Scene scene = new Scene(maxQuantPanel);
+        try {
+            scene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
+        } catch (Exception e) {
+            System.err.println("Could not load stylesheet: " + e.getMessage());
+        }
+        
+        maxQuantStage.setScene(scene);
+        maxQuantStage.setMinWidth(800);
+        maxQuantStage.setMinHeight(600);
+        maxQuantStage.setMaximized(true);
+        maxQuantStage.show();
+        
+        // Apply loaded parameters to the panel
+        maxQuantPanel.loadParametersFromObject(parameters);
+    }
+    
+    private void launchDdaIgcPFindWithParameters(Object parameters) {
+        Stage pFindStage = new Stage();
+        pFindStage.setTitle("DDA IGC pFind Workflow");
+        
+        MetaPilotDdaIgcPFindPanel pFindPanel = new MetaPilotDdaIgcPFindPanel();
+        
+        Scene pFindScene = new Scene(pFindPanel);
+        try {
+            pFindScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
+        } catch (Exception e) {
+            System.err.println("Could not load stylesheet: " + e.getMessage());
+        }
+        
+        pFindStage.setScene(pFindScene);
+        pFindStage.setMinWidth(800);
+        pFindStage.setMinHeight(600);
+        pFindStage.setMaximized(true);
+        pFindStage.show();
+        
+        // Apply loaded parameters to the panel
+        pFindPanel.loadParametersFromObject(parameters);
+    }
+    
+    private void launchDdaIgcFragPipeWithParameters(Object parameters) {
+        Stage fragPipeStage = new Stage();
+        fragPipeStage.setTitle("DDA IGC FragPipe Workflow");
+        
+        MetaPilotDdaIgcFragPipePanel fragPipePanel = new MetaPilotDdaIgcFragPipePanel();
+        
+        Scene fragPipeScene = new Scene(fragPipePanel);
+        try {
+            fragPipeScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
+        } catch (Exception e) {
+            System.err.println("Could not load stylesheet: " + e.getMessage());
+        }
+        
+        fragPipeStage.setScene(fragPipeScene);
+        fragPipeStage.setMinWidth(800);
+        fragPipeStage.setMinHeight(600);
+        fragPipeStage.setMaximized(true);
+        fragPipeStage.show();
+        
+        // Apply loaded parameters to the panel
+        fragPipePanel.loadParametersFromObject(parameters);
+    }
+    
+    private void launchDdaIgcSageWithParameters(Object parameters) {
+        Stage sageStage = new Stage();
+        sageStage.setTitle("DDA IGC Sage Workflow");
+        
+        MetaPilotDdaIgcSagePanel sagePanel = new MetaPilotDdaIgcSagePanel();
+        
+        Scene sageScene = new Scene(sagePanel);
+        try {
+            sageScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
+        } catch (Exception e) {
+            System.err.println("Could not load stylesheet: " + e.getMessage());
+        }
+        
+        sageStage.setScene(sageScene);
+        sageStage.setMinWidth(800);
+        sageStage.setMinHeight(600);
+        sageStage.setMaximized(true);
+        sageStage.show();
+        
+        // Apply loaded parameters to the panel
+        sagePanel.loadParametersFromObject(parameters);
+    }
+    
+    private void launchDdaMagPFindWithParameters(Object parameters, MagDbItem[] items) {
+        Stage pFindMagStage = new Stage();
+        pFindMagStage.setTitle("DDA MAG pFind Workflow");
+        
+        MetaPilotDdaMagPfindPanel pFindMagPanel = new MetaPilotDdaMagPfindPanel(items);
+        
+        Scene pFindMagScene = new Scene(pFindMagPanel);
+        try {
+            pFindMagScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
+        } catch (Exception e) {
+            System.err.println("Could not load stylesheet: " + e.getMessage());
+        }
+        
+        pFindMagStage.setScene(pFindMagScene);
+        pFindMagStage.setMinWidth(800);
+        pFindMagStage.setMinHeight(600);
+        pFindMagStage.setMaximized(true);
+        pFindMagStage.show();
+        
+        // Apply loaded parameters to the panel
+        pFindMagPanel.loadParametersFromObject(parameters);
+    }
+    
+    private void launchDdaMagFragPipeWithParameters(Object parameters, MagDbItem[] items) {
+        Stage fragPipeMagStage = new Stage();
+        fragPipeMagStage.setTitle("DDA MAG FragPipe Workflow");
+        
+        MetaPilotDdaMagFragPipePanel fragPipeMagPanel = new MetaPilotDdaMagFragPipePanel(items, resourceParams);
+        
+        Scene fragPipeMagScene = new Scene(fragPipeMagPanel);
+        try {
+            fragPipeMagScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
+        } catch (Exception e) {
+            System.err.println("Could not load stylesheet: " + e.getMessage());
+        }
+        
+        fragPipeMagStage.setScene(fragPipeMagScene);
+        fragPipeMagStage.setMinWidth(800);
+        fragPipeMagStage.setMinHeight(600);
+        fragPipeMagStage.setMaximized(true);
+        fragPipeMagStage.show();
+        
+        // Apply loaded parameters to the panel
+        fragPipeMagPanel.loadParametersFromObject(parameters);
+    }
+    
+    private void launchDdaMagSageWithParameters(Object parameters, MagDbItem[] items) {
+        Stage magSageStage = new Stage();
+        magSageStage.setTitle("DDA MAG Sage Workflow");
+        
+        MetaPilotDdaMagSagePanel magSagePanel = new MetaPilotDdaMagSagePanel(items);
+        
+        Scene magSageScene = new Scene(magSagePanel, 1600, 900);
+        try {
+            magSageScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
+        } catch (Exception e) {
+            System.err.println("Could not load stylesheet: " + e.getMessage());
+        }
+        
+        magSageStage.setScene(magSageScene);
+        magSageStage.setMinWidth(800);
+        magSageStage.setMinHeight(600);
+        magSageStage.setMaximized(true);
+        magSageStage.show();
+        
+        // Apply loaded parameters to the panel
+        magSagePanel.loadParametersFromObject(parameters);
+    }
+    
+    private void launchDiaNormalWithParameters(Object parameters, MagDbItem[] items) {
+        Stage diaNormalStage = new Stage();
+        diaNormalStage.setTitle("DIA Normal Workflow");
+        
+        MetaPilotDiaNormalPanel diaNormalPanel = new MetaPilotDiaNormalPanel(items, resourceParams);
+        
+        Scene diaNormalScene = new Scene(diaNormalPanel, 1600, 900);
+        try {
+            diaNormalScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
+        } catch (Exception e) {
+            System.err.println("Could not load stylesheet: " + e.getMessage());
+        }
+        
+        diaNormalStage.setScene(diaNormalScene);
+        diaNormalStage.setMinWidth(800);
+        diaNormalStage.setMinHeight(600);
+        diaNormalStage.setMaximized(true);
+        
+        // Add close handler to save parameters when window closes
+        diaNormalStage.setOnCloseRequest(e -> {
+            System.out.println("DEBUG: DIA Normal window closing - saving parameters");
+            diaNormalPanel.saveCurrentParameters();
+        });
+        
+        diaNormalStage.show();
+        
+        // Apply loaded parameters to the panel
+        diaNormalPanel.loadParametersFromObject(parameters);
+    }
+    
+    private void launchDiaTargetWithParameters(Object parameters, MagDbItem[] items) {
+        Stage diaTargetStage = new Stage();
+        diaTargetStage.setTitle("DIA Target Workflow");
+        
+        MetaPilotDiaTargetPanel diaTargetPanel = new MetaPilotDiaTargetPanel(items, resourceParams);
+        
+        Scene diaTargetScene = new Scene(diaTargetPanel, 1600, 900);
+        try {
+            diaTargetScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
+        } catch (Exception e) {
+            System.err.println("Could not load stylesheet: " + e.getMessage());
+        }
+        
+        diaTargetStage.setScene(diaTargetScene);
+        diaTargetStage.setMinWidth(800);
+        diaTargetStage.setMinHeight(600);
+        diaTargetStage.setMaximized(true);
+        
+        // Add close handler to save parameters
+        diaTargetStage.setOnCloseRequest(event -> {
+            try {
+                diaTargetPanel.saveCurrentParameters();
+            } catch (Exception e) {
+                System.err.println("Error saving DIA Target parameters on close: " + e.getMessage());
+            }
+        });
+        
+        diaTargetStage.show();
+        
+        // Apply loaded parameters to the panel
+        diaTargetPanel.loadParametersFromObject(parameters);
+    }
+    
+    private void launchDiaRealTimeWithParameters(Object parameters, MagDbItem[] items) {
+        Stage diaRealTimeStage = new Stage();
+        diaRealTimeStage.setTitle("DIA Real-time Workflow");
+        
+        MetaPilotDiaRealTimePanel diaRealTimePanel = new MetaPilotDiaRealTimePanel(items, resourceParams);
+        
+        Scene diaRealTimeScene = new Scene(diaRealTimePanel, 1600, 900);
+        try {
+            diaRealTimeScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
+        } catch (Exception e) {
+            System.err.println("Could not load stylesheet: " + e.getMessage());
+        }
+        
+        diaRealTimeStage.setScene(diaRealTimeScene);
+        diaRealTimeStage.setMinWidth(800);
+        diaRealTimeStage.setMinHeight(600);
+        diaRealTimeStage.setMaximized(true);
+        
+        // Add close handler to save parameters when window closes
+        diaRealTimeStage.setOnCloseRequest(e -> {
+            System.out.println("DEBUG: DIA Real-time window closing - saving parameters");
+            diaRealTimePanel.saveCurrentParameters();
+        });
+        
+        diaRealTimeStage.show();
+        
+        // Apply loaded parameters to the panel (DIA Real-time has its own parameter loading mechanism)
+        if (parameters instanceof uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaRT) {
+            diaRealTimePanel.applyParametersToUI((uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaRT) parameters);
+        }
+    }
+    
     private void showWarning(String title, String content) {
         Alert alert = new Alert(Alert.AlertType.WARNING);
         alert.setTitle(title);
@@ -898,9 +1312,11 @@ public class MetaPilotApp extends Application {
         
         // File menu
         Menu fileMenu = new Menu("File");
+        MenuItem loadParamItem = new MenuItem("Load Parameter File...");
+        loadParamItem.setOnAction(e -> loadParameterFile(primaryStage));
         MenuItem exitItem = new MenuItem("Exit");
         exitItem.setOnAction(e -> Platform.exit());
-        fileMenu.getItems().add(exitItem);
+        fileMenu.getItems().addAll(loadParamItem, new SeparatorMenuItem(), exitItem);
         
         // Tools menu
         Menu toolsMenu = new Menu("Tools");

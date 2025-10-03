@@ -860,7 +860,8 @@ public class DiaModelGenerationPanel extends VBox {
     
     private Label createSectionTitle(String title) {
         Label label = new Label(title);
-        label.setFont(Font.font("System", FontWeight.BOLD, 14));
+        // Use default font instead of "System" to avoid PrismTextLayout issues
+        label.setFont(Font.font(null, FontWeight.BOLD, 14));
         label.setTextFill(Color.DARKBLUE);
         return label;
     }

@@ -228,12 +228,6 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 		updateMessage(getTaskName());
 		updateProgress(0, 100);
 
-		// Copy report templates in background
-		if (!copyReportTemplatesInBackground()) {
-			LOGGER.error(getTaskName() + ": Failed to copy report templates");
-			return false;
-		}
-
 		LOGGER.info(getTaskName() + ": started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": started");
 
@@ -277,7 +271,7 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 		updateProgress(10, 100);
 		Platform.runLater(() -> secondBar.setProgress(ProgressBar.INDETERMINATE_PROGRESS));
 
-		spectraConvertTask = new PFindSpectraConvertTask(magPfindParams, mrp, progressBar);
+		spectraConvertTask = new PFindSpectraConvertTask(magPfindParams, mrp, secondBar);
 		spectraConvertTask.execute();
 		try {
 			boolean convert = spectraConvertTask.get(); // Wait for completion and get result
@@ -1258,6 +1252,8 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 			LOGGER.error(getTaskName() + ": unknown quantitative type");
 			return false;
 		}
+		
+		LOGGER.info(getTaskName() + ": " + quanPeps.length + " peptides and " + psms.length + " PSMs were obtained");
 
 		// Create and execute the post-analysis task directly
 		DDAMagPostAnalysisTask postAnalysisTask = new DDAMagPostAnalysisTask(

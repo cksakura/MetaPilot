@@ -16,10 +16,8 @@ import java.util.HashSet;
 import java.util.concurrent.ExecutionException;
 
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.lang3.math.NumberUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.dom4j.DocumentException;
 
 import uk.ac.quadram.metapilot.core.prodb.FastaManager;
 import uk.ac.quadram.metapilot.core.tools.FormatTool;
@@ -27,19 +25,14 @@ import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragPipeTask;
 import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragPipePSM;
 import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragpipePepReader;
 import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragpipePeptide;
-import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragpipeProReader;
 import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragpipeWorkflow;
 import javafx.scene.control.ProgressBar;
 import javafx.application.Platform;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.task.MetaPythonReportTask;
-import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
-import uk.ac.quadram.metapilot.task.io.pro.MetaProteinAnnoEggNog;
-import uk.ac.quadram.metapilot.task.io.pro.MetaProteinXMLReader2;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.MetaPilotMagTask;
-import uk.ac.quadram.metapilot.task.mag.MetaProteinAnnoMag;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagFragPipeParameters;
 import javafx.scene.control.Label;
@@ -210,12 +203,6 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 	protected Boolean call() throws Exception {
 		updateMessage(getTaskName());
 		updateProgress(0, 100);
-
-		// Copy report templates in background
-		if (!copyReportTemplatesInBackground()) {
-			LOGGER.error(getTaskName() + ": Failed to copy report templates");
-			return false;
-		}
 
 		LOGGER.info(getTaskName() + ": started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": started");
@@ -1105,7 +1092,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		if (this.quan_pep_file.exists() && this.quan_pep_file.length() > 0 && this.quan_pro_file.exists()
 				&& this.quan_pro_file.length() > 0) {
 
-			File[] combinedListFiles = metaPar.getDbSearchResultFile().listFiles();
+			File[] combinedListFiles = combinedFile.listFiles();
 			for (int j = 0; j < combinedListFiles.length; j++) {
 				if (combinedListFiles[j].getName().endsWith(".pepindex")) {
 					FileUtils.deleteQuietly(combinedListFiles[j]);
@@ -1143,7 +1130,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		File expDesignFile = new File(combinedFile, "raws.fp-manifest");
 		if (expDesignFile.exists()) {
 			try (BufferedReader reader = new BufferedReader(new FileReader(expDesignFile))) {
-				String line = reader.readLine();
+				String line = null;
 				while ((line = reader.readLine()) != null) {
 					String[] cs = line.split("\t");
 					fileIdMap.put(cs[1] + "_" + cs[2], fileIdMap.size());
@@ -1170,6 +1157,8 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		FragpipePeptide[] quanPeps = quanPepReader.getMetaPeptides();
 		FragPipePSM[] psms = quanPepReader.getPSMs();
 		String[] intensityTitles = quanPepReader.getIntensityTitle();
+		
+		LOGGER.info(getTaskName() + ": " + quanPeps.length + " peptides and " + psms.length + " PSMs were obtained");
 
 		// Create and execute the post-analysis task directly
 		DDAMagPostAnalysisTask postAnalysisTask = new DDAMagPostAnalysisTask(
@@ -1346,204 +1335,5 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 			return finish;
 		}
 	}
-
-	protected boolean exportTaxaFunc(MetaPythonReportTask task) {
-
-		LOGGER.info(getTaskName() + ": taxonomy analysis and functional annotation started");
-		System.out.println(format.format(new Date()) + "\t" + getTaskName()
-				+ ": taxonomy analysis and functional annotation started");
-
-		// functional annotation
-
-		HashMap<String, Integer> proTaxIdMap = new HashMap<String, Integer>();
-
-		LOGGER.info(getTaskName() + ": functional annotation started");
-		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": functional annotation started");
-
-		File funcFile = new File(metaPar.getResult(), "functional_annotation");
-		if (!funcFile.exists()) {
-			funcFile.mkdir();
-		}
-
-		File final_pro_xml_file = new File(funcFile, "functions.xml");
-
-		File combinedPepTsv = new File(metaPar.getDbSearchResultFile(), "combined_peptide.tsv");
-		File combinedProTsv = new File(metaPar.getDbSearchResultFile(), "combined_protein.tsv");
-
-		FragpipeProReader proReader = new FragpipeProReader(combinedProTsv, this.fragpipeExpNames);
-		MetaProtein[] proteins = proReader.getMetaProteins();
-
-		if (!final_pro_xml_file.exists() || final_pro_xml_file.length() == 0) {
-
-			MetaProteinAnnoMag[] mpas = funcAnnoSqlite(proteins, proReader.getIntensityTitle());
-			for (int i = 0; i < mpas.length; i++) {
-				String name = mpas[i].getPro().getName();
-				if (NumberUtils.isCreatable(mpas[i].getTax_id())) {
-					proTaxIdMap.put(name, Integer.parseInt(mpas[i].getTax_id()));
-				} else {
-					proTaxIdMap.put(name, 131567);
-				}
-			}
-		}
-
-		updateProgress(88, 100);
-
-		File funcResultFile = final_pro_xml_file.getParentFile();
-		File funTsv = new File(funcResultFile, "functions.tsv");
-		File funReportTsv = new File(funcResultFile, "functions_report.tsv");
-
-		MetaProteinXMLReader2 funReader = null;
-		try {
-			funReader = new MetaProteinXMLReader2(final_pro_xml_file);
-		} catch (DocumentException e) {
-			// TODO Auto-generated catch block
-			LOGGER.error(getTaskName() + ": error in reading protein function information from "
-					+ final_pro_xml_file.getName(), e);
-			System.err.println(format.format(new Date()) + "\t" + getTaskName()
-					+ ": error in reading protein function information from " + final_pro_xml_file.getName());
-			return false;
-		}
-
-		if (proTaxIdMap.size() == 0) {
-			MetaProteinAnnoEggNog[] mpas = funReader.getProteins();
-			for (int i = 0; i < mpas.length; i++) {
-				String name = mpas[i].getPro().getName();
-				if (NumberUtils.isCreatable(mpas[i].getTax_id())) {
-					proTaxIdMap.put(name, Integer.parseInt(mpas[i].getTax_id()));
-				} else {
-					proTaxIdMap.put(name, 131567);
-				}
-			}
-		}
-
-		if (!funTsv.exists() || !funReportTsv.exists()) {
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": writing results to "
-					+ funTsv.getName() + " started");
-			try {
-				funReader.exportTsv(funTsv);
-				funReader.exportTsvReport(funReportTsv);
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				LOGGER.error(getTaskName() + ": error in writing protein function information to " + funTsv.getName(),
-						e);
-				System.err.println(format.format(new Date()) + "\t" + getTaskName()
-						+ ": error in writing protein function information to " + funTsv.getName());
-			}
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": writing results to "
-					+ funTsv.getName() + " finished");
-		}
-
-		File html = new File(funcResultFile, "functions.html");
-		if (!html.exists()) {
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": writing results to "
-					+ html.getName() + " started");
-			try {
-				funReader.exportHtml(html);
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				LOGGER.error(getTaskName() + ": error in writing protein function information to " + html.getName(), e);
-				System.err.println(format.format(new Date()) + "\t" + getTaskName()
-						+ ": error in writing protein function information to " + html.getName());
-			}
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": writing results to "
-					+ html.getName() + " finished");
-		}
-
-		File report_function_summary = new File(metaPar.getReportDir(), "report_function_summary.html");
-
-		if (!report_function_summary.exists() || report_function_summary.length() == 0) {
-
-			if (summaryMetaFile != null && summaryMetaFile.exists()) {
-				task.addTask(MetaPythonReportTask.FUNCTION, funReportTsv, report_function_summary, summaryMetaFile);
-			} else {
-				task.addTask(MetaPythonReportTask.FUNCTION, funReportTsv, report_function_summary);
-			}
-		}
-
-		LOGGER.info(getTaskName() + ": functional annotation finished");
-		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": functional annotation finished");
-
-		updateProgress(92, 100);
-
-		// taxonomy analysis
-
-		LOGGER.info(getTaskName() + ": taxonomy analysis started");
-		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": taxonomy analysis started");
-
-		File taxFile = new File(metaPar.getResult(), "taxonomy_analysis");
-		if (!taxFile.exists()) {
-			taxFile.mkdir();
-		}
-
-		FragpipePepReader pepReader = new FragpipePepReader(combinedPepTsv, this.fragpipeExpNames);
-		FragpipePeptide[] peptides = pepReader.getMetaPeptides();
-		HashMap<String, double[]> pepIntenMap = new HashMap<String, double[]>();
-		HashMap<String, Integer> psmCountMap = new HashMap<String, Integer>();
-		HashMap<String, HashSet<String>> pepCountMap = new HashMap<String, HashSet<String>>();
-		HashMap<String, HashSet<String>> uniquePepCountMap = new HashMap<String, HashSet<String>>();
-		HashMap<String, double[]> genomeIntensityMap = new HashMap<String, double[]>();
-		HashMap<String, ArrayList<Double>> genomePEPMap = new HashMap<String, ArrayList<Double>>();
-
-		for (int i = 0; i < peptides.length; i++) {
-			String sequence = peptides[i].getSequence();
-			double[] pepIntensity = peptides[i].getIntensity();
-			pepIntenMap.put(sequence, pepIntensity);
-
-			double PEP = peptides[i].getScore();
-
-			int psmCount = 0;
-			int[] ms2Count = peptides[i].getMs2Counts();
-			for (int j = 0; j < fragpipeExpNames.length; j++) {
-				psmCount += ms2Count[j];
-			}
-
-			String[] pros = peptides[i].getProteins();
-			String razorPro = pros[0];
-
-			if (razorPro.startsWith(this.magDb.getIdentifier())) {
-				String genome = razorPro.split("_")[0];
-				if (psmCountMap.containsKey(genome)) {
-					psmCountMap.put(genome, psmCountMap.get(genome) + psmCount);
-					pepCountMap.get(genome).add(sequence);
-
-					if (pros.length == 1) {
-						uniquePepCountMap.get(genome).add(sequence);
-					}
-				} else {
-					psmCountMap.put(genome, psmCount);
-					pepCountMap.put(genome, new HashSet<String>());
-					pepCountMap.get(genome).add(sequence);
-					uniquePepCountMap.put(genome, new HashSet<String>());
-					if (pros.length == 1) {
-						uniquePepCountMap.get(genome).add(sequence);
-					}
-				}
-
-				double[] totalIntensity;
-				if (genomeIntensityMap.containsKey(genome)) {
-					totalIntensity = genomeIntensityMap.get(genome);
-				} else {
-					totalIntensity = new double[pepIntensity.length];
-				}
-				for (int j = 0; j < totalIntensity.length; j++) {
-					totalIntensity[j] += pepIntensity[j];
-				}
-				genomeIntensityMap.put(genome, totalIntensity);
-
-				ArrayList<Double> qList;
-				if (genomePEPMap.containsKey(genome)) {
-					qList = genomePEPMap.get(genome);
-				} else {
-					qList = new ArrayList<Double>();
-					genomePEPMap.put(genome, qList);
-				}
-				qList.add(PEP);
-			}
-		}
-
-		return exportGenome(genomeIntensityMap, psmCountMap, pepCountMap, uniquePepCountMap, genomePEPMap, taxFile,
-				fragpipeExpNames, task);
-	}
-
 }
 

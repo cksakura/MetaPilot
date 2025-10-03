@@ -31,6 +31,7 @@ import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.task.MetaAbstractTask;
 import uk.ac.quadram.metapilot.task.MetaPilotTask;
 import uk.ac.quadram.metapilot.task.MetaPythonReportTask;
+import uk.ac.quadram.metapilot.task.io.ReportManifestGenerator;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPSM;
 import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
@@ -51,38 +52,65 @@ import org.apache.logging.log4j.Logger;
  */
 public abstract class MetaPilotIgcTask extends MetaPilotTask {
 
-    // Common fields for all IGC workflows
-    protected String[] rawFiles;
-    protected String[] rawFileNames;
-    protected String[] quanExpNames;
-    protected File spectraDirFile;
-    protected File[] separateResultFolders;
-    protected double psmCoverThreshold = 0.95;
+	// Common fields for all IGC workflows
+	protected String[] rawFiles;
+	protected String[] rawFileNames;
+	protected String[] quanExpNames;
+	protected File[] separateResultFolders;
+	protected double psmCoverThreshold = 0.95;
+	protected File spectraDirFile;
+	protected File rawDir;
+	protected File quan_pep_file;
+	protected File quan_pro_file;
+	protected File final_pep_txt;
+	protected File final_pro_txt;
+	protected HashMap<String, String> expNameMap;
+	protected File summaryMetaFile;
+	protected File combinedFile;
 
-    protected File rawDir;
-    protected File quan_pep_file;
-    protected File quan_pro_file;
-    protected File final_pep_txt;
-    protected File final_pro_txt;
-    protected HashMap<String, String> expNameMap;
-    protected File summaryMetaFile;
-    protected File combinedFile;
-    
-    protected MetaPeptide[] metaPeptides;
+	protected MetaPeptide[] metaPeptides;
 
-    public MetaPilotIgcTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
-            ProgressBar secondBar) {
-        super(metaPar, mrp, progressBar, secondBar);
-        // Report templates will be copied in background during call() method
-        // This prevents UI freeze during task construction
-        LOGGER.info(getTaskName() + ": Constructor completed, report templates will be copied during execution");
-    }
-    
-    /**
-	 * Exports summary statistics for the analysis. This method generates the ID
-	 * summary report common to all IGC workflows.
+	public MetaPilotIgcTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
+			ProgressBar secondBar) {
+		super(metaPar, mrp, progressBar, secondBar);
+		// Report templates will be copied in background during call() method
+		// This prevents UI freeze during task construction
+		LOGGER.info(getTaskName() + ": Constructor completed, report templates will be copied during execution");
+	}
+
+	/**
+	 * Helper method to refine proteins using Occam's razor principle (similar to
+	 * DDA MAG workflow).
+	 * 
+	 * @param proteinToPeptides Map from protein names to their associated peptides
+	 * @param totalPeptides     Total number of unique peptides
+	 * @param threshold         Threshold for protein selection (e.g., 0.95 for 95%
+	 *                          peptide coverage)
+	 * @return Set of selected protein names
 	 */
-	protected boolean exportSummary(MetaPythonReportTask task) {
+	protected boolean generateIdentificationSummary(HashMap<String, Integer> fileIdMap, int[] filePsmCount,
+			HashSet<String>[] fileSequenceSets, String taskName) {
+
+		try (PrintWriter idWriter = new PrintWriter(new File(combinedFile, "id.tsv"))) {
+			idWriter.println("Raw file\tUnique peptide count\tPSM count");
+
+			String[] rawNames = fileIdMap.keySet().toArray(new String[fileIdMap.size()]);
+			Arrays.sort(rawNames, new Comparator<String>() {
+				@Override
+				public int compare(String o1, String o2) {
+					return fileIdMap.get(o1) - fileIdMap.get(o2);
+				}
+			});
+
+			for (int i = 0; i < rawNames.length; i++) {
+				idWriter.println(rawNames[i] + "\t" + fileSequenceSets[i].size() + "\t" + filePsmCount[i]);
+			}
+		} catch (IOException e) {
+			LOGGER.error(taskName + ": error in writing identification information", e);
+			System.err.println(
+					format.format(new Date()) + "\t" + taskName + ": error in writing identification information");
+			return false;
+		}
 
 		File final_summary_txt = new File(this.metaPar.getDbSearchResultFile(), "final_summary.tsv");
 		try {
@@ -111,7 +139,7 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 			}
 			idReader.close();
 
-			File ms2CountFile = new File(spectraDirFile, "ms2Count.txt");
+			File ms2CountFile = new File(metaPar.getSpectraFile(), "ms2Count.txt");
 			BufferedReader ms2CountReader = new BufferedReader(new FileReader(ms2CountFile));
 			line = ms2CountReader.readLine();
 
@@ -186,53 +214,8 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 			return false;
 
 		} else {
-			boolean finish = false;
-			File report_ID_summary = new File(metaPar.getReportDir(), "report_ID_summary.html");
-			if (summaryMetaFile != null && summaryMetaFile.exists()) {
-				finish = task.addTask(MetaPythonReportTask.ID_SUMMARY, final_summary_txt, report_ID_summary,
-						summaryMetaFile);
-			} else {
-				finish = task.addTask(MetaPythonReportTask.ID_SUMMARY, final_summary_txt, report_ID_summary);
-			}
-
-			return finish;
+			return true;
 		}
-	}
-
-	/**
-	 * Helper method to refine proteins using Occam's razor principle (similar to
-	 * DDA MAG workflow).
-	 * 
-	 * @param proteinToPeptides Map from protein names to their associated peptides
-	 * @param totalPeptides     Total number of unique peptides
-	 * @param threshold         Threshold for protein selection (e.g., 0.95 for 95%
-	 *                          peptide coverage)
-	 * @return Set of selected protein names
-	 */
-	protected boolean generateIdentificationSummary(HashMap<String, Integer> fileIdMap, int[] filePsmCount,
-			HashSet<String>[] fileSequenceSets, String taskName) {
-
-		try (PrintWriter idWriter = new PrintWriter(new File(combinedFile, "id.tsv"))) {
-			idWriter.println("Raw file\tUnique peptide count\tPSM count");
-
-			String[] rawNames = fileIdMap.keySet().toArray(new String[fileIdMap.size()]);
-			Arrays.sort(rawNames, new Comparator<String>() {
-				@Override
-				public int compare(String o1, String o2) {
-					return fileIdMap.get(o1) - fileIdMap.get(o2);
-				}
-			});
-
-			for (int i = 0; i < rawNames.length; i++) {
-				idWriter.println(rawNames[i] + "\t" + fileSequenceSets[i].size() + "\t" + filePsmCount[i]);
-			}
-		} catch (IOException e) {
-			LOGGER.error(taskName + ": error in writing identification information", e);
-			System.err.println(
-					format.format(new Date()) + "\t" + taskName + ": error in writing identification information");
-			return false;
-		}
-		return true;
 	}
 
 	protected boolean generatePeptideReport(ArrayList<MetaPeptide> peptideList, HashMap<String, MetaPSM> psmMap,
@@ -247,15 +230,15 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 			final_pep_txt = new File(this.metaPar.getDbSearchResultFile(), "final_peptides.tsv");
 			PrintWriter writer = new PrintWriter(final_pep_txt);
 
-                    StringBuilder titlesb = new StringBuilder();
-                    titlesb.append("Sequence").append("\t");
-                    titlesb.append("Base sequence").append("\t");
-                    titlesb.append("Length").append("\t");
-                    titlesb.append("Missed cleavages").append("\t");
-                    titlesb.append("Mass").append("\t");
-                    titlesb.append("Proteins").append("\t");
-                    titlesb.append("Charges").append("\t");
-                    titlesb.append("Score").append("\t");
+			StringBuilder titlesb = new StringBuilder();
+			titlesb.append("Sequence").append("\t");
+			titlesb.append("Base sequence").append("\t");
+			titlesb.append("Length").append("\t");
+			titlesb.append("Missed cleavages").append("\t");
+			titlesb.append("Mass").append("\t");
+			titlesb.append("Proteins").append("\t");
+			titlesb.append("Charges").append("\t");
+			titlesb.append("Score").append("\t");
 			titlesb.append("PEP").append("\t");
 
 			for (int i = 0; i < fileList.size(); i++) {
@@ -264,28 +247,28 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 
 			for (int i = 0; i < fileList.size(); i++) {
 				titlesb.append("MS/MS count " + fileList.get(i)).append("\t");
-                    }
+			}
 
-                    titlesb.append("Intensity").append("\t");
+			titlesb.append("Intensity").append("\t");
 
 			for (int i = 0; i < intensityTitle.length; i++) {
-				titlesb.append(intensityTitle[i]).append("\t");
-                    }
+				titlesb.append("Intensity " + intensityTitle[i]).append("\t");
+			}
 
-                    titlesb.append("Reverse").append("\t");
-                    titlesb.append("Potential contaminant").append("\t");
-                    titlesb.append("id").append("\t");
-                    titlesb.append("Protein group IDs").append("\t");
+			titlesb.append("Reverse").append("\t");
+			titlesb.append("Potential contaminant").append("\t");
+			titlesb.append("id").append("\t");
+			titlesb.append("Protein group IDs").append("\t");
 			titlesb.append("Total MS/MS count");
 
-                    writer.println(titlesb);
+			writer.println(titlesb);
 
 			int id = 0;
 			for (MetaPeptide peptide : peptideList) {
 				String fullSeq = peptide.getModSeq();
 				MetaPSM psm = psmMap.get(fullSeq);
 
-                        StringBuilder sb = new StringBuilder();
+				StringBuilder sb = new StringBuilder();
 				sb.append(psm.getFullSequence()).append("\t");
 				sb.append(psm.getBaseSequence()).append("\t");
 				sb.append(psm.getBaseSequence().length()).append("\t");
@@ -307,14 +290,14 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 						proSb.deleteCharAt(proSb.length() - 1);
 					}
 					sb.append(proSb);
-                        }
-                        sb.append("\t");
+				}
+				sb.append("\t");
 
 				int[] charge = pepChargeMap.get(fullSeq);
 				if (charge != null) {
-                        StringBuilder chargesb = new StringBuilder();
-                        for (int j = 0; j < charge.length; j++) {
-                            if (charge[j] == 1) {
+					StringBuilder chargesb = new StringBuilder();
+					for (int j = 0; j < charge.length; j++) {
+						if (charge[j] == 1) {
 							chargesb.append(j).append(";");
 						}
 					}
@@ -323,7 +306,7 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 							chargesb.deleteCharAt(chargesb.length() - 1);
 						}
 						sb.append(chargesb).append("\t");
-                        } else {
+					} else {
 						sb.append("2\t");
 					}
 				} else {
@@ -340,8 +323,8 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 					for (int j = 0; j < psmCount.length; j++) {
 						if (psmCount[j] > 0) {
 							totalMsCount += psmCount[j];
-                                sb.append("By MS/MS").append("\t");
-                            } else {
+							sb.append("By MS/MS").append("\t");
+						} else {
 							if (intensity[j] > 0) {
 								sb.append("MBR\t");
 							} else {
@@ -359,23 +342,23 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 					}
 					for (int j = 0; j < fileList.size(); j++) {
 						sb.append(0).append("\t");
-                            }
-                        }
+					}
+				}
 
-                        double totalIntensity = 0;
+				double totalIntensity = 0;
 				double[] intensity = peptide.getIntensity();
-                        for (int j = 0; j < intensity.length; j++) {
-                            totalIntensity += intensity[j];
-                        }
+				for (int j = 0; j < intensity.length; j++) {
+					totalIntensity += intensity[j];
+				}
 
 				sb.append(BigInteger.valueOf((long) Math.floor(totalIntensity))).append("\t");
 
-                        for (int j = 0; j < intensity.length; j++) {
+				for (int j = 0; j < intensity.length; j++) {
 					sb.append(BigInteger.valueOf((long) Math.floor(intensity[j]))).append("\t");
-                        }
+				}
 
-                        sb.append("").append("\t");
-                        sb.append("").append("\t");
+				sb.append("").append("\t");
+				sb.append("").append("\t");
 				sb.append(id).append("\t");
 
 				StringBuilder groupSb = new StringBuilder();
@@ -397,12 +380,12 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 
 			writer.close();
 
-            } catch (Exception e) {
+		} catch (Exception e) {
 			LOGGER.error(taskName + ": error in writing the peptides to " + final_pep_txt, e);
 			System.err.println(format.format(new Date()) + "\t" + taskName + ": error in writing the peptides to "
 					+ final_pep_txt);
-                return false;
-            }
+			return false;
+		}
 
 		LOGGER.info(taskName + ": peptide report has been exported to " + final_pep_txt);
 		System.out.println(
@@ -427,23 +410,23 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 			final_pro_txt = new File(this.metaPar.getDbSearchResultFile(), "final_proteins.tsv");
 			PrintWriter writer = new PrintWriter(final_pro_txt);
 
-                    StringBuilder titlesb = new StringBuilder();
-                    titlesb.append("Protein IDs").append("\t");
-                    titlesb.append("Peptide counts (all)").append("\t");
-                    titlesb.append("Peptide counts (razor)").append("\t");
+			StringBuilder titlesb = new StringBuilder();
+			titlesb.append("Protein IDs").append("\t");
+			titlesb.append("Peptide counts (all)").append("\t");
+			titlesb.append("Peptide counts (razor)").append("\t");
 			titlesb.append("Number of PSMs").append("\t");
 			titlesb.append("PEP").append("\t");
-                    titlesb.append("Intensity").append("\t");
+			titlesb.append("Intensity").append("\t");
 
 			for (int i = 0; i < intensityTitle.length; i++) {
 				titlesb.append(intensityTitle[i]).append("\t");
-                    }
+			}
 
-                    titlesb.append("Reverse").append("\t");
-                    titlesb.append("Potential contaminant").append("\t");
-                    titlesb.append("id").append("\t");
+			titlesb.append("Reverse").append("\t");
+			titlesb.append("Potential contaminant").append("\t");
+			titlesb.append("id").append("\t");
 
-                    writer.println(titlesb);
+			writer.println(titlesb);
 
 			for (String protein : proteins) {
 				StringBuilder sb = new StringBuilder();
@@ -493,12 +476,12 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 
 			writer.close();
 
-            } catch (Exception e) {
+		} catch (Exception e) {
 			LOGGER.error(taskName + ": error in writing the proteins to " + final_pro_txt, e);
 			System.err.println(format.format(new Date()) + "\t" + taskName + ": error in writing the proteins to "
 					+ final_pro_txt);
-                return false;
-            }
+			return false;
+		}
 
 		LOGGER.info(taskName + ": protein report has been exported to " + final_pro_txt);
 		System.out.println(
@@ -598,12 +581,12 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 				writer.println(sb);
 			}
 
-        } catch (IOException e) {
+		} catch (IOException e) {
 			LOGGER.error(taskName + ": error in writing functional annotation to " + funTsv.getName(), e);
 			System.err.println(format.format(new Date()) + "\t" + taskName
 					+ ": error in writing functional annotation to " + funTsv.getName());
-            return false;
-        }
+			return false;
+		}
 
 		LOGGER.info(taskName + ": functional annotation completed - wrote " + proteins.length + " proteins to "
 				+ funTsv.getName());
@@ -659,8 +642,8 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 		} catch (Exception e) {
 			LOGGER.error(taskName + ": Error accessing taxonomy database", e);
 			System.err.println(format.format(new Date()) + "\t" + taskName + ": Error accessing taxonomy database");
-                return false;
-            }
+			return false;
+		}
 
 		// Build taxonomic rank maps (similar to MAG workflow but protein-based)
 		TaxonomyRanks[] mainRanks = TaxonomyRanks.getMainRanks();
@@ -723,13 +706,15 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 				} else if (lineageTaxonId == -1) {
 					LOGGER.debug(taskName + ": Missing rank in lineage for taxon " + taxonId + " (sparse lineage)");
 				} else if (lineageTaxonId == 0) {
-					LOGGER.debug(taskName + ": Invalid taxon ID 0 in lineage for taxon " + taxonId + " (data corruption)");
+					LOGGER.debug(
+							taskName + ": Invalid taxon ID 0 in lineage for taxon " + taxonId + " (data corruption)");
 				}
 			}
-			
+
 			if (validTaxonIds.isEmpty()) {
-				LOGGER.warn(taskName + ": No valid taxon IDs found in lineage for taxon " + taxonId + " (lineage contained only missing ranks or invalid IDs), skipping");
-				
+				LOGGER.warn(taskName + ": No valid taxon IDs found in lineage for taxon " + taxonId
+						+ " (lineage contained only missing ranks or invalid IDs), skipping");
+
 				// Debug this specific taxon to understand the issue
 				if (taxonId == 9606) { // Homo sapiens
 					LOGGER.warn(taskName + ": Debugging Homo sapiens lineage issue - this should not happen!");
@@ -738,7 +723,7 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 				}
 				continue; // Skip if no valid taxon IDs in lineage
 			}
-			
+
 			// Convert back to array for processing
 			mainTaxonIds = validTaxonIds.stream().mapToInt(Integer::intValue).toArray();
 
@@ -825,7 +810,7 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 				for (String intensity : intensityTitle) {
 					if (intensity.startsWith("Intensity ")) {
 						header.append("\t").append(intensity);
-                } else {
+					} else {
 						header.append("\tIntensity ").append(intensity);
 					}
 				}
@@ -865,7 +850,7 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 					+ " taxonomic IDs to " + taxaFile.getName());
 			System.out.println(format.format(new Date()) + "\t" + taskName + ": taxonomy analysis completed");
 
-            } catch (IOException e) {
+		} catch (IOException e) {
 			LOGGER.error(taskName + ": error in writing taxonomy information", e);
 			System.err.println(format.format(new Date()) + "\t" + taskName + ": error in writing taxonomy information");
 			return false;
@@ -878,6 +863,12 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 
 		updateMessage(taskName + ": exporting report");
 
+		// Copy report templates in background
+		if (!copyReportTemplatesInBackground()) {
+			LOGGER.error(getTaskName() + ": Failed to copy report templates");
+			return false;
+		}
+
 		LOGGER.info(taskName + ": exporting report started");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": exporting report started");
 
@@ -888,7 +879,9 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 			reportDir.mkdirs();
 		}
 
-		File reportHtmlDir = new File(reportDir + "\\reports\\rmd_html");
+		metaPar.setReportDir(reportDir);
+
+		File reportHtmlDir = new File(reportDir + "\\reports");
 		if (!reportHtmlDir.exists()) {
 			reportHtmlDir.mkdirs();
 		}
@@ -903,7 +896,12 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 
 		// Generate summary report
 		MetaPythonReportTask reportTask = new MetaPythonReportTask(metaPar.getThreadCount(), mrp);
-		this.exportSummary(reportTask);
+		reportTask.setWorkflowType("IGC");
+		reportTask.initializeManifestGenerator(reportHtmlDir);
+
+		// Create initial manifest file to ensure index page can load
+		ReportManifestGenerator manifestGen = new ReportManifestGenerator(reportHtmlDir);
+		manifestGen.createInitialManifest();
 
 		// Add individual report tasks
 		boolean reportSuccess = true;
@@ -922,50 +920,71 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 		}
 
 		// Add peptide report
-        if (final_pep_txt.exists() && final_pep_txt.length() > 0) {
-            File report_peptides_summary = new File(reportHtmlDir, "report_peptides_summary.html");
+		if (final_pep_txt.exists() && final_pep_txt.length() > 0) {
+			File report_peptides_summary = new File(reportHtmlDir, "report_peptides_summary.html");
 			if (summaryMetaFile != null && summaryMetaFile.exists()) {
 				reportSuccess &= reportTask.addTask(MetaPythonReportTask.PEPTIDE, final_pep_txt,
 						report_peptides_summary, summaryMetaFile);
-                } else {
+			} else {
 				reportSuccess &= reportTask.addTask(MetaPythonReportTask.PEPTIDE, final_pep_txt,
 						report_peptides_summary);
-            }
-        }
+			}
+		}
 
 		// Add protein report
-        if (final_pro_txt.exists() && final_pro_txt.length() > 0) {
-            File report_proteinGroups_summary = new File(reportHtmlDir, "report_proteinGroups_summary.html");
+		if (final_pro_txt.exists() && final_pro_txt.length() > 0) {
+			File report_proteinGroups_summary = new File(reportHtmlDir, "report_proteinGroups_summary.html");
 			if (summaryMetaFile != null && summaryMetaFile.exists()) {
 				reportSuccess &= reportTask.addTask(MetaPythonReportTask.PROTEIN, final_pro_txt,
 						report_proteinGroups_summary, summaryMetaFile);
-                } else {
+			} else {
 				reportSuccess &= reportTask.addTask(MetaPythonReportTask.PROTEIN, final_pro_txt,
 						report_proteinGroups_summary);
-            }
-        }
+			}
+		}
 
 		// Add taxonomy report
 		File taxaReportFile = new File(metaPar.getDbSearchResultFile(), "taxonomy_analysis\\Taxa.tsv");
 		if (taxaReportFile.exists() && taxaReportFile.length() > 0) {
-        File report_taxonomy_summary = new File(reportHtmlDir, "report_taxonomy_summary.html");
+			File report_taxonomy_summary = new File(reportHtmlDir, "report_taxonomy_summary.html");
 			if (summaryMetaFile != null && summaryMetaFile.exists()) {
 				reportSuccess &= reportTask.addTask(MetaPythonReportTask.TAXONOMY, taxaReportFile,
 						report_taxonomy_summary, summaryMetaFile);
-            } else {
+			} else {
 				reportSuccess &= reportTask.addTask(MetaPythonReportTask.TAXONOMY, taxaReportFile,
 						report_taxonomy_summary);
-            }
-        }
+			}
+		}
+
+		// Generate tree.js and bubble chart for IGC workflow
+		File jsOutput = new File(reportHtmlDir, "tree.js");
+		if (!jsOutput.exists() || jsOutput.length() == 0) {
+			// Generate tree.js from taxonomy data if available
+			generateTreeJsForIgc(jsOutput);
+		}
+
+		// Generate bubble chart report from tree.js data (optional - don't fail if this
+		// doesn't work)
+		File bubbleChartOutput = new File(reportHtmlDir, "bubble_chart_report.html");
+		if (!bubbleChartOutput.exists() || bubbleChartOutput.length() == 0) {
+			try {
+				generateBubbleChartReport(jsOutput, bubbleChartOutput);
+			} catch (Exception e) {
+				LOGGER.warn(getTaskName() + ": Bubble chart generation failed, continuing with other reports: "
+						+ e.getMessage());
+				System.out.println(format.format(new Date()) + "\t" + getTaskName()
+						+ ": Bubble chart generation failed, continuing with other reports");
+			}
+		}
 
 		// Add function report
 		File funReportTsv = new File(metaPar.getDbSearchResultFile(), "functional_annotation\\functions.tsv");
 		if (funReportTsv.exists() && funReportTsv.length() > 0) {
-        File report_function_summary = new File(reportHtmlDir, "report_function_summary.html");
+			File report_function_summary = new File(reportHtmlDir, "report_function_summary.html");
 			if (summaryMetaFile != null && summaryMetaFile.exists()) {
 				reportSuccess &= reportTask.addTask(MetaPythonReportTask.FUNCTION, funReportTsv,
 						report_function_summary, summaryMetaFile);
-            } else {
+			} else {
 				reportSuccess &= reportTask.addTask(MetaPythonReportTask.FUNCTION, funReportTsv,
 						report_function_summary);
 			}
@@ -986,17 +1005,17 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 			System.out.println(
 					format.format(new Date()) + "\t" + taskName + ": Report generation thread was interrupted");
 			Thread.currentThread().interrupt();
-            return false;
-        }
+			return false;
+		}
 
 		try {
 			boolean finish = reportTask.get();
 			if (finish) {
 				LOGGER.info(taskName + ": report generation successes");
 				System.out.println(format.format(new Date()) + "\t" + taskName + ": report generation successes");
-                return true;
-            }
-        } catch (InterruptedException | ExecutionException e) {
+				return true;
+			}
+		} catch (InterruptedException | ExecutionException e) {
 			LOGGER.error(taskName + ": error in the report generation", e);
 			System.out.println(format.format(new Date()) + "\t" + taskName + ": error in the report generation");
 			return false;
@@ -1006,32 +1025,76 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 	}
 
 	/**
-	 * Helper method to update peptide protein mappings with final protein names.
-	 * 
-	 * @param peptides      Array of peptides to update
-	 * @param finalProteins Set of final selected protein names
+	 * Generate tree.js file for IGC workflow from taxonomy data.
 	 */
-	private void updatePeptideProteinMappings(MetaPeptide[] peptides, HashSet<String> finalProteins) {
-		int updatedCount = 0;
+	private void generateTreeJsForIgc(File jsOutput) {
+		try {
+			LOGGER.info(getTaskName() + ": Generating tree.js for IGC workflow");
+			System.out.println(
+					format.format(new Date()) + "\t" + getTaskName() + ": Generating tree.js for IGC workflow");
 
-		for (MetaPeptide peptide : peptides) {
-			if (peptide != null && peptide.getProteins() != null) {
-				ArrayList<String> newProteins = new ArrayList<String>();
+			// For IGC workflow, we'll create a simple tree.js structure
+			// This is a placeholder - in a real implementation, you'd parse the taxonomy
+			// TSV data
+			String treeJsContent = "let data = '[]'; // IGC workflow - no hierarchical tree data available";
 
-				for (String protein : peptide.getProteins()) {
-					if (finalProteins.contains(protein)) {
-						newProteins.add(protein);
-					}
-				}
-
-				if (!newProteins.isEmpty()) {
-					peptide.setProteins(newProteins.toArray(new String[newProteins.size()]));
-					updatedCount++;
-				}
+			try (PrintWriter writer = new PrintWriter(jsOutput)) {
+				writer.println(treeJsContent);
 			}
-		}
 
-		LOGGER.info(getTaskName() + ": Updated " + updatedCount + " peptides with final protein mappings");
+			LOGGER.info(getTaskName() + ": Generated tree.js for IGC workflow: " + jsOutput.getName());
+
+		} catch (Exception e) {
+			LOGGER.error(getTaskName() + ": Error generating tree.js for IGC workflow", e);
+			System.err.println(
+					format.format(new Date()) + "\t" + getTaskName() + ": Error generating tree.js: " + e.getMessage());
+		}
+	}
+
+	/**
+	 * Generate bubble chart report from tree.js data using Python.
+	 */
+	private void generateBubbleChartReport(File treeJsFile, File outputFile) {
+		try {
+			LOGGER.info(getTaskName() + ": Generating bubble chart report from " + treeJsFile.getName());
+			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Generating bubble chart report");
+
+			// Use MetaPythonReportTask to generate the bubble chart
+			MetaPythonReportTask reportTask = new MetaPythonReportTask(1, mrp);
+			boolean success = reportTask.addTask(MetaPythonReportTask.BUBBLE_CHART, treeJsFile, outputFile);
+
+			if (success) {
+				// Wait for completion
+				reportTask.run();
+				boolean result = reportTask.get();
+
+				if (result) {
+					LOGGER.info(
+							getTaskName() + ": Bubble chart report generated successfully: " + outputFile.getName());
+					System.out.println(format.format(new Date()) + "\t" + getTaskName()
+							+ ": Bubble chart report generated successfully");
+
+					// Add to manifest
+					File reportsDir = new File(metaPar.getReportDir(), "reports");
+					ReportManifestGenerator manifestGen = new ReportManifestGenerator(reportsDir);
+					manifestGen.addReportEntry("Bubble Chart Report", "bubble_chart_report.html",
+							"Interactive hierarchical bubble chart showing taxonomic abundance with treemap, sunburst, and distribution visualizations.",
+							new String[] { "bubble-chart", "taxonomy", "hierarchical", "treemap" });
+				} else {
+					LOGGER.error(getTaskName() + ": Failed to generate bubble chart report");
+					System.err.println(format.format(new Date()) + "\t" + getTaskName()
+							+ ": Failed to generate bubble chart report");
+				}
+			} else {
+				LOGGER.error(getTaskName() + ": Failed to add bubble chart task");
+				System.err.println(
+						format.format(new Date()) + "\t" + getTaskName() + ": Failed to add bubble chart task");
+			}
+		} catch (Exception e) {
+			LOGGER.error(getTaskName() + ": Error generating bubble chart report", e);
+			System.err.println(format.format(new Date()) + "\t" + getTaskName()
+					+ ": Error generating bubble chart report: " + e.getMessage());
+		}
 	}
 
 	/**
@@ -1150,7 +1213,6 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 		}
 	}
 
-
 	/**
 	 * Save pept2prot batch results to a temporary JSON file.
 	 * 
@@ -1174,7 +1236,7 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 
 				// Add uniprotIds array
 				org.json.JSONArray uniprotIdsArray = new org.json.JSONArray();
-					String[] uniprotIds = result.getUniprotIds();
+				String[] uniprotIds = result.getUniprotIds();
 				if (uniprotIds != null) {
 					for (String uniprotId : uniprotIds) {
 						uniprotIdsArray.put(uniprotId);
@@ -1283,9 +1345,6 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 		}
 	}
 
-
-
-
 	/**
 	 * Task for post-analysis processing in DDA IGC workflows. Handles protein
 	 * inference, filtering, and report generation with proper progress tracking.
@@ -1374,7 +1433,7 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 				int[] charges;
 				if (pepChargeMap.containsKey(modseq)) {
 					charges = pepChargeMap.get(modseq);
-			} else {
+				} else {
 					charges = new int[7];
 					pepChargeMap.put(modseq, charges);
 				}
@@ -1400,7 +1459,7 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 					if (PEP < psmMap.get(modseq).getPEP()) {
 						psmMap.put(modseq, psm);
 					}
-			} else {
+				} else {
 					psmMap.put(modseq, psm);
 				}
 			}
@@ -1433,19 +1492,6 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 			updateMessage("Protein inference complete, updating peptide protein mappings...");
 			updateProgress(0.25, 1.0);
 
-			// Update peptide protein mappings with filtered proteins
-			HashSet<String> validProteins = new HashSet<String>(proteinInfoMap.keySet());
-			for (int i = 0; i < quanPeps.length; i++) {
-				String[] proteins = quanPeps[i].getProteins();
-				ArrayList<String> filteredProteins = new ArrayList<String>();
-				for (String protein : proteins) {
-					if (validProteins.contains(protein)) {
-						filteredProteins.add(protein);
-					}
-				}
-				quanPeps[i].setProteins(filteredProteins.toArray(new String[filteredProteins.size()]));
-			}
-
 			// Update progress: Peptide mapping complete
 			updateMessage("Peptide mapping complete, building PSM maps...");
 			updateProgress(0.40, 1.0);
@@ -1461,9 +1507,9 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 			HashMap<String, HashSet<String>> razorPepCountMap = new HashMap<String, HashSet<String>>();
 			HashSet<String> pepSequenceSet = new HashSet<String>();
 			ArrayList<MetaPeptide> peptideList = new ArrayList<MetaPeptide>();
-			
+
 			HashMap<String, Integer> psmCountMap = new HashMap<String, Integer>();
-			
+
 			// Process peptides and build protein maps
 			for (int i = 0; i < quanPeps.length; i++) {
 				if (razorProteins[i] != null) {
@@ -1474,7 +1520,7 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 					// Build razor peptide count map
 					if (razorPepCountMap.containsKey(razorProteins[i])) {
 						razorPepCountMap.get(razorProteins[i]).add(stripeSequence);
-			} else {
+					} else {
 						HashSet<String> set = new HashSet<String>();
 						set.add(stripeSequence);
 						razorPepCountMap.put(razorProteins[i], set);
@@ -1552,7 +1598,7 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 							if (speciesScoreMap.containsKey(species)) {
 								if (psmCountMap.containsKey(proteins[j])) {
 									psmCountMap.put(proteins[j], psmCountMap.get(proteins[j]) + totalPsmCount);
-			} else {
+								} else {
 									psmCountMap.put(proteins[j], totalPsmCount);
 								}
 
@@ -1656,7 +1702,7 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 			HashMap<String, HashSet<String>> peptideToProteins = new HashMap<String, HashSet<String>>();
 			HashMap<String, HashSet<String>> proteinToPeptides = new HashMap<String, HashSet<String>>();
 
-		for (MetaPeptide peptide : peptides) {
+			for (MetaPeptide peptide : peptides) {
 				if (peptide != null && peptide.getSequence() != null && peptide.getProteins() != null) {
 					String sequence = peptide.getSequence();
 					String[] peptideProteins = peptide.getProteins();
@@ -1767,7 +1813,7 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 						completedBatches++;
 						logger.info(getTaskName() + ": Batch " + (batch + 1) + " returned " + batchResult.size()
 								+ " mappings and saved to temp file");
-			} else {
+					} else {
 						logger.warn(getTaskName() + ": Failed to save temp file for batch " + (batch + 1)
 								+ ", but adding results to map");
 						pept2protMap.putAll(batchResult);
@@ -1967,9 +2013,9 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 			if (proteinInfoMap.isEmpty()) {
 				logger.warn(getTaskName()
 						+ ": No protein information returned from Unipept protinfo API after processing all batches");
-			return new HashMap<String, UnipProInfo>();
-		}
-		
+				return new HashMap<String, UnipProInfo>();
+			}
+
 			logger.info(getTaskName() + ": Successfully retrieved information for " + proteinInfoMap.size()
 					+ " proteins from Unipept protinfo API across " + totalBatches + " batches " + "(completed: "
 					+ completedBatches + ", skipped: " + skippedBatches + ")");
@@ -2043,9 +2089,6 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 			logger.info(getTaskName() + ": Protein-level filtering selected " + finalProteinSet.size()
 					+ " Uniprot proteins");
 
-			// Step 11: Update peptide protein mappings with final protein names
-			parentTask.updatePeptideProteinMappings(quanPeps, finalProteinSet);
-
 			// Step 12: Build final protein info map with only filtered proteins
 			HashMap<String, UnipProInfo> finalProteinInfoMap = new HashMap<String, UnipProInfo>();
 			for (String protein : finalProteinSet) {
@@ -2055,6 +2098,7 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 				}
 			}
 
+			int updatePeptideCount = 0;
 			for (MetaPeptide peptide : peptides) {
 				String seq = peptide.getSequence();
 				if (pept2protMap.containsKey(seq)) {
@@ -2070,16 +2114,17 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 					if (prolist.size() > 0) {
 						String[] pros = prolist.toArray(String[]::new);
 						peptide.setProteins(pros);
+						updatePeptideCount++;
 					}
 				}
 			}
 
 			logger.info(getTaskName() + ": Protein inference complete - returning " + finalProteinInfoMap.size()
-					+ " filtered proteins with taxonomic information");
+					+ " filtered proteins with taxonomic information, " + updatePeptideCount
+					+ " peptides have been updated");
 
 			return finalProteinInfoMap;
 		}
-		
 
 		/**
 		 * Refines genomes based on peptide intensity and FDR calculation. Uses default
@@ -2143,6 +2188,7 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 
 				String[] proteins = quanPeps[i].getProteins();
 				for (int j = 0; j < proteins.length; j++) {
+//					LOGGER.info(proteins[j]+"\t"+uniProInfoMap.containsKey(proteins[j])+"\t"+uniProInfoMap.size());
 					if (uniProInfoMap.containsKey(proteins[j])) {
 						String species = String.valueOf(uniProInfoMap.get(proteins[j]).getTaxId());
 						if (speciesIntensityMap.containsKey(species)) {
@@ -2392,7 +2438,7 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 							if (speciesScoreMap.containsKey(species)) {
 								count++;
 							}
-        } else {
+						} else {
 							count++;
 						}
 					}
@@ -2408,7 +2454,7 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 									if (proteinIntensityMap.containsKey(proteins[j])) {
 										proteinIntensityMap.put(proteins[j],
 												proteinIntensityMap.get(proteins[j]) + intensity);
-            } else {
+									} else {
 										proteinIntensityMap.put(proteins[j], intensity);
 									}
 								}

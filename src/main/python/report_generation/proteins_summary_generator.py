@@ -23,151 +23,151 @@ class ProteinsSummaryGenerator(BaseReportGenerator):
             )
         
         fig = make_subplots(
-            rows=4, cols=2,
+            rows=3, cols=2,
             subplot_titles=(
-                'Protein Counts per Raw File',
-                'Peptides per Protein Distribution',
-                'PCA Analysis of Samples',
-                'UMAP Analysis of Samples' if UMAP_AVAILABLE else 'Sample Clustering',
-                'Sample Clustering Dendrogram',
-                'PSMs per Protein',
-                'Protein Intensity Distribution',
-                'Group Comparison (if metadata available)'
+                'Peptide Counts (All) Distribution',
+                'Peptide Counts (Razor) Distribution',
+                'Number of PSMs Distribution',
+                'Intensity Distribution',
+                'Protein Intensity Heatmap (All Proteins by Total Intensity)',
+                ''
             ),
             specs=[[{"colspan": 1}, {"colspan": 1}],
                    [{"colspan": 1}, {"colspan": 1}],
-                   [{"colspan": 1}, {"colspan": 1}],
-                   [{"colspan": 1}, {"colspan": 1}]]
+                   [{"colspan": 2}, None]]
         )
 
         intensity_cols, sample_names, groups, group_colors = self.extract_sample_info(proteins_df, metadata)
 
-        # Protein counts per raw file
+        # Use experiment names directly (no file ID mapping needed)
+        simple_names = sample_names
+
+        # 1. Peptide Counts (All) Distribution by Sample (row 1, col 1)
+        if 'Peptide counts (all)' in proteins_df.columns and len(intensity_cols) > 0:
+            all_peptide_data = []
+            sample_labels = []
+            for i, col in enumerate(intensity_cols):
+                # Use File ID instead of long sample name
+                file_id = simple_names[i] if i < len(simple_names) else f"File_{i+1}"
+                # Get peptide counts for proteins with intensity > 0 in this sample
+                sample_proteins = proteins_df[proteins_df[col] > 0]
+                if len(sample_proteins) > 0:
+                    peptide_counts = sample_proteins['Peptide counts (all)'].tolist()
+                    all_peptide_data.extend(peptide_counts)
+                    sample_labels.extend([file_id] * len(peptide_counts))
+            
+            if all_peptide_data:
+                fig.add_trace(go.Violin(x=sample_labels, y=all_peptide_data, name='Peptide Counts (All)',
+                                      box_visible=True, meanline_visible=True,
+                                      points='all', pointpos=0, jitter=0.3,
+                                      marker_color=self.colors['primary']), row=1, col=1)
+
+        # 2. Peptide Counts (Razor) Distribution by Sample (row 1, col 2)
+        if 'Peptide counts (razor)' in proteins_df.columns and len(intensity_cols) > 0:
+            razor_peptide_data = []
+            sample_labels = []
+            for i, col in enumerate(intensity_cols):
+                # Use File ID instead of long sample name
+                file_id = simple_names[i] if i < len(simple_names) else f"File_{i+1}"
+                # Get peptide counts for proteins with intensity > 0 in this sample
+                sample_proteins = proteins_df[proteins_df[col] > 0]
+                if len(sample_proteins) > 0:
+                    peptide_counts = sample_proteins['Peptide counts (razor)'].tolist()
+                    razor_peptide_data.extend(peptide_counts)
+                    sample_labels.extend([file_id] * len(peptide_counts))
+            
+            if razor_peptide_data:
+                fig.add_trace(go.Violin(x=sample_labels, y=razor_peptide_data, name='Peptide Counts (Razor)',
+                                      box_visible=True, meanline_visible=True,
+                                      points='all', pointpos=0, jitter=0.3,
+                                      marker_color=self.colors['secondary']), row=1, col=2)
+
+        # 3. Number of PSMs Distribution by Sample (row 2, col 1)
+        if 'Number of PSMs' in proteins_df.columns and len(intensity_cols) > 0:
+            psm_data = []
+            sample_labels = []
+            for i, col in enumerate(intensity_cols):
+                # Use File ID instead of long sample name
+                file_id = simple_names[i] if i < len(simple_names) else f"File_{i+1}"
+                # Get PSM counts for proteins with intensity > 0 in this sample
+                sample_proteins = proteins_df[proteins_df[col] > 0]
+                if len(sample_proteins) > 0:
+                    psm_counts = sample_proteins['Number of PSMs'].tolist()
+                    psm_data.extend(psm_counts)
+                    sample_labels.extend([file_id] * len(psm_counts))
+            
+            if psm_data:
+                fig.add_trace(go.Violin(x=sample_labels, y=psm_data, name='Number of PSMs',
+                                      box_visible=True, meanline_visible=True,
+                                      points='all', pointpos=0, jitter=0.3,
+                                      marker_color=self.colors['tertiary']), row=2, col=1)
+
+        # 4. Intensity Distribution by Sample (row 2, col 2)
         if len(intensity_cols) > 0:
-            protein_counts = [((proteins_df[col] > 0).sum()) for col in intensity_cols]
+            intensity_data = []
+            sample_labels = []
+            for i, col in enumerate(intensity_cols):
+                # Use File ID instead of long sample name
+                file_id = simple_names[i] if i < len(simple_names) else f"File_{i+1}"
+                # Get intensity values > 0 for this sample
+                non_zero_intensities = proteins_df[proteins_df[col] > 0][col].tolist()
+                if non_zero_intensities:
+                    intensity_data.extend(non_zero_intensities)
+                    sample_labels.extend([file_id] * len(non_zero_intensities))
             
-            colors = [group_colors[groups[i]] if groups and group_colors else self.colors['primary'] 
-                     for i in range(len(sample_names))]
+            if intensity_data:
+                fig.add_trace(go.Violin(x=sample_labels, y=intensity_data, name='Intensity',
+                                      box_visible=True, meanline_visible=True,
+                                      points='all', pointpos=0, jitter=0.3,
+                                      marker_color=self.colors['success']), row=2, col=2)
+
+        # 5. Protein Intensity Heatmap (row 3, spanning both columns)
+        if 'Intensity' in proteins_df.columns and len(intensity_cols) > 0:
+            # Use all proteins ordered by total intensity
+            all_proteins = proteins_df.sort_values('Intensity', ascending=False)
             
-            fig.add_trace(go.Bar(x=sample_names, y=protein_counts, name='Protein Counts',
-                               marker_color=colors), row=1, col=1)
+            # Prepare data for heatmap with log transformation
+            heatmap_data = []
+            
+            for _, row in all_proteins.iterrows():
+                # Get intensity values for each sample
+                sample_intensities = []
+                for col in intensity_cols:
+                    intensity_val = row[col] if pd.notna(row[col]) else 0
+                    # Apply log transformation but keep 0 as 0
+                    if intensity_val > 0:
+                        log_intensity = np.log10(intensity_val)
+                    else:
+                        log_intensity = 0
+                    sample_intensities.append(log_intensity)
+                heatmap_data.append(sample_intensities)
+            
+            # Create heatmap with File IDs
+            heatmap_sample_names = simple_names[:len(intensity_cols)] if len(simple_names) > 0 else [f"Sample_{i+1}" for i in range(len(intensity_cols))]
+            
+            fig.add_trace(go.Heatmap(
+                z=heatmap_data,
+                x=heatmap_sample_names,
+                y=None,  # Don't show protein labels - too messy with all proteins
+                colorscale='Viridis',
+                showscale=False,  # Remove color bar
+                name='Log Protein Intensity Heatmap',
+                hovertemplate='<b>Sample:</b> %{x}<br><b>Log Intensity:</b> %{z:.2f}<br><extra></extra>'
+            ), row=3, col=1)
 
-        # Peptides per protein distribution
-        all_pep_cols = ['Peptide counts (all)', 'Peptides', 'Peptide count']
-        all_pep_col = next((col for col in all_pep_cols if col in proteins_df.columns), None)
-        
-        if all_pep_col:
-            fig.add_trace(go.Histogram(x=proteins_df[all_pep_col], name='Peptides per Protein',
-                                     marker_color=self.colors['secondary'], nbinsx=25), row=1, col=2)
-
-        # Advanced dimensionality reduction analysis
-        if len(intensity_cols) >= 2:
-            try:
-                scaled_data, sample_feature = self.prepare_sample_feature_matrices(
-                    proteins_df, intensity_cols, log_transform=True, pseudocount=1.0, standardize=True
-                )
-                if scaled_data is not None:
-                    # PCA
-                    pca, pca_result = self.compute_pca(scaled_data, n_components=2)
-                    if pca_result is not None:
-                        if groups and group_colors:
-                            for group in set(groups):
-                                group_indices = [i for i, g in enumerate(groups) if g == group]
-                                fig.add_trace(go.Scatter(
-                                    x=[pca_result[i, 0] for i in group_indices],
-                                    y=[pca_result[i, 1] for i in group_indices] if pca_result.shape[1] > 1 else [0] * len(group_indices),
-                                    mode='markers+text',
-                                    text=[sample_names[i] for i in group_indices],
-                                    textposition="top center",
-                                    marker=dict(size=12, color=group_colors[group], line=dict(width=2, color='white')),
-                                    name=f'Group {group}',
-                                    showlegend=True
-                                ), row=2, col=1)
-                        else:
-                            fig.add_trace(go.Scatter(
-                                x=pca_result[:, 0],
-                                y=pca_result[:, 1] if pca_result.shape[1] > 1 else np.zeros(len(pca_result)),
-                                mode='markers+text',
-                                text=sample_names,
-                                textposition="top center",
-                                marker=dict(size=12, color=self.colors['tertiary'], line=dict(width=2, color='white')),
-                                name='Samples'
-                            ), row=2, col=1)
-
-                    # UMAP (if available)
-                    if scaled_data.shape[0] > 3:
-                        _, umap_result = self.compute_umap(scaled_data, n_components=2, random_state=42)
-                        if umap_result is not None:
-                            if groups and group_colors:
-                                for group in set(groups):
-                                    group_indices = [i for i, g in enumerate(groups) if g == group]
-                                    fig.add_trace(go.Scatter(
-                                        x=[umap_result[i, 0] for i in group_indices],
-                                        y=[umap_result[i, 1] for i in group_indices],
-                                        mode='markers+text',
-                                        text=[sample_names[i] for i in group_indices],
-                                        textposition="top center",
-                                        marker=dict(size=12, color=group_colors[group], line=dict(width=2, color='white')),
-                                        name=f'Group {group}',
-                                        showlegend=False
-                                    ), row=2, col=2)
-                            else:
-                                fig.add_trace(go.Scatter(
-                                    x=umap_result[:, 0], y=umap_result[:, 1],
-                                    mode='markers+text', text=sample_names, textposition="top center",
-                                    marker=dict(size=12, color=self.colors['success'], line=dict(width=2, color='white')),
-                                    name='UMAP'
-                                ), row=2, col=2)
-
-                    # Hierarchical clustering
-                    icoord, dcoord = self.compute_dendrogram_coords(scaled_data)
-                    if icoord is not None and dcoord is not None:
-                        for i in range(len(icoord)):
-                            fig.add_trace(go.Scatter(
-                                x=[icoord[i][0], icoord[i][1], icoord[i][2], icoord[i][3]],
-                                y=[dcoord[i][0], dcoord[i][1], dcoord[i][2], dcoord[i][3]],
-                                mode='lines', line=dict(color=self.colors['success'], width=2),
-                                showlegend=False
-                            ), row=3, col=1)
-            except Exception as e:
-                fig.add_annotation(text=f"Analysis failed: {str(e)[:50]}...",
-                                   xref="x3", yref="y3", x=0.5, y=0.5, showarrow=False, row=2, col=1)
-
-        # PSM and Intensity distributions
-        psm_cols = ['Number of PSMs', 'PSMs', 'MS/MS count']
-        psm_col = next((col for col in psm_cols if col in proteins_df.columns), None)
-        
-        if psm_col:
-            fig.add_trace(go.Histogram(x=proteins_df[psm_col], name='PSMs per Protein',
-                                     marker_color=self.colors['light_blue'], nbinsx=25), row=3, col=2)
-
-        intensity_col = next((col for col in ['Intensity', 'Total Intensity'] if col in proteins_df.columns), None)
-        
-        if intensity_col:
-            intensities = proteins_df[intensity_col][proteins_df[intensity_col] > 0]
-            fig.add_trace(go.Histogram(x=np.log10(intensities), name='Log10(Intensity)',
-                                     marker_color=self.colors['light_purple'], nbinsx=40), row=4, col=1)
-
-        # Group comparison box plot
-        if groups and group_colors and intensity_col:
-            for group in set(groups):
-                group_samples = [sample_names[i] for i, g in enumerate(groups) if g == group]
-                group_cols = [col for col in intensity_cols if any(sample in col for sample in group_samples)]
-                
-                if group_cols:
-                    group_intensities = proteins_df[group_cols].sum(axis=1)
-                    group_intensities = group_intensities[group_intensities > 0]
-                    
-                    fig.add_trace(go.Box(y=np.log10(group_intensities), name=f'Group {group}',
-                                       marker_color=group_colors[group]), row=4, col=2)
-
-        fig.update_layout(height=1600, title_text="MetaPilot Proteins Summary Report")
+        fig.update_layout(height=1200, showlegend=False, title_text="MetaPilot Proteins Summary Report")
         
         # Update axis labels
-        fig.update_xaxes(title_text="Raw Files", row=1, col=1)
-        fig.update_xaxes(title_text="PC1", row=2, col=1)
-        fig.update_xaxes(title_text="UMAP1" if UMAP_AVAILABLE else "Samples", row=2, col=2)
-        fig.update_yaxes(title_text="PC2", row=2, col=1)
-        fig.update_yaxes(title_text="UMAP2" if UMAP_AVAILABLE else "Distance", row=2, col=2)
+        fig.update_xaxes(title_text="Samples", row=1, col=1)
+        fig.update_xaxes(title_text="Samples", row=1, col=2)
+        fig.update_xaxes(title_text="Samples", row=2, col=1)
+        fig.update_xaxes(title_text="Samples", row=2, col=2)
+        fig.update_xaxes(title_text="Samples", row=3, col=1)
+        
+        fig.update_yaxes(title_text="Peptide Counts (All)", row=1, col=1)
+        fig.update_yaxes(title_text="Peptide Counts (Razor)", row=1, col=2)
+        fig.update_yaxes(title_text="Number of PSMs", row=2, col=1)
+        fig.update_yaxes(title_text="Intensity", row=2, col=2)
+        fig.update_yaxes(title_text="All Proteins (by Total Intensity)", row=3, col=1)
 
         return fig

@@ -19,7 +19,6 @@ import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.spectra.io.MSConvertor;
 import uk.ac.quadram.metapilot.task.igc.MetaPilotIgcTask;
-import uk.ac.quadram.metapilot.task.igc.MetaPilotIgcTask.DDAIgcPostAnalysisTask;
 import uk.ac.quadram.metapilot.task.dda.MetaDbReducerTask;
 import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcSageParameters;
 import uk.ac.quadram.metapilot.dbSearch.sage.SageTask;
@@ -74,8 +73,9 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
             }
         } else {
             LOGGER.error("{}: Parameters object is null!", taskName);
+            return;
         }
-
+        this.spectraDirFile = metaPar.getSpectraFile();
         // Initialize mzML files array and experiment name mapping
         initializeFileArrays();
         
@@ -570,32 +570,38 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
         }
         
         // Create search result directory
-        File searchResultDir = new File(metaPar.getResult(), "sage_search");
-        if (!searchResultDir.exists()) {
-            searchResultDir.mkdirs();
-            LOGGER.info("Created Sage search directory: {}", searchResultDir.getAbsolutePath());
-        }
+        File sageSearchFile = new File(metaPar.getResult(), "sage_IGC_search");
+		if (!sageSearchFile.exists()) {
+			sageSearchFile.mkdir();
+			LOGGER.info("  Created Sage search directory: " + sageSearchFile.getAbsolutePath());
+		} else {
+			LOGGER.info("  Sage search directory already exists: " + sageSearchFile.getAbsolutePath());
+		}
         
         // Set the database search result file
-        metaPar.setDbSearchResultFile(searchResultDir);
+        metaPar.setDbSearchResultFile(sageSearchFile);
         
+        this.combinedFile = new File(sageSearchFile, "combined");
+		if (!combinedFile.exists()) {
+			combinedFile.mkdir();
+			LOGGER.info("  Created combined search directory: " + combinedFile.getAbsolutePath());
+		} else {
+			LOGGER.info("  Combined search directory already exists: " + combinedFile.getAbsolutePath());
+		}
+		
         try {
             // Run Sage search against the database
             DDAIgcSageParameters sageParams = (DDAIgcSageParameters) metaPar;
-            
-            sageTask.searchMzML(mzMLFiles, searchResultDir.getAbsolutePath(), currentDb,
-                    sageParams.getPrecursorToleranceMin(), sageParams.getPrecursorToleranceMax(),
-                    sageParams.getFragmentTolerance(), sageParams.getEnzyme(), 
-                    sageParams.getMissCleavages(), sageParams.getFixMods(), 
-                    sageParams.getVariMods(), true);
-            
+
+			sageTask.searchMzML(mzMLFiles, combinedFile.getAbsolutePath(), currentDb, sageParams, true);
+
             // Run Sage
             LOGGER.info("Starting Sage execution with {} threads", metaPar.getThreadCount());
             sageTask.run(metaPar.getThreadCount());
             
             // Check if results were generated
-            File pepResultFile = new File(searchResultDir, "pep.tsv");
-            File proResultFile = new File(searchResultDir, "pro.tsv");
+            File pepResultFile = new File(combinedFile, "pep.tsv");
+            File proResultFile = new File(combinedFile, "pro.tsv");
             
             if (pepResultFile.exists() && pepResultFile.length() > 0 && 
                 proResultFile.exists() && proResultFile.length() > 0) {
@@ -632,10 +638,6 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
             fileIdMap.put(quanExpNames[i], fileIdMap.size());
             fileList.add(quanExpNames[i]);
         }
-
-        // Read quantified peptides and PSMs from Sage results
-        File searchResultDir = metaPar.getDbSearchResultFile();
-        File combinedFile = new File(searchResultDir, "combined");
 
         if (!combinedFile.exists()) {
             LOGGER.error(getTaskName() + ": Sage combined result file not found: " + combinedFile.getAbsolutePath());

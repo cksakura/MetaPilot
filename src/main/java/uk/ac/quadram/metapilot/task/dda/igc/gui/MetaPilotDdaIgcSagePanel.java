@@ -21,6 +21,8 @@ import uk.ac.quadram.metapilot.task.common.gui.ModificationsPanel;
 import uk.ac.quadram.metapilot.task.dda.igc.DDAIgcSageTask;
 import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcSageParameters;
 import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcSageParameterIO;
+import uk.ac.quadram.metapilot.resources.MetaResourceIO;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.common.gui.AbstractWorkflowPanel;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.MetaPilotApp;
@@ -39,6 +41,7 @@ import java.util.regex.Pattern;
 public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSageParameters> {
     private static final Logger LOGGER = LogManager.getLogger(MetaPilotDdaIgcSagePanel.class);
     
+    
     // UI Components (similar to pFind panel)
     private DdaIgcInputOutputPanel ioPanel;
     private ToggleGroup quantModeGroup;
@@ -51,8 +54,23 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
     // Reusable modifications panel
     private ModificationsPanel modificationsPanel;
 
+    // Sage-specific parameter components
+    private ToggleGroup searchTypeGroup;
+
+    // Closed search parameters (symmetric)
+    private Spinner<Double> precursorToleranceSpinner;
+    private Spinner<Double> fragmentToleranceSpinner;
+    private Label precursorToleranceUnitLabel;
+    private Label fragmentToleranceUnitLabel;
+
+    // Open search parameters (asymmetric)
+    private Spinner<Double> precursorToleranceMinSpinner;
+    private Spinner<Double> precursorToleranceMaxSpinner;
+    private Label openPrecursorToleranceUnitLabel;
+    private Spinner<Double> openFragmentToleranceSpinner;
+
     // Additional parameters
-    private Spinner<Integer> threadsSpinner;
+    private ComboBox<Integer> threadsComboBox;
     private ComboBox<String> ms2ScanModeComboBox;
     private CheckBox generateSampleSpecificDBCheckBox;
     private CheckBox spectraClusteringCheckBox;
@@ -75,8 +93,6 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
     private Button removeMetadataColumnButton;
     private Button resetMetadataButton;
 
-    // Add parameter IO instance
-    private DDAIgcSageParameterIO parameterIO;
 
 
     public MetaPilotDdaIgcSagePanel() {
@@ -98,6 +114,9 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
         // Load parameters after UI is fully initialized
         Platform.runLater(() -> {
             loadLastUsedParameters();
+            
+            // Add window close event handler to save parameters
+            setupWindowCloseHandler();
         });
     }
 
@@ -169,16 +188,17 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
         row1.setMinHeight(400);
         mainGrid.getRowConstraints().add(row1);
 
-        // Left column: Enzyme Settings, Additional Parameters, Taxonomic Analysis, and Modifications Panel
+        // Left column: Sage Parameters, Enzyme Settings, Additional Parameters, and Modifications Panel
         VBox leftColumn = new VBox(15);
         leftColumn.setMinWidth(430);
+        VBox sageParamsSection = createSageParametersSection();
         VBox enzymeSection = createEnzymeSection();
         VBox additionalParamsSection = createAdditionalParametersSection();
         
         // Create horizontal modifications panel with fixed mods (narrow) and variable mods (wider)
         modificationsPanel = new ModificationsPanel(this::updateParameterView);
         
-        leftColumn.getChildren().addAll(enzymeSection, additionalParamsSection, modificationsPanel);
+        leftColumn.getChildren().addAll(sageParamsSection, enzymeSection, additionalParamsSection, modificationsPanel);
         GridPane.setVgrow(leftColumn, Priority.ALWAYS);
 
         // Right column: Quantitative Mode and Metadata Configuration (keeping original layout)
@@ -231,6 +251,211 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
         label.setFont(Font.font("System", FontWeight.BOLD, 14));
         label.setTextFill(Color.DARKBLUE);
         return label;
+    }
+
+    private VBox createSageParametersSection() {
+        VBox section = new VBox(10);
+        section.setPadding(new Insets(10));
+        section.setStyle("-fx-background-color: #e8f5e8; -fx-background-radius: 5;");
+
+        Label titleLabel = createSectionTitle("Sage-Specific Parameters");
+
+        // Search type selection
+        VBox searchTypeBox = new VBox(8);
+        Label searchTypeLabel = new Label("Search Type:");
+        searchTypeLabel.setStyle("-fx-font-weight: bold;");
+
+        searchTypeGroup = new ToggleGroup();
+        RadioButton closedSearchRadio = new RadioButton("Closed Search");
+        closedSearchRadio.setToggleGroup(searchTypeGroup);
+        closedSearchRadio.setSelected(true); // Default to closed search
+
+        RadioButton openSearchRadio = new RadioButton("Open Search");
+        openSearchRadio.setToggleGroup(searchTypeGroup);
+
+        HBox radioBox = new HBox(15);
+        radioBox.setAlignment(Pos.CENTER_LEFT);
+        radioBox.getChildren().addAll(closedSearchRadio, openSearchRadio);
+
+        searchTypeBox.getChildren().addAll(searchTypeLabel, radioBox);
+
+        // Create tolerance parameters container
+        VBox toleranceContainer = new VBox(10);
+
+        // Closed search parameters (symmetric)
+        VBox closedSearchParams = createClosedSearchParameters();
+
+        // Open search parameters (asymmetric)
+        VBox openSearchParams = createOpenSearchParameters();
+        openSearchParams.setVisible(false);
+        openSearchParams.setManaged(false);
+
+        toleranceContainer.getChildren().addAll(closedSearchParams, openSearchParams);
+
+        // Set up search type change listeners
+        closedSearchRadio.setOnAction(e -> {
+            closedSearchParams.setVisible(true);
+            closedSearchParams.setManaged(true);
+            openSearchParams.setVisible(false);
+            openSearchParams.setManaged(false);
+            updateParameterView();
+        });
+
+        openSearchRadio.setOnAction(e -> {
+            closedSearchParams.setVisible(false);
+            closedSearchParams.setManaged(false);
+            openSearchParams.setVisible(true);
+            openSearchParams.setManaged(true);
+            updateParameterView();
+        });
+
+        section.getChildren().addAll(titleLabel, searchTypeBox, toleranceContainer);
+        return section;
+    }
+
+    private VBox createClosedSearchParameters() {
+        VBox section = new VBox(10);
+        section.setPadding(new Insets(5));
+        section.setStyle("-fx-background-color: #f0f8f0; -fx-background-radius: 3;");
+
+        Label titleLabel = new Label("Closed Search Parameters");
+        titleLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: #2E8B57;");
+
+        GridPane paramGrid = new GridPane();
+        paramGrid.setHgap(15);
+        paramGrid.setVgap(8);
+
+        ColumnConstraints col1 = new ColumnConstraints();
+        col1.setMinWidth(150);
+        col1.setHgrow(Priority.ALWAYS);
+        ColumnConstraints col2 = new ColumnConstraints();
+        col2.setMinWidth(150);
+        col2.setHgrow(Priority.ALWAYS);
+        paramGrid.getColumnConstraints().addAll(col1, col2);
+
+        // Precursor tolerance (symmetric)
+        Label precursorLabel = new Label("Precursor Tolerance:");
+        precursorLabel.setStyle("-fx-font-weight: bold;");
+        precursorToleranceSpinner = new Spinner<>(1.0, 50.0, 20.0, 1.0);
+        precursorToleranceSpinner.setMinWidth(100);
+        precursorToleranceSpinner.setPrefWidth(100);
+        precursorToleranceSpinner.valueProperty().addListener((obs, oldVal, newVal) -> updateParameterView());
+
+        precursorToleranceUnitLabel = new Label("ppm");
+        precursorToleranceUnitLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: #2E8B57;");
+
+        HBox precursorBox = new HBox(5);
+        precursorBox.setAlignment(Pos.CENTER_LEFT);
+        precursorBox.getChildren().addAll(precursorToleranceSpinner, precursorToleranceUnitLabel);
+
+        VBox precursorContainer = new VBox(5);
+        precursorContainer.getChildren().addAll(precursorLabel, precursorBox);
+
+        // Fragment tolerance (symmetric)
+        Label fragmentLabel = new Label("Fragment Tolerance:");
+        fragmentLabel.setStyle("-fx-font-weight: bold;");
+        fragmentToleranceSpinner = new Spinner<>(1.0, 50.0, 20.0, 1.0);
+        fragmentToleranceSpinner.setMinWidth(100);
+        fragmentToleranceSpinner.setPrefWidth(100);
+        fragmentToleranceSpinner.valueProperty().addListener((obs, oldVal, newVal) -> updateParameterView());
+
+        fragmentToleranceUnitLabel = new Label("ppm");
+        fragmentToleranceUnitLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: #2E8B57;");
+
+        HBox fragmentBox = new HBox(5);
+        fragmentBox.setAlignment(Pos.CENTER_LEFT);
+        fragmentBox.getChildren().addAll(fragmentToleranceSpinner, fragmentToleranceUnitLabel);
+
+        VBox fragmentContainer = new VBox(5);
+        fragmentContainer.getChildren().addAll(fragmentLabel, fragmentBox);
+
+        paramGrid.add(precursorContainer, 0, 0);
+        paramGrid.add(fragmentContainer, 1, 0);
+
+        section.getChildren().addAll(titleLabel, paramGrid);
+        return section;
+    }
+
+    private VBox createOpenSearchParameters() {
+        VBox section = new VBox(10);
+        section.setPadding(new Insets(5));
+        section.setStyle("-fx-background-color: #fff8dc; -fx-background-radius: 3;");
+
+        Label titleLabel = new Label("Open Search Parameters");
+        titleLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: #B8860B;");
+
+        GridPane paramGrid = new GridPane();
+        paramGrid.setHgap(15);
+        paramGrid.setVgap(8);
+
+        ColumnConstraints col1 = new ColumnConstraints();
+        col1.setMinWidth(150);
+        col1.setHgrow(Priority.ALWAYS);
+        ColumnConstraints col2 = new ColumnConstraints();
+        col2.setMinWidth(150);
+        col2.setHgrow(Priority.ALWAYS);
+        paramGrid.getColumnConstraints().addAll(col1, col2);
+
+        // Precursor tolerance (asymmetric)
+        Label precursorLabel = new Label("Precursor Tolerance:");
+        precursorLabel.setStyle("-fx-font-weight: bold;");
+
+        HBox precursorRangeBox = new HBox(5);
+        precursorRangeBox.setAlignment(Pos.CENTER_LEFT);
+
+        precursorToleranceMinSpinner = new Spinner<>(-500.0, 0.0, -500.0, 10.0);
+        precursorToleranceMinSpinner.setMinWidth(80);
+        precursorToleranceMinSpinner.setPrefWidth(80);
+        precursorToleranceMinSpinner.valueProperty().addListener((obs, oldVal, newVal) -> updateParameterView());
+
+        Label toLabel = new Label("to");
+        toLabel.setStyle("-fx-font-weight: bold;");
+
+        precursorToleranceMaxSpinner = new Spinner<>(-0.0, 500.0, 150.0, 10.0);
+        precursorToleranceMaxSpinner.setMinWidth(80);
+        precursorToleranceMaxSpinner.setPrefWidth(80);
+        precursorToleranceMaxSpinner.valueProperty().addListener((obs, oldVal, newVal) -> updateParameterView());
+
+        openPrecursorToleranceUnitLabel = new Label("Da");
+        openPrecursorToleranceUnitLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: #B8860B;");
+
+        precursorRangeBox.getChildren().addAll(precursorToleranceMinSpinner, toLabel, precursorToleranceMaxSpinner,
+                openPrecursorToleranceUnitLabel);
+
+        VBox precursorContainer = new VBox(5);
+        precursorContainer.getChildren().addAll(precursorLabel, precursorRangeBox);
+
+        // Fragment tolerance (symmetric - create separate components for open search)
+        Label fragmentLabel = new Label("Fragment Tolerance:");
+        fragmentLabel.setStyle("-fx-font-weight: bold;");
+
+        // Create a separate fragment tolerance spinner for open search to avoid component sharing issues
+        openFragmentToleranceSpinner = new Spinner<>(1.0, 50.0, 20.0, 1.0);
+        openFragmentToleranceSpinner.setMinWidth(100);
+        openFragmentToleranceSpinner.setPrefWidth(100);
+        openFragmentToleranceSpinner.valueProperty().addListener((obs, oldVal, newVal) -> {
+            // Sync with the main fragment tolerance spinner
+            if (fragmentToleranceSpinner != null) {
+                fragmentToleranceSpinner.getValueFactory().setValue(newVal);
+            }
+            updateParameterView();
+        });
+
+        Label openFragmentToleranceUnitLabel = new Label("ppm");
+        openFragmentToleranceUnitLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: #B8860B;");
+
+        HBox fragmentBox = new HBox(5);
+        fragmentBox.setAlignment(Pos.CENTER_LEFT);
+        fragmentBox.getChildren().addAll(openFragmentToleranceSpinner, openFragmentToleranceUnitLabel);
+
+        VBox fragmentContainer = new VBox(5);
+        fragmentContainer.getChildren().addAll(fragmentLabel, fragmentBox);
+
+        paramGrid.add(precursorContainer, 0, 0);
+        paramGrid.add(fragmentContainer, 1, 0);
+
+        section.getChildren().addAll(titleLabel, paramGrid);
+        return section;
     }
 
     private VBox createEnzymeSection() {
@@ -315,14 +540,22 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
 
         Label threadsLabel = new Label("Threads:");
         threadsLabel.setStyle("-fx-font-weight: bold;");
-        threadsSpinner = new Spinner<>(1, Runtime.getRuntime().availableProcessors(), 4);
-        threadsSpinner.setMinWidth(100);
-        threadsSpinner.setPrefWidth(100);
-        threadsSpinner.setMaxWidth(Double.MAX_VALUE);
-        threadsSpinner.valueProperty().addListener((obs, oldVal, newVal) -> updateParameterView());
+        threadsComboBox = new ComboBox<>();
+        threadsComboBox.setMinWidth(100);
+        threadsComboBox.setPrefWidth(100);
+        threadsComboBox.setMaxWidth(Double.MAX_VALUE);
+        
+        // Populate with thread count options (1 to available processors)
+        ObservableList<Integer> threadOptions = FXCollections.observableArrayList();
+        for (int i = 1; i <= Runtime.getRuntime().availableProcessors(); i++) {
+            threadOptions.add(i);
+        }
+        threadsComboBox.setItems(threadOptions);
+        threadsComboBox.setValue(4); // Default value
+        threadsComboBox.valueProperty().addListener((obs, oldVal, newVal) -> updateParameterView());
 
         VBox threadsBox = new VBox(5);
-        threadsBox.getChildren().addAll(threadsLabel, threadsSpinner);
+        threadsBox.getChildren().addAll(threadsLabel, threadsComboBox);
 
         Label ms2Label = new Label("MS2 Scan Mode:");
         ms2Label.setStyle("-fx-font-weight: bold;");
@@ -637,6 +870,39 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
         }
         sb.append("\n");
 
+        // Sage-specific parameters
+        sb.append("Sage-Specific Parameters:\n");
+        if (searchTypeGroup != null && searchTypeGroup.getSelectedToggle() != null) {
+            RadioButton selected = (RadioButton) searchTypeGroup.getSelectedToggle();
+            String searchType = selected.getText();
+            sb.append("  Search Type: ").append(searchType).append("\n");
+
+            if (searchType.equals("Closed Search")) {
+                // Closed search parameters
+                if (precursorToleranceSpinner != null && precursorToleranceUnitLabel != null) {
+                    sb.append("  Precursor Tolerance: ").append(precursorToleranceSpinner.getValue()).append(" ")
+                            .append(precursorToleranceUnitLabel.getText()).append("\n");
+                }
+                if (fragmentToleranceSpinner != null && fragmentToleranceUnitLabel != null) {
+                    sb.append("  Fragment Tolerance: ").append(fragmentToleranceSpinner.getValue()).append(" ")
+                            .append(fragmentToleranceUnitLabel.getText()).append("\n");
+                }
+            } else if (searchType.equals("Open Search")) {
+                // Open search parameters
+                if (precursorToleranceMinSpinner != null && precursorToleranceMaxSpinner != null
+                        && openPrecursorToleranceUnitLabel != null) {
+                    sb.append("  Precursor Tolerance: ").append(precursorToleranceMinSpinner.getValue()).append(" to ")
+                            .append(precursorToleranceMaxSpinner.getValue()).append(" ")
+                            .append(openPrecursorToleranceUnitLabel.getText()).append("\n");
+                }
+                if (openFragmentToleranceSpinner != null) {
+                    sb.append("  Fragment Tolerance: ").append(openFragmentToleranceSpinner.getValue())
+                            .append(" ppm\n");
+                }
+            }
+        }
+        sb.append("\n");
+
         // Enzyme settings
         sb.append("Enzyme Settings:\n");
         if (enzymeComboBox != null) {
@@ -675,8 +941,8 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
 
         // Additional parameters
         sb.append("Additional Parameters:\n");
-        if (threadsSpinner != null) {
-            sb.append("  Threads: ").append(threadsSpinner.getValue()).append("\n");
+        if (threadsComboBox != null) {
+            sb.append("  Threads: ").append(threadsComboBox.getValue()).append("\n");
         }
         if (ms2ScanModeComboBox != null) {
             sb.append("  MS2 Scan Mode: ").append(ms2ScanModeComboBox.getValue()).append("\n");
@@ -812,113 +1078,167 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
         updateParameterView();
     }
 
+    private boolean validateInputs() {
+        if (ioPanel.getIoPanel().getExperimentData().isEmpty()) {
+            showAlert("Validation Error", "Please select at least one raw file for analysis.");
+            return false;
+        }
+        if (ioPanel.getIoPanel().getOutputDirectory().isEmpty()) {
+            showAlert("Validation Error", "Please select an output directory.");
+            return false;
+        }
+        if (ioPanel.getMicrobiomeDBPath().isEmpty()) {
+            showAlert("Validation Error", "Please select a microbiome database file.");
+            return false;
+        }
+        if (ioPanel.isHostDBEnabled() && ioPanel.getHostDBPath().isEmpty()) {
+            showAlert("Validation Error", "Please select a host database file.");
+            return false;
+        }
+        if (enzymeComboBox.getValue() == null) {
+            showAlert("Validation Error", "Please select an enzyme.");
+            return false;
+        }
+        return true;
+    }
+
     @Override
     protected void startAnalysis() {
-        // Clear console and show starting message
-        if (consolePanel != null) {
-            consolePanel.clearConsole();
-            consolePanel.appendConsoleText("Starting Sage analysis...\n");
-        }
-
-        // Gather parameters from UI
-        ObservableList<MetaPilotIOPanelFX.ExperimentRow> fileRows = ioPanel.getIoPanel().getExperimentData();
-        if (fileRows.isEmpty()) {
-            showAlert("Error", "No files selected for analysis.");
-            return;
-        }
-        
-        // Save parameters for this analysis
-        DDAIgcSageParameters analysisParams = collectParametersFromUI();
-        
-        String outputDir = ioPanel.getIoPanel().getOutputDirectory();
-        if (outputDir != null && !outputDir.trim().isEmpty()) {
-            // Save analysis-specific parameters
-            boolean analysisParamsSaved = parameterIO.saveAnalysisParameters(outputDir, analysisParams);
-            if (!analysisParamsSaved) {
-                LOGGER.warn("Failed to save analysis parameters to {}/analysis_parameters_sage.json", outputDir);
-                showAlert("Warning", "Failed to save analysis parameters to result directory. Analysis will continue but parameters may not be preserved.");
-            } else {
-                LOGGER.info("Saved analysis parameters to {}/analysis_parameters_sage.json", outputDir);
+        try {
+            consolePanel.appendConsoleText("Starting IGC Sage analysis...\n");
+            System.out.println("DEBUG: startAnalysis called - IGC Sage workflow");
+            
+            // Validate inputs first
+            if (!validateInputs()) {
+                return;
             }
             
-            // Save as last used parameters
-            parameterIO.saveLastUsedParameters(analysisParams);
+            // Collect parameters from UI
+            consolePanel.appendConsoleText("Collecting parameters from UI...\n");
+            DDAIgcSageParameters analysisParams = collectParametersFromUI();
+            if (analysisParams == null) {
+                consolePanel.appendConsoleText("ERROR: Failed to collect parameters from UI.\n");
+                LOGGER.error("Failed to collect parameters from UI in startAnalysis");
+                return;
+            }
             
-            // Also save to preferences for quick defaults
-            parameterIO.savePreferences(analysisParams);
-        }
-
-        // Load resource parameters
-        uk.ac.quadram.metapilot.resources.MetaResourceParameters mrp = (new uk.ac.quadram.metapilot.resources.MetaResourceIO()).loadParameters();
-
-        // Create and run the DDAIgcSageTask
-        DDAIgcSageTask task = new DDAIgcSageTask(analysisParams, mrp, consolePanel.getOverallProgressBar(),
-                consolePanel.getCurrentTaskProgressBar());
+            consolePanel.appendConsoleText("✓ Successfully collected parameters from UI\n");
+            LOGGER.info("Successfully collected parameters from UI for IGC Sage workflow");
+            
+            // Store analysis parameters for viewReport
+            this.currentAnalysisParams = analysisParams;
         
-        // Bind progress and messages
-        if (consolePanel != null) {
-            task.messageProperty().addListener((obs, oldMsg, newMsg) -> {
-                javafx.application.Platform.runLater(() -> {
-                    if (newMsg != null && !newMsg.isEmpty()) {
-                        consolePanel.appendConsoleText(newMsg + "\n");
+            // Save parameters to file
+            String outputDir = analysisParams.getResult();
+            if (outputDir != null && !outputDir.trim().isEmpty()) {
+                consolePanel.appendConsoleText("Saving parameters to file...\n");
+                boolean paramsSaved = parameterIO.saveAnalysisParameters(outputDir, analysisParams);
+                if (!paramsSaved) {
+                    consolePanel.appendConsoleText("WARNING: Failed to save parameters to file. Analysis will continue.\n");
+                    LOGGER.warn("Failed to save analysis parameters to file: {}", outputDir);
+                } else {
+                    consolePanel.appendConsoleText("✓ Parameters saved to: " + outputDir + "/analysis_parameters_sage.json\n");
+                    LOGGER.info("Successfully saved analysis parameters to: {}", outputDir);
+                }
+                
+                // Also save as last used parameters
+                boolean lastParamsSaved = parameterIO.saveLastUsedParameters(analysisParams);
+                if (lastParamsSaved) {
+                    consolePanel.appendConsoleText("✓ Last used parameters saved\n");
+                    LOGGER.info("Successfully saved last used parameters");
+                } else {
+                    consolePanel.appendConsoleText("WARNING: Failed to save last used parameters\n");
+                    LOGGER.warn("Failed to save last used parameters");
+                }
+                
+                // Save to preferences
+                boolean prefsSaved = parameterIO.savePreferences(analysisParams);
+                if (prefsSaved) {
+                    consolePanel.appendConsoleText("✓ Preferences saved\n");
+                    LOGGER.info("Successfully saved preferences");
+                } else {
+                    consolePanel.appendConsoleText("WARNING: Failed to save preferences\n");
+                    LOGGER.warn("Failed to save preferences");
+                }
+            } else {
+                consolePanel.appendConsoleText("WARNING: No output directory specified, skipping parameter save\n");
+                LOGGER.warn("No output directory specified, skipping parameter save");
+            }
+            
+            // Load resource parameters
+            consolePanel.appendConsoleText("Loading resource parameters from config...\n");
+            MetaResourceIO resourceIO = new MetaResourceIO();
+            MetaResourceParameters mrp = resourceIO.loadParameters();
+            consolePanel.appendConsoleText("✓ Resource parameters loaded from config file\n");
+
+            // Set up progress tracking
+            consolePanel.appendConsoleText("Setting up progress tracking...\n");
+            Label statusLabel = new Label("Ready to start analysis...");
+            consolePanel.appendConsoleText("✓ Progress bars and status label initialized\n");
+            
+            // Create and run the DDAIgcSageTask
+            consolePanel.appendConsoleText("Creating IGC Sage task...\n");
+            currentTask = new DDAIgcSageTask(analysisParams, mrp, consolePanel.getOverallProgressBar(),
+                    consolePanel.getCurrentTaskProgressBar());
+            consolePanel.appendConsoleText("✓ Task created successfully\n");
+            
+            // Set up task callbacks
+            consolePanel.appendConsoleText("Setting up task callbacks...\n");
+            currentTask.messageProperty().addListener((obs, oldMsg, newMsg) -> {
+                Platform.runLater(() -> {
+                    if (newMsg != null) {
+                        consolePanel.appendConsoleText("Current Task: " + newMsg + "\n");
                         consolePanel.updateCurrentTaskFromMessage(newMsg);
+                        statusLabel.setText(newMsg);
                     }
                 });
             });
-        }
-        
-        // Start status timer in console panel
-        if (consolePanel != null) {
-            consolePanel.startStatusTimer();
-        }
-        
-        // On succeeded/failed/cancelled
-        task.setOnSucceeded(e -> {
-            if (consolePanel != null) {
-                consolePanel.setButtonsEnabled(true, false, true);
-                consolePanel.stopStatusTimer();
-            }
             
-            // Check if the task actually succeeded by examining the result
-            try {
-                Boolean result = task.get();
-                if (result != null && result) {
-                    if (consolePanel != null) {
-                        consolePanel.appendConsoleText("\nAnalysis completed successfully.\n");
-                        consolePanel.enableViewReportButton();
+            // Set up task completion callback to enable View Report button
+            currentTask.setOnSucceeded(e -> {
+                Platform.runLater(() -> {
+                    // Check if the task actually succeeded by examining the result
+                    try {
+                        Boolean result = currentTask.get();
+                        if (result != null && result) {
+                            consolePanel.appendConsoleText("✓ Analysis completed successfully!\n");
+                            consolePanel.enableViewReportButton();
+                        } else {
+                            consolePanel.appendConsoleText("⚠ Analysis completed but may not have been fully successful.\n");
+                        }
+                    } catch (Exception ex) {
+                        consolePanel.appendConsoleText("✗ Analysis failed: " + ex.getMessage() + "\n");
                     }
-                } else {
-                    if (consolePanel != null) {
-                        consolePanel.appendConsoleText("\nAnalysis completed but may not have been fully successful.\n");
-                    }
-                }
-            } catch (Exception ex) {
-                if (consolePanel != null) {
-                    consolePanel.appendConsoleText("\nAnalysis failed: " + ex.getMessage() + "\n");
-                }
-            }
-        });
-        
-        task.setOnFailed(e -> {
-            if (consolePanel != null) {
-                consolePanel.setButtonsEnabled(true, false, false);
-                consolePanel.stopStatusTimer();
-                consolePanel.appendConsoleText("\nAnalysis failed: " + task.getException() + "\n");
-            }
-        });
-        
-        task.setOnCancelled(e -> {
-            if (consolePanel != null) {
-                consolePanel.setButtonsEnabled(true, false, false);
-                consolePanel.stopStatusTimer();
-                consolePanel.appendConsoleText("\nAnalysis cancelled.\n");
-            }
-        });
-        
-        // Run the task
-        Thread t = new Thread(task);
-        t.setDaemon(true);
-        t.start();
+                    consolePanel.setButtonsEnabled(true, false, true);
+                    consolePanel.stopStatusTimer(); // Stop the timer when task completes
+                });
+            });
+            
+            currentTask.setOnFailed(e -> {
+                Platform.runLater(() -> {
+                    consolePanel.appendConsoleText("✗ Analysis failed. Check console output for details.\n");
+                    consolePanel.setButtonsEnabled(true, false, false);
+                    consolePanel.stopStatusTimer(); // Stop the timer when task fails
+                });
+            });
+            
+            consolePanel.appendConsoleText("✓ Task callbacks configured\n");
+            
+            // Run task in background thread
+            consolePanel.appendConsoleText("Starting task execution...\n");
+            Thread taskThread = new Thread(currentTask);
+            taskThread.setDaemon(true);
+            taskThread.start();
+            
+            consolePanel.appendConsoleText("✓ Analysis task started successfully.\n");
+            LOGGER.info("IGC Sage analysis task started successfully");
+            
+        } catch (Exception e) {
+            String errorMsg = "ERROR: Failed to start analysis: " + e.getMessage();
+            consolePanel.appendConsoleText(errorMsg + "\n");
+            LOGGER.error("Failed to start IGC Sage analysis", e);
+            e.printStackTrace();
+        }
     }
 
     @Override
@@ -942,21 +1262,25 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
      */
     @Override
     protected DDAIgcSageParameters collectParametersFromUI() {
-        // Collect required parameters for DDAIgcSageParameters constructor
-        String result = ioPanel.getIoPanel().getOutputDirectory();
-        String microDb = ioPanel.getMicrobiomeDBPath();
-        boolean appendHostDb = ioPanel.isHostDBEnabled();
-        String hostDb = ioPanel.getHostDBPath();
-        String enzyme = enzymeComboBox.getValue();
-        int missCleavages = missedCleavagesSpinner.getValue();
-        String digestMode = digestionModeComboBox.getValue();
-        int threadCount = threadsSpinner.getValue();
-        String ms2ScanMode = ms2ScanModeComboBox.getValue();
-        boolean reduceDb = generateSampleSpecificDBCheckBox.isSelected();
-        boolean spectraCluster = spectraClusteringCheckBox.isSelected();
+        try {
+            consolePanel.appendConsoleText("Collecting parameters from UI...\n");
+            
+            // Collect required parameters for DDAIgcSageParameters constructor
+            String result = ioPanel.getIoPanel().getOutputDirectory();
+            String microDb = ioPanel.getMicrobiomeDBPath();
+            boolean appendHostDb = ioPanel.isHostDBEnabled();
+            String hostDb = ioPanel.getHostDBPath();
+            String enzyme = enzymeComboBox.getValue();
+            int missCleavages = missedCleavagesSpinner.getValue();
+            String digestMode = digestionModeComboBox.getValue();
+            int threadCount = threadsComboBox.getValue() != null ? threadsComboBox.getValue() : 4;
+            String ms2ScanMode = ms2ScanModeComboBox.getValue();
+            boolean reduceDb = generateSampleSpecificDBCheckBox.isSelected();
+            boolean spectraCluster = spectraClusteringCheckBox.isSelected();
 
-        // Create MetaData object from experiment data
-        ObservableList<MetaPilotIOPanelFX.ExperimentRow> fileRows = ioPanel.getIoPanel().getExperimentData();
+            // Create MetaData object from experiment data
+            ObservableList<MetaPilotIOPanelFX.ExperimentRow> fileRows = ioPanel.getIoPanel().getExperimentData();
+            consolePanel.appendConsoleText("Found " + fileRows.size() + " experiment rows\n");
         
         MetaData metaData;
         if (!fileRows.isEmpty()) {
@@ -1010,6 +1334,54 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
         params.setReduceDb(reduceDb);
         params.setSpectraCluster(spectraCluster);
         
+        // Set Sage-specific parameters
+        String searchType = "Closed Search"; // Default
+        double fragmentTolerance = 20.0;
+        String precursorToleranceUnit = "ppm";
+        String fragmentToleranceUnit = "ppm";
+
+        if (searchTypeGroup != null && searchTypeGroup.getSelectedToggle() != null) {
+            RadioButton selected = (RadioButton) searchTypeGroup.getSelectedToggle();
+            searchType = selected.getText();
+
+            if (searchType.equals("Closed Search")) {
+                // Closed search: symmetric tolerances
+                fragmentTolerance = fragmentToleranceSpinner != null && fragmentToleranceSpinner.getValue() != null
+                        ? fragmentToleranceSpinner.getValue()
+                        : 20.0;
+                precursorToleranceUnit = "ppm";
+                fragmentToleranceUnit = "ppm";
+
+                double precursorTolerance = precursorToleranceSpinner != null
+                        && precursorToleranceSpinner.getValue() != null ? precursorToleranceSpinner.getValue()
+                                : 20.0;
+                params.setPrecursorToleranceMin(-precursorTolerance);
+                params.setPrecursorToleranceMax(precursorTolerance);
+
+            } else if (searchType.equals("Open Search")) {
+                // Open search: asymmetric tolerances
+                double precursorMin = precursorToleranceMinSpinner != null
+                        && precursorToleranceMinSpinner.getValue() != null ? precursorToleranceMinSpinner.getValue()
+                                : -500.0;
+                double precursorMax = precursorToleranceMaxSpinner != null
+                        && precursorToleranceMaxSpinner.getValue() != null ? precursorToleranceMaxSpinner.getValue()
+                                : 150.0;
+                // Fragment tolerance is symmetric for both open and closed search
+                fragmentTolerance = openFragmentToleranceSpinner != null && openFragmentToleranceSpinner.getValue() != null
+                        ? openFragmentToleranceSpinner.getValue() : 20.0;
+                precursorToleranceUnit = "Da";
+                fragmentToleranceUnit = "ppm";
+
+                params.setPrecursorToleranceMin(precursorMin);
+                params.setPrecursorToleranceMax(precursorMax);
+            }
+        }
+
+        // Don't set the old precursor_tolerance field - it's only for backward compatibility
+        params.setFragmentTolerance(fragmentTolerance);
+        params.setPrecursorToleranceUnit(precursorToleranceUnit);
+        params.setFragmentToleranceUnit(fragmentToleranceUnit);
+        
         // Modifications - convert to String lists
         if (modificationsPanel != null) {
             List<String> fixedMods = new ArrayList<>();
@@ -1023,7 +1395,7 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
             List<String> variableMods = new ArrayList<>();
             for (ModificationsPanel.VariableModificationRow row : modificationsPanel.getVariableModData()) {
                 if (row.getUse()) {
-                    variableMods.add(row.getModName() + " (" + row.getSites() + "):" + row.getDeltaMass());
+                    variableMods.add(row.getModName() + ":" + row.getSites() + ":" + row.getDeltaMass());
                 }
             }
             params.setVariableModifications(variableMods);
@@ -1047,7 +1419,16 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
         // Metadata table data
         params.setMetadataTableData(new ArrayList<>(metadataTableData));
         
+        consolePanel.appendConsoleText("✓ Successfully collected parameters from UI\n");
+        LOGGER.info("Successfully collected parameters from UI for IGC Sage workflow");
         return params;
+        
+        } catch (Exception e) {
+            String errorMsg = "ERROR: Failed to collect parameters from UI: " + e.getMessage();
+            consolePanel.appendConsoleText(errorMsg + "\n");
+            LOGGER.error("Failed to collect parameters from UI for IGC Sage workflow", e);
+            return null;
+        }
     }
     
     /**
@@ -1056,18 +1437,25 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
     @Override
     protected void loadLastUsedParameters() {
         try {
+            consolePanel.appendConsoleText("Loading last used parameters...\n");
             DDAIgcSageParameters params = (DDAIgcSageParameters) parameterIO.loadLastUsedParameters();
             if (params != null) {
                 applyParametersToUI(params);
+                consolePanel.appendConsoleText("✓ Successfully loaded last used parameters\n");
+                LOGGER.info("Loaded last used parameters for DDA IGC Sage workflow");
                 
                 // Also apply experiment data to the IO panel if available
                 if (params.getExperimentData() != null && !params.getExperimentData().isEmpty()) {
                     ioPanel.getIoPanel().setExperimentData(params.getExperimentData());
+                    consolePanel.appendConsoleText("Applied " + params.getExperimentData().size() + " experiment rows to IO panel\n");
+                    LOGGER.info("Applied {} experiment rows to IO panel", params.getExperimentData().size());
                 }
                 
                 // Apply output directory if available
                 if (params.getResult() != null && !params.getResult().trim().isEmpty()) {
                     ioPanel.getIoPanel().setOutputDirectory(params.getResult());
+                    consolePanel.appendConsoleText("Applied output directory: " + params.getResult() + "\n");
+                    LOGGER.info("Applied output directory: {}", params.getResult());
                 }
                 
                 // Update metadata table after loading parameters
@@ -1075,8 +1463,14 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
                     updateMetadataTable();
                     updateParameterView();
                 });
+            } else {
+                consolePanel.appendConsoleText("No previous parameters found, using defaults\n");
+                LOGGER.warn("No parameters loaded, using defaults");
             }
         } catch (Exception e) {
+            String errorMsg = "WARNING: Failed to load last used parameters: " + e.getMessage();
+            consolePanel.appendConsoleText(errorMsg + "\n");
+            LOGGER.warn("Failed to load last used parameters: " + e.getMessage());
             // Continue with default UI state
         }
     }
@@ -1086,7 +1480,13 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
      */
     @Override
     protected void applyParametersToUI(DDAIgcSageParameters params) {
-        if (params == null) return;
+        try {
+            consolePanel.appendConsoleText("Applying parameters to UI...\n");
+            if (params == null) {
+                consolePanel.appendConsoleText("WARNING: No parameters to apply\n");
+                LOGGER.warn("No parameters to apply to UI");
+                return;
+            }
         
         // Apply basic settings that don't depend on file paths
         if (params.getEnzyme() != null && enzymeComboBox != null) {
@@ -1098,8 +1498,8 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
         if (params.getDigestModeString() != null && digestionModeComboBox != null) {
             digestionModeComboBox.setValue(params.getDigestModeString());
         }
-        if (threadsSpinner != null) {
-            threadsSpinner.getValueFactory().setValue(params.getThreadCount());
+        if (threadsComboBox != null) {
+            threadsComboBox.setValue(params.getThreadCount());
         }
         if (params.getMs2ScanMode() != null && ms2ScanModeComboBox != null) {
             ms2ScanModeComboBox.setValue(params.getMs2ScanMode());
@@ -1109,6 +1509,50 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
         }
         if (spectraClusteringCheckBox != null) {
             spectraClusteringCheckBox.setSelected(params.isSpectraCluster());
+        }
+        
+        // Apply Sage-specific parameters
+        if (params.getPrecursorToleranceMin() != 0.0 || params.getPrecursorToleranceMax() != 0.0) {
+            // Determine if this is open search (asymmetric) or closed search (symmetric)
+            double min = params.getPrecursorToleranceMin();
+            double max = params.getPrecursorToleranceMax();
+            
+            if (Math.abs(min + max) < 0.1) {
+                // Symmetric (closed search) - min and max are opposite values
+                double tolerance = Math.abs(max);
+                if (searchTypeGroup != null) {
+                    // Select closed search radio button
+                    RadioButton closedSearchRadio = (RadioButton) searchTypeGroup.getToggles().get(0);
+                    closedSearchRadio.setSelected(true);
+                }
+                if (precursorToleranceSpinner != null) {
+                    precursorToleranceSpinner.getValueFactory().setValue(tolerance);
+                }
+            } else {
+                // Asymmetric (open search)
+                if (searchTypeGroup != null) {
+                    // Select open search radio button
+                    RadioButton openSearchRadio = (RadioButton) searchTypeGroup.getToggles().get(1);
+                    openSearchRadio.setSelected(true);
+                }
+                if (precursorToleranceMinSpinner != null) {
+                    precursorToleranceMinSpinner.getValueFactory().setValue(min);
+                }
+                if (precursorToleranceMaxSpinner != null) {
+                    precursorToleranceMaxSpinner.getValueFactory().setValue(max);
+                }
+            }
+        }
+        
+        // Apply fragment tolerance
+        if (params.getFragmentTolerance() != 0.0) {
+            if (fragmentToleranceSpinner != null) {
+                fragmentToleranceSpinner.getValueFactory().setValue(params.getFragmentTolerance());
+            }
+            // Sync the open search fragment tolerance spinner
+            if (openFragmentToleranceSpinner != null) {
+                openFragmentToleranceSpinner.getValueFactory().setValue(params.getFragmentTolerance());
+            }
         }
         
         // Apply database settings
@@ -1122,8 +1566,59 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
             ioPanel.setHostDBPath(params.getHostDB());
         }
         
-        // Apply modifications - would need to parse string lists back to modification rows
-        // This is complex and may not be needed for basic functionality
+        // Apply modifications - parse string lists back to modification rows
+        if (params.getFixedModifications() != null && modificationsPanel != null) {
+            // Apply saved fixed modifications
+            for (String mod : params.getFixedModifications()) {
+                if (mod.contains(":")) {
+                    String[] parts = mod.split(":", 2);
+                    if (parts.length == 2) {
+                        String site = parts[0];
+                        try {
+                            double mass = Double.parseDouble(parts[1]);
+                            // Find and update the corresponding row
+                            for (ModificationsPanel.FixedModificationRow row : modificationsPanel.getFixedModData()) {
+                                if (row.getSite().equals(site)) {
+                                    row.setDeltaMass(mass);
+                                    break;
+                                }
+                            }
+                        } catch (NumberFormatException e) {
+                            LOGGER.warn("Invalid mass format in fixed modification: {}", mod);
+                        }
+                    }
+                }
+            }
+            LOGGER.info("Applied {} fixed modifications", params.getFixedModifications().size());
+        }
+        
+        if (params.getVariableModifications() != null && modificationsPanel != null) {
+            // Apply saved variable modifications
+            for (String mod : params.getVariableModifications()) {
+                if (mod.contains(":")) {
+                    String[] parts = mod.split(":", 3);
+                    if (parts.length == 3) {
+                        String modName = parts[0];
+                        String sites = parts[1];
+                        try {
+                            double mass = Double.parseDouble(parts[2]);
+                            // Find and update the corresponding row
+                            for (ModificationsPanel.VariableModificationRow row : modificationsPanel.getVariableModData()) {
+                                if (row.getModName().equals(modName)) {
+                                    row.setUse(true);
+                                    row.setSites(sites);
+                                    row.setDeltaMass(mass);
+                                    break;
+                                }
+                            }
+                        } catch (NumberFormatException e) {
+                            LOGGER.warn("Invalid mass format in variable modification: {}", mod);
+                        }
+                    }
+                }
+            }
+            LOGGER.info("Applied {} variable modifications", params.getVariableModifications().size());
+        }
         
         // Apply quantitative mode settings
         if (params.getQuantitativeMode() != null && quantModeGroup != null) {
@@ -1163,6 +1658,15 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
         
         // Update parameter view after applying parameters
         Platform.runLater(() -> updateParameterView());
+        
+        consolePanel.appendConsoleText("✓ Successfully applied parameters to UI\n");
+        LOGGER.info("Successfully applied parameters to UI for IGC Sage workflow");
+        
+        } catch (Exception e) {
+            String errorMsg = "ERROR: Failed to apply parameters to UI: " + e.getMessage();
+            consolePanel.appendConsoleText(errorMsg + "\n");
+            LOGGER.error("Failed to apply parameters to UI for IGC Sage workflow", e);
+        }
     }
     
     /**
@@ -1176,6 +1680,14 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
         } catch (Exception e) {
             showAlert("Error", "Failed to load Sage analysis parameters: " + e.getMessage());
         }
+    }
+    
+    /**
+     * Get the parameter class for this workflow
+     */
+    @Override
+    protected Class<DDAIgcSageParameters> getParameterClass() {
+        return DDAIgcSageParameters.class;
     }
     
     /**

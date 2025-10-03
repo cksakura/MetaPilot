@@ -4,6 +4,7 @@ from .peptides_summary_generator import PeptidesSummaryGenerator
 from .proteins_summary_generator import ProteinsSummaryGenerator
 from .taxonomy_summary_generator import TaxonomySummaryGenerator
 from .function_summary_generator import FunctionSummaryGenerator
+from .metamap_generator import BubbleChartGenerator
 
 class MetaPilotReportGenerator(BaseReportGenerator):
     """Enhanced report generator for MetaPilot TSV file formats with metadata support."""
@@ -17,6 +18,7 @@ class MetaPilotReportGenerator(BaseReportGenerator):
         self.proteins_generator = ProteinsSummaryGenerator(output_dir)
         self.taxonomy_generator = TaxonomySummaryGenerator(output_dir)
         self.function_generator = FunctionSummaryGenerator(output_dir)
+        self.bubble_chart_generator = BubbleChartGenerator(output_dir)
 
     def create_id_summary(self, summary_df, metadata=None):
         """Generate ID summary report with metadata support."""
@@ -37,3 +39,11 @@ class MetaPilotReportGenerator(BaseReportGenerator):
     def create_function_summary(self, func_df, metadata=None):
         """Enhanced function summary with category analysis and dimensionality reduction."""
         return self.function_generator.create_function_summary(func_df, metadata)
+
+    def create_bubble_chart_summary(self, tree_data, metadata=None, max_depth=4, min_abundance=0.001):
+        """TEMPORARILY DISABLED: Generate bubble chart from hierarchical tree data."""
+        # Return empty plot to indicate bubble chart is disabled
+        return self.create_empty_data_plot(
+            "Bubble Chart Report (Disabled)",
+            "Bubble chart generation is temporarily disabled due to technical issues.<br>This feature will be restored in a future update."
+        )

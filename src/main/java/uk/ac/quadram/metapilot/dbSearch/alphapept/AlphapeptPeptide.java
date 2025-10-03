@@ -16,6 +16,7 @@ public class AlphapeptPeptide extends MetaPeptide {
 		// TODO Auto-generated constructor stub
 		this.modseq = sequence;
 		this.proteins = proteins;
+		super.setProteins(proteins);
 		this.ms2Counts = spCount;
 		this.intensity = intensity;
 	}
@@ -26,7 +27,14 @@ public class AlphapeptPeptide extends MetaPeptide {
 		// TODO Auto-generated constructor stub
 		this.modseq = modSeq;
 		this.proteins = proteins;
+		super.setProteins(proteins);
 		this.ms2Counts = spCount;
+	}
+
+	@Override
+	public void setProteins(String[] proteins) {
+		super.setProteins(proteins);
+		this.proteins = proteins;
 	}
 
 	public String getProteinString() {

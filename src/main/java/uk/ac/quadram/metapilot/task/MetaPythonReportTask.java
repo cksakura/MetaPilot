@@ -12,6 +12,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
+import uk.ac.quadram.metapilot.task.io.ReportManifestGenerator;
 
 /**
  * Python-based report generation task that replaces the R-based MetaReportTask.
@@ -81,6 +82,7 @@ public class MetaPythonReportTask extends Task<Boolean> {
     public static final String PROTEIN = "proteins";
     public static final String TAXONOMY = "taxonomy";
     public static final String FUNCTION = "function";
+    public static final String BUBBLE_CHART = "bubble_chart";
 
     // Python configuration - will be resolved from MetaResourceParameters
     private String pythonExecutable;
@@ -90,6 +92,10 @@ public class MetaPythonReportTask extends Task<Boolean> {
     private final List<ReportTaskInfo> reportTasks;
     private final List<File> outputFiles;
     private final MetaResourceParameters resourceParameters;
+    
+    // Manifest integration
+    private ReportManifestGenerator manifestGenerator;
+    private String workflowType = "UNKNOWN";
 
     /**
      * Creates a new Python report generation task with specified thread count.
@@ -119,6 +125,24 @@ public class MetaPythonReportTask extends Task<Boolean> {
         LOGGER.info("{}: Python availability check: {}", TASK_NAME, isPythonAvailable());
         System.out.println(FORMAT.format(new Date()) + "\t" + TASK_NAME + ": Initialized with " + threadCount + " threads, Python: " + pythonExecutable);
         System.out.println(FORMAT.format(new Date()) + "\t" + TASK_NAME + ": Python availability: " + isPythonAvailable());
+    }
+
+    /**
+     * Sets the workflow type for manifest generation.
+     * 
+     * @param workflowType The workflow type (e.g., "MAG", "DIA", "IGC")
+     */
+    public void setWorkflowType(String workflowType) {
+        this.workflowType = workflowType;
+    }
+    
+    /**
+     * Initializes the manifest generator for the given reports directory.
+     * 
+     * @param reportsDir The reports directory where manifest files will be created
+     */
+    public void initializeManifestGenerator(File reportsDir) {
+        this.manifestGenerator = new ReportManifestGenerator(reportsDir);
     }
 
     /**
@@ -277,6 +301,17 @@ public class MetaPythonReportTask extends Task<Boolean> {
             if (exitCode == 0) {
                 LOGGER.info("{}: Successfully generated {} report", TASK_NAME, taskInfo.reportType);
                 System.out.println(FORMAT.format(new Date()) + "\t" + TASK_NAME + ": Successfully generated " + taskInfo.reportType + " report");
+                
+                // Add to manifest if generator is available
+                if (manifestGenerator != null && taskInfo.outputFile.exists()) {
+                    try {
+                        String fileName = taskInfo.outputFile.getName();
+                        manifestGenerator.addPythonReport(taskInfo.reportType, fileName, workflowType);
+                        LOGGER.info("{}: Added {} report to manifest", TASK_NAME, taskInfo.reportType);
+                    } catch (Exception e) {
+                        LOGGER.warn("{}: Failed to add {} report to manifest: {}", TASK_NAME, taskInfo.reportType, e.getMessage());
+                    }
+                }
             } else {
                 LOGGER.error("{}: Python script failed with exit code {} for {} report", TASK_NAME, exitCode, taskInfo.reportType);
                 System.err.println(FORMAT.format(new Date()) + "\t" + TASK_NAME + ": Python script failed for " + taskInfo.reportType + " report");
@@ -310,9 +345,6 @@ public class MetaPythonReportTask extends Task<Boolean> {
     private List<String> buildPythonCommand(ReportTaskInfo taskInfo) {
         List<String> command = new ArrayList<>();
         
-        command.add(pythonExecutable);
-        command.add("-c");
-        
         // Load data and metadata - properly escape paths for Python
         String inputPath = escapePathForPython(taskInfo.inputFile.getAbsolutePath());
         String outputPath = escapePathForPython(taskInfo.outputFile.getAbsolutePath());
@@ -320,58 +352,84 @@ public class MetaPythonReportTask extends Task<Boolean> {
         
         LOGGER.info("{}: Processing paths - Input: {}, Output: {}, OutputDir: {}", TASK_NAME, inputPath, outputPath, outputDir);
         
-        // Python script to execute
-        StringBuilder pythonScript = new StringBuilder();
-        pythonScript.append("import sys, os; ");
-        pythonScript.append("sys.path.append(os.path.join(os.getcwd(), 'src', 'main', 'python')); ");
-        pythonScript.append("from report_generation.metapilot_report_generator import MetaPilotReportGenerator; ");
-        pythonScript.append("import pandas as pd; import numpy as np; ");
-        pythonScript.append("rg = MetaPilotReportGenerator('").append(outputDir).append("'); ");
+        // Create temporary Python script file to avoid command line length issues
+        try {
+            File tempScript = File.createTempFile("metapilot_report_", ".py");
+            tempScript.deleteOnExit();
+            
+            // Python script to execute
+            StringBuilder pythonScript = new StringBuilder();
+            pythonScript.append("import sys, os\n");
+            pythonScript.append("sys.path.append(os.path.join(os.getcwd(), 'src', 'main', 'python'))\n");
+            pythonScript.append("from report_generation.metapilot_report_generator import MetaPilotReportGenerator\n");
+            pythonScript.append("import pandas as pd\n");
+            pythonScript.append("import numpy as np\n");
+            pythonScript.append("rg = MetaPilotReportGenerator('").append(outputDir).append("')\n");
+            
+            // Load metadata if available
+            if (taskInfo.metaFile != null && taskInfo.metaFile.exists()) {
+                String metaPath = escapePathForPython(taskInfo.metaFile.getAbsolutePath());
+                pythonScript.append("metadata = rg.load_metadata('").append(metaPath).append("')\n");
+            } else {
+                pythonScript.append("metadata = None\n");
+            }
         
-        pythonScript.append("df = pd.read_csv('").append(inputPath).append("', sep='\\t'); ");
-        
-        // Load metadata if available
-        if (taskInfo.metaFile != null && taskInfo.metaFile.exists()) {
-            String metaPath = escapePathForPython(taskInfo.metaFile.getAbsolutePath());
-            pythonScript.append("metadata = rg.load_metadata('").append(metaPath).append("'); ");
-        } else {
-            pythonScript.append("metadata = None; ");
+            switch (taskInfo.reportType) {
+                case ID_SUMMARY:
+                    pythonScript.append("df = pd.read_csv('").append(inputPath).append("', sep='\\t')\n");
+                    pythonScript.append("fig = rg.create_id_summary(df, metadata)\n");
+                    pythonScript.append("rg.generate_html_report(fig, 'ID Summary Report', '").append(outputPath).append("')\n");
+                    break;
+                    
+                case PEPTIDE:
+                    pythonScript.append("df = pd.read_csv('").append(inputPath).append("', sep='\\t')\n");
+                    pythonScript.append("fig = rg.create_peptides_summary(df, metadata)\n");
+                    pythonScript.append("rg.generate_html_report(fig, 'Peptides Summary Report', '").append(outputPath).append("')\n");
+                    break;
+                    
+                case PROTEIN:
+                    pythonScript.append("df = pd.read_csv('").append(inputPath).append("', sep='\\t')\n");
+                    pythonScript.append("fig = rg.create_proteins_summary(df, metadata)\n");
+                    pythonScript.append("rg.generate_html_report(fig, 'Proteins Summary Report', '").append(outputPath).append("')\n");
+                    break;
+                    
+                case TAXONOMY:
+                    pythonScript.append("df = pd.read_csv('").append(inputPath).append("', sep='\\t')\n");
+                    pythonScript.append("fig = rg.create_taxonomy_summary(df, metadata)\n");
+                    pythonScript.append("rg.generate_html_report(fig, 'Taxonomy Summary Report', '").append(outputPath).append("')\n");
+                    break;
+                    
+                case FUNCTION:
+                    pythonScript.append("df = pd.read_csv('").append(inputPath).append("', sep='\\t')\n");
+                    pythonScript.append("fig = rg.create_function_summary(df, metadata)\n");
+                    pythonScript.append("rg.generate_html_report(fig, 'Function Summary Report', '").append(outputPath).append("')\n");
+                    break;
+                    
+                case BUBBLE_CHART:
+                    // TEMPORARILY DISABLED: Bubble chart report generation is currently hidden due to issues
+                    pythonScript.append("# Bubble chart generation temporarily disabled\n");
+                    pythonScript.append("import os\n");
+                    pythonScript.append("with open('").append(outputPath).append("', 'w') as f:\n");
+                    pythonScript.append("    f.write('<html><body><h1>Bubble Chart Report</h1><p>Bubble chart generation is temporarily disabled.</p></body></html>')\n");
+                    break;
+                    
+                default:
+                    throw new IllegalArgumentException("Unsupported report type: " + taskInfo.reportType);
+            }
+            
+            // Write script to temporary file
+            try (FileWriter writer = new FileWriter(tempScript)) {
+                writer.write(pythonScript.toString());
+            }
+            
+            // Build command to execute the script file
+            command.add(pythonExecutable);
+            command.add(tempScript.getAbsolutePath());
+            
+        } catch (IOException e) {
+            LOGGER.error("{}: Failed to create temporary Python script: {}", TASK_NAME, e.getMessage());
+            throw new RuntimeException("Failed to create temporary Python script", e);
         }
-        
-        switch (taskInfo.reportType) {
-            case ID_SUMMARY:
-                pythonScript.append("fig = rg.create_id_summary(df, metadata); ");
-                pythonScript.append("rg.generate_html_report(fig, 'ID Summary Report', '").append(outputPath).append("')");
-                break;
-                
-            case PEPTIDE:
-                pythonScript.append("fig = rg.create_peptides_summary(df, metadata); ");
-                pythonScript.append("rg.generate_html_report(fig, 'Peptides Summary Report', '").append(outputPath).append("')");
-                break;
-                
-            case PROTEIN:
-                pythonScript.append("fig = rg.create_proteins_summary(df, metadata); ");
-                pythonScript.append("rg.generate_html_report(fig, 'Proteins Summary Report', '").append(outputPath).append("')");
-                break;
-                
-            case TAXONOMY:
-                pythonScript.append("fig = rg.create_taxonomy_summary(df, metadata); ");
-                pythonScript.append("rg.generate_html_report(fig, 'Taxonomy Summary Report', '").append(outputPath).append("')");
-                break;
-                
-            case FUNCTION:
-                pythonScript.append("fig = rg.create_function_summary(df, metadata); ");
-                pythonScript.append("rg.generate_html_report(fig, 'Function Summary Report', '").append(outputPath).append("')");
-                break;
-                
-            default:
-                throw new IllegalArgumentException("Unsupported report type: " + taskInfo.reportType);
-        }
-        
-        String finalScript = pythonScript.toString();
-        command.add(finalScript);
-        
-        LOGGER.info("{}: Generated Python script: {}", TASK_NAME, finalScript);
         
         return command;
     }

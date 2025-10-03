@@ -9,6 +9,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 
+import uk.ac.quadram.metapilot.core.math.MathTool;
 import uk.ac.quadram.metapilot.task.io.pep.AbstractMetaPeptideReader;
 
 public class SageResultReader extends AbstractMetaPeptideReader {
@@ -164,6 +165,24 @@ public class SageResultReader extends AbstractMetaPeptideReader {
 	public String[] getIntensityTitle() {
 		// TODO Auto-generated method stub
 		return intensityTitles;
+	}
+	
+	public static void main(String[] args) {
+		SageResultReader reader = new SageResultReader(
+				"Z:\\PRIDE_dataset\\PXD050781\\DDA21\\MetaPilot\\sage_MAG_search\\combined");
+		SagePeptide[] peptides = reader.getMetaPeptides();
+		for(int i=0;i<peptides.length;i++) {
+			double[] pepIntensity = peptides[i].getIntensity();
+			double totalIntensity = MathTool.getTotal(pepIntensity);
+			int[] idenType = peptides[i].getIdenType();
+			int idenCount = 0;
+			for (int j = 0; j < idenType.length; j++) {
+				if (idenType[j] == 0) {
+					idenCount++;
+				}
+			}
+			System.out.println(totalIntensity+"\t"+idenCount);
+		}
 	}
 
 }

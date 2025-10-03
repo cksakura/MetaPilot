@@ -566,10 +566,6 @@ public class MetaData {
 
 	public void exportMetadata(File result) throws FileNotFoundException {
 		int metaTypeCount = this.getMetaTypeCount();
-		if (metaTypeCount == 0) {
-			return;
-		}
-
 		PrintWriter writer = new PrintWriter(result);
 		StringBuilder title = new StringBuilder();
 		title.append("Raw").append("\t");
@@ -591,7 +587,7 @@ public class MetaData {
 				sbs[i] = new StringBuilder();
 				sbs[i].append(raw).append("\t");
 				sbs[i].append(expNames[i]);
-				for (int j = 0; j < metainfo[i].length; j++) {
+				for (int j = 0; j < metaTypeCount; j++) {
 					sbs[i].append("\t").append(metainfo[i][j]);
 				}
 				writer.println(sbs[i]);
@@ -609,7 +605,7 @@ public class MetaData {
 					StringBuilder sb = new StringBuilder();
 					sb.append(expNames[i] + "_" + LabelTitles[j]).append("\t");
 					sb.append(labelExpNames[id]);
-					for (int k = 0; k < metainfo[id].length; k++) {
+					for (int k = 0; k < metaTypeCount; k++) {
 						sb.append("\t").append(metainfo[id][k]);
 					}
 					writer.println(sb);

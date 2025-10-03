@@ -10,7 +10,7 @@ class TaxonomySummaryGenerator(BaseReportGenerator):
     """Generator for taxonomy summary reports."""
     
     def create_taxonomy_summary(self, taxa_df, metadata=None):
-        """Enhanced taxonomy summary with rank-specific analysis for all taxonomic ranks."""
+        """Create taxonomy summary visualization with individual plots for each taxonomic level"""
         # Validate data before processing
         if not self.validate_data(taxa_df, "taxonomy"):
             return self.create_empty_data_plot(
@@ -18,360 +18,324 @@ class TaxonomySummaryGenerator(BaseReportGenerator):
                 "No taxonomy data available for analysis.<br>Please check if the taxonomic analysis completed successfully."
             )
 
-        # Identify taxonomic columns
-        rank_cols = ["Rank", "rank", "Level", "Taxonomic_Rank"]
-        rank_col = next((c for c in rank_cols if c in taxa_df.columns), None)
-        taxon_cols = ["Taxon", "taxon", "Name", "Taxa", "Species"]
-        taxon_col = next((c for c in taxon_cols if c in taxa_df.columns), None)
-
         intensity_cols, sample_names, groups, group_colors = self.extract_sample_info(taxa_df, metadata)
+        simple_names = sample_names
 
-        # Ensure intensity columns are numeric
         for c in intensity_cols:
             if c in taxa_df.columns:
                 taxa_df[c] = pd.to_numeric(taxa_df[c], errors="coerce").fillna(0)
 
-        # Fallback simple layout if key columns are missing
-        if rank_col is None or taxon_col is None or len(intensity_cols) == 0:
-            fig = make_subplots(
-                rows=1,
-                cols=2,
-                subplot_titles=("Taxonomic Composition (Treemap)", "Top 20 Taxa by Abundance"),
-                specs=[[{"type": "treemap"}, {"type": "bar"}]],
-            )
-            if len(intensity_cols) > 0 and taxon_col:
-                tmp = taxa_df.copy()
-                tmp["Total_Abundance"] = tmp[intensity_cols].sum(axis=1)
-                top_20 = tmp.nlargest(20, "Total_Abundance")
-                fig.add_trace(
-                    go.Treemap(
-                        labels=top_20[taxon_col].head(10),
-                        values=top_20["Total_Abundance"].head(10),
-                        parents=[""] * min(10, len(top_20)),
-                        textinfo="label+percent entry",
-                        marker=dict(colorscale="Viridis"),
-                        name="Taxonomic Composition",
-                    ),
-                    row=1,
-                    col=1,
-                )
-                fig.add_trace(
-                    go.Bar(
-                        x=top_20["Total_Abundance"],
-                        y=top_20[taxon_col],
-                        orientation="h",
-                        name="Top Taxa",
-                        marker_color=self.colors["tertiary"],
-                    ),
-                    row=1,
-                    col=2,
-                )
-            fig.update_layout(height=1600, title_text="MetaPilot Taxonomy Summary Report")
-            return fig
-
-        # Compute total abundance and sort ranks by hierarchy
-        taxa_df = taxa_df.copy()
-        taxa_df["Total_Abundance"] = taxa_df[intensity_cols].sum(axis=1)
-        available_ranks = pd.Series(taxa_df[rank_col].dropna().unique())
-        rank_hierarchy = ["species", "genus", "family", "order", "class", "phylum", "kingdom"]
-        rank_order = {}
-        for i, r in enumerate(rank_hierarchy):
-            for ar in available_ranks:
-                if r in str(ar).lower():
-                    rank_order[ar] = i
-        sorted_ranks = sorted(available_ranks, key=lambda x: (rank_order.get(x, 999), str(x)))
-
-        # Build subplot grid: Single column layout with double height
-        num_ranks = min(len(sorted_ranks), 4)
-        total_rows = 1 + num_ranks + 2
-        subplot_titles = [
-            "Taxonomic Hierarchy (Multiple Ring)",
-            "Top 20 Taxa by Abundance",
+        taxonomic_ranks = ["domain", "phylum", "class", "order", "family", "genus", "species"]
+        available_ranks = [
+            rank for rank in taxonomic_ranks
+            if rank in taxa_df.columns
+            and len(taxa_df[taxa_df[rank].notna() & (taxa_df[rank] != "")]) > 0
         ]
-        specs = [[{"type": "sunburst"}], [{"type": "bar"}]]
-
-        for r in sorted_ranks[:num_ranks]:
-            subplot_titles.extend([f"{r} Composition (Treemap)", f"Top 20 {r} by Abundance"])
-            specs.append([{"type": "treemap"}])
-            specs.append([{"type": "bar"}])
-
-        subplot_titles.extend(["Taxa Count by Rank", "PCA of Taxonomic Profiles"])
-        specs.append([{"type": "bar"}])
-        specs.append([{"type": "scatter"}])
-
-        subplot_titles.extend(["Diversity Indices by Sample"])
-        specs.append([{"type": "bar"}])
-
-        fig = make_subplots(rows=total_rows, cols=1, subplot_titles=subplot_titles, specs=specs)
-
-        current_row = 1
-        # Sunburst
-        sunburst_data = self._create_sunburst_data(taxa_df, rank_col, taxon_col, sorted_ranks)
-        if sunburst_data:
-            fig.add_trace(
-                go.Sunburst(
-                    labels=sunburst_data["labels"],
-                    parents=sunburst_data["parents"],
-                    values=sunburst_data["values"],
-                    branchvalues="total",
-                    textinfo="label+percent entry",
-                    textfont=dict(size=10),
-                    marker=dict(colorscale="Viridis", colors=sunburst_data["colors"], line=dict(width=1, color="white")),
-                    name="Taxonomic Hierarchy",
-                ),
-                row=current_row,
-                col=1,
-            )
-
-        # Top-20 overall
-        top_20_taxa = taxa_df.nlargest(20, "Total_Abundance")
-        fig.add_trace(
-            go.Bar(
-                x=top_20_taxa["Total_Abundance"],
-                y=top_20_taxa[taxon_col],
-                orientation="h",
-                name="Top Taxa Overall",
-                marker_color=self.colors["tertiary"],
-            ),
-            row=current_row,
-            col=2,
+        
+        if not available_ranks:
+            return self.create_empty_data_plot("Taxonomy Summary Report", "No taxonomic data available")
+        
+        total_rows = len(available_ranks) * 4
+        subplot_titles = []
+        specs = []
+        
+        for rank in available_ranks:
+            subplot_titles.extend([
+                f"{rank.capitalize()} Intensity Distribution (Log Intensity)",
+                f"{rank.capitalize()} PCA (Taxa in Sample Space)",
+                f"{rank.capitalize()} Log Intensity Heatmap (Clustered)",
+                f"{rank.capitalize()} Composition by Sample"
+            ])
+            specs.extend([
+                [{"type": "violin"}],
+                [{"type": "scatter"}],
+                [{"type": "heatmap"}],
+                [{"type": "bar"}]
+            ])
+        
+        subplot_spacing = min(0.06, 0.8 / max(total_rows - 1, 1)) if total_rows > 1 else 0
+        fig = make_subplots(
+            rows=total_rows,
+            cols=1,
+            subplot_titles=subplot_titles,
+            specs=specs,
+            vertical_spacing=subplot_spacing
         )
-        current_row += 1
+        
+        current_row = 1
+        
+        for rank in available_ranks:
+            rank_data = taxa_df[taxa_df[rank].notna() & (taxa_df[rank] != "")]
+            if rank_data.empty:
+                for _ in range(4):
+                    fig.add_annotation(
+                        text="No data",
+                        x=0.5,
+                        y=0.5,
+                        showarrow=False,
+                        row=current_row,
+                        col=1
+                    )
+                    current_row += 1
+                continue
 
-        # Rank-specific rows
-        for r in sorted_ranks[:num_ranks]:
-            rdata = taxa_df[taxa_df[rank_col] == r]
-            if len(rdata) == 0:
-                current_row += 1
-                continue
-            rtotal = rdata["Total_Abundance"].sum()
-            if rtotal <= 0:
-                current_row += 1
-                continue
-            rdata = rdata.copy()
-            rdata["Rank_Relative_Abundance"] = (rdata["Total_Abundance"] / rtotal) * 100
-            top_20_rank = rdata.nlargest(20, "Total_Abundance")
-            top_10_rank = top_20_rank.head(10)
-            fig.add_trace(
-                go.Treemap(
-                    labels=top_10_rank[taxon_col],
-                    values=top_10_rank["Rank_Relative_Abundance"],
-                    parents=[""] * len(top_10_rank),
-                    textinfo="label+percent entry",
-                    marker=dict(colorscale="Viridis"),
-                    name=f"{r} Composition",
-                ),
-                row=current_row,
-                col=1,
-            )
-            fig.add_trace(
-                go.Bar(
-                    x=top_20_rank["Rank_Relative_Abundance"],
-                    y=top_20_rank[taxon_col],
-                    orientation="h",
-                    name=f"Top {r}",
-                    marker_color=self.colors["tertiary"],
-                ),
-                row=current_row,
-                col=2,
-            )
+            rank_summary = rank_data.groupby(rank)[intensity_cols].sum().reset_index()
+            taxon_labels = rank_summary[rank].tolist()
+
+            if len(intensity_cols) > 0:
+                intensity_matrix = rank_summary[intensity_cols].to_numpy(dtype=float)
+                log_intensity_matrix = np.where(intensity_matrix > 0, np.log10(intensity_matrix), 0.0)
+            else:
+                intensity_matrix = np.empty((len(rank_summary), 0))
+                log_intensity_matrix = intensity_matrix
+
+            # 1. Violin plot
+            sample_data = {}
+            for i, col in enumerate(intensity_cols):
+                sample_name = simple_names[i] if i < len(simple_names) else f"Sample_{i+1}"
+                sample_intensities = []
+                for val in rank_summary[col]:
+                    if pd.notna(val) and val > 0:
+                        sample_intensities.append(np.log10(val))
+                if sample_intensities:
+                    sample_data[sample_name] = sample_intensities
+
+            if sample_data:
+                for sample_name, intensities in sample_data.items():
+                    fig.add_trace(
+                        go.Violin(
+                            y=intensities,
+                            name=sample_name,
+                            box_visible=True,
+                            meanline_visible=True,
+                            points='all',
+                            pointpos=0,
+                            jitter=0.3,
+                            marker_color=self.colors["primary"],
+                            showlegend=False,
+                            x0=sample_name
+                        ),
+                        row=current_row,
+                        col=1
+                    )
+            else:
+                fig.add_annotation(
+                    text="No intensity data",
+                    x=0.5,
+                    y=0.5,
+                    showarrow=False,
+                    row=current_row,
+                    col=1
+                )
+
+            fig.update_xaxes(title_text="Samples", row=current_row, col=1)
+            fig.update_yaxes(title_text="Log Intensity", row=current_row, col=1)
             current_row += 1
 
-        # Summary: taxa count
-        rank_counts = taxa_df[rank_col].value_counts()
-        rank_counts_sorted = rank_counts.reindex(sorted_ranks)
-        fig.add_trace(
-            go.Bar(
-                x=list(rank_counts_sorted.index.astype(str)),
-                y=rank_counts_sorted.values,
-                name="Taxa Count by Rank",
-                marker_color=self.colors["secondary"],
-            ),
-            row=current_row,
-            col=1,
-        )
+            # 2. PCA scatter
+            if log_intensity_matrix.shape[0] >= 2 and log_intensity_matrix.shape[1] >= 2:
+                try:
+                    scaled = StandardScaler().fit_transform(log_intensity_matrix)
+                    pca = PCA(n_components=2)
+                    components = pca.fit_transform(scaled)
+                    explained = pca.explained_variance_ratio_
 
-        # Summary: PCA of profiles
-        if len(intensity_cols) >= 2:
-            try:
-                profile_data = taxa_df[intensity_cols].fillna(0)
-                profile_data = profile_data.loc[profile_data.sum(axis=1) > 0]
-                if len(profile_data) > 0:
-                    rel_abundance = profile_data.div(profile_data.sum(axis=0), axis=1) * 100
-                    log_data = np.log10(rel_abundance + 0.01)
-                    scaler = StandardScaler()
-                    scaled = scaler.fit_transform(log_data.T)
-                    pca = PCA(n_components=min(2, len(intensity_cols)))
-                    pcr = pca.fit_transform(scaled)
-                    if groups and group_colors:
-                        for g in sorted(set(groups)):
-                            idx = [i for i, gg in enumerate(groups) if gg == g]
-                            fig.add_trace(
-                                go.Scatter(
-                                    x=[pcr[i, 0] for i in idx],
-                                    y=[pcr[i, 1] for i in idx] if pcr.shape[1] > 1 else [0] * len(idx),
-                                    mode="markers+text",
-                                    text=[sample_names[i] for i in idx],
-                                    textposition="top center",
-                                    marker=dict(size=12, color=group_colors[g], line=dict(width=2, color="white")),
-                                    name=f"Group {g}",
-                                    showlegend=True,
-                                ),
-                                row=current_row,
-                                col=2,
-                            )
-                    else:
-                        fig.add_trace(
-                            go.Scatter(
-                                x=pcr[:, 0],
-                                y=pcr[:, 1] if pcr.shape[1] > 1 else np.zeros(len(pcr)),
-                                mode="markers+text",
-                                text=sample_names,
-                                textposition="top center",
-                                marker=dict(size=12, color=self.colors["primary"], line=dict(width=2, color="white")),
-                                name="Taxonomic PCA",
-                            ),
-                            row=current_row,
-                            col=2,
-                        )
-            except Exception as e:
+                    fig.add_trace(
+                        go.Scatter(
+                            x=components[:, 0],
+                            y=components[:, 1],
+                            mode='markers',
+                            marker=dict(color=self.colors['secondary'], size=9, line=dict(width=1, color='#333333')),
+                            text=taxon_labels,
+                            hovertemplate='<b>%{text}</b><br>PC1: %{x:.2f}<br>PC2: %{y:.2f}<br><extra></extra>',
+                            showlegend=False
+                        ),
+                        row=current_row,
+                        col=1
+                    )
+
+                    pc1_label = f"PC1 ({explained[0]*100:.1f}% var)" if len(explained) > 0 else "PC1"
+                    pc2_label = f"PC2 ({explained[1]*100:.1f}% var)" if len(explained) > 1 else "PC2"
+                    fig.update_xaxes(title_text=pc1_label, row=current_row, col=1)
+                    fig.update_yaxes(title_text=pc2_label, row=current_row, col=1)
+
+                    x_vals = components[:, 0]
+                    y_vals = components[:, 1]
+                    x_min, x_max = float(x_vals.min()), float(x_vals.max())
+                    y_min, y_max = float(y_vals.min()), float(y_vals.max())
+                    x_pad = (x_max - x_min) * 0.1 if x_max > x_min else 0.5
+                    y_pad = (y_max - y_min) * 0.1 if y_max > y_min else 0.5
+                    fig.update_xaxes(range=[x_min - x_pad, x_max + x_pad], row=current_row, col=1)
+                    fig.update_yaxes(range=[y_min - y_pad, y_max + y_pad], row=current_row, col=1)
+
+                except Exception:
+                    fig.add_annotation(
+                        text="PCA failed",
+                        x=0.5,
+                        y=0.5,
+                        showarrow=False,
+                        row=current_row,
+                        col=1
+                    )
+                    fig.update_xaxes(title_text="PC1", row=current_row, col=1)
+                    fig.update_yaxes(title_text="PC2", row=current_row, col=1)
+            else:
                 fig.add_annotation(
-                    text=f"Taxonomic PCA failed: {str(e)[:60]}...",
-                    xref="paper",
-                    yref="paper",
-                    x=0.75,
-                    y=1 - (current_row - 1) / total_rows,
+                    text="Insufficient data for PCA",
+                    x=0.5,
+                    y=0.5,
                     showarrow=False,
+                    row=current_row,
+                    col=1
+                )
+                fig.update_xaxes(title_text="PC1", row=current_row, col=1)
+                fig.update_yaxes(title_text="PC2", row=current_row, col=1)
+
+            current_row += 1
+
+            # 3. Heatmap
+            if log_intensity_matrix.size > 0 and log_intensity_matrix.shape[1] > 0:
+                heatmap_values = log_intensity_matrix.copy()
+                heatmap_labels = taxon_labels.copy()
+
+                if heatmap_values.shape[0] > 1:
+                    from scipy.cluster.hierarchy import linkage, dendrogram
+                    from scipy.spatial.distance import pdist
+                    row_linkage = linkage(pdist(heatmap_values), method='ward')
+                    row_order = dendrogram(row_linkage, no_plot=True)['leaves']
+                    heatmap_values = heatmap_values[row_order]
+                    heatmap_labels = [heatmap_labels[i] for i in row_order]
+
+                if heatmap_values.shape[1] > 1:
+                    from scipy.cluster.hierarchy import linkage, dendrogram
+                    from scipy.spatial.distance import pdist
+                    col_linkage = linkage(pdist(heatmap_values.T), method='ward')
+                    col_order = dendrogram(col_linkage, no_plot=True)['leaves']
+                    heatmap_values = heatmap_values[:, col_order]
+                    sample_names_clustered = [
+                        simple_names[i] if i < len(simple_names) else f"Sample_{i+1}"
+                        for i in col_order
+                    ]
+                else:
+                    sample_names_clustered = (
+                        simple_names[:len(intensity_cols)]
+                        if len(simple_names) > 0
+                        else [f"Sample_{i+1}" for i in range(len(intensity_cols))]
+                    )
+
+                fig.add_trace(
+                    go.Heatmap(
+                        z=heatmap_values.tolist(),
+                        x=sample_names_clustered,
+                        y=heatmap_labels,
+                        colorscale='Viridis',
+                        showscale=False,
+                        name=f"{rank.capitalize()} Log Intensity Heatmap (Clustered)",
+                        hovertemplate='<b>%{y}</b><br><b>Sample:</b> %{x}<br><b>Log Intensity:</b> %{z:.2f}<br><extra></extra>'
+                    ),
+                    row=current_row,
+                    col=1
+                )
+            else:
+                fig.add_annotation(
+                    text="Insufficient data for heatmap",
+                    x=0.5,
+                    y=0.5,
+                    showarrow=False,
+                    row=current_row,
+                    col=1
                 )
 
-        current_row += 1
+            fig.update_xaxes(title_text="Samples", row=current_row, col=1)
+            fig.update_yaxes(title_text="Taxa", row=current_row, col=1)
+            current_row += 1
 
-        # Summary: Diversity indices (Shannon)
-        if len(intensity_cols) > 0:
-            shannon = []
-            for c in intensity_cols:
-                s = taxa_df[c]
-                s = s[s > 0]
-                if len(s) > 0:
-                    rel = s / s.sum()
-                    shannon.append(float(-np.sum(rel * np.log(rel))))
-                else:
-                    shannon.append(0.0)
-            colors = [group_colors[groups[i]] if groups and group_colors else self.colors["light_blue"] for i in range(len(sample_names))]
-            fig.add_trace(
-                go.Bar(x=sample_names, y=shannon, name="Shannon Diversity", marker_color=colors),
-                row=current_row,
-                col=1,
-            )
+            # 4. Composition bar chart
+            sample_compositions = {}
+            taxon_list = rank_summary[rank].tolist()
+            for i, col in enumerate(intensity_cols):
+                sample_values = rank_summary[col]
+                total_sample = sample_values.sum()
+                if total_sample > 0:
+                    sample_taxa_abundance = {}
+                    for idx, taxon in enumerate(taxon_list):
+                        taxon_abundance = sample_values.iloc[idx]
+                        if taxon_abundance > 0:
+                            sample_taxa_abundance[taxon] = taxon_abundance
+                    
+                    top_sample_taxa = sorted(sample_taxa_abundance.items(), key=lambda x: x[1], reverse=True)[:9]
+                    
+                    rel_abundances = []
+                    taxon_names = []
+                    for taxon_name, abundance in top_sample_taxa:
+                        rel_abundances.append(abundance / total_sample * 100)
+                        taxon_names.append(taxon_name)
+                    
+                    top_total = sum(ab for _, ab in top_sample_taxa)
+                    others_abundance = (total_sample - top_total) / total_sample * 100
+                    if others_abundance > 0:
+                        rel_abundances.append(others_abundance)
+                        taxon_names.append("Others")
+                    
+                    file_id = simple_names[i] if i < len(simple_names) else f"File_{i+1}"
+                    sample_compositions[file_id] = {
+                        'taxa': taxon_names,
+                        'abundances': rel_abundances
+                    }
 
-        # Layout sizing and labels
-        base_height = 500
-        rank_height = 560  # Double the height for single column layout
-        total_height = base_height + num_ranks * rank_height
-        fig.update_layout(height=total_height, title_text="MetaPilot Taxonomy Summary Report - All Taxonomic Ranks")
-        fig.update_xaxes(title_text="Taxonomic Rank", row=(1 + num_ranks), col=1)
-        fig.update_xaxes(title_text="PC1", row=(1 + num_ranks + 1), col=1)
-        fig.update_yaxes(title_text="Number of Taxa", row=(1 + num_ranks), col=1)
+            if sample_compositions:
+                sample_names_list = list(sample_compositions.keys())
+                all_taxa = set()
+                for comp in sample_compositions.values():
+                    all_taxa.update(comp['taxa'])
+                all_taxa = list(all_taxa)
+
+                color_palette = [
+                    '#B5BD00', '#8ED1FC', '#FF6B6B', '#4ECDC4', '#45B7D1',
+                    '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F'
+                ]
+
+                for idx, taxon in enumerate(all_taxa):
+                    abundances = []
+                    for sample_name in sample_names_list:
+                        if taxon in sample_compositions[sample_name]['taxa']:
+                            taxon_idx = sample_compositions[sample_name]['taxa'].index(taxon)
+                            abundances.append(sample_compositions[sample_name]['abundances'][taxon_idx])
+                        else:
+                            abundances.append(0)
+                    
+                    fig.add_trace(
+                        go.Bar(
+                            x=sample_names_list,
+                            y=abundances,
+                            name=taxon,
+                            marker_color=color_palette[idx % len(color_palette)],
+                            showlegend=False
+                        ),
+                        row=current_row,
+                        col=1
+                    )
+            else:
+                fig.add_annotation(
+                    text="Insufficient data",
+                    x=0.5,
+                    y=0.5,
+                    showarrow=False,
+                    row=current_row,
+                    col=1
+                )
+
+            fig.update_xaxes(title_text="Samples", row=current_row, col=1)
+            fig.update_yaxes(title_text="Relative Abundance (%)", row=current_row, col=1)
+            current_row += 1
+
+        height_per_subplot = 900
+        fig.update_layout(
+            height=height_per_subplot * total_rows,
+            showlegend=False,
+            title_text="Taxonomy Summary Report",
+            barmode='stack'
+        )
+        
         return fig
 
-    def _create_sunburst_data(self, taxa_df, rank_col, taxon_col, sorted_ranks):
-        """Create hierarchical data structure for sunburst chart showing taxonomic relationships."""
-        try:
-            # Define taxonomic hierarchy order (from highest to lowest rank)
-            rank_hierarchy = ['superkingdom', 'kingdom', 'phylum', 'class', 'order', 'family', 'genus', 'species']
-            
-            # Filter to only include ranks that exist in our data
-            available_hierarchy = []
-            for rank in rank_hierarchy:
-                for available_rank in sorted_ranks:
-                    if rank in str(available_rank).lower():
-                        available_hierarchy.append(available_rank)
-                        break
-            
-            if len(available_hierarchy) < 2:
-                return None
-            
-            # Create hierarchical structure
-            labels = []
-            parents = []
-            values = []
-            colors = []
-            
-            # Color palette for different taxonomic levels
-            color_palette = [
-                '#B5BD00', '#8ED1FC', '#000000', '#B5BD00', '#8ED1FC',
-                '#000000', '#B5BD00', '#8ED1FC', '#000000', '#B5BD00'
-            ]
-            
-            # Track parent-child relationships
-            parent_map = {}  # Maps taxon name to its parent
-            rank_data = {}   # Stores data for each rank
-            
-            # Process each rank level
-            for i, rank in enumerate(available_hierarchy):
-                rank_data[rank] = taxa_df[taxa_df[rank_col] == rank].copy()
-                if len(rank_data[rank]) == 0:
-                    continue
-                
-                # Sort by abundance and take top taxa for this rank
-                rank_data[rank] = rank_data[rank].sort_values('Total_Abundance', ascending=False)
-                
-                # Limit number of taxa per rank to avoid overcrowding
-                max_taxa_per_rank = 15 if i == 0 else 10  # More for higher ranks
-                rank_data[rank] = rank_data[rank].head(max_taxa_per_rank)
-                
-                # Add taxa for this rank
-                for _, row in rank_data[rank].iterrows():
-                    taxon_name = str(row[taxon_col])
-                    abundance = row['Total_Abundance']
-                    
-                    # Skip if abundance is too low
-                    if abundance < taxa_df['Total_Abundance'].max() * 0.001:  # 0.1% threshold
-                        continue
-                    
-                    labels.append(taxon_name)
-                    values.append(abundance)
-                    
-                    # Determine parent
-                    if i == 0:  # Highest rank (root level)
-                        parents.append("")
-                        parent_map[taxon_name] = ""
-                    else:
-                        # Find parent from previous rank
-                        parent_rank = available_hierarchy[i-1]
-                        parent_found = False
-                        
-                        # Try to find a logical parent based on taxonomic relationships
-                        for parent_taxon, parent_abundance in parent_map.items():
-                            if parent_abundance != "" and parent_abundance in rank_data[parent_rank][taxon_col].values:
-                                # Check if this taxon might belong to this parent
-                                # This is a simplified approach - in reality, you'd need proper taxonomic lineage
-                                if abundance < parent_abundance * 0.5:  # Child should be smaller than parent
-                                    parents.append(parent_taxon)
-                                    parent_map[taxon_name] = parent_taxon
-                                    parent_found = True
-                                    break
-                
-                        if not parent_found:
-                            # Default to root if no parent found
-                            parents.append("")
-                            parent_map[taxon_name] = ""
-                    
-                    # Assign color based on rank level
-                    color_index = i % len(color_palette)
-                    colors.append(color_palette[color_index])
-            
-            # If we don't have enough data, return None
-            if len(labels) < 3:
-                return None
-            
-            return {
-                'labels': labels,
-                'parents': parents,
-                'values': values,
-                'colors': colors
-            }
-                            
-        except Exception as e:
-            print(f"Error creating sunburst data: {e}")
-            return None

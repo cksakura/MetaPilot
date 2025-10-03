@@ -18,6 +18,11 @@ import javax.swing.JProgressBar;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcSageParameters;
+import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagSageParameters;
 
 public class SageTask {
 
@@ -69,22 +74,22 @@ public class SageTask {
 	/**
 	 * Search mzML files against a FASTA database using Sage
 	 * 
-	 * @param mzMLFiles Array of mzML file paths
-	 * @param result Output directory for results
-	 * @param db FASTA database file path
-	 * @param precursorTol Precursor tolerance in ppm
-	 * @param fragmentTol Fragment tolerance in ppm
-	 * @param enzyme Enzyme name
+	 * @param mzMLFiles       Array of mzML file paths
+	 * @param result          Output directory for results
+	 * @param db              FASTA database file path
+	 * @param precursorTol    Precursor tolerance in ppm
+	 * @param fragmentTol     Fragment tolerance in ppm
+	 * @param enzyme          Enzyme name
 	 * @param missedCleavages Number of missed cleavages
-	 * @param minPepLen Minimum peptide length
-	 * @param maxPepLen Maximum peptide length
-	 * @param fdr FDR threshold
-	 * @param fixedMods Array of fixed modifications
-	 * @param variableMods Array of variable modifications
+	 * @param minPepLen       Minimum peptide length
+	 * @param maxPepLen       Maximum peptide length
+	 * @param fdr             FDR threshold
+	 * @param fixedMods       Array of fixed modifications
+	 * @param variableMods    Array of variable modifications
 	 */
 	public void searchMzML(String[] mzMLFiles, String result, String db, double precursorTol, double fragmentTol,
-			String enzyme, int missedCleavages, int minPepLen, int maxPepLen, double fdr, 
-			String[] fixedMods, String[] variableMods) {
+			String enzyme, int missedCleavages, int minPepLen, int maxPepLen, double fdr, String[] fixedMods,
+			String[] variableMods) {
 		
 		File resultDir = new File(result);
 		if (!resultDir.exists()) {
@@ -94,79 +99,320 @@ public class SageTask {
 		File configFile = new File(resultDir, "sage_config.json");
 		
 		try (PrintWriter writer = new PrintWriter(configFile)) {
-			writer.println("{");
-			writer.println("  \"database\": {");
-			writer.println("    \"fasta\": \"" + db.replace("\\", "\\\\") + "\",");
-			writer.println("    \"decoy_tag\": \"rev_\",");
-			writer.println("    \"generate_decoys\": true");
-			writer.println("  },");
-			writer.println("  \"precursor_tol\": {");
-			writer.println("    \"ppm\": [0, " + precursorTol + "]");
-			writer.println("  },");
-			writer.println("  \"fragment_tol\": {");
-			writer.println("    \"ppm\": [0, " + fragmentTol + "]");
-			writer.println("  },");
-			writer.println("  \"enzyme\": {");
-			writer.println("    \"missed_cleavages\": " + missedCleavages + ",");
-			writer.println("    \"min_len\": " + minPepLen + ",");
-			writer.println("    \"max_len\": " + maxPepLen);
-			writer.println("  },");
+			// Create JSON structure using JSONObject
+			JSONObject config = new JSONObject();
 			
-			// Add fixed modifications
-			writer.println("  \"static_mods\": {");
+			// Database section
+			JSONObject database = new JSONObject();
+			database.put("bucket_size", 8192);
+			
+			// Enzyme section
+			JSONObject enzymeObj = new JSONObject();
+			enzymeObj.put("missed_cleavages", missedCleavages);
+			enzymeObj.put("min_len", minPepLen);
+			enzymeObj.put("max_len", maxPepLen);
+			
+			// Only add cleave_at if it's not empty
+			String cleaveAt = getEnzymeCleavageSites(enzyme);
+			if (!cleaveAt.isEmpty()) {
+				enzymeObj.put("cleave_at", cleaveAt);
+			}
+			
+			// Only add restrict if it's not empty
+			String restrict = getEnzymeRestriction(enzyme);
+			if (!restrict.isEmpty()) {
+				enzymeObj.put("restrict", restrict);
+			}
+			
+			database.put("enzyme", enzymeObj);
+			database.put("peptide_min_mass", 500.0);
+			database.put("peptide_max_mass", 5000.0);
+			database.put("ion_kinds", new JSONArray().put("b").put("y"));
+			database.put("min_ion_index", 2);
+			database.put("max_variable_mods", 3);
+			
+			// Fixed modifications
+			JSONObject staticMods = new JSONObject();
 			if (fixedMods != null && fixedMods.length > 0) {
-				for (int i = 0; i < fixedMods.length; i++) {
-					// Parse modification format: "Carbamidomethyl[C] 0" -> "C": 57.0214
-					String mod = fixedMods[i];
+				for (String mod : fixedMods) {
 					if (mod != null && !mod.trim().isEmpty()) {
 						String[] parts = mod.split("\\[|\\]");
 						if (parts.length >= 2) {
 							String aminoAcid = parts[1]; // Extract amino acid from [C]
 							String massShift = getModificationMass(parts[0]); // Get mass for modification name
-							writer.print("    \"" + aminoAcid + "\": " + massShift);
-							if (i < fixedMods.length - 1) writer.println(",");
-							else writer.println();
+							staticMods.put(aminoAcid, Double.parseDouble(massShift));
 						}
 					}
 				}
 			}
-			writer.println("  },");
+			database.put("static_mods", staticMods);
 			
-			// Add variable modifications
-			writer.println("  \"variable_mods\": {");
+			// Variable modifications
+			JSONObject variableModsObj = new JSONObject();
 			if (variableMods != null && variableMods.length > 0) {
-				for (int i = 0; i < variableMods.length; i++) {
-					// Parse modification format: "Oxidation[M] 0" -> "M": 15.9949
-					String mod = variableMods[i];
+				for (String mod : variableMods) {
 					if (mod != null && !mod.trim().isEmpty()) {
 						String[] parts = mod.split("\\[|\\]");
 						if (parts.length >= 2) {
 							String aminoAcid = parts[1]; // Extract amino acid from [M]
 							String massShift = getModificationMass(parts[0]); // Get mass for modification name
-							writer.print("    \"" + aminoAcid + "\": " + massShift);
-							if (i < variableMods.length - 1) writer.println(",");
-							else writer.println();
+							variableModsObj.put(aminoAcid, Double.parseDouble(massShift));
 						}
 					}
 				}
 			}
-			writer.println("  },");
+			database.put("variable_mods", variableModsObj);
+			database.put("decoy_tag", "rev_");
+			database.put("generate_decoys", true);
+			database.put("fasta", db);
 			
-			writer.println("  \"max_variable_mods\": 2,");
-			writer.println("  \"output_directory\": \"" + result.replace("\\", "\\\\") + "\",");
-			writer.print("  \"mzml_paths\": [");
-			for (int i = 0; i < mzMLFiles.length; i++) {
-				writer.print("\"" + mzMLFiles[i].replace("\\", "\\\\") + "\"");
-				if (i < mzMLFiles.length - 1) writer.print(", ");
+			config.put("database", database);
+			
+			// Precursor tolerance (open search format - use da)
+			JSONObject precursorTolObj = new JSONObject();
+			precursorTolObj.put("da", new JSONArray().put(-precursorTol).put(precursorTol));
+			config.put("precursor_tol", precursorTolObj);
+			
+			// Fragment tolerance
+			JSONObject fragmentTolObj = new JSONObject();
+			fragmentTolObj.put("ppm", new JSONArray().put(-fragmentTol).put(fragmentTol));
+			config.put("fragment_tol", fragmentTolObj);
+			
+			// Open search specific parameters
+			config.put("deisotope", true);
+			config.put("chimera", true);
+			config.put("min_peaks", 15);
+			config.put("max_peaks", 250);
+			config.put("min_matched_peaks", 4);
+			config.put("report_psms", 2);
+			config.put("predict_rt", true);
+			
+			// Output directory
+			config.put("output_directory", result);
+			
+			// mzML paths
+			JSONArray mzmlPaths = new JSONArray();
+			for (String mzmlFile : mzMLFiles) {
+				mzmlPaths.put(mzmlFile);
 			}
-			writer.println("],");
-			writer.println("  \"write_checkpoint\": false,");
-			writer.println("  \"fdr\": " + fdr);
-			writer.println("}");
+			config.put("mzml_paths", mzmlPaths);
+			
+			// Write JSON to file
+			writer.println(config.toString(2)); // Pretty print with 2-space indentation
+
+		} catch (IOException e) {
+			LOGGER.error(taskName + ": error in writing Sage config file to " + configFile, e);
+			System.out.println(format.format(new Date()) + "\t" + taskName + ": error in writing Sage config file to "
+					+ configFile);
+			return;
+		}
+
+		addTask(configFile);
+	}
+	
+	/**
+	 * Search mzML files against a FASTA database using Sage with enhanced
+	 * parameters from DDAMagSageParameters object
+	 * 
+	 * @param mzMLFiles       Array of mzML file paths
+	 * @param result          Output directory for results
+	 * @param db              FASTA database file path
+	 * @param parameter       DDAMagSageParameters object containing all parameters
+	 * @param isQuant         Whether to include quantification settings
+	 */
+	public void searchMzML(String[] mzMLFiles, String result, String db, DDAIgcSageParameters parameter,
+			boolean isQuant) {
+
+		// Extract all values from the parameter object
+		int missedCleavages = parameter.getMissCleavages();
+		String enzyme = parameter.getEnzyme();
+		String[] fixedMods = parameter.getFixMods();
+		String[] variableMods = parameter.getVariMods();
+		double precursorTolMin = parameter.getPrecursorToleranceMin();
+		double precursorTolMax = parameter.getPrecursorToleranceMax();
+		double fragmentTol = parameter.getFragmentTolerance();
+		String precursorUnit = parameter.getPrecursorToleranceUnit();
+		String fragmentUnit = parameter.getFragmentToleranceUnit();
+		int minPepLen = parameter.getMinPeptideLength();
+		int maxPepLen = parameter.getMaxPeptideLength();
+
+		File resultDir = new File(result);
+		if (!resultDir.exists()) {
+			resultDir.mkdirs();
+		}
+
+		File configFile = new File(resultDir, "sage_config.json");
+
+		try (PrintWriter writer = new PrintWriter(configFile)) {
+			// Create JSON structure using JSONObject
+			JSONObject config = new JSONObject();
+			
+			// Database section
+			JSONObject database = new JSONObject();
+			database.put("bucket_size", 8192);
+			
+			// Enzyme section
+			JSONObject enzymeObj = new JSONObject();
+			enzymeObj.put("missed_cleavages", missedCleavages);
+			enzymeObj.put("min_len", minPepLen);
+			enzymeObj.put("max_len", maxPepLen);
+			
+			// Only add cleave_at if it's not empty
+			String cleaveAt = getEnzymeCleavageSites(enzyme);
+			if (!cleaveAt.isEmpty()) {
+				enzymeObj.put("cleave_at", cleaveAt);
+			}
+			
+			// Only add restrict if it's not empty
+			String restrict = getEnzymeRestriction(enzyme);
+			if (!restrict.isEmpty()) {
+				enzymeObj.put("restrict", restrict);
+			}
+			
+			database.put("enzyme", enzymeObj);
+			database.put("peptide_min_mass", 500.0);
+			database.put("peptide_max_mass", 5000.0);
+			database.put("ion_kinds", new JSONArray().put("b").put("y"));
+			database.put("min_ion_index", 2);
+			database.put("max_variable_mods", 3);
+			
+			// Fixed modifications - Format: "site:mass" (e.g., "C:57.02146", "peptide n-term:42.0106")
+			JSONObject staticMods = new JSONObject();
+			if (fixedMods != null && fixedMods.length > 0) {
+				for (String mod : fixedMods) {
+					if (mod != null && !mod.trim().isEmpty()) {
+						String[] parts = mod.split(":");
+						if (parts.length >= 2) {
+							String site = parts[0].trim(); // Extract site (e.g., "C", "peptide n-term")
+							String massShift = parts[1].trim(); // Extract mass value
+							
+							// Convert site to Sage notation (handles terminal modifications)
+							String sageKey = convertSiteToSageNotation(site);
+							
+							staticMods.put(sageKey, Double.parseDouble(massShift));
+						}
+					}
+				}
+			}
+			database.put("static_mods", staticMods);
+			
+			// Variable modifications - Format: "modName:sites:mass" (e.g., "Oxidation:M:15.9949", "Acetylation:protein n-term:42.0106")
+			JSONObject variableModsObj = new JSONObject();
+			if (variableMods != null && variableMods.length > 0) {
+				for (String mod : variableMods) {
+					if (mod != null && !mod.trim().isEmpty()) {
+						String[] parts = mod.split(":");
+						if (parts.length >= 3) {
+							// parts[0] is modName (not used in Sage config)
+							String sites = parts[1].trim(); // Sites (e.g., "M", "STY", "protein n-term")
+							String massShift = parts[2].trim(); // Extract mass value
+							
+							// Handle multiple sites (e.g., "STY" -> "S", "T", "Y")
+							if (sites.length() > 1 && !sites.contains(" ") && !sites.contains("-")) {
+								// Multiple amino acids like "STY"
+								for (char aminoAcid : sites.toCharArray()) {
+									String sageKey = convertSiteToSageNotation(String.valueOf(aminoAcid));
+									// Sage variable mods use array format
+									if (variableModsObj.has(sageKey)) {
+										// Append to existing array
+										JSONArray existingArray = variableModsObj.getJSONArray(sageKey);
+										existingArray.put(Double.parseDouble(massShift));
+									} else {
+										// Create new array
+										variableModsObj.put(sageKey, new JSONArray().put(Double.parseDouble(massShift)));
+									}
+								}
+							} else {
+								// Single site or terminal modification
+								String sageKey = convertSiteToSageNotation(sites);
+								
+								// Sage variable mods use array format
+								if (variableModsObj.has(sageKey)) {
+									// Append to existing array
+									JSONArray existingArray = variableModsObj.getJSONArray(sageKey);
+									existingArray.put(Double.parseDouble(massShift));
+								} else {
+									// Create new array
+									variableModsObj.put(sageKey, new JSONArray().put(Double.parseDouble(massShift)));
+								}
+							}
+						}
+					}
+				}
+			}
+			database.put("variable_mods", variableModsObj);
+			database.put("decoy_tag", "rev_");
+			database.put("generate_decoys", true);
+			database.put("fasta", db);
+			
+			config.put("database", database);
+			
+			if (isQuant) {
+				// Quant format - add quant section first
+				JSONObject quant = new JSONObject();
+				quant.put("lfq", true);
+				
+				JSONObject lfqSettings = new JSONObject();
+				lfqSettings.put("peak_scoring", parameter.getPeakScoring());
+				lfqSettings.put("integration", parameter.getIntegration());
+				lfqSettings.put("spectral_angle", parameter.getSpectralAngle());
+				lfqSettings.put("ppm_tolerance", parameter.getLfqPpmTolerance());
+				quant.put("lfq_settings", lfqSettings);
+				
+				config.put("quant", quant);
+				
+				// Quant format - use unit from parameter (usually "ppm" for both)
+				JSONObject precursorTolObj = new JSONObject();
+				precursorTolObj.put(precursorUnit.toLowerCase(), new JSONArray().put(precursorTolMin).put(precursorTolMax));
+				config.put("precursor_tol", precursorTolObj);
+				
+				JSONObject fragmentTolObj = new JSONObject();
+				fragmentTolObj.put(fragmentUnit.toLowerCase(), new JSONArray().put(-fragmentTol).put(fragmentTol));
+				config.put("fragment_tol", fragmentTolObj);
+				
+				config.put("isotope_errors", new JSONArray().put(0).put(2));
+				config.put("deisotope", true);
+				config.put("min_peaks", 15);
+				config.put("max_peaks", 150);
+				config.put("max_fragment_charge", 1);
+				config.put("min_matched_peaks", 4);
+				config.put("predict_rt", true);
+			} else {
+				// Open search format - use unit from parameter (usually "da" for precursor, "ppm" for fragment)
+				JSONObject precursorTolObj = new JSONObject();
+				precursorTolObj.put(precursorUnit.toLowerCase(), new JSONArray().put(precursorTolMin).put(precursorTolMax));
+				config.put("precursor_tol", precursorTolObj);
+				
+				JSONObject fragmentTolObj = new JSONObject();
+				fragmentTolObj.put(fragmentUnit.toLowerCase(), new JSONArray().put(-fragmentTol).put(fragmentTol));
+				config.put("fragment_tol", fragmentTolObj);
+				
+				config.put("deisotope", true);
+				config.put("chimera", true);
+				config.put("min_peaks", 15);
+				config.put("max_peaks", 250);
+				config.put("min_matched_peaks", 4);
+				config.put("report_psms", 2);
+				config.put("predict_rt", true);
+			}
+			
+			// Output directory (same for both formats)
+			config.put("output_directory", result);
+			
+			// mzML paths (same for both formats)
+			JSONArray mzmlPaths = new JSONArray();
+			for (String mzmlFile : mzMLFiles) {
+				mzmlPaths.put(mzmlFile);
+			}
+			config.put("mzml_paths", mzmlPaths);
+			
+			// Write JSON to file
+			writer.println(config.toString(2)); // Pretty print with 2-space indentation
 			
 		} catch (IOException e) {
 			LOGGER.error(taskName + ": error in writing Sage config file to " + configFile, e);
-			System.out.println(format.format(new Date()) + "\t" + taskName + ": error in writing Sage config file to " + configFile);
+			System.out.println(format.format(new Date()) + "\t" + taskName + ": error in writing Sage config file to "
+					+ configFile);
 			return;
 		}
 		
@@ -174,22 +420,233 @@ public class SageTask {
 	}
 
 	/**
-	 * Search mzML files against a FASTA database using Sage with enhanced parameters
+	 * Search mzML files against a FASTA database using Sage with enhanced
+	 * parameters from DDAMagSageParameters object
 	 * 
-	 * @param mzMLFiles Array of mzML file paths
-	 * @param result Output directory for results
-	 * @param db FASTA database file path
+	 * @param mzMLFiles       Array of mzML file paths
+	 * @param result          Output directory for results
+	 * @param db              FASTA database file path
+	 * @param parameter       DDAMagSageParameters object containing all parameters
+	 * @param isQuant         Whether to include quantification settings
+	 */
+	public void searchMzML(String[] mzMLFiles, String result, String db, DDAMagSageParameters parameter,
+			boolean isQuant) {
+
+		// Extract all values from the parameter object
+		int missedCleavages = parameter.getMissCleavages();
+		String enzyme = parameter.getEnzyme();
+		String[] fixedMods = parameter.getFixMods();
+		String[] variableMods = parameter.getVariMods();
+		double precursorTolMin = parameter.getPrecursorToleranceMin();
+		double precursorTolMax = parameter.getPrecursorToleranceMax();
+		double fragmentTol = parameter.getFragmentTolerance();
+		String precursorUnit = parameter.getPrecursorToleranceUnit();
+		String fragmentUnit = parameter.getFragmentToleranceUnit();
+		int minPepLen = parameter.getMinPeptideLength();
+		int maxPepLen = parameter.getMaxPeptideLength();
+
+		File resultDir = new File(result);
+		if (!resultDir.exists()) {
+			resultDir.mkdirs();
+		}
+
+		File configFile = new File(resultDir, "sage_config.json");
+
+		try (PrintWriter writer = new PrintWriter(configFile)) {
+			// Create JSON structure using JSONObject
+			JSONObject config = new JSONObject();
+			
+			// Database section
+			JSONObject database = new JSONObject();
+			database.put("bucket_size", 8192);
+			
+			// Enzyme section
+			JSONObject enzymeObj = new JSONObject();
+			enzymeObj.put("missed_cleavages", missedCleavages);
+			enzymeObj.put("min_len", minPepLen);
+			enzymeObj.put("max_len", maxPepLen);
+			
+			// Only add cleave_at if it's not empty
+			String cleaveAt = getEnzymeCleavageSites(enzyme);
+			if (!cleaveAt.isEmpty()) {
+				enzymeObj.put("cleave_at", cleaveAt);
+			}
+			
+			// Only add restrict if it's not empty
+			String restrict = getEnzymeRestriction(enzyme);
+			if (!restrict.isEmpty()) {
+				enzymeObj.put("restrict", restrict);
+			}
+			
+			database.put("enzyme", enzymeObj);
+			database.put("peptide_min_mass", 500.0);
+			database.put("peptide_max_mass", 5000.0);
+			database.put("ion_kinds", new JSONArray().put("b").put("y"));
+			database.put("min_ion_index", 2);
+			database.put("max_variable_mods", 3);
+			
+			// Fixed modifications - Format: "site:mass" (e.g., "C:57.02146", "peptide n-term:42.0106")
+			JSONObject staticMods = new JSONObject();
+			if (fixedMods != null && fixedMods.length > 0) {
+				for (String mod : fixedMods) {
+					if (mod != null && !mod.trim().isEmpty()) {
+						String[] parts = mod.split(":");
+						if (parts.length >= 2) {
+							String site = parts[0].trim(); // Extract site (e.g., "C", "peptide n-term")
+							String massShift = parts[1].trim(); // Extract mass value
+							
+							// Convert site to Sage notation (handles terminal modifications)
+							String sageKey = convertSiteToSageNotation(site);
+							
+							staticMods.put(sageKey, Double.parseDouble(massShift));
+						}
+					}
+				}
+			}
+			database.put("static_mods", staticMods);
+			
+			// Variable modifications - Format: "modName:sites:mass" (e.g., "Oxidation:M:15.9949", "Acetylation:protein n-term:42.0106")
+			JSONObject variableModsObj = new JSONObject();
+			if (variableMods != null && variableMods.length > 0) {
+				for (String mod : variableMods) {
+					if (mod != null && !mod.trim().isEmpty()) {
+						String[] parts = mod.split(":");
+						if (parts.length >= 3) {
+							// parts[0] is modName (not used in Sage config)
+							String sites = parts[1].trim(); // Sites (e.g., "M", "STY", "protein n-term")
+							String massShift = parts[2].trim(); // Extract mass value
+							
+							// Handle multiple sites (e.g., "STY" -> "S", "T", "Y")
+							if (sites.length() > 1 && !sites.contains(" ") && !sites.contains("-")) {
+								// Multiple amino acids like "STY"
+								for (char aminoAcid : sites.toCharArray()) {
+									String sageKey = convertSiteToSageNotation(String.valueOf(aminoAcid));
+									// Sage variable mods use array format
+									if (variableModsObj.has(sageKey)) {
+										// Append to existing array
+										JSONArray existingArray = variableModsObj.getJSONArray(sageKey);
+										existingArray.put(Double.parseDouble(massShift));
+									} else {
+										// Create new array
+										variableModsObj.put(sageKey, new JSONArray().put(Double.parseDouble(massShift)));
+									}
+								}
+							} else {
+								// Single site or terminal modification
+								String sageKey = convertSiteToSageNotation(sites);
+								
+								// Sage variable mods use array format
+								if (variableModsObj.has(sageKey)) {
+									// Append to existing array
+									JSONArray existingArray = variableModsObj.getJSONArray(sageKey);
+									existingArray.put(Double.parseDouble(massShift));
+								} else {
+									// Create new array
+									variableModsObj.put(sageKey, new JSONArray().put(Double.parseDouble(massShift)));
+								}
+							}
+						}
+					}
+				}
+			}
+			database.put("variable_mods", variableModsObj);
+			database.put("decoy_tag", "rev_");
+			database.put("generate_decoys", true);
+			database.put("fasta", db);
+			
+			config.put("database", database);
+			
+			if (isQuant) {
+				// Quant format - add quant section first
+				JSONObject quant = new JSONObject();
+				quant.put("lfq", true);
+				
+				JSONObject lfqSettings = new JSONObject();
+				lfqSettings.put("peak_scoring", parameter.getPeakScoring());
+				lfqSettings.put("integration", parameter.getIntegration());
+				lfqSettings.put("spectral_angle", parameter.getSpectralAngle());
+				lfqSettings.put("ppm_tolerance", parameter.getLfqPpmTolerance());
+				quant.put("lfq_settings", lfqSettings);
+				
+				config.put("quant", quant);
+				
+				// Quant format - use unit from parameter (usually "ppm" for both)
+				JSONObject precursorTolObj = new JSONObject();
+				precursorTolObj.put(precursorUnit.toLowerCase(), new JSONArray().put(precursorTolMin).put(precursorTolMax));
+				config.put("precursor_tol", precursorTolObj);
+				
+				JSONObject fragmentTolObj = new JSONObject();
+				fragmentTolObj.put(fragmentUnit.toLowerCase(), new JSONArray().put(-fragmentTol).put(fragmentTol));
+				config.put("fragment_tol", fragmentTolObj);
+				
+				config.put("isotope_errors", new JSONArray().put(0).put(2));
+				config.put("deisotope", true);
+				config.put("min_peaks", 15);
+				config.put("max_peaks", 150);
+				config.put("max_fragment_charge", 1);
+				config.put("min_matched_peaks", 4);
+				config.put("predict_rt", true);
+			} else {
+				// Open search format - use unit from parameter (usually "da" for precursor, "ppm" for fragment)
+				JSONObject precursorTolObj = new JSONObject();
+				precursorTolObj.put(precursorUnit.toLowerCase(), new JSONArray().put(precursorTolMin).put(precursorTolMax));
+				config.put("precursor_tol", precursorTolObj);
+				
+				JSONObject fragmentTolObj = new JSONObject();
+				fragmentTolObj.put(fragmentUnit.toLowerCase(), new JSONArray().put(-fragmentTol).put(fragmentTol));
+				config.put("fragment_tol", fragmentTolObj);
+				
+				config.put("deisotope", true);
+				config.put("chimera", true);
+				config.put("min_peaks", 15);
+				config.put("max_peaks", 250);
+				config.put("min_matched_peaks", 4);
+				config.put("report_psms", 2);
+				config.put("predict_rt", true);
+			}
+			
+			// Output directory (same for both formats)
+			config.put("output_directory", result);
+			
+			// mzML paths (same for both formats)
+			JSONArray mzmlPaths = new JSONArray();
+			for (String mzmlFile : mzMLFiles) {
+				mzmlPaths.put(mzmlFile);
+			}
+			config.put("mzml_paths", mzmlPaths);
+			
+			// Write JSON to file
+			writer.println(config.toString(2)); // Pretty print with 2-space indentation
+
+		} catch (IOException e) {
+			LOGGER.error(taskName + ": error in writing Sage config file to " + configFile, e);
+			System.out.println(format.format(new Date()) + "\t" + taskName + ": error in writing Sage config file to "
+					+ configFile);
+			return;
+		}
+
+		addTask(configFile);
+	}
+	
+	/**
+	 * Search mzML files against a FASTA database using Sage with enhanced
+	 * parameters
+	 * 
+	 * @param mzMLFiles       Array of mzML file paths
+	 * @param result          Output directory for results
+	 * @param db              FASTA database file path
 	 * @param precursorTolMin Minimum precursor tolerance in ppm
 	 * @param precursorTolMax Maximum precursor tolerance in ppm
-	 * @param fragmentTol Fragment tolerance in ppm
-	 * @param enzyme Enzyme name
+	 * @param fragmentTol     Fragment tolerance in ppm
+	 * @param enzyme          Enzyme name
 	 * @param missedCleavages Number of missed cleavages
-	 * @param fixedMods Array of fixed modifications
-	 * @param variableMods Array of variable modifications
-	 * @param isQuant Whether to include quantification settings
+	 * @param fixedMods       Array of fixed modifications
+	 * @param variableMods    Array of variable modifications
+	 * @param isQuant         Whether to include quantification settings
 	 */
-	public void searchMzML(String[] mzMLFiles, String result, String db, double precursorTolMin, double precursorTolMax, double fragmentTol,
-			String enzyme, int missedCleavages, String[] fixedMods, String[] variableMods, boolean isQuant) {
+	public void searchMzML(String[] mzMLFiles, String result, String db, double precursorTolMin, double precursorTolMax,
+			double fragmentTol, String enzyme, int missedCleavages, String[] fixedMods, String[] variableMods,
+			boolean isQuant) {
 		
 		File resultDir = new File(result);
 		if (!resultDir.exists()) {
@@ -199,94 +656,182 @@ public class SageTask {
 		File configFile = new File(resultDir, "sage_config.json");
 		
 		try (PrintWriter writer = new PrintWriter(configFile)) {
-			writer.println("{");
-			writer.println("  \"database\": {");
-			writer.println("    \"fasta\": \"" + db.replace("\\", "\\\\") + "\",");
-			writer.println("    \"decoy_tag\": \"rev_\",");
-			writer.println("    \"generate_decoys\": true");
-			writer.println("  },");
-			writer.println("  \"precursor_tol\": {");
-			writer.println("    \"ppm\": [" + precursorTolMin + ", " + precursorTolMax + "]");
-			writer.println("  },");
-			writer.println("  \"fragment_tol\": {");
-			writer.println("    \"ppm\": [0, " + fragmentTol + "]");
-			writer.println("  },");
-			writer.println("  \"enzyme\": {");
-			writer.println("    \"missed_cleavages\": " + missedCleavages);
-			writer.println("  },");
+			// Create JSON structure using JSONObject
+			JSONObject config = new JSONObject();
 			
-			// Add fixed modifications
-			writer.println("  \"static_mods\": {");
+			// Database section
+			JSONObject database = new JSONObject();
+			database.put("bucket_size", 8192);
+			
+			// Enzyme section
+			JSONObject enzymeObj = new JSONObject();
+			enzymeObj.put("missed_cleavages", missedCleavages);
+			enzymeObj.put("min_len", 7);
+			enzymeObj.put("max_len", 50);
+			
+			// Only add cleave_at if it's not empty
+			String cleaveAt = getEnzymeCleavageSites(enzyme);
+			if (!cleaveAt.isEmpty()) {
+				enzymeObj.put("cleave_at", cleaveAt);
+			}
+			
+			// Only add restrict if it's not empty
+			String restrict = getEnzymeRestriction(enzyme);
+			if (!restrict.isEmpty()) {
+				enzymeObj.put("restrict", restrict);
+			}
+			
+			database.put("enzyme", enzymeObj);
+			database.put("peptide_min_mass", 500.0);
+			database.put("peptide_max_mass", 5000.0);
+			database.put("ion_kinds", new JSONArray().put("b").put("y"));
+			database.put("min_ion_index", 2);
+			database.put("max_variable_mods", 3);
+			
+			// Fixed modifications
+			JSONObject staticMods = new JSONObject();
 			if (fixedMods != null && fixedMods.length > 0) {
-				for (int i = 0; i < fixedMods.length; i++) {
-					// Parse modification format: "C:57.0214" -> "C": 57.0214
-					String mod = fixedMods[i];
+				for (String mod : fixedMods) {
 					if (mod != null && !mod.trim().isEmpty()) {
 						String[] parts = mod.split(":");
 						if (parts.length >= 2) {
 							String aminoAcid = parts[0]; // Extract amino acid
 							String massShift = parts[1]; // Extract mass value
-							writer.print("    \"" + aminoAcid + "\": " + massShift);
-							if (i < fixedMods.length - 1) writer.println(",");
-							else writer.println();
+							staticMods.put(aminoAcid, Double.parseDouble(massShift));
 						}
 					}
 				}
 			}
-			writer.println("  },");
+			database.put("static_mods", staticMods);
 			
-			// Add variable modifications
-			writer.println("  \"variable_mods\": {");
+			// Variable modifications
+			JSONObject variableModsObj = new JSONObject();
 			if (variableMods != null && variableMods.length > 0) {
-				for (int i = 0; i < variableMods.length; i++) {
-					// Parse modification format: "Oxidation:M:15.9949" -> "M": 15.9949
-					String mod = variableMods[i];
+				for (String mod : variableMods) {
 					if (mod != null && !mod.trim().isEmpty()) {
 						String[] parts = mod.split(":");
 						if (parts.length >= 3) {
 							String aminoAcid = parts[1]; // Extract amino acid from middle part
 							String massShift = parts[2]; // Extract mass value from last part
-							writer.print("    \"" + aminoAcid + "\": " + massShift);
-							if (i < variableMods.length - 1) writer.println(",");
-							else writer.println();
+							variableModsObj.put(aminoAcid, Double.parseDouble(massShift));
 						}
 					}
 				}
 			}
-			writer.println("  },");
+			database.put("variable_mods", variableModsObj);
+			database.put("decoy_tag", "rev_");
+			database.put("generate_decoys", true);
+			database.put("fasta", db);
 			
-			writer.println("  \"max_variable_mods\": 2,");
-			writer.println("  \"output_directory\": \"" + result.replace("\\", "\\\\") + "\",");
-			writer.print("  \"mzml_paths\": [");
-			for (int i = 0; i < mzMLFiles.length; i++) {
-				writer.print("\"" + mzMLFiles[i].replace("\\", "\\\\") + "\"");
-				if (i < mzMLFiles.length - 1) writer.print(", ");
-			}
-			writer.println("]");
+			config.put("database", database);
 			
-			// Add quantification settings if isQuant is true
 			if (isQuant) {
-				writer.println(",");
-				writer.println("  \"quant\": {");
-				writer.println("    \"lfq\": true,");
-				writer.println("    \"lfq_settings\": {");
-				writer.println("      \"peak_scoring\": \"Hybrid\",");
-				writer.println("      \"integration\": \"Sum\",");
-				writer.println("      \"spectral_angle\": 0.6,");
-				writer.println("      \"ppm_tolerance\": 5.0");
-				writer.println("    }");
-				writer.println("  }");
+				// Quant format - add quant section first
+				JSONObject quant = new JSONObject();
+				quant.put("lfq", true);
+				
+				JSONObject lfqSettings = new JSONObject();
+				lfqSettings.put("peak_scoring", "Hybrid");
+				lfqSettings.put("integration", "Sum");
+				lfqSettings.put("spectral_angle", 0.6);
+				lfqSettings.put("ppm_tolerance", 5.0);
+				quant.put("lfq_settings", lfqSettings);
+				
+				config.put("quant", quant);
+				
+				// Quant format - use ppm for both tolerances
+				JSONObject precursorTolObj = new JSONObject();
+				precursorTolObj.put("ppm", new JSONArray().put(precursorTolMin).put(precursorTolMax));
+				config.put("precursor_tol", precursorTolObj);
+				
+				JSONObject fragmentTolObj = new JSONObject();
+				fragmentTolObj.put("ppm", new JSONArray().put(-fragmentTol).put(fragmentTol));
+				config.put("fragment_tol", fragmentTolObj);
+				
+				config.put("isotope_errors", new JSONArray().put(0).put(2));
+				config.put("deisotope", true);
+				config.put("min_peaks", 15);
+				config.put("max_peaks", 150);
+				config.put("max_fragment_charge", 1);
+				config.put("min_matched_peaks", 4);
+				config.put("predict_rt", true);
+			} else {
+				// Open search format - use da for precursor, ppm for fragment
+				JSONObject precursorTolObj = new JSONObject();
+				precursorTolObj.put("da", new JSONArray().put(precursorTolMin).put(precursorTolMax));
+				config.put("precursor_tol", precursorTolObj);
+				
+				JSONObject fragmentTolObj = new JSONObject();
+				fragmentTolObj.put("ppm", new JSONArray().put(-fragmentTol).put(fragmentTol));
+				config.put("fragment_tol", fragmentTolObj);
+				
+				config.put("deisotope", true);
+				config.put("chimera", true);
+				config.put("min_peaks", 15);
+				config.put("max_peaks", 250);
+				config.put("min_matched_peaks", 4);
+				config.put("report_psms", 2);
+				config.put("predict_rt", true);
 			}
 			
-			writer.println("}");
+			// Output directory (same for both formats)
+			config.put("output_directory", result);
+			
+			// mzML paths (same for both formats)
+			JSONArray mzmlPaths = new JSONArray();
+			for (String mzmlFile : mzMLFiles) {
+				mzmlPaths.put(mzmlFile);
+			}
+			config.put("mzml_paths", mzmlPaths);
+			
+			// Write JSON to file
+			writer.println(config.toString(2)); // Pretty print with 2-space indentation
 			
 		} catch (IOException e) {
 			LOGGER.error(taskName + ": error in writing Sage config file to " + configFile, e);
-			System.out.println(format.format(new Date()) + "\t" + taskName + ": error in writing Sage config file to " + configFile);
+			System.out.println(format.format(new Date()) + "\t" + taskName + ": error in writing Sage config file to "
+					+ configFile);
 			return;
 		}
 		
 		addTask(configFile);
+	}
+
+	/**
+	 * Convert UI modification site to Sage terminal notation
+	 * 
+	 * @param site The site from UI (e.g., "C", "peptide n-term", "protein n-term")
+	 * @return Sage notation (e.g., "C", "^", "[")
+	 */
+	private String convertSiteToSageNotation(String site) {
+		if (site == null || site.trim().isEmpty()) {
+			return site;
+		}
+		
+		String siteLower = site.toLowerCase().trim();
+		
+		// Terminal modifications
+		if (siteLower.equals("peptide n-term")) {
+			return "^"; // Peptide N-terminus (any amino acid)
+		} else if (siteLower.equals("peptide c-term")) {
+			return "$"; // Peptide C-terminus
+		} else if (siteLower.equals("protein n-term")) {
+			return "["; // Protein N-terminus
+		} else if (siteLower.equals("protein c-term")) {
+			return "]"; // Protein C-terminus
+		}
+		
+		// Check for site-specific peptide N-terminal modifications (e.g., "peptide n-term Q")
+		// Note: Current UI doesn't support this, but adding for future compatibility
+		if (siteLower.startsWith("peptide n-term ")) {
+			String aminoAcid = site.substring("peptide n-term ".length()).trim();
+			if (aminoAcid.length() == 1) {
+				return "^" + aminoAcid.toUpperCase(); // e.g., "^Q" for peptide N-term Q
+			}
+		}
+		
+		// Regular amino acid - return as is
+		return site;
 	}
 
 	/**
@@ -317,6 +862,88 @@ public class SageTask {
 			default:
 				LOGGER.warn("Unknown modification: " + modificationName + ", using default mass 0");
 				return "0";
+		}
+	}
+
+	/**
+	 * Get enzyme cleavage sites based on enzyme name
+	 */
+	private String getEnzymeCleavageSites(String enzyme) {
+		if (enzyme == null)
+			return "KR";
+
+		switch (enzyme.toLowerCase().trim()) {
+		case "trypsin":
+		case "trypsin/p":
+			return "KR";
+		case "lys-c":
+		case "lysyl endopeptidase":
+			return "K";
+		case "arg-c":
+		case "arginyl endopeptidase":
+			return "R";
+		case "glu-c":
+		case "glutamyl endopeptidase":
+			return "E";
+		case "asp-n":
+		case "aspartyl endopeptidase":
+			return "D";
+		case "chymotrypsin":
+			return "FWY";
+		case "elastase":
+			return "AGILV";
+		case "thermolysin":
+			return "AILMFV";
+		case "proteinase k":
+			return "AEFILMVWY";
+		case "pepsin":
+			return "FL";
+		case "clostripain":
+			return "R";
+		case "staph protease":
+			return "E";
+		case "no enzyme":
+		case "unspecific":
+			return ""; // Return empty string - will be omitted from JSON
+		default:
+			LOGGER.warn("Unknown enzyme: " + enzyme + ", using default trypsin cleavage sites (KR)");
+			return "KR";
+		}
+	}
+
+	/**
+	 * Get enzyme restriction sites based on enzyme name
+	 */
+	private String getEnzymeRestriction(String enzyme) {
+		if (enzyme == null)
+			return "P";
+
+		switch (enzyme.toLowerCase().trim()) {
+		case "trypsin/p":
+			return "P";
+		case "trypsin":
+		case "lys-c":
+		case "lysyl endopeptidase":
+		case "arg-c":
+		case "arginyl endopeptidase":
+		case "glu-c":
+		case "glutamyl endopeptidase":
+		case "asp-n":
+		case "aspartyl endopeptidase":
+		case "chymotrypsin":
+		case "elastase":
+		case "thermolysin":
+		case "proteinase k":
+		case "pepsin":
+		case "clostripain":
+		case "staph protease":
+			return ""; // Return empty string - will be omitted from JSON
+		case "no enzyme":
+		case "unspecific":
+			return ""; // Return empty string - will be omitted from JSON
+		default:
+			LOGGER.warn("Unknown enzyme: " + enzyme + ", using default restriction (P)");
+			return "P";
 		}
 	}
 

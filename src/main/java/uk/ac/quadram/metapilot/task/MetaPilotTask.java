@@ -6,14 +6,9 @@ package uk.ac.quadram.metapilot.task;
 import java.io.File;
 import java.io.FileFilter;
 import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.io.PrintWriter;
-import java.net.JarURLConnection;
 import java.net.URL;
-import java.net.URLConnection;
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
 import java.nio.file.StandardWatchEventKinds;
@@ -21,16 +16,11 @@ import java.nio.file.WatchEvent;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
-import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
-import java.util.jar.JarEntry;
-import java.util.jar.JarFile;
 
 import javax.swing.UIManager;
 import javax.swing.UnsupportedLookAndFeelException;
@@ -188,27 +178,6 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 	}
 
 	/**
-	 * @param result
-	 * @throws IOException
-	 */
-	protected void copyReport(File result) throws IOException {
-
-		File destDir = new File(result, "report");
-		if (!destDir.exists()) {
-			destDir.mkdirs();
-		}
-
-		try {
-			loadRecourseFromJarByFolder("/uk/ac/quadram/metapilot/report", destDir);
-		} catch (IOException e) {
-			LOGGER.error(taskName + ": error in creating the report folder", e);
-			System.err.println(format.format(new Date()) + "\t" + taskName + ": error in creating the report folder");
-		}
-
-		metaPar.setReportDir(destDir);
-	}
-
-	/**
 	 * Copy report templates in background thread with progress updates. This method
 	 * should be called from the call() method after setting up the result
 	 * directory.
@@ -218,8 +187,6 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 	protected boolean copyReportTemplatesInBackground() {
 		try {
 			updateMessage("Setting up report templates...");
-			updateProgress(5, 100);
-
 			// Get the result directory from metaPar
 			File resultDir = metaPar.getDbSearchResultFile();
 			if (resultDir == null) {
@@ -240,7 +207,6 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 			reportCopyThread.start();
 
 			updateMessage("Copying report templates...");
-			updateProgress(8, 100);
 
 			try {
 				reportCopyThread.join();
@@ -255,10 +221,9 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 				return false;
 			}
 
-			reportHtmlDir = new File(reportDir + "\\reports\\rmd_html");
+			reportHtmlDir = new File(reportDir + "\\reports");
 
 			updateMessage("Report templates ready");
-			updateProgress(10, 100);
 
 			LOGGER.info(getTaskName() + ": Report templates copied successfully");
 			return true;
@@ -267,130 +232,6 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 			LOGGER.error(getTaskName() + ": error in copying report templates", e);
 			updateMessage("Error: " + e.getMessage());
 			return false;
-		}
-	}
-
-	protected void loadRecourseFromJarByFolder(String fromPath, File toPath) throws IOException {
-
-		URL url = getClass().getResource(fromPath);
-
-		LOGGER.info(taskName + ": copying report folder from " + url + " started");
-
-		URLConnection urlConnection = url.openConnection();
-		if (url.getProtocol().equals("jar")) {
-			copyJarResources((JarURLConnection) urlConnection, toPath);
-		} else if (url.getProtocol().equals("file")) {
-			copyFileResources(url, fromPath, toPath);
-		} else {
-			LOGGER.info(taskName + ": unknown resource file type " + url.getProtocol() + " for " + url);
-		}
-
-		LOGGER.info(taskName + ": copying report folder from " + url + " finished");
-	}
-
-	protected void copyFileResources(URL url, String fromPath, File toPath) throws IOException {
-		File root = new File(url.getPath());
-		if (root.isDirectory()) {
-			File[] files = root.listFiles();
-			for (File file : files) {
-				if (file.isDirectory()) {
-					File newToFile = new File(toPath, file.getName());
-					if (!newToFile.exists()) {
-						newToFile.mkdirs();
-					}
-					loadRecourseFromJarByFolder(fromPath + "/" + file.getName(), newToFile);
-				} else {
-					copyFromFile(fromPath + "/" + file.getName(), toPath);
-				}
-			}
-		}
-	}
-
-	protected void copyJarResources(JarURLConnection jarURLConnection, File toPath) throws IOException {
-		JarFile jarFile = jarURLConnection.getJarFile();
-		Enumeration<JarEntry> entrys = jarFile.entries();
-		while (entrys.hasMoreElements()) {
-			JarEntry entry = entrys.nextElement();
-			if (entry.getName().startsWith(jarURLConnection.getEntryName()) && !entry.getName().endsWith("/")) {
-				copyFromJar("/" + entry.getName(), toPath);
-			}
-		}
-		jarFile.close();
-	}
-
-	protected void copyFromFile(String fromPath, File toPath) throws IOException {
-
-		int index = fromPath.lastIndexOf('/');
-
-		String filename = fromPath.substring(index + 1);
-		File file = new File(toPath, filename);
-
-		if (!file.exists() && !file.createNewFile()) {
-			return;
-		}
-
-		byte[] buffer = new byte[1024];
-		int readBytes;
-
-		URL fromUrl = getClass().getResource(fromPath);
-		URLConnection urlConnection = fromUrl.openConnection();
-		InputStream is = urlConnection.getInputStream();
-
-		if (is == null) {
-			throw new FileNotFoundException("File " + fromPath + " was not found inside JAR.");
-		}
-
-		OutputStream os = new FileOutputStream(file);
-		try {
-			while ((readBytes = is.read(buffer)) != -1) {
-				os.write(buffer, 0, readBytes);
-			}
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			LOGGER.error("Error in writing report file to " + file, e);
-			System.err.println(format.format(new Date()) + "\t" + "Error in writing report file to " + file);
-		} finally {
-			os.close();
-			is.close();
-		}
-	}
-
-	protected void copyFromJar(String fromPath, File toPath) throws IOException {
-
-		String toPathName = toPath.getName();
-		int index = fromPath.indexOf("/" + toPathName + "/");
-
-		File file = new File(toPath.getParent() + fromPath.substring(index));
-
-		File parent = file.getParentFile();
-
-		if (!parent.exists()) {
-			parent.mkdirs();
-		}
-
-		byte[] buffer = new byte[1024];
-		int readBytes;
-
-		URL fromUrl = getClass().getResource(fromPath);
-		URLConnection urlConnection = fromUrl.openConnection();
-		InputStream is = urlConnection.getInputStream();
-
-		if (is == null) {
-			throw new FileNotFoundException("File " + fromPath + " was not found inside JAR.");
-		}
-
-		OutputStream os = new FileOutputStream(file);
-		try {
-			while ((readBytes = is.read(buffer)) != -1) {
-				os.write(buffer, 0, readBytes);
-			}
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			LOGGER.error("Error in writing report file to " + file, e);
-			System.err.println(format.format(new Date()) + "\t" + "Error in writing report file to " + file);
-		} finally {
-			os.close();
-			is.close();
 		}
 	}
 

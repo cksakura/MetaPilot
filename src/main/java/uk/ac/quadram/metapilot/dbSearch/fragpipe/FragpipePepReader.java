@@ -13,6 +13,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
+import uk.ac.quadram.metapilot.core.peptide.PeptideModificationFormatter;
 import uk.ac.quadram.metapilot.task.io.pep.AbstractMetaPeptideReader;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import java.util.List;
@@ -443,7 +444,7 @@ public class FragpipePepReader extends AbstractMetaPeptideReader {
 		// TODO Auto-generated method stub
 		String[] intensityTitles = new String[this.fileNames.length];
 		for (int i = 0; i < intensityTitles.length; i++) {
-			intensityTitles[i] = "Intensity " + fileNames[i];
+			intensityTitles[i] = fileNames[i];
 		}
 		return intensityTitles;
 	}
@@ -459,12 +460,12 @@ public class FragpipePepReader extends AbstractMetaPeptideReader {
 			File filei = new File(parentFile, fileNames[i]);
 			if (filei.exists() && filei.isDirectory()) {
 				File psmFile = new File(filei, "psm.tsv");
-				
 				if (psmFile.exists() && psmFile.length() > 0) {
 					try (BufferedReader reader = new BufferedReader(new FileReader(psmFile))) {
 						String line = reader.readLine(); // Header line
-						if (line == null) continue;
-						
+						if (line == null)
+							continue;
+
 						String[] title = line.split("\t");
 						int spectrumId = -1;
 						int spectrumFileId = -1;
@@ -480,70 +481,73 @@ public class FragpipePepReader extends AbstractMetaPeptideReader {
 						int qvalueId = -1;
 						int missedCleavagesId = -1;
 						int proteinId = -1;
-						
+						int modId = -1;
+
 						// Find column indices
 						for (int j = 0; j < title.length; j++) {
 							switch (title[j]) {
-								case "Spectrum":
-									spectrumId = j;
-									break;
-								case "Spectrum File":
-									spectrumFileId = j;
-									break;
-								case "Peptide":
-									peptideId = j;
-									break;
-								case "Modified Peptide":
-									modifiedPeptideId = j;
-									break;
-								case "Charge":
-									chargeId = j;
-									break;
-								case "Retention":
-									retentionId = j;
-									break;
-								case "Observed Mass":
-									observedMassId = j;
-									break;
-								case "Calculated Peptide Mass":
-									calculatedMassId = j;
-									break;
-								case "Delta Mass":
-									deltaMassId = j;
-									break;
-								case "Hyperscore":
-									hyperscoreId = j;
-									break;
-								case "Probability":
-									probabilityId = j;
-									break;
-								case "Qvalue":
-									qvalueId = j;
-									break;
-								case "Number of Missed Cleavages":
-									missedCleavagesId = j;
-									break;
-								case "Protein":
-									proteinId = j;
-									break;
+							case "Spectrum":
+								spectrumId = j;
+								break;
+							case "Spectrum File":
+								spectrumFileId = j;
+								break;
+							case "Peptide":
+								peptideId = j;
+								break;
+							case "Modified Peptide":
+								modifiedPeptideId = j;
+								break;
+							case "Charge":
+								chargeId = j;
+								break;
+							case "Retention":
+								retentionId = j;
+								break;
+							case "Observed Mass":
+								observedMassId = j;
+								break;
+							case "Calculated Peptide Mass":
+								calculatedMassId = j;
+								break;
+							case "Delta Mass":
+								deltaMassId = j;
+								break;
+							case "Hyperscore":
+								hyperscoreId = j;
+								break;
+							case "Probability":
+								probabilityId = j;
+								break;
+							case "Qvalue":
+								qvalueId = j;
+								break;
+							case "Number of Missed Cleavages":
+								missedCleavagesId = j;
+								break;
+							case "Protein":
+								proteinId = j;
+								break;
+							case "Assigned Modifications":
+								modId = j;
+								break;
 							}
 						}
-						
+
 						// Read PSM data
 						while ((line = reader.readLine()) != null) {
 							String[] cs = line.split("\t");
-							
-							if (cs.length <= Math.max(Math.max(Math.max(spectrumId, spectrumFileId), 
-									Math.max(peptideId, modifiedPeptideId)), 
+
+							if (cs.length <= Math.max(
+									Math.max(Math.max(spectrumId, spectrumFileId),
+											Math.max(peptideId, modifiedPeptideId)),
 									Math.max(Math.max(chargeId, proteinId), qvalueId))) {
 								continue; // Skip incomplete lines
 							}
-							
+
 							String spectrum = spectrumId >= 0 ? cs[spectrumId] : "";
-							String fileName = spectrumFileId >= 0 ? cs[spectrumFileId] : fileNames[i];
 							String sequence = peptideId >= 0 ? cs[peptideId] : "";
-							String modSeq = modifiedPeptideId >= 0 && !cs[modifiedPeptideId].isEmpty() 
-									? cs[modifiedPeptideId] : sequence;
+							
 							int charge = chargeId >= 0 ? Integer.parseInt(cs[chargeId]) : 0;
 							double rt = retentionId >= 0 ? Double.parseDouble(cs[retentionId]) : 0.0;
 							double expMass = observedMassId >= 0 ? Double.parseDouble(cs[observedMassId]) : 0.0;
@@ -554,14 +558,18 @@ public class FragpipePepReader extends AbstractMetaPeptideReader {
 							double probability = probabilityId >= 0 ? Double.parseDouble(cs[probabilityId]) : 0.0;
 							double qValue = qvalueId >= 0 ? Double.parseDouble(cs[qvalueId]) : 1.0;
 							String protein = proteinId >= 0 ? cs[proteinId] : "";
-							
-							String[] proteins = protein.isEmpty() ? new String[]{} : new String[]{protein};
-							
-							FragPipePSM psm = new FragPipePSM(fileName, spectrum, sequence, modSeq, charge,
+							String mod = modId >= 0 ? cs[modId] : "";
+							String modSeq = mod.length() >= 0
+									? PeptideModificationFormatter.getModifiedPeptideSequence(sequence, mod)
+									: sequence;
+
+							String[] proteins = protein.isEmpty() ? new String[] {} : new String[] { protein };
+
+							FragPipePSM psm = new FragPipePSM(fileNames[i], spectrum, sequence, modSeq, mod, charge,
 									expMass, calMass, massDiff, miss, rt, score, probability, qValue, proteins);
 							psmList.add(psm);
 						}
-						
+
 					} catch (IOException e) {
 						LOGGER.error("Error reading PSM file: " + psmFile.getAbsolutePath(), e);
 					}
