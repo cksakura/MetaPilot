@@ -59,7 +59,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 	// Add direct reference to DDAMagSageParameters
 	private DDAMagSageParameters magSageParams;
 
-	private static final Logger LOGGER = LogManager.getLogger(DDAMagSageTask.class);
+	// Logger is inherited from MetaPilotMagTask -> MetaPilotTask as an instance field
 	private static final String taskName = "DDA MAG database search by Sage workflow";
 
 	public DDAMagSageTask(DDAMagSageParameters magSageParams, MetaResourceParameters mrp, ProgressBar progressBar,
@@ -76,7 +76,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		MagDbItem selectedMagDb = magSageParams.getMagDbItem();
 		if (selectedMagDb != null) {
 			this.magDb = selectedMagDb;
-			LOGGER.info("Initialized MAG database: {} (version: {})", selectedMagDb.getCatalogueID(),
+			logger.info("Initialized MAG database: {} (version: {})", selectedMagDb.getCatalogueID(),
 					selectedMagDb.getVersionList() != null && !selectedMagDb.getVersionList().isEmpty()
 							? selectedMagDb.getVersionList().get(0).getCatalogueVersion()
 							: "unknown");
@@ -84,24 +84,24 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 			// Validate that the MAG database has the required files
 			File hapFastaFile = selectedMagDb.getHapFastaFile();
 			if (hapFastaFile == null || !hapFastaFile.exists()) {
-				LOGGER.error("MAG database HAP FASTA file is null or does not exist: {}",
+				logger.error("MAG database HAP FASTA file is null or does not exist: {}",
 						hapFastaFile != null ? hapFastaFile.getAbsolutePath() : "null");
-				LOGGER.error("Repository file: {}", selectedMagDb.getRepositoryFile());
-				LOGGER.error("Current file: {}", selectedMagDb.getCurrentFile());
+				logger.error("Repository file: {}", selectedMagDb.getRepositoryFile());
+				logger.error("Current file: {}", selectedMagDb.getCurrentFile());
 				throw new IllegalArgumentException("MAG database HAP FASTA file is required and must exist");
 			}
-			LOGGER.info("MAG database HAP FASTA file validated: {}", hapFastaFile.getAbsolutePath());
+			logger.info("MAG database HAP FASTA file validated: {}", hapFastaFile.getAbsolutePath());
 
 			File currentDbFile = selectedMagDb.getCurrentFile();
 			if (currentDbFile == null || !currentDbFile.exists()) {
-				LOGGER.error("MAG database file is null or does not exist: {}",
+				logger.error("MAG database file is null or does not exist: {}",
 						currentDbFile != null ? currentDbFile.getAbsolutePath() : "null");
-				LOGGER.error("Repository file: {}", selectedMagDb.getRepositoryFile());
-				LOGGER.error("Current file: {}", selectedMagDb.getCurrentFile());
+				logger.error("Repository file: {}", selectedMagDb.getRepositoryFile());
+				logger.error("Current file: {}", selectedMagDb.getCurrentFile());
 				throw new IllegalArgumentException("MAG database file is required and must exist");
 			}
 
-			LOGGER.info("MAG database file validated: {}", currentDbFile.getAbsolutePath());
+			logger.info("MAG database file validated: {}", currentDbFile.getAbsolutePath());
 			this.metaPar.setMicroDb(selectedMagDb.getCurrentFile().getAbsolutePath());
 		}
 
@@ -113,15 +113,15 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		if (selectedMagDb != null) {
 			File hapFastaFile = selectedMagDb.getHapFastaFile();
 			if (hapFastaFile == null || !hapFastaFile.exists()) {
-				LOGGER.error("MAG database HAP FASTA file is null or does not exist: {}",
+				logger.error("MAG database HAP FASTA file is null or does not exist: {}",
 						hapFastaFile != null ? hapFastaFile.getAbsolutePath() : "null");
-				LOGGER.error("Repository file: {}", selectedMagDb.getRepositoryFile());
-				LOGGER.error("Current file: {}", selectedMagDb.getCurrentFile());
+				logger.error("Repository file: {}", selectedMagDb.getRepositoryFile());
+				logger.error("Current file: {}", selectedMagDb.getCurrentFile());
 				throw new IllegalArgumentException("MAG database HAP FASTA file is required and must exist");
 			}
-			LOGGER.info("MAG database HAP FASTA file validated: {}", hapFastaFile.getAbsolutePath());
+			logger.info("MAG database HAP FASTA file validated: {}", hapFastaFile.getAbsolutePath());
 		} else {
-			LOGGER.error("MAG database item is null in parameters");
+			logger.error("MAG database item is null in parameters");
 			throw new IllegalArgumentException("MAG database item is required");
 		}
 
@@ -161,9 +161,9 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		File sageMagSearchFile = new File(magSageParams.getResult(), "sage_MAG_search");
 		if (!sageMagSearchFile.exists()) {
 			sageMagSearchFile.mkdir();
-			LOGGER.info("Created Sage MAG search directory: {}", sageMagSearchFile.getAbsolutePath());
+			logger.info("Created Sage MAG search directory: {}", sageMagSearchFile.getAbsolutePath());
 		} else {
-			LOGGER.info("Sage MAG search directory already exists: {}", sageMagSearchFile.getAbsolutePath());
+			logger.info("Sage MAG search directory already exists: {}", sageMagSearchFile.getAbsolutePath());
 		}
 		magSageParams.setDbSearchResultFile(sageMagSearchFile);
 
@@ -172,23 +172,23 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		this.sageExe = new File(mrp.getToolPath(ToolType.SAGE));
 		this.msConvertExe = new File(mrp.getToolPath(ToolType.MSCONVERT));
 
-		LOGGER.info("Sage path from MetaResourceParameters: {}", mrp.getToolPath(ToolType.SAGE));
-		LOGGER.info("Sage executable file: {}", sageExe.getAbsolutePath());
-		LOGGER.info("Sage exists: {}", sageExe.exists());
+		logger.info("Sage path from MetaResourceParameters: {}", mrp.getToolPath(ToolType.SAGE));
+		logger.info("Sage executable file: {}", sageExe.getAbsolutePath());
+		logger.info("Sage exists: {}", sageExe.exists());
 
-		LOGGER.info("MSConvert path from MetaResourceParameters: {}", mrp.getToolPath(ToolType.MSCONVERT));
-		LOGGER.info("MSConvert executable file: {}", msConvertExe.getAbsolutePath());
-		LOGGER.info("MSConvert exists: {}", msConvertExe.exists());
+		logger.info("MSConvert path from MetaResourceParameters: {}", mrp.getToolPath(ToolType.MSCONVERT));
+		logger.info("MSConvert executable file: {}", msConvertExe.getAbsolutePath());
+		logger.info("MSConvert exists: {}", msConvertExe.exists());
 	}
 
 	@Override
 	public void forceStop() {
-		LOGGER.info(getTaskName() + ": Force stop requested");
-		LOGGER.info("[{}] Force stop requested", getTaskName());
+		logger.info(getTaskName() + ": Force stop requested");
+		logger.info("[{}] Force stop requested", getTaskName());
 
 		// Cancel Sage task if running
 		if (sageTask != null) {
-			LOGGER.info(getTaskName() + ": Stopping Sage identification task");
+			logger.info(getTaskName() + ": Stopping Sage identification task");
 			// SageTask doesn't have forceStop method, but we can interrupt any running
 			// threads
 			// The task will be stopped when this main task is cancelled
@@ -196,39 +196,39 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 
 		// Cancel FlashLFQ task if running
 		if (flashLfqTask != null && !flashLfqTask.isDone()) {
-			LOGGER.info(getTaskName() + ": Cancelling FlashLFQ quantification task");
+			logger.info(getTaskName() + ": Cancelling FlashLFQ quantification task");
 			flashLfqTask.cancel();
 		}
 
 		// Cancel report generation task if running
 		if (reportTask != null && !reportTask.isDone()) {
-			LOGGER.info(getTaskName() + ": Cancelling report generation task");
+			logger.info(getTaskName() + ": Cancelling report generation task");
 			reportTask.cancel(true);
 		}
 
 		// Cancel executor service if running
 		if (executorService != null && !executorService.isShutdown()) {
-			LOGGER.info(getTaskName() + ": Shutting down executor service");
+			logger.info(getTaskName() + ": Shutting down executor service");
 			executorService.shutdownNow();
 		}
 
 		// Cancel report copy thread if running
 		if (reportCopyThread != null && reportCopyThread.isAlive()) {
-			LOGGER.info(getTaskName() + ": Interrupting report copy thread");
+			logger.info(getTaskName() + ": Interrupting report copy thread");
 			reportCopyThread.interrupt();
 		}
 
 		// Cancel report generation thread if running
 		if (reportThread != null && reportThread.isAlive()) {
-			LOGGER.info(getTaskName() + ": Interrupting report generation thread");
+			logger.info(getTaskName() + ": Interrupting report generation thread");
 			reportThread.interrupt();
 		}
 
 		// Cancel this task itself
 		this.cancel(true);
 
-		LOGGER.info(getTaskName() + ": Force stop completed");
-		LOGGER.info("[{}] Force stop completed", getTaskName());
+		logger.info(getTaskName() + ": Force stop completed");
+		logger.info("[{}] Force stop completed", getTaskName());
 	}
 
 	@Override
@@ -238,7 +238,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 
 	@Override
 	protected Logger getLogger() {
-		return LOGGER;
+		return logger;
 	}
 
 	@Override
@@ -246,28 +246,28 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		updateMessage(getTaskName());
 		updateProgress(0, 100);
 
-		LOGGER.info(getTaskName() + ": started");
-		LOGGER.info("[{}] Started", getTaskName());
+		logger.info(getTaskName() + ": started");
+		logger.info("[{}] Started", getTaskName());
 
 		// Log detailed parameter information
-		LOGGER.info("Workflow parameters:");
-		LOGGER.info("  Result directory: " + magSageParams.getResult());
-		LOGGER.info("  Quantitative mode: " + magSageParams.getQuantitativeMode());
-		LOGGER.info("  Thread count: " + magSageParams.getThreadCount());
-		LOGGER.info("  MS2 scan mode: " + magSageParams.getMs2ScanMode());
+		logger.info("Workflow parameters:");
+		logger.info("  Result directory: " + magSageParams.getResult());
+		logger.info("  Quantitative mode: " + magSageParams.getQuantitativeMode());
+		logger.info("  Thread count: " + magSageParams.getThreadCount());
+		logger.info("  MS2 scan mode: " + magSageParams.getMs2ScanMode());
 		if (magSageParams.getMetadata() != null) {
 			String[] rawFiles = magSageParams.getMetadata().getRawFiles();
-			LOGGER.info("  Raw files count: " + (rawFiles != null ? rawFiles.length : 0));
+			logger.info("  Raw files count: " + (rawFiles != null ? rawFiles.length : 0));
 			if (rawFiles != null) {
 				for (int i = 0; i < rawFiles.length; i++) {
-					LOGGER.info("    Raw file " + (i + 1) + ": " + rawFiles[i]);
+					logger.info("    Raw file " + (i + 1) + ": " + rawFiles[i]);
 				}
 			}
 		}
 
 		// Log resource information
-		LOGGER.info("Resource parameters:");
-		LOGGER.info("  Sage path: " + mrp.getToolPath(MetaResourceParameters.ToolType.SAGE));
+		logger.info("Resource parameters:");
+		logger.info("  Sage path: " + mrp.getToolPath(MetaResourceParameters.ToolType.SAGE));
 
 		// Update main progress and keep second bar active
 		updateProgress(5, 100);
@@ -277,7 +277,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		Platform.runLater(() -> secondBar.setProgress(ProgressBar.INDETERMINATE_PROGRESS));
 
 		// Step 1: Spectra Conversion
-		LOGGER.info("Step 1: Starting spectra format conversion to mzML...");
+		logger.info("Step 1: Starting spectra format conversion to mzML...");
 		if (statusLabel != null) {
 			Platform.runLater(() -> statusLabel.setText(getTaskName() + ": Converting spectra format..."));
 		}
@@ -286,80 +286,80 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 
 		boolean convert = convertSpectraToMzML();
 		if (!convert) {
-			LOGGER.error(getTaskName() + ": error in spectra format conversion");
+			logger.error(getTaskName() + ": error in spectra format conversion");
 			System.err
 					.println(format.format(new Date()) + "\t" + getTaskName() + ": error in spectra format conversion");
 			updateMessage(getTaskName() + ": Failed - Spectra conversion error");
 			Platform.runLater(() -> secondBar.setProgress(0.0));
 			return false;
 		}
-		LOGGER.info("Step 1: Spectra format conversion completed successfully");
+		logger.info("Step 1: Spectra format conversion completed successfully");
 
 		// Step 2: High Abundant Database Search
-		LOGGER.info("Step 2: Starting high abundant database search...");
+		logger.info("Step 2: Starting high abundant database search...");
 		updateProgress(10, 100);
 		updateMessage(getTaskName() + ": Searching high abundant database...");
 		Platform.runLater(() -> secondBar.setProgress(ProgressBar.INDETERMINATE_PROGRESS));
 
-		LOGGER.info("[{}] Searching high abundant database started", getTaskName());
+		logger.info("[{}] Searching high abundant database started", getTaskName());
 
 		// Initialize separateResultFolders
-		LOGGER.info("Initializing result directories in: {}", magSageParams.getDbSearchResultFile().getAbsolutePath());
+		logger.info("Initializing result directories in: {}", magSageParams.getDbSearchResultFile().getAbsolutePath());
 
 		boolean searchHap = this.separateSearchHap();
 		if (!searchHap) {
-			LOGGER.error(getTaskName() + ": error in searching high abundant database");
+			logger.error(getTaskName() + ": error in searching high abundant database");
 			return false;
 		}
 
 		// Step 3: Protein Extraction from HAP Results
-		LOGGER.info("Step 3: Starting protein extraction from HAP results...");
+		logger.info("Step 3: Starting protein extraction from HAP results...");
 		updateProgress(40, 100);
 		boolean extract = this.fastaExtract4Iterator();
 		if (!extract) {
-			LOGGER.error(getTaskName() + ": error in protein extraction");
+			logger.error(getTaskName() + ": error in protein extraction");
 			return false;
 		}
 
 		// Step 4: Database Search
-		LOGGER.info("Step 4: Starting database search through sample-specific database...");
+		logger.info("Step 4: Starting database search through sample-specific database...");
 		updateProgress(65, 100);
 		boolean search = this.separateSearch();
 		if (!search) {
-			LOGGER.error(getTaskName() + ": error in database search");
+			logger.error(getTaskName() + ": error in database search");
 			return false;
 		}
 
 		// Step 5: Combine Results
-		LOGGER.info("Step 5: Starting combination of separate search results...");
+		logger.info("Step 5: Starting combination of separate search results...");
 		updateProgress(70, 100);
 		boolean combine = this.combineResults();
 		if (!combine) {
-			LOGGER.error(getTaskName() + ": error in combining separate search results");
+			logger.error(getTaskName() + ": error in combining separate search results");
 			return false;
 		}
 
 		// Step 6: Quantification
-		LOGGER.info("Step 6: Starting quantification...");
+		logger.info("Step 6: Starting quantification...");
 		updateProgress(75, 100);
 		boolean quant = false;
 
 		if (magSageParams.getQuantitativeMode().equals(MetaConstants.isobaricLabel)) {
-			LOGGER.info("  Using isobaric quantification mode");
+			logger.info("  Using isobaric quantification mode");
 			updateProgress(80, 100);
 			quant = lfQuant();
 			if (!quant) {
-				LOGGER.error(getTaskName() + ": error in isobaric quantification");
+				logger.error(getTaskName() + ": error in isobaric quantification");
 				return false;
 			}
 		}
 
 		// Step 7: Export Report
-		LOGGER.info("Step 7: Starting report generation...");
+		logger.info("Step 7: Starting report generation...");
 		updateProgress(85, 100);
 		boolean report = this.exportReport();
 		if (!report) {
-			LOGGER.error(getTaskName() + ": error in report generation");
+			logger.error(getTaskName() + ": error in report generation");
 			return false;
 		}
 
@@ -368,7 +368,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		updateMessage(getTaskName() + ": Completed successfully!");
 		Platform.runLater(() -> secondBar.setProgress(0.0));
 
-		LOGGER.info(getTaskName() + ": finished - all workflow steps completed successfully");
+		logger.info(getTaskName() + ": finished - all workflow steps completed successfully");
 		return true;
 	}
 
@@ -377,18 +377,18 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 	 * threads
 	 */
 	private boolean convertSpectraToMzML() {
-		LOGGER.info("Starting spectra conversion to mzML format using MSConvert");
+		logger.info("Starting spectra conversion to mzML format using MSConvert");
 
 		// Validate MSConvert executable
 		if (msConvertExe == null || !msConvertExe.exists()) {
-			LOGGER.error("MSConvert executable not found: {}",
+			logger.error("MSConvert executable not found: {}",
 					msConvertExe != null ? msConvertExe.getAbsolutePath() : "null");
 			return false;
 		}
 
 		String[] rawFiles = magSageParams.getMetadata().getRawFiles();
 		if (rawFiles == null || rawFiles.length == 0) {
-			LOGGER.error("No raw files found in metadata");
+			logger.error("No raw files found in metadata");
 			return false;
 		}
 
@@ -396,7 +396,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		File spectraDir = magSageParams.getSpectraFile();
 		if (!spectraDir.exists()) {
 			spectraDir.mkdirs();
-			LOGGER.info("Created spectra directory: {}", spectraDir.getAbsolutePath());
+			logger.info("Created spectra directory: {}", spectraDir.getAbsolutePath());
 		}
 
 		// mzMLFiles array is already initialized in constructor
@@ -408,7 +408,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 			File rawFileObj = new File(rawFile);
 
 			if (!rawFileObj.exists()) {
-				LOGGER.error("Raw file does not exist: {}", rawFile);
+				logger.error("Raw file does not exist: {}", rawFile);
 				return false;
 			}
 
@@ -416,7 +416,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 			File mzMLFile = new File(mzMLFiles[i]);
 
 			if (mzMLFile.exists() && mzMLFile.length() > 0) {
-				LOGGER.info("mzML file already exists, skipping conversion: {}", mzMLFile.getAbsolutePath());
+				logger.info("mzML file already exists, skipping conversion: {}", mzMLFile.getAbsolutePath());
 			} else {
 				filesToConvert.add(i);
 			}
@@ -424,7 +424,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 
 		// If no files need conversion, return success
 		if (filesToConvert.isEmpty()) {
-			LOGGER.info("All mzML files already exist, no conversion needed");
+			logger.info("All mzML files already exist, no conversion needed");
 			return true;
 		}
 
@@ -432,7 +432,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		int threadCount = Math.min(filesToConvert.size(), magSageParams.getThreadCount());
 		ExecutorService executor = Executors.newFixedThreadPool(threadCount);
 
-		LOGGER.info("Processing {} files using {} threads", filesToConvert.size(), threadCount);
+		logger.info("Processing {} files using {} threads", filesToConvert.size(), threadCount);
 
 		// Submit conversion/copy tasks
 		for (int fileIndex : filesToConvert) {
@@ -445,14 +445,14 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 					String convertedPath = null;
 
 					if (fileName.endsWith(".raw")) {
-						LOGGER.info("Converting .raw file to mzML: {}", rawFile);
+						logger.info("Converting .raw file to mzML: {}", rawFile);
 						convertedPath = MSConvertor.raw2mzML(msConvertExe.getAbsolutePath(), rawFile);
 					} else if (fileName.endsWith(".d")) {
-						LOGGER.info("Converting .d file to mzML: {}", rawFile);
+						logger.info("Converting .d file to mzML: {}", rawFile);
 						convertedPath = MSConvertor.d2mzML(msConvertExe.getAbsolutePath(), rawFile,
 								spectraDir.getAbsolutePath());
 					} else {
-						LOGGER.error(
+						logger.error(
 								"Unsupported file format: {}. Only .raw and .d files are supported for conversion.",
 								fileName);
 						return;
@@ -467,20 +467,20 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 							try {
 								Files.move(convertedFile.toPath(), targetFile.toPath(),
 										StandardCopyOption.REPLACE_EXISTING);
-								LOGGER.info("Successfully moved converted file from {} to {}", convertedPath,
+								logger.info("Successfully moved converted file from {} to {}", convertedPath,
 										mzMLFiles[fileIndex]);
 							} catch (IOException e) {
-								LOGGER.error("Failed to move converted file from {} to {}: {}", convertedPath,
+								logger.error("Failed to move converted file from {} to {}: {}", convertedPath,
 										mzMLFiles[fileIndex], e.getMessage());
 							}
 						} else {
-							LOGGER.error("Converted mzML file does not exist or is empty: {}", convertedPath);
+							logger.error("Converted mzML file does not exist or is empty: {}", convertedPath);
 						}
 					} else {
-						LOGGER.error("Failed to convert file to mzML: {}", rawFile);
+						logger.error("Failed to convert file to mzML: {}", rawFile);
 					}
 				} catch (Exception e) {
-					LOGGER.error("Error processing file {}: {}", rawFile, e.getMessage());
+					logger.error("Error processing file {}: {}", rawFile, e.getMessage());
 				}
 			});
 		}
@@ -492,14 +492,14 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 			// Wait for all conversions to complete (with timeout)
 			boolean finished = executor.awaitTermination(filesToConvert.size() * 4, TimeUnit.HOURS);
 			if (finished) {
-				LOGGER.info("All file conversions completed successfully");
+				logger.info("All file conversions completed successfully");
 			} else {
-				LOGGER.error("File conversion timeout - some files may not have been converted");
+				logger.error("File conversion timeout - some files may not have been converted");
 				executor.shutdownNow();
 				return false;
 			}
 		} catch (InterruptedException e) {
-			LOGGER.error("File conversion was interrupted: {}", e.getMessage());
+			logger.error("File conversion was interrupted: {}", e.getMessage());
 			executor.shutdownNow();
 			return false;
 		}
@@ -507,12 +507,12 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		// Verify all files were converted successfully
 		for (int i = 0; i < mzMLFiles.length; i++) {
 			if (mzMLFiles[i] == null) {
-				LOGGER.error("Failed to convert file: {}", rawFiles[i]);
+				logger.error("Failed to convert file: {}", rawFiles[i]);
 				return false;
 			}
 		}
 
-		LOGGER.info("Spectra conversion completed successfully. Converted {} files to mzML format.", rawFiles.length);
+		logger.info("Spectra conversion completed successfully. Converted {} files to mzML format.", rawFiles.length);
 		return true;
 	}
 
@@ -520,15 +520,15 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 	 * Perform high abundant database search using Sage
 	 */
 	private boolean separateSearchHap() {
-		LOGGER.info("Starting separate search for high abundant database using Sage");
+		logger.info("Starting separate search for high abundant database using Sage");
 
 		// Get thread configuration
 		int threadCount = magSageParams.getThreadCount();
-		LOGGER.info("Thread configuration: {}", threadCount);
+		logger.info("Thread configuration: {}", threadCount);
 
 		File hapFastaFile = this.magDb.getHapFastaFile();
 		if (hapFastaFile == null || !hapFastaFile.exists()) {
-			LOGGER.error("HAP FASTA file is null or does not exist for MAG database: {}", this.magDb.getCatalogueID());
+			logger.error("HAP FASTA file is null or does not exist for MAG database: {}", this.magDb.getCatalogueID());
 			return false;
 		}
 
@@ -545,7 +545,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		}
 
 		if (needNewSearch) {
-			LOGGER.info("Found {} files requiring new search out of {} total files", filesNeedingSearch,
+			logger.info("Found {} files requiring new search out of {} total files", filesNeedingSearch,
 					this.mzMLFiles.length);
 
 			for (int i = 0; i < this.mzMLFiles.length; i++) {
@@ -555,13 +555,13 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 				}
 				File mzMLFile = new File(mzMLFiles[i]);
 				if (mzMLFile.exists()) {
-					LOGGER.info("  Searching file {} with Sage", i + 1);
+					logger.info("  Searching file {} with Sage", i + 1);
 
 					// Use the new searchMzML method with DDAMagSageParameters
 					sageTask.searchMzML(new String[] { mzMLFile.getAbsolutePath() }, hapFile.getAbsolutePath(),
 							hapFastaFile.getAbsolutePath(), magSageParams, false); // isQuant = false for HAP search
 				} else {
-					LOGGER.warn("mzML file {} was not found, skipping", mzMLFiles[i]);
+					logger.warn("mzML file {} was not found, skipping", mzMLFiles[i]);
 				}
 			}
 
@@ -574,33 +574,33 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 			};
 
 			// Use the generic WatchServiceLoop from the superclass
-			LOGGER.info("Starting WatchService monitoring for high abundant database search");
+			logger.info("Starting WatchService monitoring for high abundant database search");
 			startWatchServiceLoop(separateResultFolders, "hap", filter, filesNeedingSearch, 10, 40);
 
 			// Calculate optimal thread pool based on RAM (1 thread per 16GB)
 			int threadPool = calculateOptimalSageThreadPool();
-			LOGGER.info("Starting Sage execution with {} thread pool for {} tasks", threadPool, this.mzMLFiles.length);
+			logger.info("Starting Sage execution with {} thread pool for {} tasks", threadPool, this.mzMLFiles.length);
 			sageTask.run(threadPool, separateResultFolders.length * 3);
 		} else {
-			LOGGER.info("No new searches required, all results already exist");
+			logger.info("No new searches required, all results already exist");
 		}
 
 		// Verify search results
-		LOGGER.info("Verifying search results for {} folders", separateResultFolders.length);
+		logger.info("Verifying search results for {} folders", separateResultFolders.length);
 		for (int i = 0; i < this.separateResultFolders.length; i++) {
 			File hapFile = new File(separateResultFolders[i], "hap");
-//			LOGGER.info("  Cleaning and verifying results for folder {}: {}", i+1, hapFile.getAbsolutePath());
+//			logger.info("  Cleaning and verifying results for folder {}: {}", i+1, hapFile.getAbsolutePath());
 //			SageTask.cleanSageResultFolder(hapFile, true);
 
 			File resultFile = new File(hapFile, "results.sage.tsv");
 			if (!resultFile.exists() || resultFile.length() == 0) {
-				LOGGER.error("Sage search result was not found from {}", hapFile.getAbsolutePath());
+				logger.error("Sage search result was not found from {}", hapFile.getAbsolutePath());
 				return false;
 			}
-			LOGGER.info("  Results verified successfully for folder {}", i + 1);
+			logger.info("  Results verified successfully for folder {}", i + 1);
 		}
 
-		LOGGER.info("High abundant database search completed successfully for all {} files",
+		logger.info("High abundant database search completed successfully for all {} files",
 				separateResultFolders.length);
 
 		// Stop the watch service thread
@@ -651,11 +651,11 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 
 			writer.println("}");
 
-			LOGGER.info("Created Sage config file: {}", configFile.getAbsolutePath());
+			logger.info("Created Sage config file: {}", configFile.getAbsolutePath());
 			return configFile;
 
 		} catch (IOException e) {
-			LOGGER.error("Failed to create Sage config file: {}", configFile.getAbsolutePath(), e);
+			logger.error("Failed to create Sage config file: {}", configFile.getAbsolutePath(), e);
 			return null;
 		}
 	}
@@ -664,14 +664,14 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 	 * Extract protein sequences from HAP search results
 	 */
 	protected boolean fastaExtract4Iterator() {
-		LOGGER.info("Starting FASTA extraction for {} result folders", separateResultFolders.length);
+		logger.info("Starting FASTA extraction for {} result folders", separateResultFolders.length);
 
 		for (int i = 0; i < this.separateResultFolders.length; i++) {
 			File hapFile = new File(separateResultFolders[i], "hap");
 			File dbFile = new File(hapFile, separateResultFolders[i].getName() + ".fasta");
 
 			if (dbFile.exists() && dbFile.length() > 0) {
-				LOGGER.info("Sample-specific database for {} already exists", separateResultFolders[i].getName());
+				logger.info("Sample-specific database for {} already exists", separateResultFolders[i].getName());
 				continue;
 			}
 
@@ -693,11 +693,11 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 				}
 
 				if (proteinsIndex == -1) {
-					LOGGER.error("Could not find 'proteins' column in header: {}", headerLine);
+					logger.error("Could not find 'proteins' column in header: {}", headerLine);
 					continue;
 				}
 
-				LOGGER.info("Found proteins column at index {}: {}", proteinsIndex, header[proteinsIndex]);
+				logger.info("Found proteins column at index {}: {}", proteinsIndex, header[proteinsIndex]);
 
 				String line;
 				while ((line = hapReader.readLine()) != null) {
@@ -714,11 +714,11 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 					}
 				}
 			} catch (IOException e) {
-				LOGGER.error("Error reading Sage search result file from {}", spectraFile.getAbsolutePath(), e);
+				logger.error("Error reading Sage search result file from {}", spectraFile.getAbsolutePath(), e);
 				return false;
 			}
 
-			LOGGER.info("Sample-specific database for {} - Found {} peptides and {} genomes",
+			logger.info("Sample-specific database for {} - Found {} peptides and {} genomes",
 					separateResultFolders[i].getName(), pepSet.size(), genomeMap.size());
 			// Create sample-specific database
 			File hapGenomeFile = new File(hapFile, "hap_genomes.tsv");
@@ -741,7 +741,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 					}
 				}
 			} catch (IOException e) {
-				LOGGER.error("Error writing sample-specific database to {}", dbFile.getAbsolutePath(), e);
+				logger.error("Error writing sample-specific database to {}", dbFile.getAbsolutePath(), e);
 				return false;
 			}
 		}
@@ -757,17 +757,17 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		for (int i = 0; i < this.separateResultFolders.length; i++) {
 			File resultFile = new File(separateResultFolders[i], "results.sage.tsv");
 			if (resultFile.exists() && resultFile.length() > 0) {
-				LOGGER.info("[{}] Sage search result already exists in {}", getTaskName(), separateResultFolders[i].getAbsolutePath());
+				logger.info("[{}] Sage search result already exists in {}", getTaskName(), separateResultFolders[i].getAbsolutePath());
 
-				LOGGER.info(getTaskName() + ": Sage search result already exists in "
+				logger.info(getTaskName() + ": Sage search result already exists in "
 						+ separateResultFolders[i].getAbsolutePath());
 			} else {
 				File hapFile = new File(separateResultFolders[i], "hap");
 				File db = new File(hapFile, separateResultFolders[i].getName() + ".fasta");
 				if (!db.exists()) {
-					LOGGER.error("[{}] sample-specific database {} was not found", getTaskName(), db);
+					logger.error("[{}] sample-specific database {} was not found", getTaskName(), db);
 
-					LOGGER.error(getTaskName() + ": sample-specific database" + db + " was not found");
+					logger.error(getTaskName() + ": sample-specific database" + db + " was not found");
 					return false;
 				}
 				taskCount++;
@@ -787,9 +787,9 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 						sageTask.searchMzML(new String[] { mzMLFile.getAbsolutePath() },
 								separateResultFolders[i].getAbsolutePath(), db.getAbsolutePath(), magSageParams, false);
 					} else {
-						LOGGER.warn("[{}] no protein sequences were in {}, which means no peptides/proteins can be identified from {}", getTaskName(), db, separateResultFolders[i].getName());
+						logger.warn("[{}] no protein sequences were in {}, which means no peptides/proteins can be identified from {}", getTaskName(), db, separateResultFolders[i].getName());
 
-						LOGGER.error(getTaskName() + ": no protein sequences were in " + db
+						logger.error(getTaskName() + ": no protein sequences were in " + db
 								+ ", which means no peptides/proteins can be identifed from "
 								+ separateResultFolders[i].getName());
 					}
@@ -805,12 +805,12 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 			};
 
 			// Use the generic WatchServiceLoop from the superclass
-			LOGGER.info("Starting WatchService monitoring for sample-specific database search");
+			logger.info("Starting WatchService monitoring for sample-specific database search");
 			startWatchServiceLoop(separateResultFolders, "", filter, taskCount, 40, 65);
 
 			// Calculate optimal thread pool based on RAM (1 thread per 16GB)
 			int threadPool = calculateOptimalSageThreadPool();
-			LOGGER.info("Starting Sage execution with {} thread pool for {} tasks", threadPool, taskCount);
+			logger.info("Starting Sage execution with {} thread pool for {} tasks", threadPool, taskCount);
 			sageTask.run(threadPool, this.separateResultFolders.length * 10);
 		}
 
@@ -825,7 +825,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 
 			File resultFile = new File(separateResultFolders[i], "results.sage.tsv");
 			if (!resultFile.exists() || resultFile.length() == 0) {
-				LOGGER.error("Sage search result was not found in {}", separateResultFolders[i].getAbsolutePath());
+				logger.error("Sage search result was not found in {}", separateResultFolders[i].getAbsolutePath());
 				return false;
 			}
 		}
@@ -882,7 +882,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 				}
 				combineTsvReader.close();
 			} catch (IOException e) {
-				LOGGER.error(getTaskName() + ": error in reading database search result file " + pepResultFile, e);
+				logger.error(getTaskName() + ": error in reading database search result file " + pepResultFile, e);
 				System.err.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": error in reading database search result file " + pepResultFile);
 			}
@@ -956,14 +956,14 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 						}
 
 					} catch (IOException e) {
-						LOGGER.error(getTaskName() + ": error in reading database file " + dbFile, e);
+						logger.error(getTaskName() + ": error in reading database file " + dbFile, e);
 						System.err.println(format.format(new Date()) + "\t" + getTaskName()
 								+ ": error in reading database file " + dbFile);
 					}
 				}
 				writer.close();
 			} catch (IOException e) {
-				LOGGER.error(getTaskName() + ": error in writing the combined database file to " + combinedFastaFile,
+				logger.error(getTaskName() + ": error in writing the combined database file to " + combinedFastaFile,
 						e);
 				System.err.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": error in writing the combined database file to " + combinedFastaFile);
@@ -982,32 +982,32 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 				sageTask.searchMzML(mzMLFiles, combinedFile.getAbsolutePath(), combinedFastaFile.getAbsolutePath(),
 						magSageParams, true);
 			} catch (Exception e) {
-				LOGGER.error(getTaskName() + ": error in running Sage search against combined database", e);
-				LOGGER.error("[{}] error in running Sage search against combined database", getTaskName());
+				logger.error(getTaskName() + ": error in running Sage search against combined database", e);
+				logger.error("[{}] error in running Sage search against combined database", getTaskName());
 				return false;
 			}
 
-			LOGGER.info(getTaskName() + ": searching combined database started");
-			LOGGER.info("[{}] searching combined database started", getTaskName());
+			logger.info(getTaskName() + ": searching combined database started");
+			logger.info("[{}] searching combined database started", getTaskName());
 
-			LOGGER.info("Starting Sage execution");
+			logger.info("Starting Sage execution");
 			sageTask.run(separateResultFolders.length * 3);
 
 		} else {
-			LOGGER.info("[{}] Sage search result already exists in {}", getTaskName(), magSageParams.getDbSearchResultFile());
-			LOGGER.info(
+			logger.info("[{}] Sage search result already exists in {}", getTaskName(), magSageParams.getDbSearchResultFile());
+			logger.info(
 					getTaskName() + ": Sage search result already exists in " + magSageParams.getDbSearchResultFile());
 		}
 
 		// Check if results exist
 		if (pepResultFile.exists() && pepResultFile.length() > 0 && quanResultFile.exists()
 				&& quanResultFile.length() > 0) {
-			LOGGER.info(getTaskName() + ": combined database search finished successfully");
-			LOGGER.info("[{}] combined database search finished successfully", getTaskName());
+			logger.info(getTaskName() + ": combined database search finished successfully");
+			logger.info("[{}] combined database search finished successfully", getTaskName());
 			return true;
 		} else {
-			LOGGER.info(getTaskName() + ": combined database search failed");
-			LOGGER.error("[{}] combined database search failed", getTaskName());
+			logger.info(getTaskName() + ": combined database search failed");
+			logger.error("[{}] combined database search failed", getTaskName());
 			return false;
 		}
 	}
@@ -1033,8 +1033,8 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 	 * Export final reports
 	 */
 	protected boolean exportReport() {
-		LOGGER.info(getTaskName() + ": exporting peptide report started");
-		LOGGER.info("[{}] exporting peptide report started", getTaskName());
+		logger.info(getTaskName() + ": exporting peptide report started");
+		logger.info("[{}] exporting peptide report started", getTaskName());
 
 		// Build file list and mapping
 		ArrayList<String> fileList = new ArrayList<String>();
@@ -1050,7 +1050,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 					fileList.add(cs[0]);
 				}
 			} catch (IOException e) {
-				LOGGER.error(getTaskName() + ": error in reading the experimental design from " + expDesignFile, e);
+				logger.error(getTaskName() + ": error in reading the experimental design from " + expDesignFile, e);
 				System.err.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": error in reading the experimental design from " + expDesignFile);
 			}
@@ -1070,7 +1070,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		if (quanMode.equals(MetaConstants.labelFree)) {
 			quanPepReader = new SageResultReader(combinedFile);
 		} else {
-			LOGGER.error(getTaskName() + ": Isobaric quantification not yet supported for Sage workflow");
+			logger.error(getTaskName() + ": Isobaric quantification not yet supported for Sage workflow");
 			System.err.println(
 					format.format(new Date()) + "\t" + getTaskName() + ": Isobaric quantification not yet supported");
 			return false;
@@ -1079,7 +1079,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		SagePeptide[] quanPeps = quanPepReader.getMetaPeptides();
 		SagePSM[] psms = quanPepReader.getPSMs();
 
-		LOGGER.info(getTaskName() + ": " + quanPeps.length + " peptides and " + psms.length + " PSMs were obtained");
+		logger.info(getTaskName() + ": " + quanPeps.length + " peptides and " + psms.length + " PSMs were obtained");
 
 		// Build intensity title array
 		String[] intensityTitle = fileList.toArray(String[]::new);
@@ -1098,18 +1098,18 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 			boolean success = postAnalysisTask.get();
 
 			if (success) {
-				LOGGER.info(getTaskName() + ": Post-analysis completed successfully");
+				logger.info(getTaskName() + ": Post-analysis completed successfully");
 				return true;
 			} else {
-				LOGGER.error(getTaskName() + ": Post-analysis task failed");
+				logger.error(getTaskName() + ": Post-analysis task failed");
 				return false;
 			}
 		} catch (InterruptedException e) {
-			LOGGER.error(getTaskName() + ": Post-analysis task was interrupted", e);
+			logger.error(getTaskName() + ": Post-analysis task was interrupted", e);
 			Thread.currentThread().interrupt();
 			return false;
 		} catch (ExecutionException e) {
-			LOGGER.error(getTaskName() + ": Post-analysis task failed with exception", e);
+			logger.error(getTaskName() + ": Post-analysis task failed with exception", e);
 			return false;
 		}
 	}
@@ -1141,11 +1141,11 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 			// Calculate thread pool: 1 thread per 16GB RAM
 			int threadPool = Math.max(1, (int)(totalRAM_GB / 16));
 			
-			LOGGER.info("System RAM: {} GB, Calculated Sage thread pool size: {}", totalRAM_GB, threadPool);
+			logger.info("System RAM: {} GB, Calculated Sage thread pool size: {}", totalRAM_GB, threadPool);
 			
 			return threadPool;
 		} catch (Exception e) {
-			LOGGER.warn("Failed to calculate optimal thread pool based on RAM, defaulting to 1: {}", e.getMessage());
+			logger.warn("Failed to calculate optimal thread pool based on RAM, defaulting to 1: {}", e.getMessage());
 			return 1; // Safe default
 		}
 	}

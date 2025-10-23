@@ -64,7 +64,10 @@ import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 public abstract class MetaPilotTask extends MetaAbstractTask {
 
 	protected ProgressBar secondBar;
-	private static final Logger LOGGER = LogManager.getLogger(MetaPilotTask.class);
+	
+	// Instance logger - initialized in constructor AFTER configLog() to ensure proper configuration
+	protected Logger logger;
+	
 	protected SimpleDateFormat format = new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss");
 	
 	// WatchService thread for monitoring file generation progress
@@ -84,7 +87,19 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 			ProgressBar secondBar) {
 		super(metaPar, mrp, progressBar);
 		this.secondBar = secondBar;
+		
+		// Configure logging for this task's result folder
 		this.configLog(new File(metaPar.getResult()));
+		
+		// Initialize logger AFTER configLog() to ensure proper file appender configuration
+		this.logger = LogManager.getLogger(this.getClass());
+		
+		// Log task initialization
+		logger.info("========================================");
+		logger.info("Task initialized: " + getTaskName());
+		logger.info("Result folder: " + metaPar.getResult());
+		logger.info("========================================");
+		
 		this.progressProperty().addListener((observable, oldValue, newValue) -> {
 			if (this.progressBar != null) {
 				this.progressBar.setProgress(newValue.doubleValue());
@@ -185,7 +200,7 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 			// Get the result directory from metaPar
 			File resultDir = metaPar.getDbSearchResultFile();
 			if (resultDir == null) {
-				LOGGER.error(getTaskName() + ": Result directory is null, cannot copy report templates");
+				logger.error(getTaskName() + ": Result directory is null, cannot copy report templates");
 				return false;
 			}
 
@@ -206,12 +221,12 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 			try {
 				reportCopyThread.join();
 				if (!reportCopyTask.get()) {
-					LOGGER.error(getTaskName() + ": error in copying report template");
+					logger.error(getTaskName() + ": error in copying report template");
 					updateMessage("Error: Failed to copy report templates");
 					return false;
 				}
 			} catch (Exception e) {
-				LOGGER.error(getTaskName() + ": error in copying report template", e);
+				logger.error(getTaskName() + ": error in copying report template", e);
 				updateMessage("Error: " + e.getMessage());
 				return false;
 			}
@@ -220,11 +235,11 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 
 			updateMessage("Report templates ready");
 
-			LOGGER.info(getTaskName() + ": Report templates copied successfully");
+			logger.info(getTaskName() + ": Report templates copied successfully");
 			return true;
 
 		} catch (Exception e) {
-			LOGGER.error(getTaskName() + ": error in copying report templates", e);
+			logger.error(getTaskName() + ": error in copying report templates", e);
 			updateMessage("Error: " + e.getMessage());
 			return false;
 		}
@@ -236,7 +251,7 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 		this.builder = ConfigurationBuilderFactory.newConfigurationBuilder();
 
 		builder.setStatusLevel(Level.DEBUG);
-		builder.setConfigurationName("DefaultFileLogger");
+		builder.setConfigurationName("TaskLogger_" + System.currentTimeMillis());
 
 		// set the pattern layout and pattern
 		LayoutComponentBuilder layoutBuilder = builder.newLayout("PatternLayout").addAttribute("pattern", pattern);
@@ -249,31 +264,48 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 			}
 		}
 
-		// create a file appender
+		// create a file appender for task logger
 		File logFile = new File(logDir, "logging.log");
-		AppenderComponentBuilder fileAppenderBuilder = builder.newAppender("LogToFile", "File")
-				.addAttribute("fileName", logFile.getAbsolutePath()).add(layoutBuilder);
+		AppenderComponentBuilder fileAppenderBuilder = builder.newAppender("TaskLogFile", "File")
+				.addAttribute("fileName", logFile.getAbsolutePath())
+				.addAttribute("append", true)
+				.add(layoutBuilder);
 
 		// create a console appender
-		AppenderComponentBuilder consoleAppenderBuilder = builder.newAppender("LogToConsole", "Console")
+		AppenderComponentBuilder consoleAppenderBuilder = builder.newAppender("TaskConsole", "Console")
 				.addAttribute("target", "SYSTEM_OUT").add(layoutBuilder);
 
 		builder.add(fileAppenderBuilder);
 		builder.add(consoleAppenderBuilder);
 
 		RootLoggerComponentBuilder rootLogger = builder.newRootLogger(Level.DEBUG);
-		rootLogger.add(builder.newAppenderRef("LogToFile"));
-		rootLogger.add(builder.newAppenderRef("LogToConsole"));
+		rootLogger.add(builder.newAppenderRef("TaskLogFile"));
+		rootLogger.add(builder.newAppenderRef("TaskConsole"));
 		builder.add(rootLogger);
 
 		try {
 			Configurator.reconfigure(builder.build());
-			// Test logging immediately after configuration
-			LOGGER.info("Logging configuration completed successfully");
-			LOGGER.debug("Debug logging is now enabled");
+			
+			// Redirect System.out and System.err to system_output.log in task folder
+			File systemOutFile = new File(logDir, "system_output.log");
+			java.io.PrintStream fileOut = new java.io.PrintStream(
+				new java.io.FileOutputStream(systemOutFile, true), true);
+			
+			// Create TeeOutputStream to write to both original console and file
+			TeeOutputStream teeOut = new TeeOutputStream(System.out, fileOut);
+			TeeOutputStream teeErr = new TeeOutputStream(System.err, fileOut);
+			
+			System.setOut(new java.io.PrintStream(teeOut, true));
+			System.setErr(new java.io.PrintStream(teeErr, true));
+			
+			System.out.println("========================================");
+			System.out.println("System output/error redirected to: " + systemOutFile.getAbsolutePath());
+			System.out.println("Task logger configured to: " + logFile.getAbsolutePath());
+			System.out.println("========================================");
+			
 		} catch (Exception e) {
-			System.err.println("Warning: Could not configure logging to file: " + e.getMessage());
-			// Continue without file logging - console logging will still work
+			System.err.println("Warning: Could not configure logging: " + e.getMessage());
+			e.printStackTrace();
 		}
 	}
 
@@ -285,7 +317,8 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 			commandLine = parser.parse(RunOption.getOptions(), args);
 		} catch (ParseException e) {
 			// TODO Auto-generated catch block
-			LOGGER.error(e);
+			System.err.println("Error parsing command line: " + e.getMessage());
+			e.printStackTrace();
 			return;
 		}
 
@@ -301,7 +334,8 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 			} catch (ClassNotFoundException | InstantiationException | IllegalAccessException
 					| UnsupportedLookAndFeelException e) {
 				// TODO Auto-generated catch block
-				LOGGER.error("Error in creating the GUI", e);
+				System.err.println("Error in creating the GUI: " + e.getMessage());
+				e.printStackTrace();
 			}
 
 			javax.swing.SwingUtilities.invokeLater(new Runnable() {
@@ -309,7 +343,8 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 					try {
 
 					} catch (Exception e) {
-						LOGGER.error("Error in creating the GUI", e);
+						System.err.println("Error in creating the GUI: " + e.getMessage());
+						e.printStackTrace();
 					}
 				}
 			});
@@ -323,7 +358,7 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 			boolean verified = verifier.verify();
 			if (!verified) {
 
-				LOGGER.info("Thank you for using MetaPilot. A license is needed to run MetaPilot, "
+				System.out.println("Thank you for using MetaPilot. A license is needed to run MetaPilot, "
 						+ "please go to Tools -> Verification for the license.");
 				return;
 			}
@@ -391,13 +426,13 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 		if (resourceUrl != null) {
 			try {
 				baseDir = new File(resourceUrl.getPath());
-				LOGGER.info("Using ClassLoader.getSystemClassLoader().getResource(\".\") to find base directory: "
+				System.out.println("Using ClassLoader.getSystemClassLoader().getResource(\".\") to find base directory: "
 						+ baseDir);
 				return baseDir;
 			} catch (Exception e) {
-				LOGGER.warn(
-						"Could not use ClassLoader.getSystemClassLoader().getResource(\".\") to find base directory",
-						e);
+				System.err.println(
+						"Could not use ClassLoader.getSystemClassLoader().getResource(\".\") to find base directory: "
+						+ e.getMessage());
 			}
 		}
 
@@ -409,26 +444,26 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 			if (contextResource != null) {
 				try {
 					baseDir = new File(contextResource.getPath());
-					LOGGER.info(
+					System.out.println(
 							"Using Thread.currentThread().getContextClassLoader().getResource(\".\") to find base directory: "
 									+ baseDir);
 					return baseDir;
 				} catch (Exception e) {
-					LOGGER.warn(
-							"Could not use Thread.currentThread().getContextClassLoader().getResource(\".\") to find base directory",
-							e);
+					System.err.println(
+							"Could not use Thread.currentThread().getContextClassLoader().getResource(\".\") to find base directory: "
+							+ e.getMessage());
 				}
 			}
 		}
 
 		// Third attempt: using current working directory
 		baseDir = new File(System.getProperty("user.dir"));
-		LOGGER.info("Using System.getProperty(\"user.dir\") to find base directory: " + baseDir);
+		System.out.println("Using System.getProperty(\"user.dir\") to find base directory: " + baseDir);
 
 		// Make sure Resources directory exists
 		File resourcesDir = new File(baseDir, "Resources");
 		if (!resourcesDir.exists()) {
-			LOGGER.warn("Resources directory not found at: " + resourcesDir.getAbsolutePath());
+			System.err.println("WARNING: Resources directory not found at: " + resourcesDir.getAbsolutePath());
 
 			// If Resources directory doesn't exist in the current directory,
 			// check if it exists one directory up (happens sometimes with projects run from
@@ -438,7 +473,7 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 				File parentResourcesDir = new File(parentDir, "Resources");
 				if (parentResourcesDir.exists()) {
 					baseDir = parentDir;
-					LOGGER.info("Found Resources directory in parent directory: " + baseDir);
+					System.out.println("Found Resources directory in parent directory: " + baseDir);
 				}
 			}
 		}
@@ -502,22 +537,22 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 							System.out.println(format.format(new Date()) + "\t" + getTaskName()
 									+ ": WatchService found one finished task at " + fileName.toFile());
 
-							LOGGER.info("WatchService found one finished task at {}", fileName.toFile());
+							logger.info("WatchService found one finished task at {}", fileName.toFile());
 						}
 					}
 					// Reset the key
 					key.reset();
 				} catch (InterruptedException e) {
-					LOGGER.info("WatchService thread interrupted, stopping monitoring");
+					logger.info("WatchService thread interrupted, stopping monitoring");
 					Thread.currentThread().interrupt();
 					break;
 				} catch (Exception e) {
-					LOGGER.error("Error in WatchService loop", e);
+					logger.error("Error in WatchService loop", e);
 					System.out.println(format.format(new Date()) + "\t" + getTaskName()
 							+ ": error in WatchService loop: " + e.getMessage());
 				}
 			}
-			LOGGER.info("WatchService monitoring completed. Found {}/{} files", currentCount, totalCount);
+			logger.info("WatchService monitoring completed. Found {}/{} files", currentCount, totalCount);
 		}
 	}
 
@@ -538,7 +573,7 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 		WatchService watchService = null;
 		
 		try {
-			LOGGER.info("Setting up WatchService to monitor {} folders", folders.length);
+			logger.info("Setting up WatchService to monitor {} folders", folders.length);
 			watchService = FileSystems.getDefault().newWatchService();
 			
 			// Register each folder with the watch service
@@ -547,20 +582,20 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 				if (subFolder.exists()) {
 					Path path = subFolder.toPath();
 					path.register(watchService, StandardWatchEventKinds.ENTRY_CREATE);
-					LOGGER.debug("Registered folder for monitoring: {}", subFolder.getAbsolutePath());
+					logger.debug("Registered folder for monitoring: {}", subFolder.getAbsolutePath());
 				} else {
-					LOGGER.warn("Subfolder does not exist, cannot monitor: {}", subFolder.getAbsolutePath());
+					logger.warn("Subfolder does not exist, cannot monitor: {}", subFolder.getAbsolutePath());
 				}
 			}
-			LOGGER.info("WatchService setup completed successfully");
+			logger.info("WatchService setup completed successfully");
 		} catch (IOException e) {
-			LOGGER.error("Error creating WatchService", e);
+			logger.error("Error creating WatchService", e);
 			System.out.println(format.format(new Date()) + "\t" + getTaskName()
 					+ ": error in creating WatchService: " + e.getMessage());
 			return false;
 		}
 
-		LOGGER.info("Starting WatchService monitoring thread");
+		logger.info("Starting WatchService monitoring thread");
 		watchServiceThread = new Thread(new WatchServiceLoop(watchService, filter, totalCount, 0, barStart, barEnd));
 		watchServiceThread.start();
 		
@@ -573,7 +608,7 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 	 */
 	protected void stopWatchServiceThread() {
 		if (watchServiceThread != null && watchServiceThread.isAlive()) {
-			LOGGER.info("Stopping WatchService thread");
+			logger.info("Stopping WatchService thread");
 			watchServiceThread.interrupt();
 		}
 	}
@@ -661,7 +696,7 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 				}
 				writer.close();
 			} catch (IOException e) {
-				LOGGER.error(getTaskName() + ": error in writing ranking to " + out, e);
+				logger.error(getTaskName() + ": error in writing ranking to " + out, e);
 				System.out.println(
 						format.format(new Date()) + "\t" + getTaskName() + ": error in writing ranking to " + out);
 			}
@@ -751,7 +786,7 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 	 */
 	@Override
 	protected Logger getLogger() {
-		return LOGGER;
+		return logger;
 	}
 
 }

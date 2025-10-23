@@ -42,7 +42,7 @@ import uk.ac.quadram.metapilot.task.par.MetaConstants;
  */
 public class DDAIgcSageTask extends MetaPilotIgcTask {
 
-    private static final Logger LOGGER = LogManager.getLogger(DDAIgcSageTask.class);
+    // Logger is inherited from MetaPilotIgcTask -> MetaPilotTask as an instance field
     private static final String taskName = "DDA IGC database search by Sage workflow";
 
     // Task-specific fields
@@ -55,24 +55,24 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
         super(metaPar, mrp, progressBar, secondBar);
         
         // Debug logging for metadata
-        LOGGER.info("{}: Constructor called with parameters", taskName);
+        logger.info("{}: Constructor called with parameters", taskName);
         if (metaPar != null) {
-            LOGGER.info("{}: Parameters object is not null", taskName);
+            logger.info("{}: Parameters object is not null", taskName);
             if (metaPar.getMetadata() != null) {
                 String[] rawFiles = metaPar.getMetadata().getRawFiles();
                 String[] expNames = metaPar.getMetadata().getExpNames();
-                LOGGER.info("{}: Metadata contains {} raw files", taskName, rawFiles != null ? rawFiles.length : 0);
+                logger.info("{}: Metadata contains {} raw files", taskName, rawFiles != null ? rawFiles.length : 0);
                 if (rawFiles != null) {
                     for (int i = 0; i < rawFiles.length; i++) {
-                        LOGGER.info("{}: Raw file {}: {} -> {}", taskName, i, rawFiles[i], 
+                        logger.info("{}: Raw file {}: {} -> {}", taskName, i, rawFiles[i], 
                             expNames != null && i < expNames.length ? expNames[i] : "N/A");
                     }
                 }
             } else {
-                LOGGER.warn("{}: Metadata is null in parameters", taskName);
+                logger.warn("{}: Metadata is null in parameters", taskName);
             }
         } else {
-            LOGGER.error("{}: Parameters object is null!", taskName);
+            logger.error("{}: Parameters object is null!", taskName);
             return;
         }
         this.spectraDirFile = metaPar.getSpectraFile();
@@ -91,38 +91,38 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
 
     @Override
     public void forceStop() {
-        LOGGER.info("{}: Force stop requested", taskName);
+        logger.info("{}: Force stop requested", taskName);
         System.out.println(format.format(new Date()) + "\t" + taskName + ": Force stop requested");
         
         // Cancel database reduction task if running
         if (dbReducerTask != null && !dbReducerTask.isDone()) {
-            LOGGER.info("{}: Cancelling database reduction task", taskName);
+            logger.info("{}: Cancelling database reduction task", taskName);
             dbReducerTask.cancel(true);
         }
         
         // Cancel Sage task if running
         if (sageTask != null) {
-            LOGGER.info("{}: Stopping Sage identification task", taskName);
+            logger.info("{}: Stopping Sage identification task", taskName);
             // SageTask doesn't have forceStop method, but we can interrupt any running threads
             // The task will be stopped when this main task is cancelled
         }
         
         // Cancel spectra conversion thread if running
         if (spectraConvertThread != null && spectraConvertThread.isAlive()) {
-            LOGGER.info("{}: Interrupting spectra conversion thread", taskName);
+            logger.info("{}: Interrupting spectra conversion thread", taskName);
             spectraConvertThread.interrupt();
         }
         
         // Cancel MGF conversion thread if running
         if (mgfConvertThread != null && mgfConvertThread.isAlive()) {
-            LOGGER.info("{}: Interrupting MGF conversion thread", taskName);
+            logger.info("{}: Interrupting MGF conversion thread", taskName);
             mgfConvertThread.interrupt();
         }
         
         // Cancel this task itself
         this.cancel(true);
         
-        LOGGER.info("{}: Force stop completed", taskName);
+        logger.info("{}: Force stop completed", taskName);
         System.out.println(format.format(new Date()) + "\t" + taskName + ": Force stop completed");
     }
 
@@ -133,7 +133,7 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
 
     @Override
     protected Logger getLogger() {
-        return LOGGER;
+        return logger;
     }
 
     @Override
@@ -192,7 +192,7 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
 
         updateMessage(getTaskName());
 
-        LOGGER.info(getTaskName() + ": start");
+        logger.info(getTaskName() + ": start");
         System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": start");
 
         // Update progress before spectra conversion
@@ -202,7 +202,7 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
         // Step 1: Spectra Conversion using MSConvertor (similar to DDAMagSageTask)
         boolean spectraConverted = convertSpectraToMzML();
         if (!spectraConverted) {
-            LOGGER.error(getTaskName() + ": error in spectra conversion workflow");
+            logger.error(getTaskName() + ": error in spectra conversion workflow");
             System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in spectra conversion workflow");
             return false;
         }
@@ -214,7 +214,7 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
         // Step 2: Convert mzML files to MGF format
         boolean mgfConverted = convertMzMLToMgf();
         if (!mgfConverted) {
-            LOGGER.error(getTaskName() + ": error in MGF conversion workflow");
+            logger.error(getTaskName() + ": error in MGF conversion workflow");
             System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in MGF conversion workflow");
             return false;
         }
@@ -225,18 +225,18 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
 
         // Step 3: Database reduction using MetaDbReducerTask
         dbReducerTask = new MetaDbReducerTask(metaPar, mrp, secondBar);
-        LOGGER.info("{}: MetaDbReducerTask created, executing...", taskName);
+        logger.info("{}: MetaDbReducerTask created, executing...", taskName);
         dbReducerTask.execute();
         try {
             boolean dbReduced = dbReducerTask.get(); // Wait for completion and get result
             if (!dbReduced) {
-                LOGGER.error(getTaskName() + ": error in sample-specific database generation");
+                logger.error(getTaskName() + ": error in sample-specific database generation");
                 System.err.println(format.format(new Date()) + "\t" + getTaskName()
                         + ": error in sample-specific database generation");
                 return false;
             }
         } catch (InterruptedException | ExecutionException e) {
-            LOGGER.error(getTaskName() + ": error in sample-specific database generation", e);
+            logger.error(getTaskName() + ": error in sample-specific database generation", e);
             System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in sample-specific database generation: " + e.getMessage());
             return false;
         }
@@ -245,13 +245,13 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
         updateProgress(50, 100);
         updateMessage("Database reduction completed, starting identification...");
 
-        LOGGER.info(getTaskName() + ": sample specific database generation: finished");
+        logger.info(getTaskName() + ": sample specific database generation: finished");
         System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": sample specific database generation: finished");
 
         // Step 4: Database search with Sage
         boolean identification = performIdentification();
         if (!identification) {
-            LOGGER.error(getTaskName() + ": error in database search and identification");
+            logger.error(getTaskName() + ": error in database search and identification");
             System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in database search and identification");
             return false;
         }
@@ -260,7 +260,7 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
         updateProgress(70, 100);
         updateMessage("Identification completed, starting quantification...");
 
-        LOGGER.info(getTaskName() + ": database search and identification: finished");
+        logger.info(getTaskName() + ": database search and identification: finished");
         System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": database search and identification: finished");
 
         
@@ -271,14 +271,14 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
         File proResultFile = new File(searchResultDir, "pro.tsv");
 
         if (!pepResultFile.exists() || !proResultFile.exists()) {
-            LOGGER.error("Sage result files not found: {} or {}", pepResultFile.getAbsolutePath(), proResultFile.getAbsolutePath());
+            logger.error("Sage result files not found: {} or {}", pepResultFile.getAbsolutePath(), proResultFile.getAbsolutePath());
             return false;
         }
         
 		SageResultReader sageReader = new SageResultReader(searchResultDir);
 		super.metaPeptides = sageReader.getMetaPeptides();
 		if (metaPeptides == null || metaPeptides.length == 0) {
-			LOGGER.error("Sage result files not found: {} or {}", pepResultFile.getAbsolutePath(),
+			logger.error("Sage result files not found: {} or {}", pepResultFile.getAbsolutePath(),
 					proResultFile.getAbsolutePath());
 			return false;
 		}
@@ -288,7 +288,7 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
         // Step 5: Report generation
         boolean reportGenerated = exportReport();
         if (!reportGenerated) {
-            LOGGER.error(getTaskName() + ": error in report generation");
+            logger.error(getTaskName() + ": error in report generation");
             System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in report generation");
             return false;
         }
@@ -305,11 +305,11 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
      * This method is similar to the one in DDAMagSageTask
      */
     private boolean convertSpectraToMzML() {
-        LOGGER.info("Starting spectra conversion to mzML format using MSConvert");
+        logger.info("Starting spectra conversion to mzML format using MSConvert");
         
         // Validate MSConvert executable
         if (msConvertExe == null || !msConvertExe.exists()) {
-            LOGGER.error("MSConvert executable not found: {}", 
+            logger.error("MSConvert executable not found: {}", 
                 msConvertExe != null ? msConvertExe.getAbsolutePath() : "null");
             return false;
         }
@@ -317,7 +317,7 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
         DDAIgcSageParameters sageParams = (DDAIgcSageParameters) metaPar;
         String[] rawFiles = sageParams.getMetadata().getRawFiles();
         if (rawFiles == null || rawFiles.length == 0) {
-            LOGGER.error("No raw files found in metadata");
+            logger.error("No raw files found in metadata");
             return false;
         }
         
@@ -325,7 +325,7 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
         File spectraDir = sageParams.getSpectraFile();
         if (!spectraDir.exists()) {
             spectraDir.mkdirs();
-            LOGGER.info("Created spectra directory: {}", spectraDir.getAbsolutePath());
+            logger.info("Created spectra directory: {}", spectraDir.getAbsolutePath());
         }
         
         // Collect files that need conversion
@@ -335,7 +335,7 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
             File rawFileObj = new File(rawFile);
             
             if (!rawFileObj.exists()) {
-                LOGGER.error("Raw file does not exist: {}", rawFile);
+                logger.error("Raw file does not exist: {}", rawFile);
                 return false;
             }
             
@@ -343,7 +343,7 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
             File mzMLFile = new File(mzMLFiles[i]);
             
             if (mzMLFile.exists() && mzMLFile.length() > 0) {
-                LOGGER.info("mzML file already exists, skipping conversion: {}", mzMLFile.getAbsolutePath());
+                logger.info("mzML file already exists, skipping conversion: {}", mzMLFile.getAbsolutePath());
             } else {
                 filesToConvert.add(i);
             }
@@ -351,7 +351,7 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
         
         // If no files need conversion, return success
         if (filesToConvert.isEmpty()) {
-            LOGGER.info("All mzML files already exist, no conversion needed");
+            logger.info("All mzML files already exist, no conversion needed");
             return true;
         }
         
@@ -359,7 +359,7 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
         int threadCount = Math.min(filesToConvert.size(), sageParams.getThreadCount());
         ExecutorService executor = Executors.newFixedThreadPool(threadCount);
         
-        LOGGER.info("Processing {} files using {} threads", filesToConvert.size(), threadCount);
+        logger.info("Processing {} files using {} threads", filesToConvert.size(), threadCount);
         
         // Submit conversion/copy tasks
         for (int fileIndex : filesToConvert) {
@@ -372,13 +372,13 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
                     String convertedPath = null;
                     
                     if (fileName.endsWith(".raw")) {
-                        LOGGER.info("Converting .raw file to mzML: {}", rawFile);
+                        logger.info("Converting .raw file to mzML: {}", rawFile);
                         convertedPath = MSConvertor.raw2mzML(msConvertExe.getAbsolutePath(), rawFile);
                     } else if (fileName.endsWith(".d")) {
-                        LOGGER.info("Converting .d file to mzML: {}", rawFile);
+                        logger.info("Converting .d file to mzML: {}", rawFile);
                         convertedPath = MSConvertor.d2mzML(msConvertExe.getAbsolutePath(), rawFile, spectraDir.getAbsolutePath());
                     } else {
-                        LOGGER.error("Unsupported file format: {}. Only .raw and .d files are supported for conversion.", fileName);
+                        logger.error("Unsupported file format: {}. Only .raw and .d files are supported for conversion.", fileName);
                         return;
                     }
                     
@@ -390,18 +390,18 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
                             File targetFile = new File(mzMLFiles[fileIndex]);
                             try {
                                 Files.move(convertedFile.toPath(), targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                                LOGGER.info("Successfully moved converted file from {} to {}", convertedPath, mzMLFiles[fileIndex]);
+                                logger.info("Successfully moved converted file from {} to {}", convertedPath, mzMLFiles[fileIndex]);
                             } catch (Exception e) {
-                                LOGGER.error("Failed to move converted file from {} to {}: {}", convertedPath, mzMLFiles[fileIndex], e.getMessage());
+                                logger.error("Failed to move converted file from {} to {}: {}", convertedPath, mzMLFiles[fileIndex], e.getMessage());
                             }
                         } else {
-                            LOGGER.error("Converted mzML file does not exist or is empty: {}", convertedPath);
+                            logger.error("Converted mzML file does not exist or is empty: {}", convertedPath);
                         }
                     } else {
-                        LOGGER.error("Failed to convert file to mzML: {}", rawFile);
+                        logger.error("Failed to convert file to mzML: {}", rawFile);
                     }
                 } catch (Exception e) {
-                    LOGGER.error("Error converting file {}: {}", rawFile, e.getMessage());
+                    logger.error("Error converting file {}: {}", rawFile, e.getMessage());
                 }
             });
         }
@@ -414,7 +414,7 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
                 Thread.sleep(1000);
             }
         } catch (InterruptedException e) {
-            LOGGER.error("Interrupted while waiting for conversion tasks to complete", e);
+            logger.error("Interrupted while waiting for conversion tasks to complete", e);
             return false;
         }
         
@@ -422,12 +422,12 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
         for (int fileIndex : filesToConvert) {
             File mzMLFile = new File(mzMLFiles[fileIndex]);
             if (!mzMLFile.exists() || mzMLFile.length() == 0) {
-                LOGGER.error("Conversion failed for file: {}", mzMLFiles[fileIndex]);
+                logger.error("Conversion failed for file: {}", mzMLFiles[fileIndex]);
                 return false;
             }
         }
         
-        LOGGER.info("All spectra files converted successfully to mzML format");
+        logger.info("All spectra files converted successfully to mzML format");
         return true;
     }
 
@@ -435,11 +435,11 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
      * Convert mzML files to MGF format for Sage processing using multiple threads
      */
     private boolean convertMzMLToMgf() {
-        LOGGER.info("Starting mzML to MGF conversion using MSConvert");
+        logger.info("Starting mzML to MGF conversion using MSConvert");
         
         // Validate MSConvert executable
         if (msConvertExe == null || !msConvertExe.exists()) {
-            LOGGER.error("MSConvert executable not found: {}", 
+            logger.error("MSConvert executable not found: {}", 
                 msConvertExe != null ? msConvertExe.getAbsolutePath() : "null");
             return false;
         }
@@ -447,7 +447,7 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
         DDAIgcSageParameters sageParams = (DDAIgcSageParameters) metaPar;
         String[] rawFiles = sageParams.getMetadata().getRawFiles();
         if (rawFiles == null || rawFiles.length == 0) {
-            LOGGER.error("No raw files found in metadata");
+            logger.error("No raw files found in metadata");
             return false;
         }
         
@@ -458,12 +458,12 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
             File mgfFile = new File(mgfFiles[i]);
             
             if (!mzMLFile.exists() || mzMLFile.length() == 0) {
-                LOGGER.error("mzML file does not exist or is empty: {}", mzMLFile.getAbsolutePath());
+                logger.error("mzML file does not exist or is empty: {}", mzMLFile.getAbsolutePath());
                 return false;
             }
             
             if (mgfFile.exists() && mgfFile.length() > 0) {
-                LOGGER.info("MGF file already exists, skipping conversion: {}", mgfFile.getAbsolutePath());
+                logger.info("MGF file already exists, skipping conversion: {}", mgfFile.getAbsolutePath());
             } else {
                 filesToConvert.add(i);
             }
@@ -471,7 +471,7 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
         
         // If no files need conversion, return success
         if (filesToConvert.isEmpty()) {
-            LOGGER.info("All MGF files already exist, no conversion needed");
+            logger.info("All MGF files already exist, no conversion needed");
             return true;
         }
         
@@ -479,7 +479,7 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
         int threadCount = Math.min(filesToConvert.size(), sageParams.getThreadCount());
         ExecutorService executor = Executors.newFixedThreadPool(threadCount);
         
-        LOGGER.info("Converting {} mzML files to MGF using {} threads", filesToConvert.size(), threadCount);
+        logger.info("Converting {} mzML files to MGF using {} threads", filesToConvert.size(), threadCount);
         
         // Submit MGF conversion tasks
         for (int fileIndex : filesToConvert) {
@@ -488,7 +488,7 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
                 String mgfFile = mgfFiles[fileIndex];
                 
                 try {
-                    LOGGER.info("Converting mzML to MGF: {} -> {}", mzMLFile, mgfFile);
+                    logger.info("Converting mzML to MGF: {} -> {}", mzMLFile, mgfFile);
                     // MSConvertor.mzml2mgf returns void, so we need to check if the file was created
                     MSConvertor.mzml2mgf(msConvertExe.getAbsolutePath(), mzMLFile, spectraDirFile.getAbsolutePath());
                     
@@ -504,18 +504,18 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
                         if (!expectedMgfFile.getAbsolutePath().equals(targetFile.getAbsolutePath())) {
                             try {
                                 Files.move(expectedMgfFile.toPath(), targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                                LOGGER.info("Successfully moved MGF file from {} to {}", expectedMgfFile.getAbsolutePath(), mgfFile);
+                                logger.info("Successfully moved MGF file from {} to {}", expectedMgfFile.getAbsolutePath(), mgfFile);
                             } catch (Exception e) {
-                                LOGGER.error("Failed to move MGF file from {} to {}: {}", expectedMgfFile.getAbsolutePath(), mgfFile, e.getMessage());
+                                logger.error("Failed to move MGF file from {} to {}: {}", expectedMgfFile.getAbsolutePath(), mgfFile, e.getMessage());
                             }
                         } else {
-                            LOGGER.info("MGF file already in correct location: {}", mgfFile);
+                            logger.info("MGF file already in correct location: {}", mgfFile);
                         }
                     } else {
-                        LOGGER.error("MGF file was not created: {}", expectedMgfFile.getAbsolutePath());
+                        logger.error("MGF file was not created: {}", expectedMgfFile.getAbsolutePath());
                     }
                 } catch (Exception e) {
-                    LOGGER.error("Error converting mzML to MGF {}: {}", mzMLFile, e.getMessage());
+                    logger.error("Error converting mzML to MGF {}: {}", mzMLFile, e.getMessage());
                 }
             });
         }
@@ -528,7 +528,7 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
                 Thread.sleep(1000);
             }
         } catch (InterruptedException e) {
-            LOGGER.error("Interrupted while waiting for MGF conversion tasks to complete", e);
+            logger.error("Interrupted while waiting for MGF conversion tasks to complete", e);
             return false;
         }
         
@@ -536,12 +536,12 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
         for (int fileIndex : filesToConvert) {
             File mgfFile = new File(mgfFiles[fileIndex]);
             if (!mgfFile.exists() || mgfFile.length() == 0) {
-                LOGGER.error("MGF conversion failed for file: {}", mgfFiles[fileIndex]);
+                logger.error("MGF conversion failed for file: {}", mgfFiles[fileIndex]);
                 return false;
             }
         }
         
-        LOGGER.info("All mzML files converted successfully to MGF format");
+        logger.info("All mzML files converted successfully to MGF format");
         return true;
     }
 
@@ -550,12 +550,12 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
      * This method follows the same pattern as DDAMagSageTask
      */
     private boolean performIdentification() {
-        LOGGER.info("Starting Sage database search and identification");
+        logger.info("Starting Sage database search and identification");
         
         // Get Sage executable path
         String sageExe = mrp.getToolPath(ToolType.SAGE);
         if (sageExe == null || sageExe.isEmpty()) {
-            LOGGER.error("Sage executable path not found in MetaResourceParameters");
+            logger.error("Sage executable path not found in MetaResourceParameters");
             return false;
         }
         
@@ -565,7 +565,7 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
         // Get current database path (should be the reduced database)
         String currentDb = metaPar.getCurrentDb();
         if (currentDb == null || currentDb.isEmpty()) {
-            LOGGER.error("Current database path is not set");
+            logger.error("Current database path is not set");
             return false;
         }
         
@@ -573,9 +573,9 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
         File sageSearchFile = new File(metaPar.getResult(), "sage_IGC_search");
 		if (!sageSearchFile.exists()) {
 			sageSearchFile.mkdir();
-			LOGGER.info("  Created Sage search directory: " + sageSearchFile.getAbsolutePath());
+			logger.info("  Created Sage search directory: " + sageSearchFile.getAbsolutePath());
 		} else {
-			LOGGER.info("  Sage search directory already exists: " + sageSearchFile.getAbsolutePath());
+			logger.info("  Sage search directory already exists: " + sageSearchFile.getAbsolutePath());
 		}
         
         // Set the database search result file
@@ -584,9 +584,9 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
         this.combinedFile = new File(sageSearchFile, "combined");
 		if (!combinedFile.exists()) {
 			combinedFile.mkdir();
-			LOGGER.info("  Created combined search directory: " + combinedFile.getAbsolutePath());
+			logger.info("  Created combined search directory: " + combinedFile.getAbsolutePath());
 		} else {
-			LOGGER.info("  Combined search directory already exists: " + combinedFile.getAbsolutePath());
+			logger.info("  Combined search directory already exists: " + combinedFile.getAbsolutePath());
 		}
 		
         try {
@@ -596,7 +596,7 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
 			sageTask.searchMzML(mzMLFiles, combinedFile.getAbsolutePath(), currentDb, sageParams, true);
 
             // Run Sage
-            LOGGER.info("Starting Sage execution with {} threads", metaPar.getThreadCount());
+            logger.info("Starting Sage execution with {} threads", metaPar.getThreadCount());
             sageTask.run(metaPar.getThreadCount());
             
             // Check if results were generated
@@ -605,15 +605,15 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
             
             if (pepResultFile.exists() && pepResultFile.length() > 0 && 
                 proResultFile.exists() && proResultFile.length() > 0) {
-                LOGGER.info("Sage identification completed successfully");
+                logger.info("Sage identification completed successfully");
                 return true;
             } else {
-                LOGGER.error("Sage identification failed - result files not found or empty");
+                logger.error("Sage identification failed - result files not found or empty");
                 return false;
             }
             
         } catch (Exception e) {
-            LOGGER.error("Error during Sage identification: {}", e.getMessage(), e);
+            logger.error("Error during Sage identification: {}", e.getMessage(), e);
             return false;
         }
     }
@@ -623,7 +623,7 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
      * This method follows the same pattern as DDAIgcPFindTask but uses Sage readers
      */
     protected boolean exportReport() {
-        LOGGER.info(getTaskName() + ": exporting peptide report started");
+        logger.info(getTaskName() + ": exporting peptide report started");
         System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting peptide report started");
 
         // Build file list and mapping
@@ -640,7 +640,7 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
         }
 
         if (!combinedFile.exists()) {
-            LOGGER.error(getTaskName() + ": Sage combined result file not found: " + combinedFile.getAbsolutePath());
+            logger.error(getTaskName() + ": Sage combined result file not found: " + combinedFile.getAbsolutePath());
             return false;
         }
 
@@ -664,18 +664,18 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
             boolean success = postAnalysisTask.get();
             
             if (success) {
-                LOGGER.info(getTaskName() + ": Post-analysis completed successfully");
+                logger.info(getTaskName() + ": Post-analysis completed successfully");
                 return true;
                 } else {
-                LOGGER.error(getTaskName() + ": Post-analysis task failed");
+                logger.error(getTaskName() + ": Post-analysis task failed");
             return false;
         }
         } catch (InterruptedException e) {
-            LOGGER.error(getTaskName() + ": Post-analysis task was interrupted", e);
+            logger.error(getTaskName() + ": Post-analysis task was interrupted", e);
             Thread.currentThread().interrupt();
         return false;
         } catch (ExecutionException e) {
-            LOGGER.error(getTaskName() + ": Post-analysis task failed with exception", e);
+            logger.error(getTaskName() + ": Post-analysis task failed with exception", e);
             return false;
         }
     }

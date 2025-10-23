@@ -56,7 +56,7 @@ import uk.ac.quadram.metapilot.task.par.MetaData;
 
 public abstract class MetaPilotMagTask extends MetaPilotTask {
 
-	private static final Logger LOGGER = LogManager.getLogger(MetaPilotMagTask.class);
+	// Logger is inherited from MetaPilotTask as an instance field
 
 	protected String[] rawFiles;
 	protected String[] rawFileNames;
@@ -84,9 +84,9 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 		this.threadCount = metaPar.getThreadCount();
 
 		setTaskCount();
-		LOGGER.info("Task count set to: {}", maxTaskCount);
+		logger.info("Task count set to: {}", maxTaskCount);
 
-		LOGGER.info(getTaskName() + ": Constructor completed, report templates will be copied during execution");
+		logger.info(getTaskName() + ": Constructor completed, report templates will be copied during execution");
 	}
 
 	protected void setTaskCount() {
@@ -104,22 +104,22 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 	protected void createSeparateFolders() {
 		MetaData metaData = metaPar.getMetadata();
 		if (metaData == null) {
-			LOGGER.error("No metadata");
+			logger.error("No metadata");
 			throw new IllegalArgumentException("Metadata are required");
 		}
 		this.rawFiles = metaPar.getMetadata().getRawFiles();
 		if (rawFiles == null || rawFiles.length == 0) {
-			LOGGER.error("No raw files found in metadata");
+			logger.error("No raw files found in metadata");
 			throw new IllegalArgumentException("Raw files are required");
 		}
 
 		this.rawDir = (new File(rawFiles[0])).getParentFile();
 		if (!rawDir.exists()) {
-			LOGGER.error("No raw files found in metadata");
+			logger.error("No raw files found in metadata");
 			throw new IllegalArgumentException("Raw files are required");
 		}
 
-		LOGGER.info("Initializing result directories in: {}", metaPar.getDbSearchResultFile().getAbsolutePath());
+		logger.info("Initializing result directories in: {}", metaPar.getDbSearchResultFile().getAbsolutePath());
 
 		this.quanExpNames = metaPar.getMetadata().getExpNames();
 		this.combinedFile = new File(metaPar.getDbSearchResultFile(), "combined");
@@ -135,17 +135,17 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			this.separateResultFolders[i] = new File(metaPar.getDbSearchResultFile(), rawFileNames[i]);
 			if (!this.separateResultFolders[i].exists()) {
 				this.separateResultFolders[i].mkdir();
-				LOGGER.info("  Created result directory: {}", this.separateResultFolders[i].getAbsolutePath());
+				logger.info("  Created result directory: {}", this.separateResultFolders[i].getAbsolutePath());
 			} else {
-				LOGGER.info("  Result directory already exists: {}", this.separateResultFolders[i].getAbsolutePath());
+				logger.info("  Result directory already exists: {}", this.separateResultFolders[i].getAbsolutePath());
 			}
 
 			File hapFile = new File(separateResultFolders[i], "hap");
 			if (!hapFile.exists()) {
 				hapFile.mkdirs();
-				LOGGER.info("  Created HAP result directory: {}", hapFile.getAbsolutePath());
+				logger.info("  Created HAP result directory: {}", hapFile.getAbsolutePath());
 			} else {
-				LOGGER.info(" HAP result directory already exists: {}", hapFile.getAbsolutePath());
+				logger.info(" HAP result directory already exists: {}", hapFile.getAbsolutePath());
 			}
 		}
 
@@ -222,7 +222,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			}
 			writer.close();
 		} catch (IOException e) {
-			LOGGER.error(getTaskName() + ": error in writing genomes to " + out, e);
+			logger.error(getTaskName() + ": error in writing genomes to " + out, e);
 			System.out
 					.println(format.format(new Date()) + "\t" + getTaskName() + ": error in writing genomes to " + out);
 		}
@@ -295,7 +295,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 		String revIdentifier = decoySymble + this.magDb.getIdentifier();
 		HashMap<String, Double> genomeIntensityMap = new HashMap<String, Double>();
 		double[] peptideIntensity = new double[quanPeps.length];
-		LOGGER.info(getTaskName() + ": quanPeps: " + quanPeps.length);
+		logger.info(getTaskName() + ": quanPeps: " + quanPeps.length);
 		for (int i = 0; i < quanPeps.length; i++) {
 			double[] pepIntensity = quanPeps[i].getIntensity();
 			double totalIntensity = MathTool.getTotal(pepIntensity);
@@ -306,7 +306,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 					idenCount++;
 				}
 			}
-			LOGGER.info(totalIntensity+"\t"+idenCount);
+			logger.info(totalIntensity+"\t"+idenCount);
 			if (totalIntensity == 0 || idenCount == 0) {
 				continue;
 			}
@@ -344,7 +344,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			}
 		}
 
-		LOGGER.info(getTaskName() + ": genome before filtering: " + genomeIntensityMap.size());
+		logger.info(getTaskName() + ": genome before filtering: " + genomeIntensityMap.size());
 
 		HashMap<String, Double> razorGenomeIntenMap = new HashMap<String, Double>();
 		for (int i = 0; i < quanPeps.length; i++) {
@@ -382,7 +382,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			}
 		}
 
-		LOGGER.info(getTaskName() + ": razor genome before filtering: " + razorGenomeIntenMap.size());
+		logger.info(getTaskName() + ": razor genome before filtering: " + razorGenomeIntenMap.size());
 
 		for (int i = 0; i < quanPeps.length; i++) {
 			if (peptideIntensity[i] > 0) {
@@ -437,12 +437,12 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			}
 		}
 
-		LOGGER.info(getTaskName() + ": decoy genome count: " + revLogIntenList.size());
+		logger.info(getTaskName() + ": decoy genome count: " + revLogIntenList.size());
 
 		HashMap<String, Double> genomeScoreMap = new HashMap<String, Double>();
 
 		if (revLogIntenList.size() == 0) {
-			LOGGER.info(getTaskName()
+			logger.info(getTaskName()
 					+ ": no decoy genome were found, the p-Value for the genome identifications will be set as 0");
 
 			for (int i = 0; i < razorGenomes.length; i++) {
@@ -466,11 +466,11 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 					break;
 				}
 			}
-			LOGGER.info(getTaskName() + ": refined decoy genome:" + revLogIntensities.length);
-			LOGGER.info(Arrays.toString(revLogIntensities));
+			logger.info(getTaskName() + ": refined decoy genome:" + revLogIntensities.length);
+			logger.info(Arrays.toString(revLogIntensities));
 
 			if (revLogIntensities.length == 0) {
-				LOGGER.info(getTaskName() + ": the number of decoy genome was not sufficient for the t-test, "
+				logger.info(getTaskName() + ": the number of decoy genome was not sufficient for the t-test, "
 						+ "the p-Value for the genome identifications will be set as 0");
 				for (int i = 0; i < razorGenomes.length; i++) {
 					double intensity = razorGenomeIntenMap.get(razorGenomes[i]);
@@ -485,7 +485,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 					extended[i] = revLogIntensities[i % revLogIntensities.length];
 				}
 
-				LOGGER.info(getTaskName() + ": decoy genome used for scoring: " + extended.length);
+				logger.info(getTaskName() + ": decoy genome used for scoring: " + extended.length);
 
 				for (int i = 0; i < razorGenomes.length; i++) {
 					double intensity = razorGenomeIntenMap.get(razorGenomes[i]);
@@ -495,7 +495,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 					}
 
 					double pvalue = tTest.tTest(Math.log10(intensity), extended);
-					LOGGER.info(getTaskName() + ": pvalue for genome " + razorGenomes[i] + ": " + pvalue);
+					logger.info(getTaskName() + ": pvalue for genome " + razorGenomes[i] + ": " + pvalue);
 
 					if (pvalue < 0.01) {
 						genomeScoreMap.put(razorGenomes[i], pvalue);
@@ -504,7 +504,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 					}
 				}
 			} else {
-				LOGGER.info(getTaskName() + ": decoy genome used for scoring: " + revLogIntensities.length);
+				logger.info(getTaskName() + ": decoy genome used for scoring: " + revLogIntensities.length);
 
 				for (int i = 0; i < razorGenomes.length; i++) {
 					double intensity = razorGenomeIntenMap.get(razorGenomes[i]);
@@ -514,7 +514,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 					}
 
 					double pvalue = tTest.tTest(Math.log10(intensity), revLogIntensities);
-					LOGGER.info(getTaskName() + ": pvalue for genome " + razorGenomes[i] + ": " + pvalue);
+					logger.info(getTaskName() + ": pvalue for genome " + razorGenomes[i] + ": " + pvalue);
 
 					if (pvalue < 0.01) {
 						genomeScoreMap.put(razorGenomes[i], pvalue);
@@ -525,7 +525,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			}
 		}
 
-		LOGGER.info(getTaskName() + ": genome after filtering: " + genomeScoreMap.size());
+		logger.info(getTaskName() + ": genome after filtering: " + genomeScoreMap.size());
 
 		return genomeScoreMap;
 	}
@@ -656,7 +656,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 
 		} catch (NumberFormatException | SQLException | IOException e) {
 			// TODO Auto-generated catch block
-			LOGGER.error(getTaskName() + ": error in genome analysis, task failed", e);
+			logger.error(getTaskName() + ": error in genome analysis, task failed", e);
 			System.err.println(
 					format.format(new Date()) + "\t" + getTaskName() + ": error in genome analysis, task failed");
 
@@ -669,7 +669,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			genomeTaxaMap = searcher.matchGenome(genomes);
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
-			LOGGER.error(getTaskName() + ": Error in searching the genome2taxa database", e);
+			logger.error(getTaskName() + ": Error in searching the genome2taxa database", e);
 			System.err.println(
 					format.format(new Date()) + "\t" + getTaskName() + ": error in searching the genome2taxa database");
 			return false;
@@ -687,7 +687,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 				reportGenomeHtml.getParentFile().mkdirs();
 			}
 			Files.copy(genomeHtmlFile.toPath(), reportGenomeHtml.toPath(), StandardCopyOption.REPLACE_EXISTING);
-			LOGGER.info("Copied Genome.html to reports directory: " + reportGenomeHtml.getAbsolutePath());
+			logger.info("Copied Genome.html to reports directory: " + reportGenomeHtml.getAbsolutePath());
 
 			// Add to manifest
 			File reportsDir = new File(metaPar.getReportDir(), "reports");
@@ -696,7 +696,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
-			LOGGER.error("Error in writing genome information to " + genomeHtmlFile, e);
+			logger.error("Error in writing genome information to " + genomeHtmlFile, e);
 			System.err.println(
 					format.format(new Date()) + "\t" + "Error in writing genome information to " + genomeHtmlFile);
 			return false;
@@ -708,7 +708,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			genomeWriter = new PrintWriter(genomeFile);
 		} catch (FileNotFoundException e) {
 			// TODO Auto-generated catch block
-			LOGGER.error("Error in writing genome information to " + genomeFile, e);
+			logger.error("Error in writing genome information to " + genomeFile, e);
 			System.err
 					.println(format.format(new Date()) + "\t" + "Error in writing genome information to " + genomeFile);
 			return false;
@@ -871,7 +871,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			taxaReportWriter = new PrintWriter(taxaReportFile);
 		} catch (FileNotFoundException e) {
 			// TODO Auto-generated catch block
-			LOGGER.error("Error in writing taxa information to " + taxaFile, e);
+			logger.error("Error in writing taxa information to " + taxaFile, e);
 			System.err.println(format.format(new Date()) + "\t" + "Error in writing taxa information to " + taxaFile);
 			return false;
 		}
@@ -980,7 +980,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			try {
 				generateBubbleChartReport(jsOutput, bubbleChartOutput);
 			} catch (Exception e) {
-				LOGGER.warn(getTaskName() + ": Bubble chart generation failed, continuing with other reports: "
+				logger.warn(getTaskName() + ": Bubble chart generation failed, continuing with other reports: "
 						+ e.getMessage());
 				System.out.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": Bubble chart generation failed, continuing with other reports");
@@ -1002,7 +1002,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			finished = true;
 		}
 
-		LOGGER.info(getTaskName() + ": taxonomy analysis started");
+		logger.info(getTaskName() + ": taxonomy analysis started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": taxonomy analysis started");
 
 		updateProgress(96, 100);
@@ -1048,7 +1048,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 
 			} catch (NumberFormatException | SQLException | IOException e) {
 				// TODO Auto-generated catch block
-				LOGGER.error(getTaskName() + ": error in proteins functional annotations, task failed", e);
+				logger.error(getTaskName() + ": error in proteins functional annotations, task failed", e);
 				System.err.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": error in proteins functional annotations, task failed");
 
@@ -1060,7 +1060,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 				mpas = searcher.match(mps);
 			} catch (IOException | SQLException e) {
 				// TODO Auto-generated catch block
-				LOGGER.error(getTaskName() + ": error in proteins functional annotations, task failed", e);
+				logger.error(getTaskName() + ": error in proteins functional annotations, task failed", e);
 				System.err.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": error in proteins functional annotations, task failed");
 
@@ -1096,12 +1096,12 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 		writer.close();
 
 		if (final_pro_xml_file.exists() && final_pro_xml_file.length() > 0) {
-			LOGGER.info(getTaskName() + ": proteins with functional annotations have been exported to "
+			logger.info(getTaskName() + ": proteins with functional annotations have been exported to "
 					+ final_pro_xml_file.getName());
 			System.out.println(format.format(new Date()) + "\t" + getTaskName()
 					+ ": proteins with functional annotations have been exported to " + final_pro_xml_file.getName());
 		} else {
-			LOGGER.error(getTaskName() + ": error in proteins functional annotations, task failed");
+			logger.error(getTaskName() + ": error in proteins functional annotations, task failed");
 			System.err.println(format.format(new Date()) + "\t" + getTaskName()
 					+ ": error in proteins functional annotations, task failed");
 		}
@@ -1130,7 +1130,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 				idWriter.println(rawNames[i] + "\t" + fileSequenceSets[i].size() + "\t" + filePsmCount[i]);
 			}
 		} catch (IOException e) {
-			LOGGER.error(taskName + ": error in writing identification information", e);
+			logger.error(taskName + ": error in writing identification information", e);
 			System.err.println(
 					format.format(new Date()) + "\t" + taskName + ": error in writing identification information");
 			return false;
@@ -1229,7 +1229,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
-			LOGGER.error(getTaskName() + ": error in writing PSM information to " + final_summary_txt.getName(), e);
+			logger.error(getTaskName() + ": error in writing PSM information to " + final_summary_txt.getName(), e);
 			System.err.println(format.format(new Date()) + "\t" + getTaskName()
 					+ ": error in writing PSM information to " + final_summary_txt.getName());
 		}
@@ -1250,7 +1250,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			HashMap<String, Integer> proteinIdMap, ArrayList<String> fileList, String quanMode, String[] intensityTitle,
 			String taskName) {
 
-		LOGGER.info(taskName + ": exporting peptide report started");
+		logger.info(taskName + ": exporting peptide report started");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": exporting peptide report started");
 
 		try {
@@ -1302,7 +1302,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 				// Note: This would need to be adapted based on the specific PSM type
 				// For now, using basic peptide information
 				if (psm == null) {
-					LOGGER.info(getTaskName() + ": no PSM was found for peptide " + fullSeq);
+					logger.info(getTaskName() + ": no PSM was found for peptide " + fullSeq);
 					continue;
 				}
 				StringBuilder sb = new StringBuilder();
@@ -1404,13 +1404,13 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			writer.close();
 
 		} catch (Exception e) {
-			LOGGER.error(taskName + ": error in writing the peptides to " + final_pep_txt, e);
+			logger.error(taskName + ": error in writing the peptides to " + final_pep_txt, e);
 			System.err.println(format.format(new Date()) + "\t" + taskName + ": error in writing the peptides to "
 					+ final_pep_txt);
 			return false;
 		}
 
-		LOGGER.info(taskName + ": peptide report has been exported to " + final_pep_txt);
+		logger.info(taskName + ": peptide report has been exported to " + final_pep_txt);
 		System.out.println(
 				format.format(new Date()) + "\t" + taskName + ": peptide report has been exported to " + final_pep_txt);
 
@@ -1429,7 +1429,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			HashMap<String, HashSet<String>> razorPepCountMap, HashMap<String, Integer> psmCountMap,
 			HashMap<String, Integer> proteinIdMap, String quanMode, String[] intensityTitle, String taskName) {
 
-		LOGGER.info(taskName + ": exporting protein report started");
+		logger.info(taskName + ": exporting protein report started");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": exporting protein report started");
 
 		try {
@@ -1494,13 +1494,13 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			writer.close();
 
 		} catch (IOException e) {
-			LOGGER.error(taskName + ": error in writing final protein result to " + final_pro_txt.getName(), e);
+			logger.error(taskName + ": error in writing final protein result to " + final_pro_txt.getName(), e);
 			System.err.println(format.format(new Date()) + "\t" + taskName
 					+ ": error in writing final protein result to " + final_pro_txt.getName());
 			return false;
 		}
 
-		LOGGER.info(taskName + ": protein report has been exported to " + final_pro_txt.getName());
+		logger.info(taskName + ": protein report has been exported to " + final_pro_txt.getName());
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": protein report has been exported to "
 				+ final_pro_txt.getName());
 
@@ -1513,7 +1513,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 	private boolean performFunctionalAnnotation(String[] proteins, HashMap<String, double[]> proteinIntensityMap,
 			String[] intensityTitle, String taskName) {
 
-		LOGGER.info(taskName + ": functional annotation started");
+		logger.info(taskName + ": functional annotation started");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": functional annotation started");
 
 		File funcFile = new File(metaPar.getDbSearchResultFile(), "functional_annotation");
@@ -1535,7 +1535,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 		MetaProteinAnnoMag[] mpas = funcAnnoSqlite(metapros, intensityTitle);
 
 		if (mpas == null) {
-			LOGGER.error(taskName + ": Functional annotation failed");
+			logger.error(taskName + ": Functional annotation failed");
 			System.err.println(format.format(new Date()) + "\t" + taskName + ": Functional annotation failed");
 			return false;
 		}
@@ -1569,7 +1569,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 				funReader.exportCOGCategoryReport(cogCatTsv);
 				funReader.exportNOGCategoryReport(nogCatTsv);				
 			} catch (Exception e) {
-				LOGGER.error(taskName + ": error in writing protein function information to " + funTsv.getName(), e);
+				logger.error(taskName + ": error in writing protein function information to " + funTsv.getName(), e);
 				System.err.println(format.format(new Date()) + "\t" + taskName
 						+ ": error in writing protein function information to " + funTsv.getName());
 				return false;
@@ -1586,7 +1586,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 				MetaProteinXMLReader2 funReader = new MetaProteinXMLReader2(final_pro_xml_file);
 				funReader.exportHtml(html);
 			} catch (Exception e) {
-				LOGGER.error(taskName + ": error in writing protein function information to " + html.getName(), e);
+				logger.error(taskName + ": error in writing protein function information to " + html.getName(), e);
 				System.err.println(format.format(new Date()) + "\t" + taskName
 						+ ": error in writing protein function information to " + html.getName());
 				return false;
@@ -1595,7 +1595,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 					+ " finished");
 		}
 
-		LOGGER.info(taskName + ": functional annotation finished");
+		logger.info(taskName + ": functional annotation finished");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": functional annotation finished");
 
 		return true;
@@ -1609,7 +1609,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			HashMap<String, HashSet<String>> totalPepCountMap, HashMap<String, HashSet<String>> razorPepCountMap,
 			String[] intensityTitle, String taskName) {
 
-		LOGGER.info(taskName + ": taxonomy analysis started");
+		logger.info(taskName + ": taxonomy analysis started");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": taxonomy analysis started");
 
 		File taxFile = new File(metaPar.getDbSearchResultFile(), "taxonomy_analysis");
@@ -1621,7 +1621,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 		try {
 			searcher = new MagFuncSearcher(metaPar.getMicroDb(), mrp.getToolPath(ToolType.FUNCDB));
 		} catch (NumberFormatException | SQLException | IOException e) {
-			LOGGER.error(taskName + ": error in genome analysis, task failed", e);
+			logger.error(taskName + ": error in genome analysis, task failed", e);
 			System.err.println(format.format(new Date()) + "\t" + taskName + ": error in genome analysis, task failed");
 			return false;
 		}
@@ -1631,7 +1631,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 		try {
 			genomeTaxaMap = searcher.matchGenome(genomes);
 		} catch (IOException e) {
-			LOGGER.error(taskName + ": Error in searching the genome2taxa database", e);
+			logger.error(taskName + ": Error in searching the genome2taxa database", e);
 			System.err.println(
 					format.format(new Date()) + "\t" + taskName + ": error in searching the genome2taxa database");
 			return false;
@@ -1643,7 +1643,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			htmlWriter.write(genomeTaxaMap);
 			htmlWriter.close();
 		} catch (IOException e) {
-			LOGGER.error("Error in writing genome information to " + genomeHtmlFile, e);
+			logger.error("Error in writing genome information to " + genomeHtmlFile, e);
 			System.err.println(
 					format.format(new Date()) + "\t" + "Error in writing genome information to " + genomeHtmlFile);
 			return false;
@@ -1766,7 +1766,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			genomeWriter.close();
 
 		} catch (FileNotFoundException e) {
-			LOGGER.error("Error in writing genome information to " + genomeFile, e);
+			logger.error("Error in writing genome information to " + genomeFile, e);
 			System.err
 					.println(format.format(new Date()) + "\t" + "Error in writing genome information to " + genomeFile);
 			return false;
@@ -1868,7 +1868,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			taxaReportWriter.close();
 
 		} catch (FileNotFoundException e) {
-			LOGGER.error("Error in writing taxa information to " + taxaFile, e);
+			logger.error("Error in writing taxa information to " + taxaFile, e);
 			System.err.println(format.format(new Date()) + "\t" + "Error in writing taxa information to " + taxaFile);
 			return false;
 		}
@@ -1890,14 +1890,14 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			try {
 				generateBubbleChartReport(jsOutput, bubbleChartOutput);
 			} catch (Exception e) {
-				LOGGER.warn(getTaskName() + ": Bubble chart generation failed, continuing with other reports: "
+				logger.warn(getTaskName() + ": Bubble chart generation failed, continuing with other reports: "
 						+ e.getMessage());
 				System.out.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": Bubble chart generation failed, continuing with other reports");
 			}
 		}
 
-		LOGGER.info(taskName + ": taxonomy analysis finished");
+		logger.info(taskName + ": taxonomy analysis finished");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": taxonomy analysis finished");
 
 		return true;
@@ -1912,11 +1912,11 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 
 		// Copy report templates in background
 		if (!copyReportTemplatesInBackground()) {
-			LOGGER.error(getTaskName() + ": Failed to copy report templates");
+			logger.error(getTaskName() + ": Failed to copy report templates");
 			return false;
 		}
 
-		LOGGER.info(taskName + ": exporting report started");
+		logger.info(taskName + ": exporting report started");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": exporting report started");
 
 		// Report templates are already copied in the main call() method
@@ -1936,7 +1936,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 		try {
 			metaPar.getMetadata().exportMetadata(summaryMetaFile);
 		} catch (FileNotFoundException e) {
-			LOGGER.error(taskName + ": error in exporting metadata", e);
+			logger.error(taskName + ": error in exporting metadata", e);
 		}
 
 		// Generate summary report
@@ -2010,11 +2010,11 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 				Files.copy(genomeHtmlFile.toPath(), reportGenomeHtml.toPath(), StandardCopyOption.REPLACE_EXISTING);
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
-				LOGGER.error("Copied Genome.html to reports directory failed", e);
+				logger.error("Copied Genome.html to reports directory failed", e);
 			}
-			LOGGER.info("Copied Genome.html to reports directory: " + reportGenomeHtml.getAbsolutePath());
+			logger.info("Copied Genome.html to reports directory: " + reportGenomeHtml.getAbsolutePath());
 		} else {
-			LOGGER.info("Genome.html was not exist in " + genomeHtmlFile.getAbsolutePath());
+			logger.info("Genome.html was not exist in " + genomeHtmlFile.getAbsolutePath());
 		}
 
 		// Add function report
@@ -2037,15 +2037,15 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 				Files.copy(funcHtmlFile.toPath(), reportFunctionsHtml.toPath(), StandardCopyOption.REPLACE_EXISTING);
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
-				LOGGER.error("Copied functions.html to reports directory failed", e);
+				logger.error("Copied functions.html to reports directory failed", e);
 			}
-			LOGGER.info("Copied functions.html to reports directory: " + reportFunctionsHtml.getAbsolutePath());
+			logger.info("Copied functions.html to reports directory: " + reportFunctionsHtml.getAbsolutePath());
 		} else {
-			LOGGER.info("functions.html was not exist in " + funcHtmlFile.getAbsolutePath());
+			logger.info("functions.html was not exist in " + funcHtmlFile.getAbsolutePath());
 		}
 
 		if (!reportSuccess) {
-			LOGGER.warn(taskName + ": Some report tasks could not be added");
+			logger.warn(taskName + ": Some report tasks could not be added");
 			System.out.println(format.format(new Date()) + "\t" + taskName + ": Some report tasks could not be added");
 		}
 
@@ -2055,7 +2055,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 		try {
 			reportThread.join();
 		} catch (InterruptedException e) {
-			LOGGER.error(taskName + ": Report generation thread was interrupted", e);
+			logger.error(taskName + ": Report generation thread was interrupted", e);
 			System.out.println(
 					format.format(new Date()) + "\t" + taskName + ": Report generation thread was interrupted");
 			Thread.currentThread().interrupt();
@@ -2065,12 +2065,12 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 		try {
 			boolean finish = reportTask.get();
 			if (finish) {
-				LOGGER.info(taskName + ": report generation successes");
+				logger.info(taskName + ": report generation successes");
 				System.out.println(format.format(new Date()) + "\t" + taskName + ": report generation successes");
 				return true;
 			}
 		} catch (InterruptedException | ExecutionException e) {
-			LOGGER.error(taskName + ": error in the report generation", e);
+			logger.error(taskName + ": error in the report generation", e);
 			System.out.println(format.format(new Date()) + "\t" + taskName + ": error in the report generation");
 			return false;
 		}
@@ -2083,7 +2083,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 	 */
 	private void generateBubbleChartReport(File treeJsFile, File outputFile) {
 		try {
-			LOGGER.info(getTaskName() + ": Generating bubble chart report from " + treeJsFile.getName());
+			logger.info(getTaskName() + ": Generating bubble chart report from " + treeJsFile.getName());
 			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Generating bubble chart report");
 
 			// Use MetaPythonReportTask to generate the bubble chart
@@ -2096,7 +2096,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 				boolean result = reportTask.get();
 
 				if (result) {
-					LOGGER.info(
+					logger.info(
 							getTaskName() + ": Bubble chart report generated successfully: " + outputFile.getName());
 					System.out.println(format.format(new Date()) + "\t" + getTaskName()
 							+ ": Bubble chart report generated successfully");
@@ -2108,17 +2108,17 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 							"Interactive hierarchical bubble chart showing taxonomic abundance with treemap, sunburst, and distribution visualizations.",
 							new String[] { "bubble-chart", "taxonomy", "hierarchical", "treemap" });
 				} else {
-					LOGGER.error(getTaskName() + ": Failed to generate bubble chart report");
+					logger.error(getTaskName() + ": Failed to generate bubble chart report");
 					System.err.println(format.format(new Date()) + "\t" + getTaskName()
 							+ ": Failed to generate bubble chart report");
 				}
 			} else {
-				LOGGER.error(getTaskName() + ": Failed to add bubble chart task");
+				logger.error(getTaskName() + ": Failed to add bubble chart task");
 				System.err.println(
 						format.format(new Date()) + "\t" + getTaskName() + ": Failed to add bubble chart task");
 			}
 		} catch (Exception e) {
-			LOGGER.error(getTaskName() + ": Error generating bubble chart report", e);
+			logger.error(getTaskName() + ": Error generating bubble chart report", e);
 			System.err.println(format.format(new Date()) + "\t" + getTaskName()
 					+ ": Error generating bubble chart report: " + e.getMessage());
 		}

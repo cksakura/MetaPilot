@@ -37,7 +37,7 @@ import uk.ac.quadram.metapilot.task.par.MetaData;
 
 public class DDAIgcPFindTask extends MetaPilotIgcTask {
 
-	private static final Logger LOGGER = LogManager.getLogger(DDAIgcPFindTask.class);
+	// Logger is inherited from MetaPilotIgcTask -> MetaPilotTask as an instance field
 	private static final String taskName = "DDA IGC database search by pFind workflow";
 
 	protected HashMap<String, PostTransModification> ptmMap;
@@ -54,20 +54,20 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 		super(metaPar, mrp, progressBar, secondBar);
 
 		// Debug logging for metadata
-		LOGGER.info("{}: Constructor called with parameters", taskName);
+		logger.info("{}: Constructor called with parameters", taskName);
 		if (metaPar != null) {
-			LOGGER.info("{}: Parameters object is not null", taskName);
+			logger.info("{}: Parameters object is not null", taskName);
 			if (metaPar.getMetadata() != null) {
 				MetaData metadata = metaPar.getMetadata();
 				String[] rawFiles = metadata.getRawFiles();
 				String[] expNames = metadata.getExpNames();
 
-				LOGGER.info("{}: Metadata contains {} raw files", taskName, rawFiles != null ? rawFiles.length : 0);
+				logger.info("{}: Metadata contains {} raw files", taskName, rawFiles != null ? rawFiles.length : 0);
 				if (rawFiles != null && expNames != null) {
 					this.expNameMap = new HashMap<String, String>();
 					this.quanExpNames = new String[rawFiles.length];
 					for (int i = 0; i < rawFiles.length; i++) {
-						LOGGER.info("{}: Raw file {}: {} -> {}", taskName, i, rawFiles[i],
+						logger.info("{}: Raw file {}: {} -> {}", taskName, i, rawFiles[i],
 								expNames != null && i < expNames.length ? expNames[i] : "N/A");
 
 						this.quanExpNames[i] = rawFiles[i].substring(rawFiles[i].lastIndexOf("\\") + 1,
@@ -76,13 +76,13 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 					}
 					this.rawDir = (new File(rawFiles[0])).getParentFile();
 				} else {
-					LOGGER.warn("{}: Raw files are null in parameters", taskName);
+					logger.warn("{}: Raw files are null in parameters", taskName);
 				}
 			} else {
-				LOGGER.warn("{}: Metadata is null in parameters", taskName);
+				logger.warn("{}: Metadata is null in parameters", taskName);
 			}
 		} else {
-			LOGGER.error("{}: Parameters object is null!", taskName);
+			logger.error("{}: Parameters object is null!", taskName);
 			return;
 		}
 		this.spectraDirFile = metaPar.getSpectraFile();
@@ -97,24 +97,24 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 
 	@Override
 	public void forceStop() {
-		LOGGER.info(getTaskName() + ": Force stop requested");
+		logger.info(getTaskName() + ": Force stop requested");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Force stop requested");
 
 		// Cancel spectra conversion task if running
 		if (spectraConvertTask != null && !spectraConvertTask.isDone()) {
-			LOGGER.info(getTaskName() + ": Cancelling spectra conversion task");
+			logger.info(getTaskName() + ": Cancelling spectra conversion task");
 			spectraConvertTask.cancel(true);
 		}
 
 		// Cancel database reduction task if running
 		if (metaDbReducerTask != null && !metaDbReducerTask.isDone()) {
-			LOGGER.info(getTaskName() + ": Cancelling database reduction task");
+			logger.info(getTaskName() + ": Cancelling database reduction task");
 			metaDbReducerTask.cancel(true);
 		}
 
 		// Cancel pFind task if running
 		if (pFindTask != null) {
-			LOGGER.info(getTaskName() + ": Stopping pFind identification task");
+			logger.info(getTaskName() + ": Stopping pFind identification task");
 			// PFindTask doesn't have forceStop method, but we can interrupt any running
 			// threads
 			// The task will be stopped when this main task is cancelled
@@ -122,7 +122,7 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 
 		// Cancel DBReducer task if running
 		if (dbReducerTask != null) {
-			LOGGER.info(getTaskName() + ": Stopping DBReducer task");
+			logger.info(getTaskName() + ": Stopping DBReducer task");
 			// DBReducerTask doesn't have forceStop method, but we can interrupt any running
 			// threads
 			// The task will be stopped when this main task is cancelled
@@ -130,14 +130,14 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 
 		// Cancel watch service thread if running
 		if (watchServiceThread != null && watchServiceThread.isAlive()) {
-			LOGGER.info(getTaskName() + ": Interrupting watch service thread");
+			logger.info(getTaskName() + ": Interrupting watch service thread");
 			watchServiceThread.interrupt();
 		}
 
 		// Cancel this task itself
 		this.cancel(true);
 
-		LOGGER.info(getTaskName() + ": Force stop completed");
+		logger.info(getTaskName() + ": Force stop completed");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Force stop completed");
 	}
 
@@ -150,7 +150,7 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 	@Override
 	protected Logger getLogger() {
 		// TODO Auto-generated method stub
-		return LOGGER;
+		return logger;
 	}
 
 	@Override
@@ -167,7 +167,7 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 
 		updateMessage(getTaskName());
 
-		LOGGER.info(getTaskName() + ": start");
+		logger.info(getTaskName() + ": start");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": start");
 
 		// Update progress before spectra conversion
@@ -175,18 +175,18 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 		updateMessage("Starting spectra conversion...");
 
 		spectraConvertTask = new PFindSpectraConvertTask(metaPar, mrp, secondBar);
-		LOGGER.info("{}: PFindSpectraConvertTask created, executing...", taskName);
+		logger.info("{}: PFindSpectraConvertTask created, executing...", taskName);
 		spectraConvertTask.execute();
 		try {
 			boolean spectraConverted = spectraConvertTask.get(); // Wait for completion and get result
 			if (!spectraConverted) {
-				LOGGER.error(getTaskName() + ": error in pFind spectrum convert workflow");
+				logger.error(getTaskName() + ": error in pFind spectrum convert workflow");
 				System.err.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": error in pFind spectrum convert workflow");
 				return false;
 			}
 		} catch (InterruptedException | ExecutionException e) {
-			LOGGER.error(getTaskName() + ": error in pFind spectrum convert workflow", e);
+			logger.error(getTaskName() + ": error in pFind spectrum convert workflow", e);
 			System.err.println(format.format(new Date()) + "\t" + getTaskName()
 					+ ": error in pFind spectrum convert workflow: " + e.getMessage());
 			return false;
@@ -196,7 +196,7 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 		updateProgress(20, 100);
 		updateMessage("Spectra conversion completed, starting database reduction...");
 
-		LOGGER.info(getTaskName() + ": pFind spectrum convert workflow: finished");
+		logger.info(getTaskName() + ": pFind spectrum convert workflow: finished");
 		System.out.println(
 				format.format(new Date()) + "\t" + getTaskName() + ": pFind spectrum convert workflow: finished");
 
@@ -205,18 +205,18 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 		updateMessage("Creating sample-specific database...");
 
 		metaDbReducerTask = new MetaDbReducerTask(metaPar, mrp, secondBar);
-		LOGGER.info("{}: MetaDbReducerTask created, executing...", taskName);
+		logger.info("{}: MetaDbReducerTask created, executing...", taskName);
 		metaDbReducerTask.execute();
 		try {
 			boolean dbReduced = metaDbReducerTask.get(); // Wait for completion and get result
 			if (!dbReduced) {
-				LOGGER.error(getTaskName() + ": error in sample-specific database generation");
+				logger.error(getTaskName() + ": error in sample-specific database generation");
 				System.err.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": error in sample-specific database generation");
 				return false;
 			}
 		} catch (InterruptedException | ExecutionException e) {
-			LOGGER.error(getTaskName() + ": error in sample-specific database generation", e);
+			logger.error(getTaskName() + ": error in sample-specific database generation", e);
 			System.err.println(format.format(new Date()) + "\t" + getTaskName()
 					+ ": error in sample-specific database generation: " + e.getMessage());
 			return false;
@@ -226,16 +226,16 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 		updateProgress(40, 100);
 		updateMessage("Database reduction completed, starting identification...");
 
-		LOGGER.info(getTaskName() + ": sample specific database generation: finished");
+		logger.info(getTaskName() + ": sample specific database generation: finished");
 		System.out.println(
 				format.format(new Date()) + "\t" + getTaskName() + ": sample specific database generation: finished");
 
 		File pfindSearchFile = new File(metaPar.getResult(), "pfind_IGC_search");
 		if (!pfindSearchFile.exists()) {
 			pfindSearchFile.mkdir();
-			LOGGER.info("  Created pFind search directory: " + pfindSearchFile.getAbsolutePath());
+			logger.info("  Created pFind search directory: " + pfindSearchFile.getAbsolutePath());
 		} else {
-			LOGGER.info("  pFind search directory already exists: " + pfindSearchFile.getAbsolutePath());
+			logger.info("  pFind search directory already exists: " + pfindSearchFile.getAbsolutePath());
 		}
 
 		metaPar.setDbSearchResultFile(pfindSearchFile);
@@ -243,14 +243,14 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 		this.combinedFile = new File(pfindSearchFile, "combined");
 		if (!combinedFile.exists()) {
 			combinedFile.mkdir();
-			LOGGER.info("  Created combined search directory: " + combinedFile.getAbsolutePath());
+			logger.info("  Created combined search directory: " + combinedFile.getAbsolutePath());
 		} else {
-			LOGGER.info("  Combined search directory already exists: " + combinedFile.getAbsolutePath());
+			logger.info("  Combined search directory already exists: " + combinedFile.getAbsolutePath());
 		}
 
 		boolean iden = iden(spectraConvertTask.getMgfFiles(), spectraConvertTask.getPf2Files());
 		if (!iden) {
-			LOGGER.error(getTaskName() + ": error in peptide and protein identification");
+			logger.error(getTaskName() + ": error in peptide and protein identification");
 			System.err.println(
 					format.format(new Date()) + "\t" + getTaskName() + ": error in peptide and protein identification");
 			return false;
@@ -267,7 +267,7 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 		if (quanMode.equals(MetaConstants.labelFree)) {
 			quant = lfQuant();
 			if (!quant) {
-				LOGGER.error(getTaskName() + ": error in peptide and protein quantification");
+				logger.error(getTaskName() + ": error in peptide and protein quantification");
 				System.err.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": error in peptide and protein quantification");
 				return false;
@@ -275,7 +275,7 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 		} else if (quanMode.equals(MetaConstants.isobaricLabel)) {
 			quant = lfQuant();
 			if (!quant) {
-				LOGGER.error(getTaskName() + ": error in peptide and protein quantification");
+				logger.error(getTaskName() + ": error in peptide and protein quantification");
 				System.err.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": error in peptide and protein quantification");
 				return false;
@@ -285,7 +285,7 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 
 			quant = isobaricQuant();
 			if (!quant) {
-				LOGGER.error(getTaskName() + ": error in peptide and protein quantification");
+				logger.error(getTaskName() + ": error in peptide and protein quantification");
 				System.err.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": error in peptide and protein quantification");
 				return false;
@@ -313,7 +313,7 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 
 		updateMessage(getTaskName() + ": peptide and protein identification");
 
-		LOGGER.info(getTaskName() + ": peptide and protein identification started");
+		logger.info(getTaskName() + ": peptide and protein identification started");
 		System.out.println(
 				format.format(new Date()) + "\t" + getTaskName() + ": peptide and protein identification started");
 
@@ -337,7 +337,7 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 
 		if (pFindResultReader.hasResult()) {
 
-			LOGGER.info(getTaskName() + ": peptide and protein identification results have been found in "
+			logger.info(getTaskName() + ": peptide and protein identification results have been found in "
 					+ combinedFile + ", go to next step");
 			System.out.println(format.format(new Date()) + "\t" + getTaskName()
 					+ ": peptide and protein identification results have been found in " + combinedFile
@@ -367,11 +367,11 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 
 					db = dbReducerFile.getAbsolutePath();
 
-					LOGGER.info(getTaskName() + ": reduced database was generated in " + dbReducerFile);
+					logger.info(getTaskName() + ": reduced database was generated in " + dbReducerFile);
 					System.out.println(format.format(new Date()) + "\t" + getTaskName()
 							+ ": reduced database was generated in " + dbReducerFile);
 				} else {
-					LOGGER.info(getTaskName() + ": reduced database was not found");
+					logger.info(getTaskName() + ": reduced database was not found");
 					System.out.println(
 							format.format(new Date()) + "\t" + getTaskName() + ": reduced database was not found");
 				}
@@ -393,7 +393,7 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 		}
 
 		if (!pFindResultReader.hasResult()) {
-			LOGGER.error(getTaskName() + ": peptide and protein identification failed");
+			logger.error(getTaskName() + ": peptide and protein identification failed");
 			System.err.println(
 					format.format(new Date()) + "\t" + getTaskName() + ": peptide and protein identification failed");
 			return false;
@@ -409,7 +409,7 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 			pFindResultReader.read();
 		} catch (NumberFormatException | IOException e) {
 			// TODO Auto-generated catch block
-			LOGGER.error(getTaskName() + ": error in reading the database search result files");
+			logger.error(getTaskName() + ": error in reading the database search result files");
 			System.err.println(format.format(new Date()) + "\t" + getTaskName()
 					+ ": error in reading the database search result files");
 			return false;
@@ -419,7 +419,7 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 		updateProgress(60, 100);
 		updateMessage("Identification completed successfully!");
 
-		LOGGER.info(getTaskName() + ": peptide and protein identification finished");
+		logger.info(getTaskName() + ": peptide and protein identification finished");
 		System.out.println(
 				format.format(new Date()) + "\t" + getTaskName() + ": peptide and protein identification finished");
 
@@ -429,7 +429,7 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 	protected boolean lfQuant() {
 		updateMessage(getTaskName() + ": peptide and protein quantification");
 
-		LOGGER.info(getTaskName() + ": peptide and protein label-free quantification started");
+		logger.info(getTaskName() + ": peptide and protein label-free quantification started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName()
 				+ ": peptide and protein label-free quantification started");
 
@@ -446,7 +446,7 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 
 		if (!quan) {
 
-			LOGGER.info(getTaskName() + ": error in peptide and protein label-free quantification");
+			logger.info(getTaskName() + ": error in peptide and protein label-free quantification");
 			System.out.println(format.format(new Date()) + "\t" + getTaskName()
 					+ ": error in peptide and protein label-free quantification");
 
@@ -460,7 +460,7 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 		updateProgress(70, 100);
 		updateMessage("Label-free quantification completed!");
 
-		LOGGER.info(getTaskName() + ": peptide and protein quantification label-free finished");
+		logger.info(getTaskName() + ": peptide and protein quantification label-free finished");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName()
 				+ ": peptide and protein label-free quantification finished");
 
@@ -470,7 +470,7 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 	protected boolean isobaricQuant() {
 		updateMessage(getTaskName() + ": peptide and protein quantification");
 
-		LOGGER.info(getTaskName() + ": peptide and protein isobaric quantification started");
+		logger.info(getTaskName() + ": peptide and protein isobaric quantification started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName()
 				+ ": peptide and protein isobaric quantification started");
 
@@ -492,7 +492,7 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 			pfindIsobaricTask.run();
 		} catch (Exception e) {
 			// TODO Auto-generated catch block
-			LOGGER.error(getTaskName() + ": error in quantifying PSMs", e);
+			logger.error(getTaskName() + ": error in quantifying PSMs", e);
 			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": error in quantifying PSMs");
 		}
 
@@ -500,7 +500,7 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 		this.quan_pro_file = pfindIsobaricTask.getQuanRazorProFile();
 
 		if (quan_pep_file.exists() && quan_pro_file.exists()) {
-			LOGGER.info(getTaskName() + ": quantification results have been fount in " + this.metaPar.getSpectraFile());
+			logger.info(getTaskName() + ": quantification results have been fount in " + this.metaPar.getSpectraFile());
 			System.out.println(format.format(new Date()) + "\t" + getTaskName()
 					+ ": quantification results have been fount in " + this.metaPar.getSpectraFile());
 
@@ -519,7 +519,7 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 			return false;
 		}
 
-		LOGGER.info(getTaskName() + ": peptide and protein isobaric quantification finished");
+		logger.info(getTaskName() + ": peptide and protein isobaric quantification finished");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName()
 				+ ": peptide and protein isobaric quantification finished");
 
@@ -528,7 +528,7 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 
 	protected boolean exportReport() {
 
-		LOGGER.info(getTaskName() + ": exporting peptide report started");
+		logger.info(getTaskName() + ": exporting peptide report started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting peptide report started");
 
 		// Build file list and mapping
@@ -546,7 +546,7 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 				}
 				reader.close();
 			} catch (IOException e) {
-				LOGGER.error(getTaskName() + ": error in reading the experimental design from " + expDesignFile, e);
+				logger.error(getTaskName() + ": error in reading the experimental design from " + expDesignFile, e);
 				System.err.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": error in reading the experimental design from " + expDesignFile);
 			}
@@ -566,7 +566,7 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 			FlashLfqPsmReader flashLfqPsmReader = new FlashLfqPsmReader(new File(combinedFile, "psms.tsv"));
 			psms = flashLfqPsmReader.getPSMs();
 		} catch (IOException e) {
-			LOGGER.error(getTaskName() + ": error in reading the PSMs from " + (new File(combinedFile, "psms.tsv")), e);
+			logger.error(getTaskName() + ": error in reading the PSMs from " + (new File(combinedFile, "psms.tsv")), e);
 			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in reading the PSMs from "
 					+ (new File(combinedFile, "psms.tsv")));
 			return false;
@@ -581,7 +581,7 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 			IsobaricTag isoTag = ((DDAIgcPFindParameters) this.metaPar).getIsobaricTag();
 			quanPepReader = new FlashLfqQuanPepReader(this.quan_pep_file, fileList, isoTag.getReportTitle());
 		} else {
-			LOGGER.error(getTaskName() + ": unknown quantitative type");
+			logger.error(getTaskName() + ": unknown quantitative type");
 			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": unknown quantitative type");
 			return false;
 		}
@@ -602,7 +602,7 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 				}
 			}
 		} else {
-			LOGGER.error(getTaskName() + ": unknown quantitative type");
+			logger.error(getTaskName() + ": unknown quantitative type");
 			return false;
 		}
 
@@ -620,18 +620,18 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 			boolean success = postAnalysisTask.get();
 
 			if (success) {
-				LOGGER.info(getTaskName() + ": Post-analysis completed successfully");
+				logger.info(getTaskName() + ": Post-analysis completed successfully");
 				return true;
 			} else {
-				LOGGER.error(getTaskName() + ": Post-analysis task failed");
+				logger.error(getTaskName() + ": Post-analysis task failed");
 				return false;
 			}
 		} catch (InterruptedException e) {
-			LOGGER.error(getTaskName() + ": Post-analysis task was interrupted", e);
+			logger.error(getTaskName() + ": Post-analysis task was interrupted", e);
 			Thread.currentThread().interrupt();
 			return false;
 		} catch (ExecutionException e) {
-			LOGGER.error(getTaskName() + ": Post-analysis task failed with exception", e);
+			logger.error(getTaskName() + ": Post-analysis task failed with exception", e);
 			return false;
 		}
 	}

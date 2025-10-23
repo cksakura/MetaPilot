@@ -50,7 +50,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 	private ArrayList<String> libPathList;
 	private ArrayList<String> modelPathList;
 	
-	private static final Logger LOGGER = LogManager.getLogger(MetaDiaMonitorTask.class);
+	// Logger is inherited from MetaDiaTask -> MetaPilotMagTask -> MetaPilotTask as an instance field
 	private static final String taskName = "Realtime DIA data analysis";
 	
 	/**
@@ -145,7 +145,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 
 		File[] files = monitorFolder.listFiles();
 		if (files.length > 0) {
-			LOGGER.info(
+			logger.info(
 					getTaskName() + ": " + files.length + " files already in the monitor folder, processing started");
 
 			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": " + files.length
@@ -158,7 +158,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 					if (fileName.endsWith(".raw") || fileName.endsWith(".d") || 
 						fileName.endsWith(".dia") || fileName.endsWith(".mzml")) {
 						System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Found existing file: " + file.getName());
-						LOGGER.info(getTaskName() + ": Found existing file: " + file.getName());
+						logger.info(getTaskName() + ": Found existing file: " + file.getName());
 					}
 				}
 			}
@@ -201,7 +201,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 					if (fileName.endsWith(".raw") || fileName.endsWith(".d") || 
 						fileName.endsWith(".dia") || fileName.endsWith(".mzml")) {
 
-						LOGGER.info(getTaskName() + ": found new file " + filePath);
+						logger.info(getTaskName() + ": found new file " + filePath);
 						System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": New file detected: " + filename);
 
 						Future<String> future = executorService.submit(() -> waitForFileCompletionAndProcess(filePath));
@@ -223,14 +223,14 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 					System.out.println(format.format(new Date()) + "\t" + getTaskName()
 							+ ": the monitoring is stopped, the processing will stop after all the current tasks are finished. "
 							+ "The taxonomic and functional analysis will be performed based on the combined result.");
-					LOGGER.info(getTaskName()
+					logger.info(getTaskName()
 							+ ": the monitoring is stopped, the processing will stop after all the current tasks are finished. "
 							+ "The taxonomic and functional analysis will be performed based on the combined result.");
 				} else {
 					System.out.println(format.format(new Date()) + "\t" + getTaskName()
 							+ ": the monitoring is stopped, the processing will stop after all the current tasks are finished. "
 							+ "The taxonomic and functional analysis will NOT be performed.");
-					LOGGER.info(getTaskName()
+					logger.info(getTaskName()
 							+ ": the monitoring is stopped, the processing will stop after all the current tasks are finished. "
 							+ "The taxonomic and functional analysis will NOT be performed.");
 				}
@@ -245,7 +245,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 							+ ", the monitoring will stop after all " + totalCount
 							+ " files are detected, the processing will stop after all the current tasks are finished."
 							+ "The taxonomic and functional analysis will be performed based on the combined result.");
-					LOGGER.info(getTaskName() + ": the total number of the files was set as " + totalCount
+					logger.info(getTaskName() + ": the total number of the files was set as " + totalCount
 							+ ", the monitoring will stop after all " + totalCount
 							+ " files are detected, the processing will stop after all the current tasks are finished."
 							+ "The taxonomic and functional analysis will be performed based on the combined result.");
@@ -256,7 +256,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 							+ ", the monitoring will stop after all " + totalCount
 							+ " files are detected, the processing will stop after all the current tasks are finished."
 							+ "The taxonomic and functional analysis will NOT be performed.");
-					LOGGER.info(getTaskName() + ": the total number of the files was set as " + totalCount
+					logger.info(getTaskName() + ": the total number of the files was set as " + totalCount
 							+ ", the monitoring will stop after all " + totalCount
 							+ " files are detected, the processing will stop after all the current tasks are finished."
 							+ "The taxonomic and functional analysis will NOT be performed.");
@@ -269,7 +269,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 							+ totalCount + " and " + this.fileNameSet.size() + " files have been detected."
 							+ " The monitoring is stopped, the processing will stop after all the current tasks are finished. "
 							+ "The taxonomic and functional analysis will NOT be performed.");
-					LOGGER.info(getTaskName() + ": The file count was set as " + totalCount + " and "
+					logger.info(getTaskName() + ": The file count was set as " + totalCount + " and "
 							+ this.fileNameSet.size() + " files have been detected."
 							+ " The monitoring is stopped, the processing will stop after all the current tasks are finished. "
 							+ "The taxonomic and functional analysis will NOT be performed.");
@@ -295,7 +295,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 
 		System.out.println(
 				format.format(new Date()) + "\t" + getTaskName() + ": the processing of all the raw files finished");
-		LOGGER.info(getTaskName() + ": the processing of all the raw files finished");
+		logger.info(getTaskName() + ": the processing of all the raw files finished");
 
 		this.separateResultFolders = new File[fileNameSet.size()];
 		int fildId = 0;
@@ -338,7 +338,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 			synchronized (fileNameSet) {
 				if (fileNameSet.contains(baseFileName)) {
 					System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Duplicate file detected, skipping: " + fileName + " (base: " + baseFileName + ")");
-					LOGGER.info(getTaskName() + ": Duplicate file detected, skipping: " + fileName + " (base: " + baseFileName + ")");
+					logger.info(getTaskName() + ": Duplicate file detected, skipping: " + fileName + " (base: " + baseFileName + ")");
 					return null;
 				}
 				// Add to set immediately to prevent other threads from processing the same base filename
@@ -363,7 +363,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 				}
 			});
 
-			LOGGER.info(getTaskName() + ": processing raw files " + fileName + " started");
+			logger.info(getTaskName() + ": processing raw files " + fileName + " started");
 			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": processing raw files " + fileName
 					+ " started");
 
@@ -385,7 +385,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 				// fileNameSet.add() already done earlier in the method
 
 				if (!diaFile.exists()) {
-					LOGGER.info(getTaskName() + ": converting raw files " + fileName + " started");
+					logger.info(getTaskName() + ": converting raw files " + fileName + " started");
 					System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": converting raw files "
 							+ fileName + " started");
 					System.out.println("DEBUG: Input file: " + fileAbPath);
@@ -401,13 +401,13 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 
 					// Check if conversion was successful
 					if (diaFile.exists()) {
-						LOGGER.info(getTaskName() + ": converting raw files " + fileName + " finished successfully");
+						logger.info(getTaskName() + ": converting raw files " + fileName + " finished successfully");
 						System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": converting raw files "
 								+ fileName + " finished successfully");
 						System.out.println("DEBUG: Output file created: " + diaFile.getAbsolutePath() + " (size: "
 								+ diaFile.length() + " bytes)");
 					} else {
-						LOGGER.error(getTaskName() + ": converting raw files " + fileName
+						logger.error(getTaskName() + ": converting raw files " + fileName
 								+ " FAILED - output file not created");
 						System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": converting raw files "
 								+ fileName + " FAILED - output file not created");
@@ -417,7 +417,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 								"DEBUG: Download .NET Runtime 8.0.407 or later from: https://dotnet.microsoft.com/en-us/download/dotnet/8.0");
 					}
 				} else {
-					LOGGER.info(getTaskName() + ": .dia file already exists for " + fileName);
+					logger.info(getTaskName() + ": .dia file already exists for " + fileName);
 					System.out.println(format.format(new Date()) + "\t" + getTaskName()
 							+ ": .dia file already exists for " + fileName);
 					System.out.println("DEBUG: Using existing file: " + diaFile.getAbsolutePath() + " (size: "
@@ -442,7 +442,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 			} else {
 				// Only process supported spectra file types
 				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Unsupported file type, skipping: " + fileName);
-				LOGGER.info(getTaskName() + ": Unsupported file type, skipping: " + fileName);
+				logger.info(getTaskName() + ": Unsupported file type, skipping: " + fileName);
 				return null;
 			}
 
@@ -476,7 +476,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 			}
 
 			updateTableRowStatus(finalFileName, 1, "Working");
-			LOGGER.info(getTaskName() + ": Updated " + finalFileName + " Round 1 status to Working");
+			logger.info(getTaskName() + ": Updated " + finalFileName + " Round 1 status to Working");
 
 			// JavaFX models updated directly via Platform.runLater()
 			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Updated " + finalFileName
@@ -485,7 +485,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 			File round1TsvFile = new File(firstFile, "firstSearch.parquet");
 			if (!round1TsvFile.exists()) {
 
-				LOGGER.info(getTaskName() + ": search raw files " + fileName + " round 1 started");
+				logger.info(getTaskName() + ": search raw files " + fileName + " round 1 started");
 				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": search raw files " + fileName
 						+ " round 1 started");
 
@@ -503,11 +503,11 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 				diaNNTask.addTask(diannPar, diaLibSearchPar, round1TsvFile.getAbsolutePath(), libPath);
 				diaNNTask.run(12);
 
-				LOGGER.info(getTaskName() + ": search raw files " + fileName + " round 1 finished");
+				logger.info(getTaskName() + ": search raw files " + fileName + " round 1 finished");
 				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": converting raw files "
 						+ fileName + " finished");
 			} else {
-				LOGGER.info(
+				logger.info(
 						getTaskName() + ": round 1 search result for " + fileName + " existed, go to the next step");
 				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": round 1 search result for "
 						+ fileName + " existed, go to the next step");
@@ -528,7 +528,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 			File rankedPepFile = new File(modelFolderFile, "model_pep_rank.tsv");
 			if (!rankedPepFile.exists()) {
 
-				LOGGER.info(getTaskName() + ": creating model for " + fileName + " started");
+				logger.info(getTaskName() + ": creating model for " + fileName + " started");
 				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": creating model for " + fileName
 						+ " started");
 
@@ -536,7 +536,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 				try {
 					pepIntenMap = DiaNNParquetReader.getPeptideMap(round1TsvFile.getAbsolutePath());
 				} catch (IOException e) {
-					LOGGER.error(getTaskName() + ": error in reading parquet file " + round1TsvFile.getAbsolutePath(), e);
+					logger.error(getTaskName() + ": error in reading parquet file " + round1TsvFile.getAbsolutePath(), e);
 					System.out.println(format.format(new Date()) + "\t" + getTaskName()
 							+ ": error in reading parquet file " + round1TsvFile.getAbsolutePath());
 				}
@@ -549,24 +549,24 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 
 				try {
 					if (diaModelTask.get()) {
-						LOGGER.info(getTaskName() + ": creating model for " + fileName + " finished");
+						logger.info(getTaskName() + ": creating model for " + fileName + " finished");
 						System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": creating model for "
 								+ fileName + " finished");
 
 					} else {
-						LOGGER.info(getTaskName() + ": creating model for " + fileName + " failed");
+						logger.info(getTaskName() + ": creating model for " + fileName + " failed");
 						System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": creating model for "
 								+ fileName + " failed");
 					}
 
 				} catch (ExecutionException e) {
 					// TODO Auto-generated catch block
-					LOGGER.error(getTaskName() + ": creating model for " + fileName + " failed", e);
+					logger.error(getTaskName() + ": creating model for " + fileName + " failed", e);
 					System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": creating model for "
 							+ fileName + " failed");
 				}
 			} else {
-				LOGGER.info(getTaskName() + ": model for " + fileName + " existed, go to the next step");
+				logger.info(getTaskName() + ": model for " + fileName + " existed, go to the next step");
 				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": model for " + fileName
 						+ " existed, go to the next step");
 			}
@@ -588,7 +588,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 				try {
 					pepSet1 = DiaNNParquetReader.getPeptideSet(round1TsvFile.getAbsolutePath());
 				} catch (Exception e) {
-					LOGGER.error(getTaskName() + ": error in reading " + round1TsvFile, e);
+					logger.error(getTaskName() + ": error in reading " + round1TsvFile, e);
 					System.err.println(
 							format.format(new Date()) + "\t" + getTaskName() + ": error in reading " + round1TsvFile);
 					return null;
@@ -596,7 +596,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 				int batchThreadCount = threadCount / maxTaskCount + 1;
 				HashSet<String> genomeSet1 = getGenomeSet(firstFile, 1.0, pepSet1, 5, false, batchThreadCount);
 
-				LOGGER.info(getTaskName() + ": generating database for " + fileName + ", " + pepSet1.size()
+				logger.info(getTaskName() + ": generating database for " + fileName + ", " + pepSet1.size()
 						+ " peptide sequences were identified, " + genomeSet1.size() + " MAGs were used in this step");
 				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": generating database for "
 						+ fileName + ", " + pepSet1.size() + " peptide sequences were identified, " + genomeSet1.size()
@@ -615,7 +615,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 			File round2TsvFile = new File(secondFile, "secondSearch.parquet");
 			if (!round2TsvFile.exists()) {
 
-				LOGGER.info(getTaskName() + ": search raw files " + fileName + " round 2 started");
+				logger.info(getTaskName() + ": search raw files " + fileName + " round 2 started");
 				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": search raw files " + fileName
 						+ " round 2 started");
 
@@ -638,7 +638,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 					if (tempLibFile.exists()) {
 						tempLibFile.renameTo(round2LibFile);
 					} else {
-						LOGGER.error(getTaskName() + ": library file " + round2LibFile + " is not found");
+						logger.error(getTaskName() + ": library file " + round2LibFile + " is not found");
 						System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": library file "
 								+ round2LibFile + " is not found");
 
@@ -659,12 +659,12 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 						round2LibFile.getAbsolutePath());
 				diaNNTask.run(12);
 
-				LOGGER.info(getTaskName() + ": search raw files " + fileName + " round 2 finished");
+				logger.info(getTaskName() + ": search raw files " + fileName + " round 2 finished");
 				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": search raw files " + fileName
 						+ " round 2 finished");
 
 			} else {
-				LOGGER.info(
+				logger.info(
 						getTaskName() + ": round 2 search result for " + fileName + " existed, go to the next step");
 				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": round 2 search result for "
 						+ fileName + " existed, go to the next step");
@@ -684,7 +684,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 				try {
 					pepSet2.addAll(DiaNNParquetReader.getPeptideSet(round1TsvFile.getAbsolutePath()));
 				} catch (Exception e) {
-					LOGGER.error(getTaskName() + ": error in reading " + round1TsvFile, e);
+					logger.error(getTaskName() + ": error in reading " + round1TsvFile, e);
 					System.err.println(
 							format.format(new Date()) + "\t" + getTaskName() + ": error in reading " + round1TsvFile);
 					return null;
@@ -692,7 +692,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 				try {
 					pepSet2.addAll(DiaNNParquetReader.getPeptideSet(round2TsvFile.getAbsolutePath()));
 				} catch (Exception e) {
-					LOGGER.error(getTaskName() + ": error in reading " + round2TsvFile, e);
+					logger.error(getTaskName() + ": error in reading " + round2TsvFile, e);
 					System.err.println(
 							format.format(new Date()) + "\t" + getTaskName() + ": error in reading " + round2TsvFile);
 					return null;
@@ -713,13 +713,13 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 					firstLibReader.close();
 
 				} catch (Exception e) {
-					LOGGER.error(getTaskName() + ": error in reading fasta file from " + firstFile, e);
+					logger.error(getTaskName() + ": error in reading fasta file from " + firstFile, e);
 					System.err.println(format.format(new Date()) + "\t" + getTaskName()
 							+ ": error in reading fasta file from " + firstFile);
 					return null;
 				}
 
-				LOGGER.info(getTaskName() + ": generating database for " + fileName + ", " + pepSet2.size()
+				logger.info(getTaskName() + ": generating database for " + fileName + ", " + pepSet2.size()
 						+ " peptide sequences were identified, " + genomeSet2.size()
 						+ " MAGs were used in this step, the size of the excluded set is " + initialLibPepSet.size());
 				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": generating database for "
@@ -738,7 +738,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 
 			File round3TsvFile = new File(thirdFile, "thirdSearch.parquet");
 			if (!round3TsvFile.exists()) {
-				LOGGER.info(getTaskName() + ": search raw files " + fileName + " round 3 started");
+				logger.info(getTaskName() + ": search raw files " + fileName + " round 3 started");
 				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": search raw files " + fileName
 						+ " round 3 started");
 				File round3LibFile = new File(thirdFile, "thirdSearch.speclib");
@@ -759,7 +759,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 					if (tempLibFile.exists()) {
 						tempLibFile.renameTo(round3LibFile);
 					} else {
-						LOGGER.error(getTaskName() + ": library file " + round3LibFile + " is not found");
+						logger.error(getTaskName() + ": library file " + round3LibFile + " is not found");
 						System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": library file "
 								+ round3LibFile + " is not found");
 					}
@@ -778,11 +778,11 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 						round3LibFile.getAbsolutePath());
 				diaNNTask.run(12);
 
-				LOGGER.info(getTaskName() + ": search raw files " + fileName + " round 3 finished");
+				logger.info(getTaskName() + ": search raw files " + fileName + " round 3 finished");
 				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": search raw files " + fileName
 						+ " round 3 finished");
 			} else {
-				LOGGER.info(
+				logger.info(
 						getTaskName() + ": round 3 search result for " + fileName + " existed, go to the next step");
 				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": round 3 search result for "
 						+ fileName + " existed, go to the next step");
@@ -802,21 +802,21 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 				try {
 					pepSet3.addAll(DiaNNParquetReader.getPeptideSet(round1TsvFile.getAbsolutePath()));
 				} catch (Exception e) {
-					LOGGER.error(getTaskName() + ": error in reading " + round1TsvFile, e);
+					logger.error(getTaskName() + ": error in reading " + round1TsvFile, e);
 					System.err.println(
 							format.format(new Date()) + "\t" + getTaskName() + ": error in reading " + round1TsvFile);
 				}
 				try {
 					pepSet3.addAll(DiaNNParquetReader.getPeptideSet(round2TsvFile.getAbsolutePath()));
 				} catch (Exception e) {
-					LOGGER.error(getTaskName() + ": error in reading " + round2TsvFile, e);
+					logger.error(getTaskName() + ": error in reading " + round2TsvFile, e);
 					System.err.println(
 							format.format(new Date()) + "\t" + getTaskName() + ": error in reading " + round2TsvFile);
 				}
 				try {
 					pepSet3.addAll(DiaNNParquetReader.getPeptideSet(round3TsvFile.getAbsolutePath()));
 				} catch (Exception e) {
-					LOGGER.error(getTaskName() + ": error in reading " + round3TsvFile, e);
+					logger.error(getTaskName() + ": error in reading " + round3TsvFile, e);
 					System.err.println(
 							format.format(new Date()) + "\t" + getTaskName() + ": error in reading " + round3TsvFile);
 				}
@@ -836,7 +836,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 					firstLibReader.close();
 
 				} catch (Exception e) {
-					LOGGER.error(getTaskName() + ": error in reading fasta file from " + firstFile, e);
+					logger.error(getTaskName() + ": error in reading fasta file from " + firstFile, e);
 					System.err.println(format.format(new Date()) + "\t" + getTaskName()
 							+ ": error in reading fasta file from " + firstFile);
 					return null;
@@ -853,13 +853,13 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 					secondLibReader.close();
 
 				} catch (Exception e) {
-					LOGGER.error(getTaskName() + ": error in reading fasta file from " + firstFile, e);
+					logger.error(getTaskName() + ": error in reading fasta file from " + firstFile, e);
 					System.err.println(format.format(new Date()) + "\t" + getTaskName()
 							+ ": error in reading fasta file from " + firstFile);
 					return null;
 				}
 
-				LOGGER.info(getTaskName() + ": generating database for " + fileName + ", " + genomeSet3.size()
+				logger.info(getTaskName() + ": generating database for " + fileName + ", " + genomeSet3.size()
 						+ " MAGs were used in this step, the size of the excluded set is " + initialLibPepSet.size());
 				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": generating database for "
 						+ fileName + ", " + genomeSet3.size()
@@ -873,7 +873,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 			File lastTsvFile = new File(resultFolderFile, "lastSearch.parquet");
 			if (!lastTsvFile.exists()) {
 
-				LOGGER.info(getTaskName() + ": search raw files " + fileName + " the last round started");
+				logger.info(getTaskName() + ": search raw files " + fileName + " the last round started");
 				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": search raw files " + fileName
 						+ " the last round started");
 
@@ -895,7 +895,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 					if (tempLibFile.exists()) {
 						tempLibFile.renameTo(round4LibFile);
 					} else {
-						LOGGER.error(getTaskName() + ": library file " + round4LibFile + " is not found");
+						logger.error(getTaskName() + ": library file " + round4LibFile + " is not found");
 						System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": library file "
 								+ round4LibFile + " is not found");
 					}
@@ -914,11 +914,11 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 						round4LibFile.getAbsolutePath());
 				diaNNTask.run(12);
 
-				LOGGER.info(getTaskName() + ": search raw files " + fileName + " the last round finished");
+				logger.info(getTaskName() + ": search raw files " + fileName + " the last round finished");
 				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": search raw files " + fileName
 						+ " the last round finished");
 			} else {
-				LOGGER.info(getTaskName() + ": the last round search result for " + fileName
+				logger.info(getTaskName() + ": the last round search result for " + fileName
 						+ " existed, go to the next step");
 				System.out.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": the last round search result for " + fileName + " existed, go to the next step");
@@ -942,7 +942,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 				}
 			}
 
-			LOGGER.info(getTaskName() + ": " + destFiles.length + " files are finished, the total number of file is "
+			logger.info(getTaskName() + ": " + destFiles.length + " files are finished, the total number of file is "
 					+ this.rawListItems.size());
 			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": " + destFiles.length
 					+ " files are finished, the total number of file is " + this.rawListItems.size());
@@ -980,7 +980,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 						}
 					} catch (Exception e) {
 						// The file is still in use or another process is writing to it
-						LOGGER.info(getTaskName() + ": detect file " + filePath.toAbsolutePath().toString()
+						logger.info(getTaskName() + ": detect file " + filePath.toAbsolutePath().toString()
 								+ ", waiting for the copy complete");
 						System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": detect file "
 								+ filePath.toAbsolutePath().toString() + ", waiting for the copy complete");
@@ -1022,6 +1022,6 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 	@Override
 	protected Logger getLogger() {
 		// TODO Auto-generated method stub
-		return LOGGER;
+		return logger;
 	}
 }

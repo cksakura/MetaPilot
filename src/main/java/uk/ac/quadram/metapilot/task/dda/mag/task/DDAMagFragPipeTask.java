@@ -39,7 +39,7 @@ import javafx.scene.control.Label;
 
 public class DDAMagFragPipeTask extends MetaPilotMagTask {
 
-	private static final Logger LOGGER = LogManager.getLogger(DDAMagFragPipeTask.class);
+	// Logger is inherited from MetaPilotMagTask -> MetaPilotTask as an instance field
 
 	private String fragpipeBat;
 	private FragPipeTask fragPipeTask;
@@ -73,7 +73,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		MagDbItem selectedMagDb = magFragPipeParams.getMagDbItem();
 		if (selectedMagDb != null) {
 			this.magDb = selectedMagDb;
-			LOGGER.info("Initialized MAG database: {} (version: {})", selectedMagDb.getCatalogueID(),
+			logger.info("Initialized MAG database: {} (version: {})", selectedMagDb.getCatalogueID(),
 					selectedMagDb.getVersionList() != null && !selectedMagDb.getVersionList().isEmpty()
 							? selectedMagDb.getVersionList().get(0).getCatalogueVersion()
 							: "unknown");
@@ -81,27 +81,27 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 			// Validate that the MAG database has the required files
 			File hapFastaFile = selectedMagDb.getHapFastaFile();
 			if (hapFastaFile == null || !hapFastaFile.exists()) {
-				LOGGER.error("MAG database HAP FASTA file is null or does not exist: {}",
+				logger.error("MAG database HAP FASTA file is null or does not exist: {}",
 						hapFastaFile != null ? hapFastaFile.getAbsolutePath() : "null");
-				LOGGER.error("Repository file: {}", selectedMagDb.getRepositoryFile());
-				LOGGER.error("Current file: {}", selectedMagDb.getCurrentFile());
+				logger.error("Repository file: {}", selectedMagDb.getRepositoryFile());
+				logger.error("Current file: {}", selectedMagDb.getCurrentFile());
 				throw new IllegalArgumentException("MAG database HAP FASTA file is required and must exist");
 			}
-			LOGGER.info("MAG database HAP FASTA file validated: {}", hapFastaFile.getAbsolutePath());
+			logger.info("MAG database HAP FASTA file validated: {}", hapFastaFile.getAbsolutePath());
 			
 			File currentDbFile = selectedMagDb.getCurrentFile();
 			if (currentDbFile == null || !currentDbFile.exists()) {
-				LOGGER.error("MAG database file is null or does not exist: {}",
+				logger.error("MAG database file is null or does not exist: {}",
 						currentDbFile != null ? currentDbFile.getAbsolutePath() : "null");
-				LOGGER.error("Repository file: {}", selectedMagDb.getRepositoryFile());
-				LOGGER.error("Current file: {}", selectedMagDb.getCurrentFile());
+				logger.error("Repository file: {}", selectedMagDb.getRepositoryFile());
+				logger.error("Current file: {}", selectedMagDb.getCurrentFile());
 				throw new IllegalArgumentException("MAG database file is required and must exist");
 			}
 
-			LOGGER.info("MAG database file validated: {}", currentDbFile.getAbsolutePath());
+			logger.info("MAG database file validated: {}", currentDbFile.getAbsolutePath());
 			this.metaPar.setMicroDb(selectedMagDb.getCurrentFile().getAbsolutePath());
 		} else {
-			LOGGER.error("MAG database item is null in parameters");
+			logger.error("MAG database item is null in parameters");
 			throw new IllegalArgumentException("MAG database item is required");
 		}
 
@@ -109,9 +109,9 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		File fragpipeMagSearchFile = new File(magFragPipeParams.getResult(), "fragpipe_MAG_search");
 		if (!fragpipeMagSearchFile.exists()) {
 			fragpipeMagSearchFile.mkdir();
-			LOGGER.info("Created FragPipe MAG search directory: {}", fragpipeMagSearchFile.getAbsolutePath());
+			logger.info("Created FragPipe MAG search directory: {}", fragpipeMagSearchFile.getAbsolutePath());
 		} else {
-			LOGGER.info("FragPipe MAG search directory already exists: {}", fragpipeMagSearchFile.getAbsolutePath());
+			logger.info("FragPipe MAG search directory already exists: {}", fragpipeMagSearchFile.getAbsolutePath());
 		}
 		magFragPipeParams.setDbSearchResultFile(fragpipeMagSearchFile);
 
@@ -126,12 +126,12 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		this.fragpipeBat = mrp.getToolPath(ToolType.FRAGPIPE);
 		File fragpipeExe = new File(fragpipeBat);
 
-		LOGGER.info("FragPipe path from MetaResourceParameters: {}", mrp.getToolPath(ToolType.FRAGPIPE));
-		LOGGER.info("FragPipe executable file: {}", fragpipeExe.getAbsolutePath());
-		LOGGER.info("FragPipe exists: {}", fragpipeExe.exists());
+		logger.info("FragPipe path from MetaResourceParameters: {}", mrp.getToolPath(ToolType.FRAGPIPE));
+		logger.info("FragPipe executable file: {}", fragpipeExe.getAbsolutePath());
+		logger.info("FragPipe exists: {}", fragpipeExe.exists());
 
 		if (!fragpipeExe.exists()) {
-			LOGGER.error("FragPipe executable not found: {}", fragpipeExe.getAbsolutePath());
+			logger.error("FragPipe executable not found: {}", fragpipeExe.getAbsolutePath());
 			throw new IllegalArgumentException("FragPipe executable is required and must exist");
 		}
 
@@ -147,39 +147,39 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 
 	@Override
 	public void forceStop() {
-		LOGGER.info(getTaskName() + ": Force stop requested");
-		LOGGER.info("[{}] Force stop requested", getTaskName());
+		logger.info(getTaskName() + ": Force stop requested");
+		logger.info("[{}] Force stop requested", getTaskName());
 		
 		// Cancel FragPipe task if running
 		if (fragPipeTask != null) {
-			LOGGER.info(getTaskName() + ": Stopping FragPipe identification task");
+			logger.info(getTaskName() + ": Stopping FragPipe identification task");
 			// FragPipeTask doesn't have forceStop method, but we can interrupt any running threads
 			// The task will be stopped when this main task is cancelled
 		}
 		
 		// Cancel report generation task if running
 		if (reportTask != null && !reportTask.isDone()) {
-			LOGGER.info(getTaskName() + ": Cancelling report generation task");
+			logger.info(getTaskName() + ": Cancelling report generation task");
 			reportTask.cancel(true);
 		}
 		
 		// Cancel report copy thread if running
 		if (reportCopyThread != null && reportCopyThread.isAlive()) {
-			LOGGER.info(getTaskName() + ": Interrupting report copy thread");
+			logger.info(getTaskName() + ": Interrupting report copy thread");
 			reportCopyThread.interrupt();
 		}
 		
 		// Cancel report generation thread if running
 		if (reportThread != null && reportThread.isAlive()) {
-			LOGGER.info(getTaskName() + ": Interrupting report generation thread");
+			logger.info(getTaskName() + ": Interrupting report generation thread");
 			reportThread.interrupt();
 		}
 		
 		// Cancel this task itself
 		this.cancel(true);
 		
-		LOGGER.info(getTaskName() + ": Force stop completed");
-		LOGGER.info("[{}] Force stop completed", getTaskName());
+		logger.info(getTaskName() + ": Force stop completed");
+		logger.info("[{}] Force stop completed", getTaskName());
 	}
 
 	@Override
@@ -197,7 +197,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 	@Override
 	protected Logger getLogger() {
 		// TODO Auto-generated method stub
-		return LOGGER;
+		return logger;
 	}
 
 	@Override
@@ -205,28 +205,28 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		updateMessage(getTaskName());
 		updateProgress(0, 100);
 
-		LOGGER.info(getTaskName() + ": started");
-		LOGGER.info("[{}] Started", getTaskName());
+		logger.info(getTaskName() + ": started");
+		logger.info("[{}] Started", getTaskName());
 		
 		// Log detailed parameter information
-		LOGGER.info("Workflow parameters:");
-		LOGGER.info("  Result directory: " + magFragPipeParams.getResult());
-		LOGGER.info("  Thread count: " + magFragPipeParams.getThreadCount());
+		logger.info("Workflow parameters:");
+		logger.info("  Result directory: " + magFragPipeParams.getResult());
+		logger.info("  Thread count: " + magFragPipeParams.getThreadCount());
 		if (magFragPipeParams.getMetadata() != null) {
 			String[] rawFiles = magFragPipeParams.getMetadata().getRawFiles();
-			LOGGER.info("  Raw files count: " + (rawFiles != null ? rawFiles.length : 0));
+			logger.info("  Raw files count: " + (rawFiles != null ? rawFiles.length : 0));
 			if (rawFiles != null) {
 				for (int i = 0; i < rawFiles.length; i++) {
-					LOGGER.info("    Raw file " + (i+1) + ": " + rawFiles[i]);
+					logger.info("    Raw file " + (i+1) + ": " + rawFiles[i]);
 				}
 			}
 		}
 		
 		// Log resource information
-		LOGGER.info("Resource parameters:");
-		LOGGER.info("  FragPipe path: " + mrp.getToolPath(MetaResourceParameters.ToolType.FRAGPIPE));
-		LOGGER.info("  MetaResourceParameters object: {}", mrp);
-		LOGGER.info("  MetaResourceParameters class: {}", mrp.getClass().getName());
+		logger.info("Resource parameters:");
+		logger.info("  FragPipe path: " + mrp.getToolPath(MetaResourceParameters.ToolType.FRAGPIPE));
+		logger.info("  MetaResourceParameters object: {}", mrp);
+		logger.info("  MetaResourceParameters class: {}", mrp.getClass().getName());
 		
 		// Update main progress and keep second bar active
 		updateProgress(5, 100);
@@ -236,7 +236,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		Platform.runLater(() -> secondBar.setProgress(ProgressBar.INDETERMINATE_PROGRESS)); // Indeterminate progress for continuous activity
 
 		// Step 1: High Abundant Database Search
-		LOGGER.info("Step 1: Starting high abundant database search...");
+		logger.info("Step 1: Starting high abundant database search...");
 		if (statusLabel != null) {
 			Platform.runLater(() -> statusLabel.setText(getTaskName() + ": Searching high abundant database..."));
 		}
@@ -244,15 +244,15 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		Platform.runLater(() -> secondBar.setProgress(ProgressBar.INDETERMINATE_PROGRESS));
 		updateMessage("Performing high abundant protein search...");
 		
-		LOGGER.info("[{}] Searching high abundant database started", getTaskName());
+		logger.info("[{}] Searching high abundant database started", getTaskName());
 
 		boolean searchHap = this.separateSearchHap();
 
 		if (searchHap) {
-			LOGGER.info("Step 1: High abundant database search completed successfully");
-			LOGGER.info("[{}] searching high abundant database finished", getTaskName());
+			logger.info("Step 1: High abundant database search completed successfully");
+			logger.info("[{}] searching high abundant database finished", getTaskName());
 		} else {
-			LOGGER.error(getTaskName() + ": error in searching high abundant database");
+			logger.error(getTaskName() + ": error in searching high abundant database");
 			System.err.println(
 					format.format(new Date()) + "\t" + getTaskName() + ": error in searching high abundant database");
 			// Update progress on error
@@ -262,7 +262,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		}
 
 		// Step 2: Protein Extraction from HAP Results
-		LOGGER.info("Step 2: Starting protein extraction from HAP results...");
+		logger.info("Step 2: Starting protein extraction from HAP results...");
 		updateProgress(20, 100);
 		updateMessage(getTaskName() + ": Extracting proteins from HAP results...");
 		Platform.runLater(() -> secondBar.setProgress(ProgressBar.INDETERMINATE_PROGRESS));
@@ -270,15 +270,15 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		updateProgress(40, 100);
 		updateMessage("Extracting protein sequences...");
 		
-		LOGGER.info("[{}] extracting proteins from the HAP result started", getTaskName());
+		logger.info("[{}] extracting proteins from the HAP result started", getTaskName());
 
 		boolean extract = this.fastaExtract4Iterator();
 
 		if (extract) {
-			LOGGER.info("Step 2: Protein extraction from HAP results completed successfully");
-			LOGGER.info("[{}] extracting proteins from the HAP result finished", getTaskName());
+			logger.info("Step 2: Protein extraction from HAP results completed successfully");
+			logger.info("[{}] extracting proteins from the HAP result finished", getTaskName());
 		} else {
-			LOGGER.error(getTaskName() + ": error in protein extraction");
+			logger.error(getTaskName() + ": error in protein extraction");
 			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in protein extraction");
 			// Update progress on error
 			updateMessage(getTaskName() + ": Failed - Protein extraction error");
@@ -288,19 +288,19 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		}
 
 		// Step 3: Database Search
-		LOGGER.info("Step 3: Starting database search through sample-specific database...");
+		logger.info("Step 3: Starting database search through sample-specific database...");
 		updateProgress(40, 100);
 		updateMessage(getTaskName() + ": Searching sample-specific database...");
 		Platform.runLater(() -> secondBar.setProgress(ProgressBar.INDETERMINATE_PROGRESS));
 		updateMessage("Preparing for database search...");
 		
-		LOGGER.info("[{}] searching sample-specific database started", getTaskName());
+		logger.info("[{}] searching sample-specific database started", getTaskName());
 
 		boolean search = separateSearch();
 
 		if (search) {
-			LOGGER.info("Step 3: Database search completed successfully");
-			LOGGER.info("[{}] searching sample-specific database finished", getTaskName());
+			logger.info("Step 3: Database search completed successfully");
+			logger.info("[{}] searching sample-specific database finished", getTaskName());
 			
 			// Update progress after successful search
 			updateProgress(65, 100);
@@ -308,7 +308,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 			Platform.runLater(() -> secondBar.setProgress(ProgressBar.INDETERMINATE_PROGRESS));
 			updateMessage("Database search completed successfully");
 		} else {
-			LOGGER.error(getTaskName() + ": error in database search");
+			logger.error(getTaskName() + ": error in database search");
 			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in database search");
 			// Update progress on error
 			updateMessage(getTaskName() + ": Failed - Database search error");
@@ -317,21 +317,21 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		}
 
 		// Step 4: Combine Results
-		LOGGER.info("Step 4: Starting combination of separate search results...");
+		logger.info("Step 4: Starting combination of separate search results...");
 		updateProgress(70, 100);
 		updateMessage(getTaskName() + ": Combining search results...");
 		Platform.runLater(() -> secondBar.setProgress(ProgressBar.INDETERMINATE_PROGRESS));
 		updateMessage("Merging identification results...");
 		
-		LOGGER.info("[{}] combining separate search results started", getTaskName());
+		logger.info("[{}] combining separate search results started", getTaskName());
 
 		boolean combine = combineResult();
 
 		if (combine) {
-			LOGGER.info("Step 4: Combining separate search results completed successfully");
-			LOGGER.info("[{}] combining separate search results finished", getTaskName());
+			logger.info("Step 4: Combining separate search results completed successfully");
+			logger.info("[{}] combining separate search results finished", getTaskName());
 		} else {
-			LOGGER.error(getTaskName() + ": error in combining separate search results");
+			logger.error(getTaskName() + ": error in combining separate search results");
 			System.err.println(format.format(new Date()) + "\t" + getTaskName()
 					+ ": error in combining separate search results");
 			// Update progress on error
@@ -341,19 +341,19 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		}
 
 		// Step 5: Quantification
-		LOGGER.info("Step 5: Starting quantification...");
+		logger.info("Step 5: Starting quantification...");
 		updateProgress(75, 100);
 		updateMessage(getTaskName() + ": Quantification...");
 		Platform.runLater(() -> secondBar.setProgress(ProgressBar.INDETERMINATE_PROGRESS));
 		updateMessage("Starting quantification analysis...");
 		
-		LOGGER.info("[{}] quantification started", getTaskName());
+		logger.info("[{}] quantification started", getTaskName());
 
 		boolean quant = false;
 
 		// Note: FragPipe workflow may have different quantification modes
 		// This is a placeholder - actual implementation depends on FragPipe workflow
-		LOGGER.info("  Using FragPipe quantification mode");
+		logger.info("  Using FragPipe quantification mode");
 		updateProgress(80, 100);
 		updateMessage(getTaskName() + ": FragPipe quantification...");
 		Platform.runLater(() -> secondBar.setProgress(ProgressBar.INDETERMINATE_PROGRESS));
@@ -363,7 +363,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		quant = true; // Placeholder - replace with actual quantification logic
 		
 		if (!quant) {
-			LOGGER.error(getTaskName() + ": error in FragPipe quantification");
+			logger.error(getTaskName() + ": error in FragPipe quantification");
 			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in FragPipe quantification");
 			
 			// Update progress on error
@@ -372,7 +372,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 			updateMessage("Workflow failed!");
 			return false;
 		}
-		LOGGER.info("  FragPipe quantification completed successfully");
+		logger.info("  FragPipe quantification completed successfully");
 		
 		// Update progress after successful quantification
 		updateProgress(80, 100);
@@ -381,21 +381,21 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		updateMessage("FragPipe quantification completed successfully");
 
 		// Step 6: Export Report
-		LOGGER.info("Step 6: Starting report generation...");
+		logger.info("Step 6: Starting report generation...");
 		updateProgress(85, 100);
 		updateMessage(getTaskName() + ": Generating reports...");
 		Platform.runLater(() -> secondBar.setProgress(ProgressBar.INDETERMINATE_PROGRESS));
 		updateMessage("Preparing final reports...");
 		
-		LOGGER.info("[{}] report generation started", getTaskName());
+		logger.info("[{}] report generation started", getTaskName());
 
 		boolean report = this.exportReport();
 
 		if (report) {
-			LOGGER.info("Step 6: Report generation completed successfully");
-			LOGGER.info("[{}] report generation finished", getTaskName());
+			logger.info("Step 6: Report generation completed successfully");
+			logger.info("[{}] report generation finished", getTaskName());
 		} else {
-			LOGGER.error(getTaskName() + ": error in report generation");
+			logger.error(getTaskName() + ": error in report generation");
 			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in report generation");
 			// Update progress on error
 			updateMessage(getTaskName() + ": Failed - Report generation error");
@@ -409,17 +409,17 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		Platform.runLater(() -> secondBar.setProgress(0.0)); // Stop the indeterminate progress
 		updateMessage("Workflow completed!");
 		
-		LOGGER.info(getTaskName() + ": finished - all workflow steps completed successfully");
-		LOGGER.info("[{}] finished - all workflow steps completed successfully", getTaskName());
+		logger.info(getTaskName() + ": finished - all workflow steps completed successfully");
+		logger.info("[{}] finished - all workflow steps completed successfully", getTaskName());
 		return true;
 	}
 
 	protected boolean separateSearchHap() {
-		LOGGER.info("Starting separate search for high abundant database");
+		logger.info("Starting separate search for high abundant database");
 
 		// Get thread configuration
 		int threadCount = magFragPipeParams.getThreadCount();
-		LOGGER.info("Thread configuration: total={}", threadCount);
+		logger.info("Thread configuration: total={}", threadCount);
 
 		int taskCount = 0;
 
@@ -433,7 +433,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 				System.out.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": FragPipe search result already exists in " + hapResultFiles[i].getAbsolutePath());
 
-				LOGGER.info(getTaskName() + ": FragPipe search result already exists in "
+				logger.info(getTaskName() + ": FragPipe search result already exists in "
 						+ hapResultFiles[i].getAbsolutePath());
 			} else {
 				taskCount++;
@@ -460,13 +460,13 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 
 				} catch (FileNotFoundException e) {
 					// TODO Auto-generated catch block
-					LOGGER.error(getTaskName() + ": error in exporting Manifest for " + separateResultFolders[i], e);
+					logger.error(getTaskName() + ": error in exporting Manifest for " + separateResultFolders[i], e);
 					System.err.println(format.format(new Date()) + "\t" + getTaskName()
 							+ ": error in exporting Manifest for " + separateResultFolders[i]);
 				}
 
 				if (!manifest.exists()) {
-					LOGGER.error(getTaskName() + ": exporting Manifest failed for " + separateResultFolders[i]);
+					logger.error(getTaskName() + ": exporting Manifest failed for " + separateResultFolders[i]);
 					System.err.println(format.format(new Date()) + "\t" + getTaskName()
 							+ ": exporting Manifest failed for " + separateResultFolders[i]);
 					return false;
@@ -486,14 +486,14 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 								hapTdFile.getAbsolutePath());
 					} catch (IOException e) {
 						// TODO Auto-generated catch block
-						LOGGER.error(getTaskName() + ": writing target-decoy database to " + hapTdFile + " failed", e);
+						logger.error(getTaskName() + ": writing target-decoy database to " + hapTdFile + " failed", e);
 						System.err.println(format.format(new Date()) + "\t" + getTaskName()
 								+ ": writing target-decoy database to " + hapTdFile + " failed");
 					}
 				}
 
 				if (!hapTdFile.exists()) {
-					LOGGER.error(getTaskName() + ": writing target-decoy database to " + hapTdFile + " failed");
+					logger.error(getTaskName() + ": writing target-decoy database to " + hapTdFile + " failed");
 					System.err.println(format.format(new Date()) + "\t" + getTaskName()
 							+ ": writing target-decoy database to " + hapTdFile + " failed");
 					return false;
@@ -507,13 +507,13 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 					workflow.export(workflowFile);
 				} catch (IOException e) {
 					// TODO Auto-generated catch block
-					LOGGER.error(getTaskName() + ": writing workflow file to " + workflowFile + " failed");
+					logger.error(getTaskName() + ": writing workflow file to " + workflowFile + " failed");
 					System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": writing workflow file to "
 							+ workflowFile + " failed");
 					return false;
 				}
 
-				LOGGER.info(getTaskName() + ": searching high-abundance database for " + separateResultFolders[i]
+				logger.info(getTaskName() + ": searching high-abundance database for " + separateResultFolders[i]
 						+ " started");
 				System.out.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": searching high-abundance database for " + separateResultFolders[i] + " started");
@@ -524,7 +524,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 				System.out.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": FragPipe search result already exists in " + separateResultFolders[i].getAbsolutePath());
 
-				LOGGER.info(getTaskName() + ": FragPipe search result already exists in "
+				logger.info(getTaskName() + ": FragPipe search result already exists in "
 						+ separateResultFolders[i].getAbsolutePath());
 			}
 		}
@@ -538,7 +538,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		};
 
 		// Use the generic WatchServiceLoop from the superclass
-		LOGGER.info("Starting WatchService monitoring for high abundant database search");
+		logger.info("Starting WatchService monitoring for high abundant database search");
 		startWatchServiceLoop(separateResultFolders, "hap", filter, taskCount, 10, 20);
 
 		fragPipeTask.run(1, rawFiles.length * 4);
@@ -551,7 +551,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 				System.out.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": FragPipe search result was not found from " + hapResultFiles[i].getAbsolutePath());
 
-				LOGGER.info(getTaskName() + ": FragPipe search result was not found from "
+				logger.info(getTaskName() + ": FragPipe search result was not found from "
 						+ hapResultFiles[i].getAbsolutePath());
 
 				return false;
@@ -583,7 +583,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": sample-specific database for "
 						+ separateResultFolders[i].getName() + " already exists in " + dbFile.getAbsolutePath());
 
-				LOGGER.info(getTaskName() + ": sample-specific database for " + separateResultFolders[i].getName()
+				logger.info(getTaskName() + ": sample-specific database for " + separateResultFolders[i].getName()
 						+ " already exists in " + dbFile.getAbsolutePath());
 
 				continue;
@@ -593,14 +593,14 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 			File combinePsmFile = new File(hapResultFolder, "psm.tsv");
 			File combineProFile = new File(hapResultFolder, "protein.tsv");
 
-			LOGGER.info(getTaskName() + ": parsing high-abundance database search result from "
+			logger.info(getTaskName() + ": parsing high-abundance database search result from "
 					+ separateResultFolders[i].getName());
 			System.out.println(format.format(new Date()) + "\t" + getTaskName()
 					+ ": parsing high-abundance database search result from " + separateResultFolders[i].getName());
 
 			if (combinePsmFile.exists()) {
 
-				LOGGER.info(getTaskName() + ": parsing high-abundance database search result " + combinePsmFile);
+				logger.info(getTaskName() + ": parsing high-abundance database search result " + combinePsmFile);
 				System.out.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": parsing high-abundance database search result " + combinePsmFile);
 
@@ -640,13 +640,13 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 					combineTsvReader.close();
 				} catch (IOException e) {
 					// TODO Auto-generated catch block
-					LOGGER.error(getTaskName() + ": error in reading database search result file " + combinePsmFile, e);
+					logger.error(getTaskName() + ": error in reading database search result file " + combinePsmFile, e);
 					System.err.println(format.format(new Date()) + "\t" + getTaskName()
 							+ ": error in reading database search result file " + combinePsmFile);
 				}
 
 				if (totalPsmSet.size() == 0) {
-					LOGGER.info(getTaskName() + ": no PSM identifications in " + combinePsmFile);
+					logger.info(getTaskName() + ": no PSM identifications in " + combinePsmFile);
 					System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": no PSM identifications in "
 							+ combinePsmFile);
 				}
@@ -694,7 +694,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 					writer.close();
 				} catch (IOException e) {
 					// TODO Auto-generated catch block
-					LOGGER.error(getTaskName() + ": error in writing protein sequences to the sample-specific database "
+					logger.error(getTaskName() + ": error in writing protein sequences to the sample-specific database "
 							+ dbFile, e);
 					System.err.println(format.format(new Date()) + "\t" + getTaskName()
 							+ ": error in writing protein sequences to the sample-specific database " + dbFile);
@@ -703,7 +703,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 			} else {
 
 				if (combineProFile.exists()) {
-					LOGGER.info(getTaskName() + ": parsing high-abundance database search result " + combineProFile);
+					logger.info(getTaskName() + ": parsing high-abundance database search result " + combineProFile);
 					System.out.println(format.format(new Date()) + "\t" + getTaskName()
 							+ ": parsing high-abundance database search result " + combineProFile);
 
@@ -741,7 +741,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 						combineTsvReader.close();
 					} catch (IOException e) {
 						// TODO Auto-generated catch block
-						LOGGER.error(getTaskName() + ": error in reading database search result file " + combinePsmFile,
+						logger.error(getTaskName() + ": error in reading database search result file " + combinePsmFile,
 								e);
 						System.err.println(format.format(new Date()) + "\t" + getTaskName()
 								+ ": error in reading database search result file " + combinePsmFile);
@@ -814,14 +814,14 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 
 					} catch (IOException e) {
 						// TODO Auto-generated catch block
-						LOGGER.error(getTaskName()
+						logger.error(getTaskName()
 								+ ": error in writing protein sequences to the sample-specific database " + dbFile, e);
 						System.err.println(format.format(new Date()) + "\t" + getTaskName()
 								+ ": error in writing protein sequences to the sample-specific database " + dbFile);
 					}
 				} else {
 
-					LOGGER.info(
+					logger.info(
 							getTaskName() + ": searching high-abundance database failed, result files were not found");
 					System.out.println(format.format(new Date()) + "\t" + getTaskName()
 							+ ": searching high-abundance database failed, result files were not found");
@@ -836,7 +836,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 
 			if (dbFile.exists() && dbFile.length() > 0) {
 
-				LOGGER.info(getTaskName() + ": sample-specific database generation finished");
+				logger.info(getTaskName() + ": sample-specific database generation finished");
 				System.out.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": sample-specific database generation finished");
 
@@ -844,10 +844,10 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 						format.format(new Date()) + "\t" + getTaskName() + ": generating sample-specific database for "
 								+ separateResultFolders[i].getName() + " finished");
 
-				LOGGER.info(getTaskName() + ": generating sample-specific database for "
+				logger.info(getTaskName() + ": generating sample-specific database for "
 						+ separateResultFolders[i].getName() + " finished");
 			} else {
-				LOGGER.info(getTaskName() + ": sample-specific database generation failed");
+				logger.info(getTaskName() + ": sample-specific database generation failed");
 				System.out.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": sample-specific database generation failed");
 
@@ -868,7 +868,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 			if (spResultFiles[i].exists() && combinePsmFile.exists()) {
 				System.out.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": FragPipe search result already exists in " + spResultFiles[i].getAbsolutePath());
-				LOGGER.info(getTaskName() + ": FragPipe search result already exists in "
+				logger.info(getTaskName() + ": FragPipe search result already exists in "
 						+ spResultFiles[i].getAbsolutePath());
 			} else {
 				taskCount++;
@@ -895,13 +895,13 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 					workflow.export(workflowFile);
 				} catch (IOException e) {
 					// TODO Auto-generated catch block
-					LOGGER.error(getTaskName() + ": writing workflow file to " + workflowFile + " failed");
+					logger.error(getTaskName() + ": writing workflow file to " + workflowFile + " failed");
 					System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": writing workflow file to "
 							+ workflowFile + " failed");
 				}
 				File manifest = new File(this.separateResultFolders[i], "raws.fp-manifest");
 
-				LOGGER.info(getTaskName() + ": searching high-abundance database for " + separateResultFolders[i]
+				logger.info(getTaskName() + ": searching high-abundance database for " + separateResultFolders[i]
 						+ " started");
 				System.out.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": searching high-abundance database for " + separateResultFolders[i] + " started");
@@ -911,7 +911,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 				System.out.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": FragPipe search result already exists in " + separateResultFolders[i].getAbsolutePath());
 
-				LOGGER.info(getTaskName() + ": FragPipe search result already exists in "
+				logger.info(getTaskName() + ": FragPipe search result already exists in "
 						+ separateResultFolders[i].getAbsolutePath());
 			}
 		}
@@ -925,7 +925,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		};
 
 		// Use the generic WatchServiceLoop from the superclass
-		LOGGER.info("Starting WatchService monitoring for sample-specific database search");
+		logger.info("Starting WatchService monitoring for sample-specific database search");
 		startWatchServiceLoop(separateResultFolders, "", filter, taskCount, 40, 65);
 
 		this.fragPipeTask.run(1, rawFiles.length * 4);
@@ -938,7 +938,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 				System.out.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": FragPipe search result was not found from " + spResultFiles[i].getAbsolutePath());
 
-				LOGGER.info(getTaskName() + ": FragPipe search result was not found from "
+				logger.info(getTaskName() + ": FragPipe search result was not found from "
 						+ spResultFiles[i].getAbsolutePath());
 
 				return false;
@@ -968,7 +968,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 					reader.close();
 				} catch (IOException e) {
 					// TODO Auto-generated catch block
-					LOGGER.error(getTaskName() + ": error in reading the fasta file " + fastaFile);
+					logger.error(getTaskName() + ": error in reading the fasta file " + fastaFile);
 					System.err.println(format.format(new Date()) + "\t" + getTaskName()
 							+ ": error in reading the fasta file " + fastaFile);
 					return false;
@@ -1036,7 +1036,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 				writer.close();
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
-				LOGGER.error(getTaskName() + ": error in writing the combined fasta file " + combinedFastaFile);
+				logger.error(getTaskName() + ": error in writing the combined fasta file " + combinedFastaFile);
 				System.err.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": error in writing the combined fasta file " + combinedFastaFile);
 				return false;
@@ -1049,12 +1049,12 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 				metaPar.getMetadata().exportFragpipeManifest(manifest);
 			} catch (FileNotFoundException e) {
 				// TODO Auto-generated catch block
-				LOGGER.error(getTaskName() + ": error in exporting Manifest", e);
+				logger.error(getTaskName() + ": error in exporting Manifest", e);
 				System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in exporting Manifest");
 			}
 
 			if (!manifest.exists()) {
-				LOGGER.error(getTaskName() + ": exporting Manifest failed");
+				logger.error(getTaskName() + ": exporting Manifest failed");
 				System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting Manifest failed");
 			}
 		}
@@ -1068,13 +1068,13 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 				workflow.export(workflowFile);
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
-				LOGGER.error(getTaskName() + ": writing workflow file to " + workflowFile + " failed");
+				logger.error(getTaskName() + ": writing workflow file to " + workflowFile + " failed");
 				System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": writing workflow file to "
 						+ workflowFile + " failed");
 				return false;
 			}
 
-			LOGGER.info(getTaskName() + ": searching the combined high-abundance database started");
+			logger.info(getTaskName() + ": searching the combined high-abundance database started");
 			System.out.println(format.format(new Date()) + "\t" + getTaskName()
 					+ ": searching the combined high-abundance database started");
 
@@ -1096,7 +1096,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 			}
 
 		} else {
-			LOGGER.info(getTaskName() + ": peptide and protein identification failed");
+			logger.info(getTaskName() + ": peptide and protein identification failed");
 			System.out.println(
 					format.format(new Date()) + "\t" + getTaskName() + ": peptide and protein identification failed");
 		}
@@ -1114,7 +1114,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 
 	protected boolean exportReport() {
 
-		LOGGER.info(getTaskName() + ": exporting peptide report started");
+		logger.info(getTaskName() + ": exporting peptide report started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting peptide report started");
 
 		// Build file list and mapping
@@ -1131,7 +1131,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 				}
 				reader.close();
 			} catch (IOException e) {
-				LOGGER.error(getTaskName() + ": error in reading the experimental design from " + expDesignFile, e);
+				logger.error(getTaskName() + ": error in reading the experimental design from " + expDesignFile, e);
 				System.err.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": error in reading the experimental design from " + expDesignFile);
 			}
@@ -1151,7 +1151,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		FragPipePSM[] psms = quanPepReader.getPSMs();
 		String[] intensityTitles = quanPepReader.getIntensityTitle();
 		
-		LOGGER.info(getTaskName() + ": " + quanPeps.length + " peptides and " + psms.length + " PSMs were obtained");
+		logger.info(getTaskName() + ": " + quanPeps.length + " peptides and " + psms.length + " PSMs were obtained");
 
 		// Create and execute the post-analysis task directly
 		DDAMagPostAnalysisTask postAnalysisTask = new DDAMagPostAnalysisTask(
@@ -1167,18 +1167,18 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 			boolean success = postAnalysisTask.get();
 			
 			if (success) {
-				LOGGER.info(getTaskName() + ": Post-analysis completed successfully");
+				logger.info(getTaskName() + ": Post-analysis completed successfully");
 				return true;
 			} else {
-				LOGGER.error(getTaskName() + ": Post-analysis task failed");
+				logger.error(getTaskName() + ": Post-analysis task failed");
 				return false;
 			}
 		} catch (InterruptedException e) {
-			LOGGER.error(getTaskName() + ": Post-analysis task was interrupted", e);
+			logger.error(getTaskName() + ": Post-analysis task was interrupted", e);
 			Thread.currentThread().interrupt();
 			return false;
 		} catch (ExecutionException e) {
-			LOGGER.error(getTaskName() + ": Post-analysis task failed with exception", e);
+			logger.error(getTaskName() + ": Post-analysis task failed with exception", e);
 			return false;
 		}
 	}
@@ -1307,7 +1307,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
-			LOGGER.error(getTaskName() + ": error in writing PSM information to " + final_summary_txt.getName(), e);
+			logger.error(getTaskName() + ": error in writing PSM information to " + final_summary_txt.getName(), e);
 			System.err.println(format.format(new Date()) + "\t" + getTaskName()
 					+ ": error in writing PSM information to " + final_summary_txt.getName());
 		}

@@ -21,6 +21,14 @@ import java.util.ArrayList;
 import java.util.prefs.Preferences;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.core.config.Configurator;
+import org.apache.logging.log4j.core.config.builder.api.AppenderComponentBuilder;
+import org.apache.logging.log4j.core.config.builder.api.ConfigurationBuilder;
+import org.apache.logging.log4j.core.config.builder.api.ConfigurationBuilderFactory;
+import org.apache.logging.log4j.core.config.builder.api.LayoutComponentBuilder;
+import org.apache.logging.log4j.core.config.builder.api.RootLoggerComponentBuilder;
+import org.apache.logging.log4j.core.config.builder.impl.BuiltConfiguration;
 
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagVersion;
@@ -145,6 +153,11 @@ import uk.ac.quadram.metapilot.task.par.ParameterIORegistry;
  */
 public class MetaPilotApp extends Application {
     
+    // Static block to configure application-level logging BEFORE Logger is initialized
+    static {
+        configureApplicationLogging();
+    }
+    
     private static final Logger LOGGER = LogManager.getLogger(MetaPilotApp.class);
     
     private MetaResourceParameters resourceParams;
@@ -166,9 +179,11 @@ public class MetaPilotApp extends Application {
     private static final boolean REGISTRATION_ENABLED = false; // Set to true when server is available
     
     /**
-     * Configure basic logging for JAR execution
+     * Configure application-level logging to logs/metapilot.log
+     * This is called in static block before Logger instances are created.
+     * Captures GUI startup, configuration loading, and errors before tasks start.
      */
-    private static void configureBasicLogging() {
+    private static void configureApplicationLogging() {
         try {
             // Create logs directory if it doesn't exist
             File logsDir = new File("logs");
@@ -176,13 +191,53 @@ public class MetaPilotApp extends Application {
                 boolean created = logsDir.mkdirs();
                 if (!created) {
                     System.err.println("Warning: Could not create logs directory: " + logsDir.getAbsolutePath());
+                    return;
                 }
             }
             
-            System.out.println("Basic logging configuration completed successfully");
+            // Build Log4j2 configuration programmatically
+            ConfigurationBuilder<BuiltConfiguration> builder = 
+                ConfigurationBuilderFactory.newConfigurationBuilder();
+            
+            builder.setStatusLevel(Level.INFO);
+            builder.setConfigurationName("ApplicationLogger");
+            
+            // Pattern layout for log messages
+            String pattern = "%d{yyyy-MM-dd HH:mm:ss} %-5level %logger{36} - %msg%n";
+            LayoutComponentBuilder layoutBuilder = 
+                builder.newLayout("PatternLayout")
+                       .addAttribute("pattern", pattern);
+            
+            // File appender for application logs
+            File logFile = new File(logsDir, "metapilot.log");
+            AppenderComponentBuilder fileAppender = 
+                builder.newAppender("ApplicationLogFile", "File")
+                       .addAttribute("fileName", logFile.getAbsolutePath())
+                       .addAttribute("append", true)
+                       .add(layoutBuilder);
+            
+            // Console appender for immediate feedback
+            AppenderComponentBuilder consoleAppender = 
+                builder.newAppender("ApplicationConsole", "Console")
+                       .addAttribute("target", "SYSTEM_OUT")
+                       .add(layoutBuilder);
+            
+            builder.add(fileAppender);
+            builder.add(consoleAppender);
+            
+            // Root logger - application level
+            RootLoggerComponentBuilder rootLogger = builder.newRootLogger(Level.INFO);
+            rootLogger.add(builder.newAppenderRef("ApplicationLogFile"));
+            rootLogger.add(builder.newAppenderRef("ApplicationConsole"));
+            builder.add(rootLogger);
+            
+            // Initialize configuration
+            Configurator.initialize(builder.build());
+            
+            System.out.println("Application logging configured successfully to: " + logFile.getAbsolutePath());
             
         } catch (Exception e) {
-            System.err.println("Warning: Could not configure basic logging: " + e.getMessage());
+            System.err.println("Failed to configure application logging: " + e.getMessage());
             e.printStackTrace();
         }
     }
@@ -1487,9 +1542,7 @@ public class MetaPilotApp extends Application {
     }
     
     public static void main(String[] args) {
-        // Configure basic logging for JAR execution
-        configureBasicLogging();
-        
+        // Application logging already configured by static block
         LOGGER.info("MetaPilot application starting...");
         LOGGER.debug("Command line arguments: {}", java.util.Arrays.toString(args));
         

@@ -47,7 +47,7 @@ import uk.ac.quadram.metapilot.task.par.MetaConstants;
  */
 public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 
-	private static final Logger LOGGER = LogManager.getLogger(DDAIgcFragPipeTask.class);
+	// Logger is inherited from MetaPilotIgcTask -> MetaPilotTask as an instance field
 	private static final String taskName = "DDA IGC database search by FragPipe workflow";
 
 	// Task-specific fields
@@ -66,24 +66,24 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 		super(metaPar, mrp, progressBar, secondBar);
 
 		// Debug logging for metadata
-		LOGGER.info("{}: Constructor called with parameters", taskName);
+		logger.info("{}: Constructor called with parameters", taskName);
 		if (metaPar != null) {
-			LOGGER.info("{}: Parameters object is not null", taskName);
+			logger.info("{}: Parameters object is not null", taskName);
 			if (metaPar.getMetadata() != null) {
 				String[] rawFiles = metaPar.getMetadata().getRawFiles();
 				String[] expNames = metaPar.getMetadata().getExpNames();
-				LOGGER.info("{}: Metadata contains {} raw files", taskName, rawFiles != null ? rawFiles.length : 0);
+				logger.info("{}: Metadata contains {} raw files", taskName, rawFiles != null ? rawFiles.length : 0);
 				if (rawFiles != null) {
 					for (int i = 0; i < rawFiles.length; i++) {
-						LOGGER.info("{}: Raw file {}: {} -> {}", taskName, i, rawFiles[i],
+						logger.info("{}: Raw file {}: {} -> {}", taskName, i, rawFiles[i],
 								expNames != null && i < expNames.length ? expNames[i] : "N/A");
 					}
 				}
 			} else {
-				LOGGER.warn("{}: Metadata is null in parameters", taskName);
+				logger.warn("{}: Metadata is null in parameters", taskName);
 			}
 		} else {
-			LOGGER.error("{}: Parameters object is null!", taskName);
+			logger.error("{}: Parameters object is null!", taskName);
 		}
 
 		// Initialize mzML files array and experiment name mapping
@@ -95,18 +95,18 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 
 	@Override
 	public void forceStop() {
-		LOGGER.info("{}: Force stop requested", taskName);
+		logger.info("{}: Force stop requested", taskName);
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": Force stop requested");
 
 		// Cancel database reduction task if running
 		if (dbReducerTask != null && !dbReducerTask.isDone()) {
-			LOGGER.info("{}: Cancelling database reduction task", taskName);
+			logger.info("{}: Cancelling database reduction task", taskName);
 			dbReducerTask.cancel(true);
 		}
 
 		// Cancel FragPipe task if running
 		if (fragPipeTask != null) {
-			LOGGER.info("{}: Stopping FragPipe identification task", taskName);
+			logger.info("{}: Stopping FragPipe identification task", taskName);
 			// FragPipeTask doesn't have forceStop method, but we can interrupt any running
 			// threads
 			// The task will be stopped when this main task is cancelled
@@ -114,20 +114,20 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 
 		// Cancel spectra conversion thread if running
 		if (spectraConvertThread != null && spectraConvertThread.isAlive()) {
-			LOGGER.info("{}: Interrupting spectra conversion thread", taskName);
+			logger.info("{}: Interrupting spectra conversion thread", taskName);
 			spectraConvertThread.interrupt();
 		}
 
 		// Cancel MGF conversion thread if running
 		if (mgfConvertThread != null && mgfConvertThread.isAlive()) {
-			LOGGER.info("{}: Interrupting MGF conversion thread", taskName);
+			logger.info("{}: Interrupting MGF conversion thread", taskName);
 			mgfConvertThread.interrupt();
 		}
 
 		// Cancel this task itself
 		this.cancel(true);
 
-		LOGGER.info("{}: Force stop completed", taskName);
+		logger.info("{}: Force stop completed", taskName);
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": Force stop completed");
 	}
 
@@ -138,7 +138,7 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 
 	@Override
 	protected Logger getLogger() {
-		return LOGGER;
+		return logger;
 	}
 
 	@Override
@@ -197,7 +197,7 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 
 		updateMessage(getTaskName());
 
-		LOGGER.info(getTaskName() + ": start");
+		logger.info(getTaskName() + ": start");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": start");
 
 		// Update progress before spectra conversion
@@ -207,7 +207,7 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 		// Step 1: Spectra Conversion using MSConvertor (similar to DDAMagSageTask)
 		boolean spectraConverted = convertSpectraToMzML();
 		if (!spectraConverted) {
-			LOGGER.error(getTaskName() + ": error in spectra conversion workflow");
+			logger.error(getTaskName() + ": error in spectra conversion workflow");
 			System.err.println(
 					format.format(new Date()) + "\t" + getTaskName() + ": error in spectra conversion workflow");
 			return false;
@@ -220,7 +220,7 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 		// Step 2: Convert mzML files to MGF format
 		boolean mgfConverted = convertMzMLToMgf();
 		if (!mgfConverted) {
-			LOGGER.error(getTaskName() + ": error in MGF conversion workflow");
+			logger.error(getTaskName() + ": error in MGF conversion workflow");
 			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in MGF conversion workflow");
 			return false;
 		}
@@ -231,18 +231,18 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 
 		// Step 3: Database reduction using MetaDbReducerTask
 		dbReducerTask = new MetaDbReducerTask(metaPar, mrp, secondBar);
-		LOGGER.info("{}: MetaDbReducerTask created, executing...", taskName);
+		logger.info("{}: MetaDbReducerTask created, executing...", taskName);
 		dbReducerTask.execute();
 		try {
 			boolean dbReduced = dbReducerTask.get(); // Wait for completion and get result
 			if (!dbReduced) {
-				LOGGER.error(getTaskName() + ": error in sample-specific database generation");
+				logger.error(getTaskName() + ": error in sample-specific database generation");
 				System.err.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": error in sample-specific database generation");
 				return false;
 			}
 		} catch (InterruptedException | ExecutionException e) {
-			LOGGER.error(getTaskName() + ": error in sample-specific database generation", e);
+			logger.error(getTaskName() + ": error in sample-specific database generation", e);
 			System.err.println(format.format(new Date()) + "\t" + getTaskName()
 					+ ": error in sample-specific database generation: " + e.getMessage());
 			return false;
@@ -252,14 +252,14 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 		updateProgress(50, 100);
 		updateMessage("Database reduction completed, starting identification...");
 
-		LOGGER.info(getTaskName() + ": sample specific database generation: finished");
+		logger.info(getTaskName() + ": sample specific database generation: finished");
 		System.out.println(
 				format.format(new Date()) + "\t" + getTaskName() + ": sample specific database generation: finished");
 
 		// Step 4: Database search with FragPipe
 		boolean identification = performIdentification();
 		if (!identification) {
-			LOGGER.error(getTaskName() + ": error in database search and identification");
+			logger.error(getTaskName() + ": error in database search and identification");
 			System.err.println(
 					format.format(new Date()) + "\t" + getTaskName() + ": error in database search and identification");
 			return false;
@@ -269,14 +269,14 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 		updateProgress(70, 100);
 		updateMessage("Identification completed, starting quantification...");
 
-		LOGGER.info(getTaskName() + ": database search and identification: finished");
+		logger.info(getTaskName() + ": database search and identification: finished");
 		System.out.println(
 				format.format(new Date()) + "\t" + getTaskName() + ": database search and identification: finished");
 
 		// Step 5: Report generation
 		boolean reportGenerated = exportReport();
 		if (!reportGenerated) {
-			LOGGER.error(getTaskName() + ": error in report generation");
+			logger.error(getTaskName() + ": error in report generation");
 			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in report generation");
 			return false;
 		}
@@ -293,11 +293,11 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 	 * threads This method is similar to the one in DDAMagSageTask
 	 */
 	private boolean convertSpectraToMzML() {
-		LOGGER.info("Starting spectra conversion to mzML format using MSConvert");
+		logger.info("Starting spectra conversion to mzML format using MSConvert");
 
 		// Validate MSConvert executable
 		if (msConvertExe == null || !msConvertExe.exists()) {
-			LOGGER.error("MSConvert executable not found: {}",
+			logger.error("MSConvert executable not found: {}",
 					msConvertExe != null ? msConvertExe.getAbsolutePath() : "null");
 			return false;
 		}
@@ -305,7 +305,7 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 		DDAIgcFragPipeParameters fragPipeParams = (DDAIgcFragPipeParameters) metaPar;
 		String[] rawFiles = fragPipeParams.getMetadata().getRawFiles();
 		if (rawFiles == null || rawFiles.length == 0) {
-			LOGGER.error("No raw files found in metadata");
+			logger.error("No raw files found in metadata");
 			return false;
 		}
 
@@ -313,7 +313,7 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 		File spectraDir = fragPipeParams.getSpectraFile();
 		if (!spectraDir.exists()) {
 			spectraDir.mkdirs();
-			LOGGER.info("Created spectra directory: {}", spectraDir.getAbsolutePath());
+			logger.info("Created spectra directory: {}", spectraDir.getAbsolutePath());
 		}
 
 		// Collect files that need conversion
@@ -323,7 +323,7 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 			File rawFileObj = new File(rawFile);
 
 			if (!rawFileObj.exists()) {
-				LOGGER.error("Raw file does not exist: {}", rawFile);
+				logger.error("Raw file does not exist: {}", rawFile);
 				return false;
 			}
 
@@ -331,7 +331,7 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 			File mzMLFile = new File(mzMLFiles[i]);
 
 			if (mzMLFile.exists() && mzMLFile.length() > 0) {
-				LOGGER.info("mzML file already exists, skipping conversion: {}", mzMLFile.getAbsolutePath());
+				logger.info("mzML file already exists, skipping conversion: {}", mzMLFile.getAbsolutePath());
 			} else {
 				filesToConvert.add(i);
 			}
@@ -339,7 +339,7 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 
 		// If no files need conversion, return success
 		if (filesToConvert.isEmpty()) {
-			LOGGER.info("All mzML files already exist, no conversion needed");
+			logger.info("All mzML files already exist, no conversion needed");
 			return true;
 		}
 
@@ -347,7 +347,7 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 		int threadCount = Math.min(filesToConvert.size(), fragPipeParams.getThreadCount());
 		ExecutorService executor = Executors.newFixedThreadPool(threadCount);
 
-		LOGGER.info("Processing {} files using {} threads", filesToConvert.size(), threadCount);
+		logger.info("Processing {} files using {} threads", filesToConvert.size(), threadCount);
 
 		// Submit conversion/copy tasks
 		for (int fileIndex : filesToConvert) {
@@ -360,14 +360,14 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 					String convertedPath = null;
 
 					if (fileName.endsWith(".raw")) {
-						LOGGER.info("Converting .raw file to mzML: {}", rawFile);
+						logger.info("Converting .raw file to mzML: {}", rawFile);
 						convertedPath = MSConvertor.raw2mzML(msConvertExe.getAbsolutePath(), rawFile);
 					} else if (fileName.endsWith(".d")) {
-						LOGGER.info("Converting .d file to mzML: {}", rawFile);
+						logger.info("Converting .d file to mzML: {}", rawFile);
 						convertedPath = MSConvertor.d2mzML(msConvertExe.getAbsolutePath(), rawFile,
 								spectraDir.getAbsolutePath());
 					} else {
-						LOGGER.error(
+						logger.error(
 								"Unsupported file format: {}. Only .raw and .d files are supported for conversion.",
 								fileName);
 						return;
@@ -382,20 +382,20 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 							try {
 								Files.move(convertedFile.toPath(), targetFile.toPath(),
 										StandardCopyOption.REPLACE_EXISTING);
-								LOGGER.info("Successfully moved converted file from {} to {}", convertedPath,
+								logger.info("Successfully moved converted file from {} to {}", convertedPath,
 										mzMLFiles[fileIndex]);
 							} catch (Exception e) {
-								LOGGER.error("Failed to move converted file from {} to {}: {}", convertedPath,
+								logger.error("Failed to move converted file from {} to {}: {}", convertedPath,
 										mzMLFiles[fileIndex], e.getMessage());
 							}
 						} else {
-							LOGGER.error("Converted mzML file does not exist or is empty: {}", convertedPath);
+							logger.error("Converted mzML file does not exist or is empty: {}", convertedPath);
 						}
 					} else {
-						LOGGER.error("Failed to convert file to mzML: {}", rawFile);
+						logger.error("Failed to convert file to mzML: {}", rawFile);
 					}
 				} catch (Exception e) {
-					LOGGER.error("Error converting file {}: {}", rawFile, e.getMessage());
+					logger.error("Error converting file {}: {}", rawFile, e.getMessage());
 				}
 			});
 		}
@@ -408,7 +408,7 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 				Thread.sleep(1000);
 			}
 		} catch (InterruptedException e) {
-			LOGGER.error("Interrupted while waiting for conversion tasks to complete", e);
+			logger.error("Interrupted while waiting for conversion tasks to complete", e);
 			return false;
 		}
 
@@ -416,12 +416,12 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 		for (int fileIndex : filesToConvert) {
 			File mzMLFile = new File(mzMLFiles[fileIndex]);
 			if (!mzMLFile.exists() || mzMLFile.length() == 0) {
-				LOGGER.error("Conversion failed for file: {}", mzMLFiles[fileIndex]);
+				logger.error("Conversion failed for file: {}", mzMLFiles[fileIndex]);
 				return false;
 			}
 		}
 
-		LOGGER.info("All spectra files converted successfully to mzML format");
+		logger.info("All spectra files converted successfully to mzML format");
 		return true;
 	}
 
@@ -430,11 +430,11 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 	 * threads
 	 */
 	private boolean convertMzMLToMgf() {
-		LOGGER.info("Starting mzML to MGF conversion using MSConvert");
+		logger.info("Starting mzML to MGF conversion using MSConvert");
 
 		// Validate MSConvert executable
 		if (msConvertExe == null || !msConvertExe.exists()) {
-			LOGGER.error("MSConvert executable not found: {}",
+			logger.error("MSConvert executable not found: {}",
 					msConvertExe != null ? msConvertExe.getAbsolutePath() : "null");
 			return false;
 		}
@@ -442,7 +442,7 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 		DDAIgcFragPipeParameters fragPipeParams = (DDAIgcFragPipeParameters) metaPar;
 		String[] rawFiles = fragPipeParams.getMetadata().getRawFiles();
 		if (rawFiles == null || rawFiles.length == 0) {
-			LOGGER.error("No raw files found in metadata");
+			logger.error("No raw files found in metadata");
 			return false;
 		}
 
@@ -453,12 +453,12 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 			File mgfFile = new File(mgfFiles[i]);
 
 			if (!mzMLFile.exists() || mzMLFile.length() == 0) {
-				LOGGER.error("mzML file does not exist or is empty: {}", mzMLFile.getAbsolutePath());
+				logger.error("mzML file does not exist or is empty: {}", mzMLFile.getAbsolutePath());
 				return false;
 			}
 
 			if (mgfFile.exists() && mgfFile.length() > 0) {
-				LOGGER.info("MGF file already exists, skipping conversion: {}", mgfFile.getAbsolutePath());
+				logger.info("MGF file already exists, skipping conversion: {}", mgfFile.getAbsolutePath());
 			} else {
 				filesToConvert.add(i);
 			}
@@ -466,7 +466,7 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 
 		// If no files need conversion, return success
 		if (filesToConvert.isEmpty()) {
-			LOGGER.info("All MGF files already exist, no conversion needed");
+			logger.info("All MGF files already exist, no conversion needed");
 			return true;
 		}
 
@@ -474,7 +474,7 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 		int threadCount = Math.min(filesToConvert.size(), fragPipeParams.getThreadCount());
 		ExecutorService executor = Executors.newFixedThreadPool(threadCount);
 
-		LOGGER.info("Converting {} mzML files to MGF using {} threads", filesToConvert.size(), threadCount);
+		logger.info("Converting {} mzML files to MGF using {} threads", filesToConvert.size(), threadCount);
 
 		// Submit MGF conversion tasks
 		for (int fileIndex : filesToConvert) {
@@ -483,7 +483,7 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 				String mgfFile = mgfFiles[fileIndex];
 
 				try {
-					LOGGER.info("Converting mzML to MGF: {} -> {}", mzMLFile, mgfFile);
+					logger.info("Converting mzML to MGF: {} -> {}", mzMLFile, mgfFile);
 					// MSConvertor.mzml2mgf returns void, so we need to check if the file was
 					// created
 					MSConvertor.mzml2mgf(msConvertExe.getAbsolutePath(), mzMLFile, spectraDirFile.getAbsolutePath());
@@ -501,20 +501,20 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 							try {
 								Files.move(expectedMgfFile.toPath(), targetFile.toPath(),
 										StandardCopyOption.REPLACE_EXISTING);
-								LOGGER.info("Successfully moved MGF file from {} to {}",
+								logger.info("Successfully moved MGF file from {} to {}",
 										expectedMgfFile.getAbsolutePath(), mgfFile);
 							} catch (Exception e) {
-								LOGGER.error("Failed to move MGF file from {} to {}: {}",
+								logger.error("Failed to move MGF file from {} to {}: {}",
 										expectedMgfFile.getAbsolutePath(), mgfFile, e.getMessage());
 							}
 						} else {
-							LOGGER.info("MGF file already in correct location: {}", mgfFile);
+							logger.info("MGF file already in correct location: {}", mgfFile);
 						}
 					} else {
-						LOGGER.error("MGF file was not created: {}", expectedMgfFile.getAbsolutePath());
+						logger.error("MGF file was not created: {}", expectedMgfFile.getAbsolutePath());
 					}
 				} catch (Exception e) {
-					LOGGER.error("Error converting mzML to MGF {}: {}", mzMLFile, e.getMessage());
+					logger.error("Error converting mzML to MGF {}: {}", mzMLFile, e.getMessage());
 				}
 			});
 		}
@@ -527,7 +527,7 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 				Thread.sleep(1000);
 			}
 		} catch (InterruptedException e) {
-			LOGGER.error("Interrupted while waiting for MGF conversion tasks to complete", e);
+			logger.error("Interrupted while waiting for MGF conversion tasks to complete", e);
 			return false;
 		}
 
@@ -535,12 +535,12 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 		for (int fileIndex : filesToConvert) {
 			File mgfFile = new File(mgfFiles[fileIndex]);
 			if (!mgfFile.exists() || mgfFile.length() == 0) {
-				LOGGER.error("MGF conversion failed for file: {}", mgfFiles[fileIndex]);
+				logger.error("MGF conversion failed for file: {}", mgfFiles[fileIndex]);
 				return false;
 			}
 		}
 
-		LOGGER.info("All mzML files converted successfully to MGF format");
+		logger.info("All mzML files converted successfully to MGF format");
 		return true;
 	}
 
@@ -549,13 +549,13 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 	 * the same pattern as DDAMagFragPipeTask
 	 */
 	private boolean performIdentification() {
-		LOGGER.info("Starting FragPipe database search and identification");
+		logger.info("Starting FragPipe database search and identification");
 		Platform.runLater(() -> secondBar.setProgress(ProgressBar.INDETERMINATE_PROGRESS));
 
 		// Get FragPipe executable path
 		String fragpipeBat = mrp.getToolPath(ToolType.FRAGPIPE);
 		if (fragpipeBat == null || fragpipeBat.isEmpty()) {
-			LOGGER.error("FragPipe executable path not found in MetaResourceParameters");
+			logger.error("FragPipe executable path not found in MetaResourceParameters");
 			return false;
 		}
 
@@ -565,13 +565,13 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 		// Get current database path (should be the reduced database)
 		String currentDb = metaPar.getCurrentDb();
 		if (currentDb == null || currentDb.isEmpty()) {
-			LOGGER.error("Current database path is not set");
+			logger.error("Current database path is not set");
 			return false;
 		}
 
 		File currentDbFile = new File(currentDb);
 		if (!currentDbFile.exists()) {
-			LOGGER.error("Current database does not exist");
+			logger.error("Current database does not exist");
 			return false;
 		}
 
@@ -582,7 +582,7 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 				FastaManager.addDecoy(currentDbFile.getAbsolutePath(), targetDecoyDbFile.getAbsolutePath());
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
-				LOGGER.error("Error in writing the target-decoy database", e);
+				logger.error("Error in writing the target-decoy database", e);
 				return false;
 			}
 		} else if (currentDbFile.getName().equals("sample_specific_db.fasta_td.fasta")) {
@@ -590,7 +590,7 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 		}
 
 		if (targetDecoyDbFile == null || !targetDecoyDbFile.exists()) {
-			LOGGER.error("Target-decoy database does not exist");
+			logger.error("Target-decoy database does not exist");
 			return false;
 		}
 
@@ -598,7 +598,7 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 		File searchResultDir = new File(metaPar.getResult(), "fragpipe_IGC_search");
 		if (!searchResultDir.exists()) {
 			searchResultDir.mkdirs();
-			LOGGER.info("Created FragPipe search directory: {}", searchResultDir.getAbsolutePath());
+			logger.info("Created FragPipe search directory: {}", searchResultDir.getAbsolutePath());
 		}
 
 		// Set the database search result file
@@ -607,9 +607,9 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 		this.combinedFile = new File(searchResultDir, "combined");
 		if (!combinedFile.exists()) {
 			combinedFile.mkdir();
-			LOGGER.info("  Created combined search directory: " + combinedFile.getAbsolutePath());
+			logger.info("  Created combined search directory: " + combinedFile.getAbsolutePath());
 		} else {
-			LOGGER.info("  Combined search directory already exists: " + combinedFile.getAbsolutePath());
+			logger.info("  Combined search directory already exists: " + combinedFile.getAbsolutePath());
 		}
 
 		try {
@@ -618,7 +618,7 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 			FragpipeWorkflow workflow = fragPipeParams.getFragpipeWorkflow();
 
 			if (workflow == null) {
-				LOGGER.error("FragPipe workflow is null in parameters - workflow must be configured in GUI");
+				logger.error("FragPipe workflow is null in parameters - workflow must be configured in GUI");
 				return false;
 			}
 
@@ -631,12 +631,12 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 				try {
 					metaPar.getMetadata().exportFragpipeManifest(manifestFile);
 				} catch (FileNotFoundException e) {
-					LOGGER.error("Error in exporting FragPipe manifest", e);
+					logger.error("Error in exporting FragPipe manifest", e);
 					return false;
 				}
 
 				if (!manifestFile.exists()) {
-					LOGGER.error("Exporting FragPipe manifest failed");
+					logger.error("Exporting FragPipe manifest failed");
 					return false;
 				}
 			}
@@ -650,13 +650,13 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 					workflow.export(workflowFile);
 				} catch (IOException e) {
 					// TODO Auto-generated catch block
-					LOGGER.error(getTaskName() + ": writing workflow file to " + workflowFile + " failed");
+					logger.error(getTaskName() + ": writing workflow file to " + workflowFile + " failed");
 					System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": writing workflow file to "
 							+ workflowFile + " failed");
 					return false;
 				}
 
-				LOGGER.info(getTaskName() + ": searching the sample-specific database started");
+				logger.info(getTaskName() + ": searching the sample-specific database started");
 				System.out.println(
 						format.format(new Date()) + "\t" + getTaskName() + ": searching the sample-specific started");
 
@@ -682,14 +682,14 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 				return true;
 
 			} else {
-				LOGGER.info(getTaskName() + ": peptide and protein identification failed");
+				logger.info(getTaskName() + ": peptide and protein identification failed");
 				System.out.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": peptide and protein identification failed");
 				return false;
 			}
 
 		} catch (Exception e) {
-			LOGGER.error("Error during FragPipe identification: {}", e.getMessage(), e);
+			logger.error("Error during FragPipe identification: {}", e.getMessage(), e);
 			return false;
 		}
 	}
@@ -700,7 +700,7 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 	 * but uses FragPipe readers
 	 */
 	protected boolean exportReport() {
-		LOGGER.info(getTaskName() + ": exporting peptide report started");
+		logger.info(getTaskName() + ": exporting peptide report started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting peptide report started");
 
 		// Build file list and mapping
@@ -717,7 +717,7 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 				}
 				reader.close();
 			} catch (IOException e) {
-				LOGGER.error(getTaskName() + ": error in reading the experimental design from " + expDesignFile, e);
+				logger.error(getTaskName() + ": error in reading the experimental design from " + expDesignFile, e);
 				System.err.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": error in reading the experimental design from " + expDesignFile);
 			}
@@ -750,18 +750,18 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 			boolean success = postAnalysisTask.get();
 
 			if (success) {
-				LOGGER.info(getTaskName() + ": Post-analysis completed successfully");
+				logger.info(getTaskName() + ": Post-analysis completed successfully");
 				return true;
 			} else {
-				LOGGER.error(getTaskName() + ": Post-analysis task failed");
+				logger.error(getTaskName() + ": Post-analysis task failed");
 				return false;
 			}
 		} catch (InterruptedException e) {
-			LOGGER.error(getTaskName() + ": Post-analysis task was interrupted", e);
+			logger.error(getTaskName() + ": Post-analysis task was interrupted", e);
 			Thread.currentThread().interrupt();
 			return false;
 		} catch (ExecutionException e) {
-			LOGGER.error(getTaskName() + ": Post-analysis task failed with exception", e);
+			logger.error(getTaskName() + ": Post-analysis task failed with exception", e);
 			return false;
 		}
 	}

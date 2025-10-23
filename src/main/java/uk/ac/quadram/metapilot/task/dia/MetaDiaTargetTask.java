@@ -63,7 +63,7 @@ import uk.ac.quadram.metapilot.task.MetaPythonReportCopyTask;
  */
 public class MetaDiaTargetTask extends MetaDiaTask {
 
-	private static final Logger LOGGER = LogManager.getLogger(MetaDiaTargetTask.class);
+	// Logger is inherited from MetaDiaTask -> MetaPilotMagTask -> MetaPilotTask as an instance field
 	private static final String taskName = "DIA Target analysis";
 
 	// DIA Target specific fields
@@ -93,14 +93,14 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 		this.taxonomicLevel = targetParams.getTaxonomicLevel();
 		this.functionalLevel = targetParams.getFunctionalLevel();
 
-		LOGGER.info("Initializing MetaDiaTargetTask...");
+		logger.info("Initializing MetaDiaTargetTask...");
 		System.out.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
 				+ ": initializing task");
 
-		LOGGER.info("DIA Target workflow initialized with library search mode");
-		LOGGER.info("Target library path: {}", targetLibraryPath);
-		LOGGER.info("Selected taxa count: {}", selectedTaxa != null ? selectedTaxa.length : 0);
-		LOGGER.info("Selected functions count: {}", selectedFunctions != null ? selectedFunctions.length : 0);
+		logger.info("DIA Target workflow initialized with library search mode");
+		logger.info("Target library path: {}", targetLibraryPath);
+		logger.info("Selected taxa count: {}", selectedTaxa != null ? selectedTaxa.length : 0);
+		logger.info("Selected functions count: {}", selectedFunctions != null ? selectedFunctions.length : 0);
 	}
 
 	@Override
@@ -110,7 +110,7 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 
 	@Override
 	protected Logger getLogger() {
-		return LOGGER;
+		return logger;
 	}
 
 	/**
@@ -118,7 +118,7 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 	 */
 	public void setTargetLibraryInfo(TargetLibraryInfo libraryInfo) {
 		this.targetLibraryInfo = libraryInfo;
-		LOGGER.info("Target library info set: {} genomes, {} functions, {} proteins", libraryInfo.getGenomes().size(),
+		logger.info("Target library info set: {} genomes, {} functions, {} proteins", libraryInfo.getGenomes().size(),
 				libraryInfo.getFunctions().size(), libraryInfo.getProteins().size());
 	}
 
@@ -127,24 +127,24 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 		updateMessage(getTaskName());
 		updateProgress(0, 100);
 
-		LOGGER.info(getTaskName() + ": started");
+		logger.info(getTaskName() + ": started");
 		System.out.println(
 				new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName() + ": started");
 
 		// Log detailed parameter information
-		LOGGER.info("DIA Target workflow parameters:");
-		LOGGER.info("  Result directory: " + metaPar.getResult());
-		LOGGER.info("  Thread count: " + metaPar.getThreadCount());
-		LOGGER.info("  Target library path: " + targetLibraryPath);
-		LOGGER.info("  Selected taxa count: " + (selectedTaxa != null ? selectedTaxa.length : 0));
-		LOGGER.info("  Selected functions count: " + (selectedFunctions != null ? selectedFunctions.length : 0));
+		logger.info("DIA Target workflow parameters:");
+		logger.info("  Result directory: " + metaPar.getResult());
+		logger.info("  Thread count: " + metaPar.getThreadCount());
+		logger.info("  Target library path: " + targetLibraryPath);
+		logger.info("  Selected taxa count: " + (selectedTaxa != null ? selectedTaxa.length : 0));
+		logger.info("  Selected functions count: " + (selectedFunctions != null ? selectedFunctions.length : 0));
 
 		if (metadata != null) {
 			String[] rawFiles = metadata.getRawFiles();
-			LOGGER.info("  Raw files count: " + (rawFiles != null ? rawFiles.length : 0));
+			logger.info("  Raw files count: " + (rawFiles != null ? rawFiles.length : 0));
 			if (rawFiles != null) {
 				for (int i = 0; i < rawFiles.length; i++) {
-					LOGGER.info("    Raw file " + (i + 1) + ": " + rawFiles[i]);
+					logger.info("    Raw file " + (i + 1) + ": " + rawFiles[i]);
 				}
 			}
 		}
@@ -159,12 +159,12 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 		}
 
 		if (!copyReportTemplatesInBackground()) {
-			LOGGER.error(getTaskName() + ": Failed to copy report templates");
+			logger.error(getTaskName() + ": Failed to copy report templates");
 			return false;
 		}
 
 		// Step 1: Spectra Conversion (5% - 25%)
-		LOGGER.info("Step 1: Starting spectra format conversion...");
+		logger.info("Step 1: Starting spectra format conversion...");
 		updateMessage(getTaskName() + ": Converting spectra format...");
 		updateProgress(10, 100);
 		if (Platform.isFxApplicationThread()) {
@@ -175,7 +175,7 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 
 		boolean convert = spectraConvert();
 		if (!convert) {
-			LOGGER.error(getTaskName() + ": error in spectra format conversion");
+			logger.error(getTaskName() + ": error in spectra format conversion");
 			System.err.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
 					+ ": error in spectra format conversion");
 			updateMessage(getTaskName() + ": Failed - Spectra conversion error");
@@ -187,10 +187,10 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 			return false;
 		}
 		updateProgress(25, 100);
-		LOGGER.info("Step 1: Spectra format conversion completed successfully");
+		logger.info("Step 1: Spectra format conversion completed successfully");
 
 		// Step 2: Target library setup (25% - 35%)
-		LOGGER.info("Step 2: Using pre-generated target library...");
+		logger.info("Step 2: Using pre-generated target library...");
 		updateMessage(getTaskName() + ": Using target library...");
 		updateProgress(30, 100);
 		if (Platform.isFxApplicationThread()) {
@@ -201,7 +201,7 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 
 		boolean useTargetLibrary = createSSLibrary();
 		if (!useTargetLibrary) {
-			LOGGER.error(getTaskName() + ": error in target library setup");
+			logger.error(getTaskName() + ": error in target library setup");
 			System.err.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
 					+ ": error in target library setup");
 			updateMessage(getTaskName() + ": Failed - Target library setup error");
@@ -213,10 +213,10 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 			return false;
 		}
 		updateProgress(35, 100);
-		LOGGER.info("Step 2: Target library setup completed successfully");
+		logger.info("Step 2: Target library setup completed successfully");
 
 		// Step 3: Identification using target library (35% - 70%)
-		LOGGER.info("Step 3: Starting identification using target library...");
+		logger.info("Step 3: Starting identification using target library...");
 		updateMessage(getTaskName() + ": Running identification with target library...");
 		updateProgress(40, 100);
 		if (Platform.isFxApplicationThread()) {
@@ -227,7 +227,7 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 
 		boolean iden = iden();
 		if (!iden) {
-			LOGGER.error(getTaskName() + ": error in identification");
+			logger.error(getTaskName() + ": error in identification");
 			System.err.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
 					+ ": error in identification");
 			updateMessage(getTaskName() + ": Failed - Identification error");
@@ -239,10 +239,10 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 			return false;
 		}
 		updateProgress(70, 100);
-		LOGGER.info("Step 3: Identification completed successfully");
+		logger.info("Step 3: Identification completed successfully");
 
 		// Step 4: Export Report (70% - 100%)
-		LOGGER.info("Step 4: Starting report generation...");
+		logger.info("Step 4: Starting report generation...");
 		updateMessage(getTaskName() + ": Generating reports...");
 		updateProgress(75, 100);
 		if (Platform.isFxApplicationThread()) {
@@ -253,7 +253,7 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 
 		boolean exportReport = exportReport();
 		if (!exportReport) {
-			LOGGER.error(getTaskName() + ": error in report generation");
+			logger.error(getTaskName() + ": error in report generation");
 			System.err.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
 					+ ": error in report generation");
 			updateMessage(getTaskName() + ": Failed - Report generation error");
@@ -265,7 +265,7 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 			return false;
 		}
 		updateProgress(95, 100);
-		LOGGER.info("Step 4: Report generation completed successfully");
+		logger.info("Step 4: Report generation completed successfully");
 
 		// Update progress for completion
 		updateProgress(100, 100);
@@ -276,7 +276,7 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 			Platform.runLater(() -> secondBar.setProgress(0.0));
 		}
 
-		LOGGER.info(getTaskName() + ": finished - analysis completed successfully");
+		logger.info(getTaskName() + ": finished - analysis completed successfully");
 		System.out.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
 				+ ": finished - analysis completed successfully");
 		return true;
@@ -284,17 +284,17 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 
 	@Override
 	protected boolean createSSLibrary() {
-		LOGGER.info("Starting target library setup for DIA Target workflow...");
+		logger.info("Starting target library setup for DIA Target workflow...");
 
 		// For DIA Target, we use pre-generated target libraries instead of creating
 		// sample-specific ones
-		LOGGER.info("DIA Target workflow: Using pre-generated target library");
+		logger.info("DIA Target workflow: Using pre-generated target library");
 		System.out.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
 				+ ": using target library");
 
 		// Validate target library path
 		if (targetLibraryPath == null || targetLibraryPath.trim().isEmpty()) {
-			LOGGER.error(getTaskName() + ": Target library path is null or empty");
+			logger.error(getTaskName() + ": Target library path is null or empty");
 			System.err.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
 					+ ": Target library path is null or empty");
 			return false;
@@ -302,19 +302,19 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 
 		File targetLibraryFile = new File(targetLibraryPath);
 		if (!targetLibraryFile.exists()) {
-			LOGGER.error(getTaskName() + ": Target library file does not exist: " + targetLibraryPath);
+			logger.error(getTaskName() + ": Target library file does not exist: " + targetLibraryPath);
 			System.err.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
 					+ ": Target library file does not exist: " + targetLibraryPath);
 			return false;
 		}
 
-		LOGGER.info("Target library validated successfully: {}", targetLibraryPath);
-		LOGGER.info("Target library file size: {} bytes", targetLibraryFile.length());
+		logger.info("Target library validated successfully: {}", targetLibraryPath);
+		logger.info("Target library file size: {} bytes", targetLibraryFile.length());
 
 		// Note: For DIA Target, we always use library search mode
 		// The parent constructor handles setting the appropriate search mode
 
-		LOGGER.info("DIA Target library setup completed successfully");
+		logger.info("DIA Target library setup completed successfully");
 		System.out.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
 				+ ": target library setup finished");
 
@@ -323,17 +323,17 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 
 	@Override
 	protected boolean iden() {
-		LOGGER.info("Starting identification process using target library...");
+		logger.info("Starting identification process using target library...");
 		updateMessage(getTaskName() + ": peptide and protein identification with target library");
 		System.out.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
 				+ ": peptide and protein identification started");
 
-		LOGGER.info("Configuring DiaLibSearchPar for DIA Target:");
-		LOGGER.info("  DIA files count: {}", diaFiles != null ? diaFiles.length : 0);
-		LOGGER.info("  Thread count: {}", threadCount);
-		LOGGER.info("  Q-value threshold: 0.01");
-		LOGGER.info("  MBR enabled: true");
-		LOGGER.info("  Target library path: {}", targetLibraryPath);
+		logger.info("Configuring DiaLibSearchPar for DIA Target:");
+		logger.info("  DIA files count: {}", diaFiles != null ? diaFiles.length : 0);
+		logger.info("  Thread count: {}", threadCount);
+		logger.info("  Q-value threshold: 0.01");
+		logger.info("  MBR enabled: true");
+		logger.info("  Target library path: {}", targetLibraryPath);
 
 		diaLibSearchPar.setMbr(true);
 		diaLibSearchPar.setDiaFiles(diaFiles);
@@ -355,39 +355,39 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 		File combineParquetFile = new File(combinedFile, "combined.parquet");
 
 		if (!quan_pep_file.exists() || !combineParquetFile.exists()) {
-			LOGGER.info(getTaskName() + ": target library search started");
+			logger.info(getTaskName() + ": target library search started");
 			System.out.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
 					+ ": target library search started");
 
 			diannPar.setExportDecoy(true);
 
 			// Use the target library path for DIA Target workflow
-			LOGGER.info("Using target library for identification: {}", targetLibraryPath);
+			logger.info("Using target library for identification: {}", targetLibraryPath);
 			diaNNTask.addTask(diannPar, diaLibSearchPar, combineParquetFile.getAbsolutePath(),
 					new String[] { targetLibraryPath });
 
-			LOGGER.info("Starting DiaNN identification with target library using {} threads", threadCount);
+			logger.info("Starting DiaNN identification with target library using {} threads", threadCount);
 			diaNNTask.run(diaFiles.length * 12);
 
-			LOGGER.info("DiaNN identification with target library completed");
+			logger.info("DiaNN identification with target library completed");
 		} else {
-			LOGGER.info(getTaskName() + ": identification results already exist, skipping identification");
+			logger.info(getTaskName() + ": identification results already exist, skipping identification");
 			System.out.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
 					+ ": identification results already exist");
 		}
 
 		// Verify that the identification files were created
 		if (!quan_pep_file.exists() || !combineParquetFile.exists()) {
-			LOGGER.error(getTaskName() + ": identification failed - result files not created");
+			logger.error(getTaskName() + ": identification failed - result files not created");
 			System.err.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
 					+ ": identification failed - result files not created");
 			return false;
 		}
 
-		LOGGER.info("Target library identification completed successfully");
-		LOGGER.info("Peptide results file: {}", quan_pep_file.getAbsolutePath());
-		LOGGER.info("Protein results file: {}", quan_pro_file.getAbsolutePath());
-		LOGGER.info("Parquet results file: {}", combineParquetFile.getAbsolutePath());
+		logger.info("Target library identification completed successfully");
+		logger.info("Peptide results file: {}", quan_pep_file.getAbsolutePath());
+		logger.info("Protein results file: {}", quan_pro_file.getAbsolutePath());
+		logger.info("Parquet results file: {}", combineParquetFile.getAbsolutePath());
 
 		System.out.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
 				+ ": identification finished");
@@ -399,7 +399,7 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 	protected boolean iterativeSearch() {
 		// DIA Target workflow does not use iterative search - we use pre-generated
 		// target libraries
-		LOGGER.info("DIA Target workflow: Skipping iterative search (using target library)");
+		logger.info("DIA Target workflow: Skipping iterative search (using target library)");
 		System.out.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
 				+ ": skipping iterative search");
 		return true;
@@ -407,7 +407,7 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 
 	@Override
 	protected boolean exportReport() {
-		LOGGER.info(getTaskName() + ": protein inference started for DIA Target workflow");
+		logger.info(getTaskName() + ": protein inference started for DIA Target workflow");
 		System.out.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
 				+ ": protein inference started");
 
@@ -417,10 +417,10 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 		String libraryName = libraryDir.getName();
 		File targetFastaFile = new File(libraryDir, libraryName + ".fasta");
 
-		LOGGER.info("Using target library FASTA file: {}", targetFastaFile.getAbsolutePath());
+		logger.info("Using target library FASTA file: {}", targetFastaFile.getAbsolutePath());
 
 		if (!targetFastaFile.exists()) {
-			LOGGER.error(getTaskName() + ": Target library FASTA file not found: " + targetFastaFile.getAbsolutePath());
+			logger.error(getTaskName() + ": Target library FASTA file not found: " + targetFastaFile.getAbsolutePath());
 			System.err.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
 					+ ": Target library FASTA file not found: " + targetFastaFile.getAbsolutePath());
 			return false;
@@ -437,9 +437,9 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 					fastaProPepMap.put(proName, reader.readLine());
 				}
 			}
-			LOGGER.info("Read {} proteins from target library FASTA file", fastaProPepMap.size());
+			logger.info("Read {} proteins from target library FASTA file", fastaProPepMap.size());
 		} catch (IOException e) {
-			LOGGER.error(getTaskName() + ": error in reading the target library from " + targetFastaFile, e);
+			logger.error(getTaskName() + ": error in reading the target library from " + targetFastaFile, e);
 			System.err.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
 					+ ": error in reading the target library from " + targetFastaFile);
 			return false;
@@ -450,7 +450,7 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 		DiaNNParquetReader reader = new DiaNNParquetReader(parquetFile.getAbsolutePath(), this.diannPar.getCut());
 		this.diaPp = reader.getDiaNNPrecursors(0.01);
 
-		LOGGER.info(getTaskName() + ": " + this.diaPp.length + " PSMs were obtained with Global.Q.Value<0.01");
+		logger.info(getTaskName() + ": " + this.diaPp.length + " PSMs were obtained with Global.Q.Value<0.01");
 		System.out.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName() + ": "
 				+ this.diaPp.length + " PSMs were obtained with Global.Q.Value<0.01");
 
@@ -475,7 +475,7 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 			}
 		}
 
-		LOGGER.info(getTaskName() + ": total sequence count: " + pepSet.size() + "; decoy precursor count: "
+		logger.info(getTaskName() + ": total sequence count: " + pepSet.size() + "; decoy precursor count: "
 				+ originalDecoyCount);
 		System.out
 				.println(format.format(new Date()) + "\t" + getTaskName() + ": total sequence count: " + pepSet.size());
@@ -502,7 +502,7 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 			}
 		}
 
-		LOGGER.info(getTaskName() + ": matched sequence count: " + pepProMap.size());
+		logger.info(getTaskName() + ": matched sequence count: " + pepProMap.size());
 		System.out.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
 				+ ": matched sequence count: " + pepProMap.size());
 
@@ -567,10 +567,10 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 			}
 		}
 
-		LOGGER.info(getTaskName() + ": " + missSet.size()
+		logger.info(getTaskName() + ": " + missSet.size()
 				+ " peptide sequences were not found from the in-silico digested MAG database, "
 				+ "maybe due to unspecific digestion, will be not be included in the following analysis");
-		LOGGER.info(getTaskName() + ": " + decoyPPCount
+		logger.info(getTaskName() + ": " + decoyPPCount
 				+ " decoy precursor will be used for FDR control in the following steps.");
 		System.out.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName() + ": "
 				+ missSet.size() + " peptide sequences were not found from the in-silico digested MAG database, "
@@ -658,14 +658,14 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 			modseqPepMap.put(pep.getModSeq(), pep);
 		}
 
-		LOGGER.info(getTaskName() + ": protein inference finished, " + this.diaPp.length + " PSMs, "
+		logger.info(getTaskName() + ": protein inference finished, " + this.diaPp.length + " PSMs, "
 				+ modseqPepMap.size() + " peptide, " + proteinScoreMap.size() + " proteins and " + genomeScoreMap.size()
 				+ " genomes were kept");
 		System.out.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
 				+ ": protein inference finished, " + this.diaPp.length + " PSMs, " + modseqPepMap.size() + " peptide, "
 				+ proteinScoreMap.size() + " proteins and " + genomeScoreMap.size() + " genomes were kept");
 
-		LOGGER.info(getTaskName() + ": exporting peptide report started");
+		logger.info(getTaskName() + ": exporting peptide report started");
 		System.out.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
 				+ ": exporting peptide report started");
 
@@ -849,7 +849,7 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 		} catch (IOException e) {
 			System.out.println(format.format(new Date()) + "\t" + getTaskName()
 					+ ": error in writing identification information to " + new File(resultFolderFile, "id.tsv"));
-			LOGGER.error(getTaskName() + ": error in writing identification information to "
+			logger.error(getTaskName() + ": error in writing identification information to "
 					+ new File(resultFolderFile, "id.tsv"), e);
 		}
 
@@ -1006,12 +1006,12 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 
 		} catch (Exception e) {
 			// TODO Auto-generated catch block
-			LOGGER.error(getTaskName() + ": error in writing the peptides to  " + final_pep_txt, e);
+			logger.error(getTaskName() + ": error in writing the peptides to  " + final_pep_txt, e);
 			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in writing the peptides to  "
 					+ final_pep_txt);
 		}
 
-		LOGGER.info(getTaskName() + ": peptide report has been exported to " + final_pep_txt);
+		logger.info(getTaskName() + ": peptide report has been exported to " + final_pep_txt);
 		System.out.println(
 				format.format(new Date()) + "\t" + getTaskName() + ": peptide report has been exported to " + final_pep_txt);
 
@@ -1021,7 +1021,7 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 
 		updateProgress(87, 100);
 
-		LOGGER.info(getTaskName() + ": exporting protein report started");
+		logger.info(getTaskName() + ": exporting protein report started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting protein report started");
 
 		ArrayList<MetaProtein> proteinList = new ArrayList<MetaProtein>();
@@ -1103,18 +1103,18 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
-			LOGGER.error(getTaskName() + ": error in writing final protein result to " + this.final_pro_txt.getName(), e);
+			logger.error(getTaskName() + ": error in writing final protein result to " + this.final_pro_txt.getName(), e);
 			System.err.println(format.format(new Date()) + "\t" + getTaskName()
 					+ ": error in writing final protein result to " + this.final_pro_txt.getName());
 		}
 
-		LOGGER.info(getTaskName() + ": protein report has been exported to " + final_pro_txt.getName());
+		logger.info(getTaskName() + ": protein report has been exported to " + final_pro_txt.getName());
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": protein report has been exported to "
 				+ final_pro_txt.getName());
 
 		updateProgress(89, 100);	
 
-		LOGGER.info(getTaskName() + ": functional annotation started");
+		logger.info(getTaskName() + ": functional annotation started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": functional annotation started");
 
 		File funcFile = new File(resultFolderFile, "functional_annotation");
@@ -1142,7 +1142,7 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 			funReader = new MetaProteinXMLReader2(final_pro_xml_file);
 		} catch (DocumentException e) {
 			// TODO Auto-generated catch block
-			LOGGER.error(getTaskName() + ": error in reading protein function information from "
+			logger.error(getTaskName() + ": error in reading protein function information from "
 					+ this.final_pro_xml_file.getName(), e);
 			System.err.println(format.format(new Date()) + "\t" + getTaskName()
 					+ ": error in reading protein function information from " + this.final_pro_xml_file.getName());
@@ -1174,7 +1174,7 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 				funReader.exportNOGCategoryReport(nogCatTsv);
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
-				LOGGER.error(getTaskName() + ": error in writing protein function information to " + funTsv.getName(), e);
+				logger.error(getTaskName() + ": error in writing protein function information to " + funTsv.getName(), e);
 				System.err.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": error in writing protein function information to " + funTsv.getName());
 			}
@@ -1195,11 +1195,11 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 					reportFunctionsHtml.getParentFile().mkdirs();
 				}
 				Files.copy(html.toPath(), reportFunctionsHtml.toPath(), StandardCopyOption.REPLACE_EXISTING);
-				LOGGER.info("Copied functions.html to reports directory: " + reportFunctionsHtml.getAbsolutePath());
+				logger.info("Copied functions.html to reports directory: " + reportFunctionsHtml.getAbsolutePath());
 
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
-				LOGGER.error(getTaskName() + ": error in writing protein function information to " + html.getName(), e);
+				logger.error(getTaskName() + ": error in writing protein function information to " + html.getName(), e);
 				System.err.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": error in writing protein function information to " + html.getName());
 			}
@@ -1214,10 +1214,10 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 				try {
 					java.nio.file.Files.copy(html.toPath(), reportFunctionsHtml.toPath(), 
 						java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-					LOGGER.info(getTaskName() + ": copied functions.html to report directory");
+					logger.info(getTaskName() + ": copied functions.html to report directory");
 					System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": copied functions.html to report directory");
 				} catch (IOException e) {
-					LOGGER.error(getTaskName() + ": error copying functions.html to report directory", e);
+					logger.error(getTaskName() + ": error copying functions.html to report directory", e);
 					System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error copying functions.html to report directory");
 				}
 			}
@@ -1227,7 +1227,7 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 
 		// taxonomy analysis
 
-		LOGGER.info(getTaskName() + ": taxonomy analysis started");
+		logger.info(getTaskName() + ": taxonomy analysis started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": taxonomy analysis started");
 
 		File taxFile = new File(resultFolderFile, "taxonomy_analysis");
@@ -1241,7 +1241,7 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 
 		} catch (NumberFormatException | SQLException | IOException e) {
 			// TODO Auto-generated catch block
-			LOGGER.error(getTaskName() + ": error in genome analysis, task failed", e);
+			logger.error(getTaskName() + ": error in genome analysis, task failed", e);
 			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in genome analysis, task failed");
 
 			return false;
@@ -1253,7 +1253,7 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 			genomeTaxaMap = searcher.matchGenome(genomes);
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
-			LOGGER.error(getTaskName() + ": Error in searching the genome2taxa database", e);
+			logger.error(getTaskName() + ": Error in searching the genome2taxa database", e);
 			System.err.println(
 					format.format(new Date()) + "\t" + getTaskName() + ": error in searching the genome2taxa database");
 			return false;
@@ -1271,10 +1271,10 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 				reportGenomeHtml.getParentFile().mkdirs();
 			}
 			Files.copy(genomeHtmlFile.toPath(), reportGenomeHtml.toPath(), StandardCopyOption.REPLACE_EXISTING);
-			LOGGER.info("Copied Genome.html to reports directory: " + reportGenomeHtml.getAbsolutePath());
+			logger.info("Copied Genome.html to reports directory: " + reportGenomeHtml.getAbsolutePath());
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
-			LOGGER.error("Error in writing genome information to " + genomeHtmlFile, e);
+			logger.error("Error in writing genome information to " + genomeHtmlFile, e);
 			System.err.println(
 					format.format(new Date()) + "\t" + "Error in writing genome information to " + genomeHtmlFile);
 			return false;
@@ -1287,10 +1287,10 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 				try {
 					java.nio.file.Files.copy(genomeHtmlFile.toPath(), reportGenomeHtml.toPath(), 
 						java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-					LOGGER.info(getTaskName() + ": copied Genome.html to report directory");
+					logger.info(getTaskName() + ": copied Genome.html to report directory");
 					System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": copied Genome.html to report directory");
 				} catch (IOException e) {
-					LOGGER.error(getTaskName() + ": error copying Genome.html to report directory", e);
+					logger.error(getTaskName() + ": error copying Genome.html to report directory", e);
 					System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error copying Genome.html to report directory");
 				}
 			}
@@ -1418,7 +1418,7 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 
 		} catch (FileNotFoundException e) {
 			// TODO Auto-generated catch block
-			LOGGER.error("Error in writing genome information to " + genomeFile, e);
+			logger.error("Error in writing genome information to " + genomeFile, e);
 			System.err
 					.println(format.format(new Date()) + "\t" + "Error in writing genome information to " + genomeFile);
 			return false;
@@ -1527,18 +1527,18 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 
 		} catch (FileNotFoundException e) {
 			// TODO Auto-generated catch block
-			LOGGER.error("Error in writing taxa information to " + taxaFile, e);
+			logger.error("Error in writing taxa information to " + taxaFile, e);
 			System.err.println(format.format(new Date()) + "\t" + "Error in writing taxa information to " + taxaFile);
 		}
 
-		LOGGER.info(getTaskName() + ": taxonomy analysis finished");
+		logger.info(getTaskName() + ": taxonomy analysis finished");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": taxonomy analysis finished");
 
 		updateProgress(95, 100);
 
 		updateMessage(getTaskName() + ": exporting report");
 
-		LOGGER.info(getTaskName() + ": exporting report started");
+		logger.info(getTaskName() + ": exporting report started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting report started");
 
 		File reportDir = new File(resultFolderFile, "report");
@@ -1553,12 +1553,12 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 		try {
 			copyThread.join();
 			if (!reportCopyTask.get()) {
-				LOGGER.error(getTaskName() + ": error in copying report template");
+				logger.error(getTaskName() + ": error in copying report template");
 				System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in copying report template");
 				return false;
 			}
 		} catch (Exception e) {
-			LOGGER.error(getTaskName() + ": error in copying report template", e);
+			logger.error(getTaskName() + ": error in copying report template", e);
 			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in copying report template: " + e.getMessage());
 			return false;
 		}
@@ -1586,7 +1586,7 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 			try {
 				generateBubbleChartReport(jsOutput, bubbleChartOutput);
 			} catch (Exception e) {
-				LOGGER.warn(getTaskName() + ": Bubble chart generation failed, continuing with other reports: " + e.getMessage());
+				logger.warn(getTaskName() + ": Bubble chart generation failed, continuing with other reports: " + e.getMessage());
 				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Bubble chart generation failed, continuing with other reports");
 			}
 		}
@@ -1669,7 +1669,7 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 			boolean finish = task.get();
 			if (finish) {
 
-				LOGGER.info(getTaskName() + ": report generation successes");
+				logger.info(getTaskName() + ": report generation successes");
 				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": report generation successes");
 
 				updateProgress(100, 100);
@@ -1678,7 +1678,7 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 
 		} catch (InterruptedException | ExecutionException e) {
 			// TODO Auto-generated catch block
-			LOGGER.error(getTaskName() + ": error in the report generation", e);
+			logger.error(getTaskName() + ": error in the report generation", e);
 			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": error in the report generation");
 		}
 
@@ -1693,20 +1693,20 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 	@Override
 	protected ConcurrentHashMap<String, HashMap<String, HashSet<String>>> getGenomeFromPep(HashSet<String> allPepSet,
 			int threadCount) {
-		LOGGER.info("Starting peptide-to-genome mapping for DIA Target workflow");
+		logger.info("Starting peptide-to-genome mapping for DIA Target workflow");
 
 		if (targetLibraryInfo == null) {
-			LOGGER.error("Target library information not set - cannot perform peptide mapping");
+			logger.error("Target library information not set - cannot perform peptide mapping");
 			return new ConcurrentHashMap<>();
 		}
 
-		LOGGER.info("Target library filtering info:");
-		LOGGER.info("  - Genome filtering: {} ({} genomes)",
+		logger.info("Target library filtering info:");
+		logger.info("  - Genome filtering: {} ({} genomes)",
 				targetLibraryInfo.hasGenomeFiltering() ? "ENABLED" : "DISABLED", targetLibraryInfo.getGenomes().size());
-		LOGGER.info("  - Function filtering: {} ({} functions)",
+		logger.info("  - Function filtering: {} ({} functions)",
 				targetLibraryInfo.hasFunctionFiltering() ? "ENABLED" : "DISABLED",
 				targetLibraryInfo.getFunctions().size());
-		LOGGER.info("  - Protein filtering: {} ({} proteins)",
+		logger.info("  - Protein filtering: {} ({} proteins)",
 				targetLibraryInfo.hasProteinFiltering() ? "ENABLED" : "DISABLED",
 				targetLibraryInfo.getProteins().size());
 
@@ -1719,13 +1719,13 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 		File predictPepFile = new File(currentFile, "predicted");
 
 		if (!predictPepFile.exists()) {
-			LOGGER.error("Predicted peptide folder not found: {}", predictPepFile.getAbsolutePath());
+			logger.error("Predicted peptide folder not found: {}", predictPepFile.getAbsolutePath());
 			return genomePepMap;
 		}
 
 		File[] allFiles = predictPepFile.listFiles();
 		if (allFiles == null || allFiles.length == 0) {
-			LOGGER.error("No predicted peptide files found in: {}", predictPepFile.getAbsolutePath());
+			logger.error("No predicted peptide files found in: {}", predictPepFile.getAbsolutePath());
 			return genomePepMap;
 		}
 
@@ -1749,12 +1749,12 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 					}
 				}
 			}
-			LOGGER.info("Filtered to {} predicted peptide files (from {} total) based on target library genomes",
+			logger.info("Filtered to {} predicted peptide files (from {} total) based on target library genomes",
 					filteredCount, allFiles.length);
 		} else {
 			// No genome filtering - process all files
 			filesToProcess = allFiles;
-			LOGGER.info("No genome filtering applied - processing all {} predicted peptide files", allFiles.length);
+			logger.info("No genome filtering applied - processing all {} predicted peptide files", allFiles.length);
 		}
 
 		for (File file : filesToProcess) {
@@ -1792,11 +1792,11 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 							String genome = preFileName.substring(0, preFileName.length() - ".predicted.tsv".length());
 							genomePepMap.put(genome, proPepMap);
 
-							LOGGER.debug("Mapped {} proteins and {} peptides for genome: {}", proPepMap.size(),
+							logger.debug("Mapped {} proteins and {} peptides for genome: {}", proPepMap.size(),
 									proPepMap.values().stream().mapToInt(HashSet::size).sum(), genome);
 						}
 					} catch (IOException e) {
-						LOGGER.error(getTaskName() + ": error in reading predicted peptide file " + file, e);
+						logger.error(getTaskName() + ": error in reading predicted peptide file " + file, e);
 						System.err.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t"
 								+ getTaskName() + ": error in reading " + file);
 					}
@@ -1812,10 +1812,10 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 				allPepSet.clear();
 				allPepSet.addAll(matchedPepSet);
 
-				LOGGER.info("DIA Target peptide mapping completed:");
-				LOGGER.info("  - Matched peptides: {}", allPepSet.size());
-				LOGGER.info("  - Mapped genomes: {}", genomePepMap.size());
-				LOGGER.info("  - Total proteins mapped: {}",
+				logger.info("DIA Target peptide mapping completed:");
+				logger.info("  - Matched peptides: {}", allPepSet.size());
+				logger.info("  - Mapped genomes: {}", genomePepMap.size());
+				logger.info("  - Total proteins mapped: {}",
 						genomePepMap.values().stream().mapToInt(HashMap::size).sum());
 
 				System.out.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
@@ -1823,13 +1823,13 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 						+ genomePepMap.size() + " genomes were matched");
 
 			} else {
-				LOGGER.error(getTaskName() + ": peptide mapping timed out after 1 hour");
+				logger.error(getTaskName() + ": peptide mapping timed out after 1 hour");
 				System.err.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
 						+ ": peptide mapping timed out");
 				return null;
 			}
 		} catch (InterruptedException e) {
-			LOGGER.error(getTaskName() + ": peptide mapping was interrupted", e);
+			logger.error(getTaskName() + ": peptide mapping was interrupted", e);
 			System.err.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
 					+ ": peptide mapping was interrupted");
 			return null;
