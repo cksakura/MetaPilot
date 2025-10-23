@@ -246,45 +246,52 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 	}
 
 	protected void configLog(File logDir) {
-		String pattern = "%d %p %c [%t] %m%n";
-
-		this.builder = ConfigurationBuilderFactory.newConfigurationBuilder();
-
-		builder.setStatusLevel(Level.DEBUG);
-		builder.setConfigurationName("TaskLogger_" + System.currentTimeMillis());
-
-		// set the pattern layout and pattern
-		LayoutComponentBuilder layoutBuilder = builder.newLayout("PatternLayout").addAttribute("pattern", pattern);
-
 		// Ensure log directory exists
 		if (!logDir.exists()) {
 			boolean created = logDir.mkdirs();
 			if (!created) {
 				System.err.println("Warning: Could not create log directory: " + logDir.getAbsolutePath());
+				return;
 			}
 		}
 
-		// create a file appender for task logger
-		File logFile = new File(logDir, "logging.log");
-		AppenderComponentBuilder fileAppenderBuilder = builder.newAppender("TaskLogFile", "File")
-				.addAttribute("fileName", logFile.getAbsolutePath())
-				.addAttribute("append", true)
-				.add(layoutBuilder);
-
-		// create a console appender
-		AppenderComponentBuilder consoleAppenderBuilder = builder.newAppender("TaskConsole", "Console")
-				.addAttribute("target", "SYSTEM_OUT").add(layoutBuilder);
-
-		builder.add(fileAppenderBuilder);
-		builder.add(consoleAppenderBuilder);
-
-		RootLoggerComponentBuilder rootLogger = builder.newRootLogger(Level.DEBUG);
-		rootLogger.add(builder.newAppenderRef("TaskLogFile"));
-		rootLogger.add(builder.newAppenderRef("TaskConsole"));
-		builder.add(rootLogger);
-
 		try {
-			Configurator.reconfigure(builder.build());
+			// Get the current LoggerContext
+			org.apache.logging.log4j.core.LoggerContext context = 
+				(org.apache.logging.log4j.core.LoggerContext) LogManager.getContext(false);
+			org.apache.logging.log4j.core.config.Configuration config = context.getConfiguration();
+			
+			// Create pattern layout
+			String pattern = "%d{yyyy-MM-dd HH:mm:ss} %-5level %logger{36} - %msg%n";
+			org.apache.logging.log4j.core.layout.PatternLayout layout = 
+				org.apache.logging.log4j.core.layout.PatternLayout.newBuilder()
+					.withPattern(pattern)
+					.withConfiguration(config)
+					.build();
+			
+			// Create file appender for task logging
+			File logFile = new File(logDir, "logging.log");
+			org.apache.logging.log4j.core.appender.FileAppender fileAppender = 
+				org.apache.logging.log4j.core.appender.FileAppender.newBuilder()
+					.setName("TaskFileAppender_" + System.currentTimeMillis())
+					.withFileName(logFile.getAbsolutePath())
+					.withAppend(true)
+					.withImmediateFlush(true)
+					.setLayout(layout)
+					.setConfiguration(config)
+					.build();
+			
+			fileAppender.start();
+			config.addAppender(fileAppender);
+			
+			// Add appender to root logger
+			org.apache.logging.log4j.core.config.LoggerConfig rootLogger = config.getRootLogger();
+			rootLogger.addAppender(fileAppender, Level.DEBUG, null);
+			
+			// Update loggers
+			context.updateLoggers();
+			
+			System.out.println("Task logger configured successfully to: " + logFile.getAbsolutePath());
 			
 			// Redirect System.out and System.err to system_output.log in task folder
 			File systemOutFile = new File(logDir, "system_output.log");
@@ -300,7 +307,7 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 			
 			System.out.println("========================================");
 			System.out.println("System output/error redirected to: " + systemOutFile.getAbsolutePath());
-			System.out.println("Task logger configured to: " + logFile.getAbsolutePath());
+			System.out.println("Task logger file: " + logFile.getAbsolutePath());
 			System.out.println("========================================");
 			
 		} catch (Exception e) {
