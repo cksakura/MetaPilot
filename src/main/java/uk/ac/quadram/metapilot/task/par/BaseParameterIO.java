@@ -9,8 +9,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.json.JSONObject;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 
 /**
  * Base class for parameter IO operations across all workflows
@@ -20,7 +20,7 @@ import org.slf4j.LoggerFactory;
  */
 public abstract class BaseParameterIO {
 
-	protected static final Logger LOGGER = LoggerFactory.getLogger(BaseParameterIO.class);
+	protected static final Logger LOGGER = LogManager.getLogger(BaseParameterIO.class);
 
 	// Common file naming constants
 	protected static final String PREFERENCES_DIR = ".metapilot";
@@ -44,6 +44,7 @@ public abstract class BaseParameterIO {
 	 */
 	public static Object loadParametersFromFilePath(String filePath) {
 		try {
+			System.out.println("DEBUG: loadParametersFromFilePath called with: " + filePath);
 			File inputFile = new File(filePath);
 			if (!inputFile.exists()) {
 				LOGGER.error("Parameter file not found: " + filePath);
@@ -53,6 +54,7 @@ public abstract class BaseParameterIO {
 			// Read the file to detect workflow type
 			JSONObject json = readJsonFromFileStatic(inputFile);
 			String workflowType = json.optString("workflow", null);
+			System.out.println("DEBUG: Found workflow type in JSON: '" + workflowType + "'");
 			
 			if (workflowType == null || workflowType.trim().isEmpty()) {
 				LOGGER.error("No workflow type found in parameter file: " + filePath);
@@ -61,6 +63,10 @@ public abstract class BaseParameterIO {
 			
 			// Get the appropriate ParameterIO class
 			Class<? extends BaseParameterIO> parameterIOClass = PARAMETER_IO_REGISTRY.get(workflowType);
+			System.out.println("DEBUG: Looking for ParameterIO class for workflow type: '" + workflowType + "'");
+			System.out.println("DEBUG: Found ParameterIO class: " + (parameterIOClass != null ? parameterIOClass.getSimpleName() : "NULL"));
+			System.out.println("DEBUG: Available registered workflow types: " + PARAMETER_IO_REGISTRY.keySet());
+			
 			if (parameterIOClass == null) {
 				LOGGER.error("No ParameterIO class registered for workflow type: " + workflowType);
 				LOGGER.error("Available workflow types: " + PARAMETER_IO_REGISTRY.keySet());
@@ -69,10 +75,15 @@ public abstract class BaseParameterIO {
 			
 			// Create instance and load parameters
 			BaseParameterIO parameterIO = parameterIOClass.getDeclaredConstructor().newInstance();
-			return parameterIO.loadParametersFromFile(inputFile);
+			System.out.println("DEBUG: Created ParameterIO instance: " + parameterIO.getClass().getSimpleName());
+			Object result = parameterIO.loadParametersFromFile(inputFile);
+			System.out.println("DEBUG: Loaded parameters object: " + (result != null ? result.getClass().getSimpleName() : "NULL"));
+			return result;
 			
 		} catch (Exception e) {
 			LOGGER.error("Failed to load parameters from file: " + filePath, e);
+			System.out.println("DEBUG: Exception in loadParametersFromFilePath: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+			e.printStackTrace();
 			return null;
 		}
 	}
@@ -301,7 +312,10 @@ public abstract class BaseParameterIO {
 	 * This is used to identify which ParameterIO class to use
 	 */
 	public static String getWorkflowTypeFromParameters(Object parameters) {
+		System.out.println("DEBUG: getWorkflowTypeFromParameters called with: " + (parameters != null ? parameters.getClass().getSimpleName() : "NULL"));
+		
 		if (parameters == null) {
+			System.out.println("DEBUG: Parameters object is null, returning null");
 			return null;
 		}
 		
@@ -311,15 +325,23 @@ public abstract class BaseParameterIO {
 			if (parameters instanceof uk.ac.quadram.metapilot.task.par.MetaBaseParameter) {
 				uk.ac.quadram.metapilot.task.par.MetaBaseParameter baseParam = 
 					(uk.ac.quadram.metapilot.task.par.MetaBaseParameter) parameters;
-				return baseParam.getWorkflowType().toString();
+				
+				// Get the original workflow type string from the parameter object
+				String originalWorkflowType = baseParam.getWorkflowTypeString();
+				System.out.println("DEBUG: Found original workflow type string: '" + originalWorkflowType + "'");
+				return originalWorkflowType;
 			}
 			
+			System.out.println("DEBUG: Not a MetaBaseParameter, trying reflection...");
 			// Try reflection to get workflow type
 			java.lang.reflect.Method getWorkflowTypeMethod = parameters.getClass().getMethod("getWorkflowType");
 			Object workflowType = getWorkflowTypeMethod.invoke(parameters);
-			return workflowType != null ? workflowType.toString() : null;
+			String result = workflowType != null ? workflowType.toString() : null;
+			System.out.println("DEBUG: Found workflow type via reflection: '" + result + "'");
+			return result;
 			
 		} catch (Exception e) {
+			System.out.println("DEBUG: Exception in getWorkflowTypeFromParameters: " + e.getClass().getSimpleName() + " - " + e.getMessage());
 			LOGGER.debug("Could not determine workflow type from parameter object: " + e.getMessage());
 			return null;
 		}

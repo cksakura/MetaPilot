@@ -27,7 +27,7 @@ public class MetaDiaTargetDBTask extends MetaAbstractTask {
 	public static final String[] FUNCTIONS = new String[] { "GOs", "EC", "KEGG_ko", "KEGG_Pathway", "KEGG_Module",
 			"KEGG_Reaction", "KEGG_rclass", "BRITE", "KEGG_TC", "CAZy" };
 
-	protected static final Logger LOGGER = LogManager.getLogger(MetaDiaTargetDBTask.class);
+	private static final Logger LOGGER = LogManager.getLogger(MetaDiaTargetDBTask.class);
 	protected static final String taskName = "Create taxa-function database";
 
 	public MetaDiaTargetDBTask(MetaParameterDiaTg metaPar, MetaResourceParameters mrp, ProgressBar progressBar) {

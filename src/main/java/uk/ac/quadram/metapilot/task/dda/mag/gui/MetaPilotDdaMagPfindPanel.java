@@ -9,6 +9,8 @@ import javafx.collections.ObservableList;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.scene.paint.Color;
+import javafx.scene.control.Alert.AlertType;
+import java.util.Optional;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
 import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
 import uk.ac.quadram.metapilot.task.common.gui.MetadataConfigurationPanel;
@@ -36,8 +38,8 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import java.text.SimpleDateFormat;
 import java.util.Date;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagPfindParameters;
 import uk.ac.quadram.metapilot.task.dda.mag.task.DDAMagPfindTask;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagPfindParameterIO;
@@ -632,15 +634,36 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
 
     @Override
     protected void stopAnalysis() {
-        consolePanel.appendConsoleText("Stopping MAG pFind analysis...\n");
-        System.out.println("DEBUG: stopAnalysis called");
+        Alert alert = new Alert(AlertType.CONFIRMATION);
+        alert.setTitle("Stop Analysis");
+        alert.setHeaderText("Are you sure you want to stop the analysis?");
+        alert.setContentText("This action cannot be undone.");
         
-        if (currentTask != null && currentTask.isRunning()) {
-            consolePanel.appendConsoleText("Force stopping MAG pFind task...\n");
-            currentTask.forceStop();
-            consolePanel.appendConsoleText("MAG pFind task stop requested.\n");
+        Optional<ButtonType> result = alert.showAndWait();
+        if (result.isPresent() && result.get() == ButtonType.OK) {
+            consolePanel.appendConsoleText("Stopping MAG pFind analysis...\n");
+            LOGGER.info("stopAnalysis called - user confirmed stop");
+            
+            // Force stop the running task if it exists
+            if (currentTask != null && currentTask.isRunning()) {
+                consolePanel.appendConsoleText("Force stopping MAG pFind task...\n");
+                currentTask.forceStop();
+                consolePanel.appendConsoleText("MAG pFind task stop requested.\n");
+            } else {
+                consolePanel.appendConsoleText("No running MAG pFind task to stop.\n");
+            }
+            
+            // Unbind progress bars to prevent memory leaks
+            consolePanel.getOverallProgressBar().progressProperty().unbind();
+            consolePanel.getCurrentTaskProgressBar().progressProperty().unbind();
+            
+            consolePanel.setButtonsEnabled(true, false, false);
+            consolePanel.stopStatusTimer();
+            consolePanel.getOverallProgressBar().setProgress(0);
+            consolePanel.getCurrentTaskProgressBar().setProgress(0);
+            consolePanel.setCurrentTaskLabel("Current Task: None");
         } else {
-            consolePanel.appendConsoleText("No running MAG pFind task to stop.\n");
+            LOGGER.info("stopAnalysis cancelled by user");
         }
     }
 
@@ -773,7 +796,7 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
 
 
     
-    private static final Logger LOGGER = LoggerFactory.getLogger(MetaPilotDdaMagPfindPanel.class);
+    private static final Logger LOGGER = LogManager.getLogger(MetaPilotDdaMagPfindPanel.class);
     
     /**
      * Collect all parameters from the UI into a parameters object
@@ -1199,8 +1222,12 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
                     updateParameterView();
                 });
             } else {
-                consolePanel.appendConsoleText("No previous parameters found, using defaults\n");
-                LOGGER.warn("No parameters loaded, using defaults");
+                consolePanel.appendConsoleText("No previous parameters found, creating defaults\n");
+                LOGGER.info("No parameters loaded from file, creating defaults");
+                DDAMagPfindParameters defaultParams = new DDAMagPfindParameters();
+                applyParametersToUI(defaultParams);
+                consolePanel.appendConsoleText("✓ Default parameters loaded into UI\n");
+                LOGGER.info("Applied default parameters to UI successfully");
             }
         } catch (Exception e) {
             String errorMsg = "WARNING: Failed to load last used parameters: " + e.getMessage();
@@ -1360,15 +1387,15 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
             DDAMagPfindParameters params = (DDAMagPfindParameters) parameterIO.loadAnalysisParameters(resultDirectory);
             if (params != null) {
                 applyParametersToUI(params);
-                showError("Success", "Loaded MAG pFind analysis parameters from " + resultDirectory);
                 LOGGER.info("Loaded MAG pFind analysis parameters from {}", resultDirectory);
+                consolePanel.appendConsoleText("✓ Loaded MAG pFind analysis parameters from " + resultDirectory + "\n");
             } else {
-                showError("Warning", "No parameters found in " + resultDirectory);
                 LOGGER.warn("No parameters found in {}", resultDirectory);
+                consolePanel.appendConsoleText("WARNING: No parameters found in " + resultDirectory + "\n");
             }
         } catch (Exception e) {
-            showError("Error", "Failed to load MAG pFind analysis parameters: " + e.getMessage());
             LOGGER.error("Failed to load MAG pFind analysis parameters from " + resultDirectory, e);
+            consolePanel.appendConsoleText("WARNING: Failed to load MAG pFind analysis parameters: " + e.getMessage() + "\n");
         }
     }
     

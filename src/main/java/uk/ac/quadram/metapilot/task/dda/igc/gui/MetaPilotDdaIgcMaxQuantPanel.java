@@ -1288,7 +1288,7 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
             // Collect ALL parameters from UI into a single object
             DDAIgcMaxQuantParameters analysisParams = collectParametersFromUI();
             if (analysisParams == null) {
-                showAlert("Error", "Failed to collect parameters from UI. Please check your settings.");
+                showError("Error", "Failed to collect parameters from UI. Please check your settings.");
                 return;
             }
             
@@ -1353,7 +1353,7 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
                             showAlert("Warning", "Analysis completed but may not have been fully successful.");
                         }
                     } catch (Exception ex) {
-                        showAlert("Error", "Analysis failed: " + ex.getMessage());
+                        showError("Error", "Analysis failed: " + ex.getMessage());
                     }
                 });
             });
@@ -1365,7 +1365,7 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
                     
                     consolePanel.setButtonsEnabled(true, false, false);
                     consolePanel.stopStatusTimer();
-                    showAlert("Error", "Analysis failed: " + currentTask.getException());
+                    showError("Error", "Analysis failed: " + currentTask.getException());
                 });
             });
             
@@ -1378,7 +1378,7 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
             consolePanel.setButtonsEnabled(false, true, false);
             consolePanel.startStatusTimer();
         } catch (Exception e) {
-            showAlert("Error", "Failed to start analysis: " + e.getMessage());
+            showError("Error", "Failed to start analysis: " + e.getMessage());
             e.printStackTrace();
         }
     }
@@ -1793,8 +1793,12 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
                 consolePanel.appendConsoleText("✓ Successfully loaded last used parameters\n");
                 LOGGER.info("Loaded last used parameters for DDA IGC MaxQuant workflow");
             } else {
-                consolePanel.appendConsoleText("No previous parameters found, using defaults\n");
-                LOGGER.warn("No parameters loaded, using defaults");
+                consolePanel.appendConsoleText("No previous parameters found, creating defaults\n");
+                LOGGER.info("No parameters loaded from file, creating defaults");
+                DDAIgcMaxQuantParameters defaultParams = new DDAIgcMaxQuantParameters();
+                applyParametersToUI(defaultParams);
+                consolePanel.appendConsoleText("✓ Default parameters loaded into UI\n");
+                LOGGER.info("Applied default parameters to UI successfully");
             }
         } catch (Exception e) {
             String errorMsg = "WARNING: Failed to load last used parameters: " + e.getMessage();
@@ -1958,11 +1962,11 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
         try {
             DDAIgcMaxQuantParameters params = (DDAIgcMaxQuantParameters) parameterIO.loadAnalysisParameters(resultDirectory);
             applyParametersToUI(params);
-            showAlert("Success", "Loaded analysis parameters from " + resultDirectory);
             LOGGER.info("Loaded analysis parameters from {}", resultDirectory);
+            consolePanel.appendConsoleText("✓ Loaded analysis parameters from " + resultDirectory + "\n");
         } catch (Exception e) {
-            showAlert("Error", "Failed to load analysis parameters: " + e.getMessage());
             LOGGER.error("Failed to load analysis parameters from " + resultDirectory, e);
+            consolePanel.appendConsoleText("WARNING: Failed to load analysis parameters: " + e.getMessage() + "\n");
         }
     }
     

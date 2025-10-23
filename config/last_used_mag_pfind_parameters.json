@@ -11,7 +11,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "DDA_S48_1"
+      "sample_name": "DDA_lib1"
     },
     {
       "treatment": "",
@@ -23,7 +23,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "DDA_S48_2"
+      "sample_name": "DDA_lib2"
     },
     {
       "treatment": "",
@@ -35,7 +35,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "DDA_S48_3"
+      "sample_name": "DDA_lib3"
     },
     {
       "treatment": "",
@@ -47,7 +47,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "DDA_S48_4"
+      "sample_name": "DDA_lib4"
     },
     {
       "treatment": "",
@@ -59,7 +59,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "DDA_S48_5"
+      "sample_name": "DDA_lib5"
     },
     {
       "treatment": "",
@@ -71,7 +71,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "DDA_S48_6"
+      "sample_name": "DDA_lib6"
     },
     {
       "treatment": "",
@@ -83,7 +83,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "DDA_S48_7"
+      "sample_name": "DDA_lib7"
     },
     {
       "treatment": "",
@@ -95,7 +95,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "DDA_S48_8"
+      "sample_name": "DDA_lib8"
     },
     {
       "treatment": "",
@@ -107,7 +107,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "DDA_S48_9"
+      "sample_name": "DDA_lib9"
     },
     {
       "treatment": "",
@@ -119,7 +119,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "DDA_S48_10"
+      "sample_name": "DDA_lib10"
     },
     {
       "treatment": "",
@@ -131,7 +131,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "DDA_S48_11"
+      "sample_name": "DDA_lib11"
     },
     {
       "treatment": "",
@@ -143,7 +143,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "DDA_S48_12"
+      "sample_name": "DDA_lib12"
     },
     {
       "treatment": "",
@@ -155,7 +155,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "DDA_S48_13"
+      "sample_name": "DDA_lib13"
     },
     {
       "treatment": "",
@@ -167,7 +167,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "DDA_S48_14"
+      "sample_name": "DDA_lib14"
     },
     {
       "treatment": "",
@@ -179,7 +179,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "DDA_S48_15"
+      "sample_name": "DDA_lib15"
     },
     {
       "treatment": "",
@@ -191,7 +191,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "DDA_S48_16"
+      "sample_name": "DDA_lib16"
     },
     {
       "treatment": "",
@@ -203,7 +203,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "DDA_S48_17"
+      "sample_name": "DDA_lib17"
     },
     {
       "treatment": "",
@@ -215,7 +215,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "DDA_S48_18"
+      "sample_name": "DDA_lib18"
     },
     {
       "treatment": "",
@@ -227,7 +227,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "DDA_S48_19"
+      "sample_name": "DDA_lib19"
     },
     {
       "treatment": "",
@@ -239,7 +239,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "DDA_S48_20"
+      "sample_name": "DDA_lib20"
     },
     {
       "treatment": "",
@@ -251,7 +251,115 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "DDA_S48_21"
+      "sample_name": "DDA_lib21"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "DDA_lib22"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "DDA_lib23"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "DDA_lib24"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "DDA_lib25"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "DDA_lib26"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "DDA_lib27"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "DDA_lib28"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "DDA_lib29"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "DDA_lib30"
     }
   ],
   "workflow": "DDA_MAG_PFIND",
@@ -259,101 +367,137 @@
     "mag_database_version": "v2.0.2",
     "host_database": "C:\\Users\\daz25hak\\MetaProAI\\database\\uniprotkb_Human_AND_reviewed_true_AND_m_2025_09_01.fasta",
     "mag_database": "human-gut",
-    "output_directory": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\MetaPilot",
+    "output_directory": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW",
     "append_host_db": true,
     "experiments": [
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_1.raw",
-        "experiment_name": "DDA_S48_1"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib1.raw",
+        "experiment_name": "DDA_lib1"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_2.raw",
-        "experiment_name": "DDA_S48_2"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib2.raw",
+        "experiment_name": "DDA_lib2"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_3.raw",
-        "experiment_name": "DDA_S48_3"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib3.raw",
+        "experiment_name": "DDA_lib3"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_4.raw",
-        "experiment_name": "DDA_S48_4"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib4.raw",
+        "experiment_name": "DDA_lib4"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_5.raw",
-        "experiment_name": "DDA_S48_5"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib5.raw",
+        "experiment_name": "DDA_lib5"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_6.raw",
-        "experiment_name": "DDA_S48_6"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib6.raw",
+        "experiment_name": "DDA_lib6"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_7.raw",
-        "experiment_name": "DDA_S48_7"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib7.raw",
+        "experiment_name": "DDA_lib7"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_8.raw",
-        "experiment_name": "DDA_S48_8"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib8.raw",
+        "experiment_name": "DDA_lib8"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_9.raw",
-        "experiment_name": "DDA_S48_9"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib9.raw",
+        "experiment_name": "DDA_lib9"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_10.raw",
-        "experiment_name": "DDA_S48_10"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib10.raw",
+        "experiment_name": "DDA_lib10"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_11.raw",
-        "experiment_name": "DDA_S48_11"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib11.raw",
+        "experiment_name": "DDA_lib11"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_12.raw",
-        "experiment_name": "DDA_S48_12"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib12.raw",
+        "experiment_name": "DDA_lib12"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_13.raw",
-        "experiment_name": "DDA_S48_13"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib13.raw",
+        "experiment_name": "DDA_lib13"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_14.raw",
-        "experiment_name": "DDA_S48_14"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib14.raw",
+        "experiment_name": "DDA_lib14"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_15.raw",
-        "experiment_name": "DDA_S48_15"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib15.raw",
+        "experiment_name": "DDA_lib15"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_16.raw",
-        "experiment_name": "DDA_S48_16"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib16.raw",
+        "experiment_name": "DDA_lib16"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_17.raw",
-        "experiment_name": "DDA_S48_17"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib17.raw",
+        "experiment_name": "DDA_lib17"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_18.raw",
-        "experiment_name": "DDA_S48_18"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib18.raw",
+        "experiment_name": "DDA_lib18"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_19.raw",
-        "experiment_name": "DDA_S48_19"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib19.raw",
+        "experiment_name": "DDA_lib19"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_20.raw",
-        "experiment_name": "DDA_S48_20"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib20.raw",
+        "experiment_name": "DDA_lib20"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_21.raw",
-        "experiment_name": "DDA_S48_21"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib21.raw",
+        "experiment_name": "DDA_lib21"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib22.raw",
+        "experiment_name": "DDA_lib22"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib23.raw",
+        "experiment_name": "DDA_lib23"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib24.raw",
+        "experiment_name": "DDA_lib24"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib25.raw",
+        "experiment_name": "DDA_lib25"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib26.raw",
+        "experiment_name": "DDA_lib26"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib27.raw",
+        "experiment_name": "DDA_lib27"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib28.raw",
+        "experiment_name": "DDA_lib28"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib29.raw",
+        "experiment_name": "DDA_lib29"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib30.raw",
+        "experiment_name": "DDA_lib30"
       }
     ]
   },
   "enzyme_settings": {
-    "enzyme": "Trypsin_P",
+    "enzyme": "Trypsin",
     "missed_cleavages": 2,
     "digestion_mode": "Specific"
   },
-  "generated_at": "2025-10-02 09:30:10",
+  "generated_at": "2025-10-23 11:14:55",
   "additional_parameters": {
     "generate_sample_specific_db": false,
     "ms2_scan_mode": "HCD-FTMS",
@@ -365,8 +509,8 @@
   "modifications": {
     "fixed_modifications": ["Carbamidomethyl[C]"],
     "variable_modifications": [
-      "Acetyl[ProteinN-term]",
-      "Oxidation[M]"
+      "Oxidation[M]",
+      "Acetyl[ProteinN-term]"
     ]
   }
 }

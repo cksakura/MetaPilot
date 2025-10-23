@@ -64,7 +64,7 @@ import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 public abstract class MetaPilotTask extends MetaAbstractTask {
 
 	protected ProgressBar secondBar;
-	protected static Logger LOGGER = LogManager.getLogger(MetaPilotTask.class);
+	private static final Logger LOGGER = LogManager.getLogger(MetaPilotTask.class);
 	protected SimpleDateFormat format = new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss");
 	
 	// WatchService thread for monitoring file generation progress
@@ -117,11 +117,6 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 	}
 
 	protected void exportMetadata(File result) throws FileNotFoundException {
-		if (metaPar.getWorkflowType() == MetaLabWorkflowType.TaxonomyAnalysis
-				|| metaPar.getWorkflowType() == MetaLabWorkflowType.FunctionalAnnotation) {
-			return;
-		}
-
 		File metafile = new File(result, "metainfo.txt");
 		if (metafile.exists()) {
 			return;
@@ -240,7 +235,7 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 
 		this.builder = ConfigurationBuilderFactory.newConfigurationBuilder();
 
-		builder.setStatusLevel(Level.INFO);
+		builder.setStatusLevel(Level.DEBUG);
 		builder.setConfigurationName("DefaultFileLogger");
 
 		// set the pattern layout and pattern
@@ -256,17 +251,26 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 
 		// create a file appender
 		File logFile = new File(logDir, "logging.log");
-		AppenderComponentBuilder appenderBuilder = builder.newAppender("LogToFile", "File")
+		AppenderComponentBuilder fileAppenderBuilder = builder.newAppender("LogToFile", "File")
 				.addAttribute("fileName", logFile.getAbsolutePath()).add(layoutBuilder);
 
-		builder.add(appenderBuilder);
+		// create a console appender
+		AppenderComponentBuilder consoleAppenderBuilder = builder.newAppender("LogToConsole", "Console")
+				.addAttribute("target", "SYSTEM_OUT").add(layoutBuilder);
 
-		RootLoggerComponentBuilder rootLogger = builder.newRootLogger(Level.INFO);
+		builder.add(fileAppenderBuilder);
+		builder.add(consoleAppenderBuilder);
+
+		RootLoggerComponentBuilder rootLogger = builder.newRootLogger(Level.DEBUG);
 		rootLogger.add(builder.newAppenderRef("LogToFile"));
+		rootLogger.add(builder.newAppenderRef("LogToConsole"));
 		builder.add(rootLogger);
 
 		try {
 			Configurator.reconfigure(builder.build());
+			// Test logging immediately after configuration
+			LOGGER.info("Logging configuration completed successfully");
+			LOGGER.debug("Debug logging is now enabled");
 		} catch (Exception e) {
 			System.err.println("Warning: Could not configure logging to file: " + e.getMessage());
 			// Continue without file logging - console logging will still work
@@ -738,6 +742,16 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 	protected HashSet<String> applyOccamsRazor(HashMap<String, HashSet<String>> itemToPeptides,
 			Set<String> totalPeptides, double threshold, File out) {
 		return applyOccamsRazor(itemToPeptides, totalPeptides, threshold, 0.01, Integer.MAX_VALUE, false, out);
+	}
+
+	/**
+	 * Get the logger for this task
+	 * 
+	 * @return The logger instance
+	 */
+	@Override
+	protected Logger getLogger() {
+		return LOGGER;
 	}
 
 }

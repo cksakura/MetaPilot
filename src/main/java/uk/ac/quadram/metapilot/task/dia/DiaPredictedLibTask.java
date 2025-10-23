@@ -32,7 +32,7 @@ public class DiaPredictedLibTask {
 	private DeepDetectParameter deepDetectPar;
 	private double pepDetectThreshold;
 
-	protected Logger LOGGER = LogManager.getLogger(DiaPredictedLibTask.class);
+	private static final Logger LOGGER = LogManager.getLogger(DiaPredictedLibTask.class);
 	protected String taskName = "Spectra library generation";
 	protected SimpleDateFormat format = new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss");
 

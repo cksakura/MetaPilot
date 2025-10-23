@@ -4,6 +4,7 @@ import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
+import javafx.scene.control.Alert.AlertType;
 import javafx.scene.layout.*;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -39,6 +40,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.HashSet;
+import java.util.Optional;
 import java.util.Arrays;
 import java.io.File;
 import java.net.URI;
@@ -186,39 +188,36 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 				updateParameterView();
 
 				// Save current parameters when Console tab is selected
-				System.out.println("DEBUG: Auto-save triggered when switching to Console tab");
+				LOGGER.debug("[DIA Target] Auto-save triggered when switching to Console tab");
 				try {
-					System.out.println("DEBUG: Attempting to collect parameters for auto-save...");
+					LOGGER.debug("[DIA Target] Attempting to collect parameters for auto-save...");
 					MetaParameterDiaTg currentParams = collectParametersFromUI();
-					System.out.println("DEBUG: collectParametersFromUI() for auto-save returned: "
-							+ (currentParams != null ? "SUCCESS" : "NULL"));
+					LOGGER.debug("[DIA Target] collectParametersFromUI() for auto-save returned: {}",
+							currentParams != null ? "SUCCESS" : "NULL");
 
 					if (currentParams == null) {
-						System.out.println("DEBUG: Full validation failed, trying fallback for auto-save...");
+						LOGGER.debug("[DIA Target] Full validation failed, trying fallback for auto-save...");
 						// If full validation fails (e.g., no raw files), use minimal validation for
 						// auto-save
 						currentParams = collectParametersFromUIForAutoSave();
-						System.out.println("DEBUG: collectParametersFromUIForAutoSave() returned: "
-								+ (currentParams != null ? "SUCCESS" : "NULL"));
+						LOGGER.debug("[DIA Target] collectParametersFromUIForAutoSave() returned: {}",
+								currentParams != null ? "SUCCESS" : "NULL");
 					}
 
 					if (currentParams != null) {
-						System.out.println("DEBUG: Attempting auto-save...");
+						LOGGER.debug("[DIA Target] Attempting auto-save...");
 						boolean saved = parameterIO.saveLastUsedParameters(currentParams);
-						System.out.println("DEBUG: Auto-save result: " + saved);
+						LOGGER.debug("[DIA Target] Auto-save result: {}", saved);
 						if (saved) {
-							System.out.println("DEBUG: Auto-saved parameters when switching to Console tab");
+							LOGGER.info("[DIA Target] Auto-saved parameters when switching to Console tab");
 						} else {
-							System.err.println("WARNING: Failed to save parameters to file during auto-save");
+							LOGGER.warn("[DIA Target] Failed to save parameters to file during auto-save");
 						}
 					} else {
-						System.err
-								.println("WARNING: No parameters to auto-save - both collection methods returned null");
+						LOGGER.warn("[DIA Target] No parameters to auto-save - both collection methods returned null");
 					}
 				} catch (Exception e) {
-					System.err.println("WARNING: Failed to auto-save parameters: " + e.getMessage());
-					System.err.println("DEBUG: Auto-save exception type: " + e.getClass().getSimpleName());
-					e.printStackTrace();
+					LOGGER.warn("Failed to auto-save parameters: " + e.getMessage(), e);
 				}
 			}
 		});
@@ -402,7 +401,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 		testThresholdButton = new Button("Get Proper Threshold");
 		testThresholdButton.setPrefWidth(150);
 		testThresholdButton.setOnAction(e -> {
-			System.out.println("DEBUG: Get Proper Threshold button clicked");
+			LOGGER.debug("[DIA Target] Get Proper Threshold button clicked");
 			calculateProperThreshold();
 		});
 
@@ -827,7 +826,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 			taxaData.add(new TaxaRow(false, taxon));
 		}
 
-		System.out.println("DEBUG: Loaded " + taxaData.size() + " taxa from database for level: " + selectedLevel);
+		LOGGER.debug("[DIA Target] Loaded {} taxa from database for level: {}", taxaData.size(), selectedLevel);
 		updateParameterView();
 	}
 
@@ -888,8 +887,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 			functionData.add(new FunctionRow(false, function));
 		}
 
-		System.out.println(
-				"DEBUG: Loaded " + functionData.size() + " functions from database for type: " + selectedLevel);
+		LOGGER.debug("[DIA Target] Loaded {} functions from database for type: {}", functionData.size(), selectedLevel);
 		updateParameterView();
 	}
 
@@ -943,8 +941,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 				System.err.println("Desktop not supported, cannot open URL: " + url);
 			}
 		} catch (Exception e) {
-			System.err.println("Failed to open URL: " + url + " - " + e.getMessage());
-			e.printStackTrace();
+			LOGGER.error("Failed to open URL: {} - {}", url, e.getMessage(), e);
 		}
 	}
 
@@ -1144,6 +1141,56 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 			// Set the result directory to the library directory for DIA Target workflow
 			targetParams.setDbSearchResultFile(finalLibFile.getParentFile());
 
+			// 4. Save parameters to file
+			String outputDir = targetParams.getResult();
+			if (outputDir != null && !outputDir.trim().isEmpty()) {
+				consolePanel.appendConsoleText("Saving parameters to output directory...\n");
+				
+				// Save analysis-specific parameters
+				boolean analysisParamsSaved = parameterIO.saveAnalysisParameters(outputDir, targetParams);
+				if (!analysisParamsSaved) {
+					consolePanel.appendConsoleText("WARNING: Failed to save analysis parameters to result directory\n");
+					LOGGER.warn("Failed to save analysis parameters to {}/analysis_parameters.json", outputDir);
+				} else {
+					consolePanel.appendConsoleText("✓ Analysis parameters saved to result directory\n");
+					LOGGER.info("Saved analysis parameters to {}/analysis_parameters.json", outputDir);
+				}
+				
+				// Save as last used parameters
+				boolean lastParamsSaved = parameterIO.saveLastUsedParameters(targetParams);
+				if (!lastParamsSaved) {
+					consolePanel.appendConsoleText("WARNING: Failed to save last used parameters\n");
+					LOGGER.warn("Failed to save last used parameters");
+				} else {
+					consolePanel.appendConsoleText("✓ Last used parameters saved\n");
+				}
+				
+				// Also save to preferences for quick defaults
+				boolean prefsSaved = parameterIO.savePreferences(targetParams);
+				if (prefsSaved) {
+					consolePanel.appendConsoleText("✓ Preferences saved\n");
+				} else {
+					consolePanel.appendConsoleText("WARNING: Failed to save preferences\n");
+				}
+			} else {
+				consolePanel.appendConsoleText("WARNING: No output directory specified, skipping parameter save\n");
+				LOGGER.warn("No output directory specified, skipping parameter save");
+			}
+
+			// 5. Create MetaResourceParameters (load from config file)
+			consolePanel.appendConsoleText("Loading resource parameters from config...\n");
+			consolePanel.appendConsoleText("✓ Resource parameters loaded from config file\n");
+
+			// 6. Create progress bars and status label
+			consolePanel.appendConsoleText("Setting up progress tracking...\n");
+			ProgressBar overallBar = new ProgressBar();
+			ProgressBar currentBar = new ProgressBar();
+			Label statusLabel = new Label("Ready to start analysis...");
+			consolePanel.appendConsoleText("✓ Progress bars and status label initialized\n");
+
+			// 7. Status label initialized (not stored in DIA Target parameters)
+			consolePanel.appendConsoleText("✓ Status label initialized\n");
+
 			consolePanel.appendConsoleText("Library search result folder: " + targetParams.getDbSearchResultFile());
 
 			// Update UI
@@ -1165,14 +1212,17 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 				return;
 			}
 
-			// 4. Create and configure task
+			// 8. Create and configure task
+			consolePanel.appendConsoleText("Creating DIA Target task...\n");
 			currentTask = new MetaDiaTargetTask(targetParams, resourceParams,
 					consolePanel.getOverallProgressBar(), consolePanel.getCurrentTaskProgressBar());
+			consolePanel.appendConsoleText("✓ Task created successfully\n");
 
 			// Set target library information for peptide mapping
 			currentTask.setTargetLibraryInfo(libraryInfo);
 
-			// 5. Set up task event handlers
+			// 9. Set up task event handlers
+			consolePanel.appendConsoleText("Setting up task callbacks...\n");
 			currentTask.setOnSucceeded(e -> {
 				Platform.runLater(() -> {
 					consolePanel.appendConsoleText("✓ Analysis completed successfully!\n");
@@ -1202,7 +1252,10 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 				});
 			});
 
-			// 6. Run task in background thread
+			consolePanel.appendConsoleText("✓ Task callbacks configured\n");
+
+			// 10. Run task in background thread
+			consolePanel.appendConsoleText("Starting task execution...\n");
 			Thread taskThread = new Thread(currentTask);
 			taskThread.setDaemon(true);
 			taskThread.start();
@@ -1221,15 +1274,36 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 
 	@Override
 	protected void stopAnalysis() {
-		consolePanel.appendConsoleText("Stopping DIA Target analysis...\n");
-		LOGGER.info("stopAnalysis called");
+		Alert alert = new Alert(AlertType.CONFIRMATION);
+		alert.setTitle("Stop Analysis");
+		alert.setHeaderText("Are you sure you want to stop the analysis?");
+		alert.setContentText("This action cannot be undone.");
+		
+		Optional<ButtonType> result = alert.showAndWait();
+		if (result.isPresent() && result.get() == ButtonType.OK) {
+			consolePanel.appendConsoleText("Stopping DIA Target analysis...\n");
+			LOGGER.info("stopAnalysis called - user confirmed stop");
 
-		if (currentTask != null && currentTask.isRunning()) {
-			consolePanel.appendConsoleText("Force stopping DIA Target task...\n");
-			currentTask.forceStop();
-			consolePanel.appendConsoleText("DIA Target task stop requested.\n");
+			// Force stop the running task if it exists
+			if (currentTask != null && currentTask.isRunning()) {
+				consolePanel.appendConsoleText("Force stopping DIA Target task...\n");
+				currentTask.forceStop();
+				consolePanel.appendConsoleText("DIA Target task stop requested.\n");
+			} else {
+				consolePanel.appendConsoleText("No running DIA Target task to stop.\n");
+			}
+			
+			// Unbind progress bars to prevent memory leaks
+			consolePanel.getOverallProgressBar().progressProperty().unbind();
+			consolePanel.getCurrentTaskProgressBar().progressProperty().unbind();
+			
+			consolePanel.setButtonsEnabled(true, false, false);
+			consolePanel.stopStatusTimer();
+			consolePanel.getOverallProgressBar().setProgress(0);
+			consolePanel.getCurrentTaskProgressBar().setProgress(0);
+			consolePanel.setCurrentTaskLabel("Current Task: None");
 		} else {
-			consolePanel.appendConsoleText("No running DIA Target task to stop.\n");
+			LOGGER.info("stopAnalysis cancelled by user");
 		}
 	}
 
@@ -1316,7 +1390,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 
 			// Create MetaBaseParameter
 			MetaBaseParameter metaBasePar = new MetaBaseParameter(
-					uk.ac.quadram.metapilot.task.MetaLabWorkflowType.DiaNNMAGTG.name(), // Workflow type
+					uk.ac.quadram.metapilot.MetaPilotApp.WorkflowType.DIA_TARGET.getAnalysisType(), // Workflow type
 					metaData, result,
 					selectedMagDb.getCurrentFile() != null ? selectedMagDb.getCurrentFile().getAbsolutePath() : "", // MicroDb
 																													// path
@@ -1400,7 +1474,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 
 			// Create MetaBaseParameter with minimal data
 			MetaBaseParameter metaBasePar = new MetaBaseParameter(
-					uk.ac.quadram.metapilot.task.MetaLabWorkflowType.DiaNNMAGTG.name(), // Workflow type
+					uk.ac.quadram.metapilot.MetaPilotApp.WorkflowType.DIA_TARGET.getAnalysisType(), // Workflow type
 					metaData, result,
 					selectedMagDb != null && selectedMagDb.getCurrentFile() != null
 							? selectedMagDb.getCurrentFile().getAbsolutePath()
@@ -1467,8 +1541,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 			return metaParameterDiaTarget;
 
 		} catch (Exception e) {
-			System.err.println("Error generating MetaParameterDiaTg for auto-save: " + e.getMessage());
-			e.printStackTrace();
+			LOGGER.error("Error generating MetaParameterDiaTg for auto-save: " + e.getMessage(), e);
 			return null;
 		}
 	}
@@ -1477,29 +1550,39 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 	 * Validate inputs before generating parameters
 	 */
 	private boolean validateInputs() {
+		LOGGER.info("Starting input validation for DIA Target workflow");
+		
 		// Check if IO panel has experiment data
 		if (ioPanel == null) {
-			System.err.println("IO panel is null");
+			LOGGER.error("IO panel is null");
+			showError("Validation Error", "IO panel is not initialized.");
 			return false;
 		}
 		if (ioPanel.getExperimentData().isEmpty()) {
-			System.err.println("No experiment data found in IO panel");
+			LOGGER.error("No experiment data found in IO panel");
+			showError("Validation Error", "Please add at least one experiment.");
 			return false;
 		}
+		LOGGER.info("Experiment data validation passed: {} experiments found", ioPanel.getExperimentData().size());
 
 		// Check if result directory is set
 		String outputDir = ioPanel.getOutputDirectory();
 		if (outputDir == null || outputDir.trim().isEmpty()) {
-			System.err.println("Result directory not set");
+			LOGGER.error("Result directory not set");
+			showError("Validation Error", "Please select an output directory.");
 			return false;
 		}
+		LOGGER.info("Output directory validation passed: {}", outputDir);
 
 		// Check if MAG database is selected
 		if (magDatabasePanel == null || magDatabasePanel.getSelectedMagDatabase() == null) {
-			System.err.println("No MAG database selected");
+			LOGGER.error("No MAG database selected");
+			showError("Validation Error", "Please select a MAG database.");
 			return false;
 		}
+		LOGGER.info("MAG database validation passed: {}", magDatabasePanel.getSelectedMagDatabase().getCatalogueID());
 
+		LOGGER.info("All validations passed for DIA Target workflow");
 		return true;
 	}
 
@@ -1518,8 +1601,12 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 				applyParametersToUI(params);
 				LOGGER.info("Applied parameters to UI successfully");
 			} else {
-				consolePanel.appendConsoleText("No previous parameters found, using defaults\n");
-				LOGGER.info("No parameters loaded from file, using defaults");
+				consolePanel.appendConsoleText("No previous parameters found, creating defaults\n");
+				LOGGER.info("No parameters loaded from file, creating defaults");
+				MetaParameterDiaTg defaultParams = new MetaParameterDiaTg();
+				applyParametersToUI(defaultParams);
+				consolePanel.appendConsoleText("✓ Default parameters loaded into UI\n");
+				LOGGER.info("Applied default parameters to UI successfully");
 			}
 		} catch (Exception e) {
 			String errorMsg = "WARNING: Failed to load last used parameters: " + e.getMessage();
@@ -1613,7 +1700,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 					});
 				}
 			}
-			System.out.println("DEBUG: Applied " + foundCount + " of " + selectedTaxaNames.length + " taxa selections");
+			LOGGER.debug("[DIA Target] Applied {} of {} taxa selections", foundCount, selectedTaxaNames.length);
 			return true;
 		}
 
@@ -1650,7 +1737,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 						}
 					}
 					ioPanel.setExperimentData(experimentRows);
-					System.out.println("DEBUG: Applied metadata with " + rawFiles.length + " raw files to IO panel");
+					LOGGER.debug("[DIA Target] Applied metadata with {} raw files to IO panel", rawFiles.length);
 				}
 			}
 
@@ -1658,7 +1745,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 			if (params.getResult() != null && !params.getResult().trim().isEmpty()) {
 				if (ioPanel != null) {
 					ioPanel.setOutputDirectory(params.getResult());
-					System.out.println("DEBUG: Applied output directory: " + params.getResult());
+					LOGGER.debug("[DIA Target] Applied output directory: {}", params.getResult());
 				}
 			}
 
@@ -1681,7 +1768,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 					System.out.println(
 							"DEBUG: Saved database matches current database: " + savedMagDbItem.getCatalogueID());
 				} else {
-					System.out.println("DEBUG: Saved database differs from current database");
+					LOGGER.debug("[DIA Target] Saved database differs from current database");
 					System.out
 							.println("  Saved: " + (savedMagDbItem != null ? savedMagDbItem.getCatalogueID() : "null"));
 					System.out.println(
@@ -1707,10 +1794,10 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 			if (savedTaxonomicLevel != null && !savedTaxonomicLevel.equals("Choose the taxonomic level")) {
 				if (taxaLevelComboBox != null) {
 					taxaLevelComboBox.setValue(savedTaxonomicLevel);
-					System.out.println("DEBUG: Restored taxonomic level: " + savedTaxonomicLevel);
+					LOGGER.debug("[DIA Target] Restored taxonomic level: {}", savedTaxonomicLevel);
 				}
 			} else {
-				System.out.println("DEBUG: No taxonomic level in saved parameters, will try to infer from taxa data");
+				LOGGER.debug("[DIA Target] No taxonomic level in saved parameters, will try to infer from taxa data");
 			}
 
 			// Apply functional level first
@@ -1718,7 +1805,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 			if (savedFunctionalLevel != null && !savedFunctionalLevel.equals("Choose the functional level")) {
 				if (functionLevelComboBox != null) {
 					functionLevelComboBox.setValue(savedFunctionalLevel);
-					System.out.println("DEBUG: Restored functional level: " + savedFunctionalLevel);
+					LOGGER.debug("[DIA Target] Restored functional level: {}", savedFunctionalLevel);
 				}
 			} else {
 				System.out.println(
@@ -1727,7 +1814,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 
 			// Apply selected taxa only if database matches
 			if (databaseMatches && params.getSelectedTaxa() != null && params.getSelectedTaxa().length > 0) {
-				System.out.println("DEBUG: Applying saved taxa selections (database matches)");
+				LOGGER.debug("[DIA Target] Applying saved taxa selections (database matches)");
 
 				boolean taxaApplied = false;
 
@@ -1736,15 +1823,15 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 					loadTaxaData(); // Load taxa data for the restored level
 					taxaApplied = applyTaxaSelections(params.getSelectedTaxa());
 					if (taxaApplied) {
-						System.out.println("DEBUG: Successfully applied taxa selections using saved taxonomic level: "
-								+ savedTaxonomicLevel);
+						LOGGER.debug("[DIA Target] Successfully applied taxa selections using saved taxonomic level: {}",
+								savedTaxonomicLevel);
 					}
 				}
 
 				// If that didn't work (or no level was saved), try to find the correct level by
 				// testing each one
 				if (!taxaApplied) {
-					System.out.println("DEBUG: Trying to find correct taxonomic level for saved taxa...");
+					LOGGER.debug("[DIA Target] Trying to find correct taxonomic level for saved taxa...");
 					String[] taxonomicLevels = { "Genus", "Species", "Phylum", "Class", "Order", "Family" };
 
 					for (String level : taxonomicLevels) {
@@ -1753,7 +1840,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 							loadTaxaData();
 							taxaApplied = applyTaxaSelections(params.getSelectedTaxa());
 							if (taxaApplied) {
-								System.out.println("DEBUG: Found correct taxonomic level: " + level);
+								LOGGER.debug("[DIA Target] Found correct taxonomic level: " + level);
 								break;
 							}
 						}
@@ -1761,15 +1848,15 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 				}
 
 				if (!taxaApplied) {
-					System.out.println("DEBUG: Could not find taxonomic level that contains the saved taxa");
+					LOGGER.debug("[DIA Target] Could not find taxonomic level that contains the saved taxa");
 				}
 			} else if (!databaseMatches) {
-				System.out.println("DEBUG: Skipping taxa selections (database differs)");
+				LOGGER.debug("[DIA Target] Skipping taxa selections (database differs)");
 			}
 
 			// Apply selected functions only if database matches
 			if (databaseMatches && params.getSelectedFunctions() != null && params.getSelectedFunctions().length > 0) {
-				System.out.println("DEBUG: Applying saved function selections (database matches)");
+				LOGGER.debug("[DIA Target] Applying saved function selections (database matches)");
 
 				boolean functionsApplied = false;
 
@@ -1787,7 +1874,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 				// If that didn't work (or no level was saved), try to find the correct level by
 				// testing each one
 				if (!functionsApplied) {
-					System.out.println("DEBUG: Trying to find correct functional level for saved functions...");
+					LOGGER.debug("[DIA Target] Trying to find correct functional level for saved functions...");
 					String[] functionalLevels = { "EC", "KO", "COG", "CAZy", "PFAM" };
 
 					for (String level : functionalLevels) {
@@ -1796,7 +1883,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 							loadFunctionData();
 							functionsApplied = applyFunctionSelections(params.getSelectedFunctions());
 							if (functionsApplied) {
-								System.out.println("DEBUG: Found correct functional level: " + level);
+								LOGGER.debug("[DIA Target] Found correct functional level: " + level);
 								break;
 							}
 						}
@@ -1804,10 +1891,10 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 				}
 
 				if (!functionsApplied) {
-					System.out.println("DEBUG: Could not find functional level that contains the saved functions");
+					LOGGER.debug("[DIA Target] Could not find functional level that contains the saved functions");
 				}
 			} else if (!databaseMatches) {
-				System.out.println("DEBUG: Skipping function selections (database differs)");
+				LOGGER.debug("[DIA Target] Skipping function selections (database differs)");
 			}
 
 			// Update parameter view after applying parameters
@@ -1828,7 +1915,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 	 * MetaPilotMainPanelDiaTg testButton implementation
 	 */
 	private void calculateProperThreshold() {
-		System.out.println("DEBUG: calculateProperThreshold() method called");
+		LOGGER.debug("[DIA Target] calculateProperThreshold() method called");
 
 		// Update progress output
 		if (libraryConsoleOutput != null) {
@@ -1838,7 +1925,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 
 		// Check if database generation panel has the database available
 		if (dbGenerationPanel == null || dbGenerationPanel.getCurrentMagDbItem() == null) {
-			System.out.println("DEBUG: Database generation panel or MagDbItem is null");
+			LOGGER.debug("[DIA Target] Database generation panel or MagDbItem is null");
 			if (libraryConsoleOutput != null) {
 				libraryConsoleOutput.appendText("ERROR: No MAG database available for threshold calculation\n");
 			}
@@ -1846,12 +1933,12 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 			return;
 		}
 
-		System.out.println("DEBUG: Database generation panel and MagDbItem are available");
+		LOGGER.debug("[DIA Target] Database generation panel and MagDbItem are available");
 
 		MagDbItem magDbItem = dbGenerationPanel.getCurrentMagDbItem();
 		File currentFile = magDbItem.getCurrentFile();
 		if (currentFile == null) {
-			System.out.println("DEBUG: No current file available for MAG database");
+			LOGGER.debug("[DIA Target] No current file available for MAG database");
 			if (libraryConsoleOutput != null) {
 				libraryConsoleOutput.appendText("ERROR: No current file available for MAG database\n");
 			}
@@ -1859,7 +1946,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 			return;
 		}
 
-		System.out.println("DEBUG: Current file available: " + currentFile.getAbsolutePath());
+		LOGGER.debug("[DIA Target] Current file available: " + currentFile.getAbsolutePath());
 
 		if (libraryConsoleOutput != null) {
 			libraryConsoleOutput.appendText("Database path: " + currentFile.getAbsolutePath() + "\n");
@@ -1867,7 +1954,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 
 		File sqlDbFile = new File(currentFile, "pro_func.db");
 		if (!sqlDbFile.exists()) {
-			System.out.println("DEBUG: SQL functional database not found: " + sqlDbFile.getAbsolutePath());
+			LOGGER.debug("[DIA Target] SQL functional database not found: " + sqlDbFile.getAbsolutePath());
 			if (libraryConsoleOutput != null) {
 				libraryConsoleOutput
 						.appendText("ERROR: SQL functional database not found: " + sqlDbFile.getAbsolutePath() + "\n");
@@ -1876,14 +1963,14 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 			return;
 		}
 
-		System.out.println("DEBUG: SQL functional database found: " + sqlDbFile.getAbsolutePath());
+		LOGGER.debug("[DIA Target] SQL functional database found: " + sqlDbFile.getAbsolutePath());
 
 		if (libraryConsoleOutput != null) {
 			libraryConsoleOutput.appendText("SQL database found: " + sqlDbFile.getAbsolutePath() + "\n");
 		}
 
 		// Validate selections - allow only taxa OR function selection
-		System.out.println("DEBUG: Starting validation of user selections");
+		LOGGER.debug("[DIA Target] Starting validation of user selections");
 		if (libraryConsoleOutput != null) {
 			libraryConsoleOutput.appendText("Validating user selections...\n");
 		}
@@ -1891,14 +1978,14 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 		String selectedTaxaLevel = taxaLevelComboBox.getValue();
 		String selectedFunctionType = functionLevelComboBox.getValue();
 
-		System.out.println("DEBUG: Selected taxonomic level: " + selectedTaxaLevel);
-		System.out.println("DEBUG: Selected function type: " + selectedFunctionType);
+		LOGGER.debug("[DIA Target] Selected taxonomic level: " + selectedTaxaLevel);
+		LOGGER.debug("[DIA Target] Selected function type: " + selectedFunctionType);
 
 		// Get selected taxa and functions
 		HashSet<String> selectedTaxa = getSelectedTaxa();
 		HashSet<String> selectedFunctions = getSelectedFunctions();
 
-		System.out.println("DEBUG: Selected taxa count: " + (selectedTaxa != null ? selectedTaxa.size() : "null"));
+		LOGGER.debug("[DIA Target] Selected taxa count: " + (selectedTaxa != null ? selectedTaxa.size() : "null"));
 		System.out.println(
 				"DEBUG: Selected functions count: " + (selectedFunctions != null ? selectedFunctions.size() : "null"));
 
@@ -1909,8 +1996,8 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 				&& !selectedFunctionType.equals("Choose the functional level") && selectedFunctions != null
 				&& !selectedFunctions.isEmpty());
 
-		System.out.println("DEBUG: hasTaxaSelection: " + hasTaxaSelection);
-		System.out.println("DEBUG: hasFunctionSelection: " + hasFunctionSelection);
+		LOGGER.debug("[DIA Target] hasTaxaSelection: " + hasTaxaSelection);
+		LOGGER.debug("[DIA Target] hasFunctionSelection: " + hasFunctionSelection);
 
 		// Check if both taxonomic level and functional level are "Choose level" (no
 		// filtering at all)
@@ -1920,7 +2007,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 				|| selectedFunctionType.equals("Choose the functional level"));
 
 		if (noTaxaLevelSelected && noFunctionLevelSelected) {
-			System.out.println("DEBUG: No taxonomic or functional level selected - returning");
+			LOGGER.debug("[DIA Target] No taxonomic or functional level selected - returning");
 			if (libraryConsoleOutput != null) {
 				libraryConsoleOutput.appendText("ERROR: No taxonomic or functional level selected\n");
 			}
@@ -1955,7 +2042,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 			return;
 		}
 
-		System.out.println("DEBUG: Validation passed, proceeding with threshold calculation");
+		LOGGER.debug("[DIA Target] Validation passed, proceeding with threshold calculation");
 
 		if (libraryConsoleOutput != null) {
 			libraryConsoleOutput.appendText("Selected taxonomic level: " + selectedTaxaLevel + "\n");
@@ -1972,48 +2059,48 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 		// Show progress indicator
 		showLibraryProgress("Calculating proper threshold...");
 
-		System.out.println("DEBUG: Creating threshold calculation task");
+		LOGGER.debug("[DIA Target] Creating threshold calculation task");
 
 		// Run calculation in background task
 		Task<Void> task = new Task<Void>() {
 			@Override
 			protected Void call() throws Exception {
-				System.out.println("DEBUG: Task call() method started");
+				LOGGER.debug("[DIA Target] Task call() method started");
 				try {
 					// Get genomes from selected taxa
-					System.out.println("DEBUG: Calling getGenomesFromTaxa");
+					LOGGER.debug("[DIA Target] Calling getGenomesFromTaxa");
 					HashSet<String> taxaGenomeSet = getGenomesFromTaxa(selectedTaxa, selectedTaxaLevel, sqlDbFile);
-					System.out.println("DEBUG: getGenomesFromTaxa returned " + taxaGenomeSet.size() + " genomes");
+					LOGGER.debug("[DIA Target] getGenomesFromTaxa returned " + taxaGenomeSet.size() + " genomes");
 
 					// Get proteins from selected functions
-					System.out.println("DEBUG: Calling getProteinsFromFunctions");
+					LOGGER.debug("[DIA Target] Calling getProteinsFromFunctions");
 					HashSet<String> funcProSet = getProteinsFromFunctions(selectedFunctions, selectedFunctionType,
 							taxaGenomeSet, sqlDbFile);
-					System.out.println("DEBUG: getProteinsFromFunctions returned " + funcProSet.size() + " proteins");
+					LOGGER.debug("[DIA Target] getProteinsFromFunctions returned " + funcProSet.size() + " proteins");
 
 					// Check if predicted files exist
-					System.out.println("DEBUG: Checking if predicted files exist");
+					LOGGER.debug("[DIA Target] Checking if predicted files exist");
 					File predictedFile = new File(currentFile, "predicted");
-					System.out.println("DEBUG: Predicted file path: " + predictedFile.getAbsolutePath());
-					System.out.println("DEBUG: Predicted file exists: " + predictedFile.exists());
+					LOGGER.debug("[DIA Target] Predicted file path: " + predictedFile.getAbsolutePath());
+					LOGGER.debug("[DIA Target] Predicted file exists: " + predictedFile.exists());
 					if (predictedFile.exists()) {
 						File[] files = predictedFile.listFiles();
-						System.out.println("DEBUG: Predicted files count: " + (files != null ? files.length : 0));
+						LOGGER.debug("[DIA Target] Predicted files count: " + (files != null ? files.length : 0));
 					}
 
 					if (!predictedFile.exists() || predictedFile.listFiles().length == 0) {
-						System.out.println("DEBUG: Predicted files not found or empty - returning");
+						LOGGER.debug("[DIA Target] Predicted files not found or empty - returning");
 						Platform.runLater(
 								() -> showError("Data Error", "Please predict the peptide detectability first."));
 						return null;
 					}
 
-					System.out.println("DEBUG: Predicted files found, proceeding with threshold calculation");
+					LOGGER.debug("[DIA Target] Predicted files found, proceeding with threshold calculation");
 
 					// Process predicted files to calculate threshold
-					System.out.println("DEBUG: Calling calculateThresholdFromPredictedFiles");
+					LOGGER.debug("[DIA Target] Calling calculateThresholdFromPredictedFiles");
 					calculateThresholdFromPredictedFiles(predictedFile, taxaGenomeSet, funcProSet);
-					System.out.println("DEBUG: calculateThresholdFromPredictedFiles completed");
+					LOGGER.debug("[DIA Target] calculateThresholdFromPredictedFiles completed");
 
 				} catch (Exception e) {
 					Platform.runLater(() -> {
@@ -2030,7 +2117,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 
 			@Override
 			protected void succeeded() {
-				System.out.println("DEBUG: Threshold calculation Task succeeded");
+				LOGGER.debug("[DIA Target] Threshold calculation Task succeeded");
 				Platform.runLater(() -> {
 					if (libraryConsoleOutput != null) {
 						libraryConsoleOutput.appendText("=== Threshold Calculation Completed ===\n");
@@ -2044,7 +2131,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 
 			@Override
 			protected void failed() {
-				System.out.println("DEBUG: Threshold calculation Task failed");
+				LOGGER.debug("[DIA Target] Threshold calculation Task failed");
 				Platform.runLater(() -> {
 					if (libraryConsoleOutput != null) {
 						libraryConsoleOutput.appendText("=== Threshold Calculation Failed ===\n");
@@ -2414,7 +2501,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 
 			@Override
 			protected void succeeded() {
-				System.out.println("DEBUG: Library creation Task succeeded");
+				LOGGER.debug("[DIA Target] Library creation Task succeeded");
 				Platform.runLater(() -> {
 					if (libraryConsoleOutput != null) {
 						libraryConsoleOutput.appendText("=== Library Creation Completed Successfully ===\n");
@@ -2428,7 +2515,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 
 			@Override
 			protected void failed() {
-				System.out.println("DEBUG: Library creation Task failed");
+				LOGGER.debug("[DIA Target] Library creation Task failed");
 				Platform.runLater(() -> {
 					if (libraryConsoleOutput != null) {
 						libraryConsoleOutput.appendText("=== Library Creation Failed ===\n");
@@ -2550,7 +2637,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 			Platform.runLater(() -> {
 				if (libraryConsoleOutput != null) {
 					libraryConsoleOutput.appendText(format.format(new Date()) + ":\t" + selectedTaxa.size()
-							+ " taxa are selected in " + columnName + " level, " + finalTaxaGenomeSet1.size()
+							+ " taxa are selected in " + columnName + " level + " + finalTaxaGenomeSet1.size()
 							+ " genomes will be selected for the following analysis\n");
 				}
 			});
@@ -2617,7 +2704,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 		Platform.runLater(() -> {
 			if (libraryConsoleOutput != null) {
 				libraryConsoleOutput.appendText(format.format(new Date()) + ":\t" + selectedFunctions.size()
-						+ " functions are selected from the " + selectedFunctionType + " database, " + funcProSet.size()
+						+ " functions are selected from the " + selectedFunctionType + " database + " + funcProSet.size()
 						+ " proteins will be selected for the following analysis\n");
 			}
 		});
@@ -2630,9 +2717,9 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 	 */
 	private void calculateThresholdFromPredictedFiles(File predictedFile, HashSet<String> taxaGenomeSet,
 			HashSet<String> funcProSet) throws Exception {
-		System.out.println("DEBUG: calculateThresholdFromPredictedFiles started");
-		System.out.println("DEBUG: taxaGenomeSet size: " + taxaGenomeSet.size());
-		System.out.println("DEBUG: funcProSet size: " + funcProSet.size());
+		LOGGER.debug("[DIA Target] calculateThresholdFromPredictedFiles started");
+		LOGGER.debug("[DIA Target] taxaGenomeSet size: " + taxaGenomeSet.size());
+		LOGGER.debug("[DIA Target] funcProSet size: " + funcProSet.size());
 
 		long totalMemorySize = ((OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean())
 				.getTotalMemorySize() / 1024 / 1024 / 1024;
@@ -2749,7 +2836,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 			}
 
 			// Debug output to show threshold calculation completed
-			System.out.println("DEBUG: Threshold calculation completed successfully");
+			LOGGER.debug("[DIA Target] Threshold calculation completed successfully");
 			if (libraryConsoleOutput != null) {
 				libraryConsoleOutput.appendText("=== Threshold Calculation Completed Successfully ===\n");
 			}
@@ -2820,7 +2907,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 					Platform.runLater(() -> {
 						if (libraryConsoleOutput != null) {
 							libraryConsoleOutput.appendText("Processed genome " + genome + ": " + lineCount[0]
-									+ " lines, " + peptideCount[0] + " peptides above threshold " + threshold + "\n");
+									+ " lines + " + peptideCount[0] + " peptides above threshold " + threshold + "\n");
 						}
 					});
 
@@ -2856,14 +2943,14 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 
 		// Create output directory with library name
 		File libraryDir = new File(resultDir, libraryName);
-		System.out.println("DEBUG: Library directory path: " + libraryDir.getAbsolutePath());
-		System.out.println("DEBUG: Library directory exists before creation: " + libraryDir.exists());
+		LOGGER.debug("[DIA Target] Library directory path: " + libraryDir.getAbsolutePath());
+		LOGGER.debug("[DIA Target] Library directory exists before creation: " + libraryDir.exists());
 		if (!libraryDir.exists()) {
 			boolean created = libraryDir.mkdirs();
-			System.out.println("DEBUG: Library directory created: " + created);
-			System.out.println("DEBUG: Library directory exists after creation: " + libraryDir.exists());
+			LOGGER.debug("[DIA Target] Library directory created: " + created);
+			LOGGER.debug("[DIA Target] Library directory exists after creation: " + libraryDir.exists());
 		} else {
-			System.out.println("DEBUG: Library directory already exists");
+			LOGGER.debug("[DIA Target] Library directory already exists");
 		}
 
 		// Create library files with library name
@@ -2872,8 +2959,8 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 		File libFile = new File(libraryDir, libraryName + ".speclib");
 
 		// Write FASTA file
-		System.out.println("DEBUG: Writing FASTA file: " + fastaFile.getAbsolutePath());
-		System.out.println("DEBUG: FASTA file will contain " + pepSet.size() + " peptides");
+		LOGGER.debug("[DIA Target] Writing FASTA file: " + fastaFile.getAbsolutePath());
+		LOGGER.debug("[DIA Target] FASTA file will contain " + pepSet.size() + " peptides");
 		try (PrintWriter writer = new PrintWriter(fastaFile)) {
 			int count = 0;
 			for (String pep : pepSet) {
@@ -2882,10 +2969,10 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 				count++;
 			}
 		}
-		System.out.println("DEBUG: FASTA file written successfully");
+		LOGGER.debug("[DIA Target] FASTA file written successfully");
 
 		// Write info file
-		System.out.println("DEBUG: Writing info file: " + infoFile.getAbsolutePath());
+		LOGGER.debug("[DIA Target] Writing info file: " + infoFile.getAbsolutePath());
 		try (PrintWriter writer = new PrintWriter(infoFile)) {
 			writer.println("Genomes:");
 			for (String genome : taxaGenomeSet) {
@@ -2902,7 +2989,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 			writer.println("Peptide detectability threshold:");
 			writer.print(threshold);
 		}
-		System.out.println("DEBUG: Info file written successfully");
+		LOGGER.debug("[DIA Target] Info file written successfully");
 
 		// Execute DiaNN task to create spectral library
 		Platform.runLater(() -> {
@@ -2912,10 +2999,10 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 			}
 		});
 
-		System.out.println("DEBUG: About to execute DiaNN task");
-		System.out.println("DEBUG: FASTA file: " + fastaFile.getAbsolutePath());
-		System.out.println("DEBUG: Library file: " + libFile.getAbsolutePath());
-		System.out.println("DEBUG: Threads: " + threadsComboBox.getValue());
+		LOGGER.debug("[DIA Target] About to execute DiaNN task");
+		LOGGER.debug("[DIA Target] FASTA file: " + fastaFile.getAbsolutePath());
+		LOGGER.debug("[DIA Target] Library file: " + libFile.getAbsolutePath());
+		LOGGER.debug("[DIA Target] Threads: " + threadsComboBox.getValue());
 
 		try {
 			DiaNNTask diaNNTask = new DiaNNTask(resourceParams.getToolPath(ToolType.DIANN));
@@ -2923,7 +3010,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 			diannPar.setThreads(threadsComboBox.getValue()); // Use selected thread count
 			diaNNTask.addTask(diannPar, fastaFile.getAbsolutePath(), libFile.getAbsolutePath(), false);
 
-			System.out.println("DEBUG: DiaNN task created, about to run...");
+			LOGGER.debug("[DIA Target] DiaNN task created, about to run...");
 			diaNNTask.run(2);
 			
 			if (!libFile.exists()) {
@@ -2934,9 +3021,9 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 			}
 
 			if (libFile.exists()) {
-				System.out.println("DEBUG: DiaNN task completed successfully");
+				LOGGER.debug("[DIA Target] DiaNN task completed successfully");
 			} else {
-				System.out.println("DEBUG: DiaNN task failed");
+				LOGGER.debug("[DIA Target] DiaNN task failed");
 			}
 
 			Platform.runLater(() -> {
@@ -2972,23 +3059,23 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 	 * Save current parameters to file
 	 */
 	public void saveCurrentParameters() {
-		System.out.println("DEBUG: saveCurrentParameters() called");
+		LOGGER.debug("[DIA Target] saveCurrentParameters() called");
 		try {
-			System.out.println("DEBUG: Attempting to collect parameters from UI...");
+			LOGGER.debug("[DIA Target] Attempting to collect parameters from UI...");
 			MetaParameterDiaTg currentParams = collectParametersFromUI();
 			System.out.println(
 					"DEBUG: collectParametersFromUI() returned: " + (currentParams != null ? "SUCCESS" : "NULL"));
 
 			if (currentParams != null) {
-				System.out.println("DEBUG: Parameters collected successfully, attempting to save...");
-				System.out.println("DEBUG: ParameterIO instance: " + (parameterIO != null ? "EXISTS" : "NULL"));
-				System.out.println("DEBUG: Parameter type: " + currentParams.getClass().getSimpleName());
-				System.out.println("DEBUG: Base parameter: " + (currentParams != null ? "EXISTS" : "NULL"));
-				System.out.println("DEBUG: MAG DB item: " + (currentParams.getMagDbItem() != null ? "EXISTS" : "NULL"));
-				System.out.println("DEBUG: Target library name: " + currentParams.getTargetLibraryName());
+				LOGGER.debug("[DIA Target] Parameters collected successfully, attempting to save...");
+				LOGGER.debug("[DIA Target] ParameterIO instance: " + (parameterIO != null ? "EXISTS" : "NULL"));
+				LOGGER.debug("[DIA Target] Parameter type: " + currentParams.getClass().getSimpleName());
+				LOGGER.debug("[DIA Target] Base parameter: " + (currentParams != null ? "EXISTS" : "NULL"));
+				LOGGER.debug("[DIA Target] MAG DB item: " + (currentParams.getMagDbItem() != null ? "EXISTS" : "NULL"));
+				LOGGER.debug("[DIA Target] Target library name: " + currentParams.getTargetLibraryName());
 
 				boolean saved = parameterIO.saveLastUsedParameters(currentParams);
-				System.out.println("DEBUG: saveLastUsedParameters() returned: " + saved);
+				LOGGER.debug("[DIA Target] saveLastUsedParameters() returned: " + saved);
 
 				if (saved) {
 					System.out.println(
@@ -2999,17 +3086,17 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 				}
 			} else {
 				System.err.println("WARNING: No parameters to save - collectParametersFromUI returned null");
-				System.out.println("DEBUG: Attempting fallback with collectParametersFromUIForAutoSave...");
+				LOGGER.debug("[DIA Target] Attempting fallback with collectParametersFromUIForAutoSave...");
 				MetaParameterDiaTg fallbackParams = collectParametersFromUIForAutoSave();
-				System.out.println("DEBUG: collectParametersFromUIForAutoSave() returned: "
+				LOGGER.debug("[DIA Target] collectParametersFromUIForAutoSave() returned: "
 						+ (fallbackParams != null ? "SUCCESS" : "NULL"));
 
 				if (fallbackParams != null) {
-					System.out.println("DEBUG: Attempting to save fallback parameters...");
+					LOGGER.debug("[DIA Target] Attempting to save fallback parameters...");
 					boolean saved = parameterIO.saveLastUsedParameters(fallbackParams);
-					System.out.println("DEBUG: Fallback save returned: " + saved);
+					LOGGER.debug("[DIA Target] Fallback save returned: " + saved);
 					if (saved) {
-						System.out.println("DEBUG: Successfully saved fallback parameters");
+						LOGGER.debug("[DIA Target] Successfully saved fallback parameters");
 					} else {
 						System.err.println("WARNING: Failed to save fallback parameters");
 					}
@@ -3022,6 +3109,27 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 		}
 	}
 
+	/**
+	 * Load analysis parameters from a specific result directory
+	 */
+	public void loadAnalysisParameters(String resultDirectory) {
+		try {
+			LOGGER.info("Loading DIA Target analysis parameters from: {}", resultDirectory);
+			MetaParameterDiaTg params = (MetaParameterDiaTg) parameterIO.loadAnalysisParameters(resultDirectory);
+			if (params != null) {
+				applyParametersToUI(params);
+				LOGGER.info("Loaded DIA Target analysis parameters from {}", resultDirectory);
+				consolePanel.appendConsoleText("✓ Loaded DIA Target analysis parameters from " + resultDirectory + "\n");
+			} else {
+				LOGGER.warn("No parameters found in {}", resultDirectory);
+				consolePanel.appendConsoleText("WARNING: No parameters found in " + resultDirectory + "\n");
+			}
+		} catch (Exception e) {
+			LOGGER.error("Failed to load DIA Target analysis parameters from {}", resultDirectory, e);
+			consolePanel.appendConsoleText("WARNING: Failed to load parameters from " + resultDirectory + ": " + e.getMessage() + "\n");
+		}
+	}
+	
 	/**
 	 * Get the parameter class for this workflow
 	 */

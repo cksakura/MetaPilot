@@ -13,6 +13,11 @@ public class MetaParameterDiaTg extends MetaParameterDia {
 	private String functionalLevel;
 	private String libraryPath;
 
+	public MetaParameterDiaTg() {
+		super();
+		this.setWorkflowType(uk.ac.quadram.metapilot.MetaPilotApp.WorkflowType.DIA_TARGET.getAnalysisType());
+	}
+	
 	public MetaParameterDiaTg(MetaBaseParameter metaPar, MagDbItem magDbItem, boolean librarySearch,
 			boolean selfModelSearch, String[] library, boolean useModel, String[] models) {
 		super(metaPar, magDbItem, librarySearch, selfModelSearch, library, useModel, models);
@@ -21,6 +26,7 @@ public class MetaParameterDiaTg extends MetaParameterDia {
 		this.selectedTaxa = new String[0];
 		this.selectedFunctions = new String[0];
 		this.targetLibraryName = "target_library";
+		this.setWorkflowType(uk.ac.quadram.metapilot.MetaPilotApp.WorkflowType.DIA_TARGET.getAnalysisType());
 	}
 
 	public String getLibraryPath() {

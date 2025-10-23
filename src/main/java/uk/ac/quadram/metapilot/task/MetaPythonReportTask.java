@@ -400,8 +400,9 @@ public class MetaPythonReportTask extends Task<Boolean> {
                     break;
                     
                 case FUNCTION:
-                    pythonScript.append("df = pd.read_csv('").append(inputPath).append("', sep='\\t')\n");
-                    pythonScript.append("fig = rg.create_function_summary(df, metadata, input_file_path='").append(inputPath).append("')\n");
+                    // For function reports, inputFile is already the folder path containing all separate files
+                    // No need to load main file - all data comes from separate files
+                    pythonScript.append("fig = rg.create_function_summary(metadata, input_file_path='").append(inputPath).append("')\n");
                     pythonScript.append("rg.generate_html_report(fig, 'Function Summary Report', '").append(outputPath).append("')\n");
                     break;
                     

@@ -6,6 +6,7 @@ import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.lang.management.ManagementFactory;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import uk.ac.quadram.metapilot.task.io.ReportManifestGenerator;
@@ -26,6 +27,10 @@ import java.util.stream.Collectors;
 
 import org.apache.commons.math3.stat.inference.TTest;
 import org.apache.logging.log4j.Logger;
+
+import com.sun.management.OperatingSystemMXBean;
+
+import org.apache.logging.log4j.LogManager;
 
 import uk.ac.quadram.metapilot.core.function.v2.EnzymeCommission;
 import uk.ac.quadram.metapilot.core.function.v2.GoObo;
@@ -51,6 +56,8 @@ import uk.ac.quadram.metapilot.task.par.MetaData;
 
 public abstract class MetaPilotMagTask extends MetaPilotTask {
 
+	private static final Logger LOGGER = LogManager.getLogger(MetaPilotMagTask.class);
+
 	protected String[] rawFiles;
 	protected String[] rawFileNames;
 	protected String[] quanExpNames;
@@ -69,13 +76,31 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 	protected File summaryMetaFile;
 	protected File combinedFile;
 
+	protected int maxTaskCount;
+	
 	public MetaPilotMagTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
 			ProgressBar secondBar) {
 		super(metaPar, mrp, progressBar, secondBar);
 		this.threadCount = metaPar.getThreadCount();
+
+		setTaskCount();
+		LOGGER.info("Task count set to: {}", maxTaskCount);
+
 		LOGGER.info(getTaskName() + ": Constructor completed, report templates will be copied during execution");
 	}
 
+	protected void setTaskCount() {
+		long totalMemorySize = ((OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean())
+				.getTotalMemorySize() / 1024 / 1024 / 1024;
+		this.maxTaskCount = (int) (totalMemorySize / 20);
+		if (this.maxTaskCount == 0) {
+			this.maxTaskCount = 1;
+		}
+
+		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": the number of max memory is "
+				+ totalMemorySize + " GB, the max number of tasks is set as " + maxTaskCount);
+	}
+	
 	protected void createSeparateFolders() {
 		MetaData metaData = metaPar.getMetadata();
 		if (metaData == null) {
@@ -1517,28 +1542,32 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 
 		// Generate functional annotation reports from the XML file
 		File funTsv = new File(funcFile, "functions.tsv");
-		File funReportTsv = new File(funcFile, "functions_report.tsv");
 		File final_pro_xml_file = new File(funcFile, "functions.xml");
 
-		if (!funTsv.exists() || !funReportTsv.exists()) {
+		if (!funTsv.exists()) {
 			System.out.println(format.format(new Date()) + "\t" + taskName + ": writing results to " + funTsv.getName()
 					+ " started");
 			try {
 				MetaProteinXMLReader2 funReader = new MetaProteinXMLReader2(final_pro_xml_file);
 				funReader.exportTsv(funTsv);
-				funReader.exportTsvReport(funReportTsv);
-				
 				// Export separate functional category reports
 				File goReportTsv = new File(funcFile, "Gene_Ontology_id_report.tsv");
 				File ecReportTsv = new File(funcFile, "EC_id_report.tsv");
 				File keggReportTsv = new File(funcFile, "KEGG_ko_report.tsv");
 				File briteReportTsv = new File(funcFile, "BRITE_report.tsv");
+				File cogReportTsv = new File(funcFile, "COG_accession_report.tsv");
+				File nogReportTsv = new File(funcFile, "NOG_accession_report.tsv");
+				File cogCatTsv = new File(funcFile, "COG_category_report.tsv");
+				File nogCatTsv = new File(funcFile, "NOG_category_report.tsv");
 				
 				funReader.exportGOReport(goReportTsv);
 				funReader.exportECReport(ecReportTsv);
 				funReader.exportKeggReport(keggReportTsv);
 				funReader.exportBriteReport(briteReportTsv);
-				
+				funReader.exportCOGReport(cogReportTsv);
+				funReader.exportNOGReport(nogReportTsv);
+				funReader.exportCOGCategoryReport(cogCatTsv);
+				funReader.exportNOGCategoryReport(nogCatTsv);				
 			} catch (Exception e) {
 				LOGGER.error(taskName + ": error in writing protein function information to " + funTsv.getName(), e);
 				System.err.println(format.format(new Date()) + "\t" + taskName
@@ -1989,7 +2018,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 		}
 
 		// Add function report
-		File funReportTsv = new File(metaPar.getDbSearchResultFile(), "functional_annotation\\functions_report.tsv");
+		File funReportTsv = new File(metaPar.getDbSearchResultFile(), "functional_annotation");
 		if (funReportTsv.exists() && funReportTsv.length() > 0) {
 			File report_function_summary = new File(reportHtmlDir, "report_function_summary.html");
 			if (summaryMetaFile != null && summaryMetaFile.exists()) {

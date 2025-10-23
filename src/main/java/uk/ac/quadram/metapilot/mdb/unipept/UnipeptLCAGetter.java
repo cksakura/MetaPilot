@@ -16,7 +16,6 @@ import org.apache.logging.log4j.Logger;
 import uk.ac.quadram.metapilot.core.taxonomy.Taxon;
 import uk.ac.quadram.metapilot.core.taxonomy.TaxonomyDatabase;
 import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantPepReader;
-import uk.ac.quadram.metapilot.task.MetaLabWorkflowType;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
 import uk.ac.quadram.metapilot.task.io.pep.AbstractMetaPeptideReader;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPeptideXMLWriter;

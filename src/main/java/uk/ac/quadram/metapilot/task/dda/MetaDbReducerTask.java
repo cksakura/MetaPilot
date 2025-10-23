@@ -14,6 +14,8 @@ import java.util.HashSet;
 import java.util.Iterator;
 
 import org.apache.commons.io.FileUtils;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 
 import uk.ac.quadram.metapilot.core.prodb.FastaReader;
 import uk.ac.quadram.metapilot.core.prodb.ProteinItem;
@@ -37,6 +39,8 @@ import uk.ac.quadram.metapilot.task.par.MetaConstants;
  * @version 2025.03.20
  */
 public class MetaDbReducerTask extends MetaDbCreateTask {
+
+	private static final Logger LOGGER = LogManager.getLogger(MetaDbReducerTask.class);
 
 	private String[] mgfFiles;
 	private String[] pf2Files;

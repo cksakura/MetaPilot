@@ -414,6 +414,10 @@ public class PFindSpectraConvertTask extends MetaAbstractTask {
 		// Ensure WatchService is stopped
 		stopWatchService();
 
+		// Stop the progress bar on successful completion
+		updateProgress(100, 100);
+		updateMessage(getTaskName() + ": Spectra conversion completed successfully!");
+
 		return true;
 	}
 

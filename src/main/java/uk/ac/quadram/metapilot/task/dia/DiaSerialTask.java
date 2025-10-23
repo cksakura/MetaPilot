@@ -29,7 +29,7 @@ public class DiaSerialTask {
 	private String output;
 	private String dbfolder;
 
-	protected Logger LOGGER = LogManager.getLogger(DiaSerialTask.class);
+	private static final Logger LOGGER = LogManager.getLogger(DiaSerialTask.class);
 	protected String taskName = "DIA library search";
 	protected SimpleDateFormat format = new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss");
 

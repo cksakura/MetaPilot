@@ -2,6 +2,8 @@ package uk.ac.quadram.metapilot.task.dia.par;
 
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
+import uk.ac.quadram.metapilot.task.par.MetaConstants;
+import uk.ac.quadram.metapilot.task.par.MetaData;
 
 public class MetaParameterDia extends MetaBaseParameter {
 
@@ -13,12 +15,18 @@ public class MetaParameterDia extends MetaBaseParameter {
 	private String[] models;
 
 	private MagDbItem magDbItem;
+	
+	public MetaParameterDia() {
+		super(uk.ac.quadram.metapilot.MetaPilotApp.WorkflowType.DIA_NORMAL.getAnalysisType(), new MetaData(), "", "",
+				false, "", MetaConstants.HCD_FTMS, 1, 1, true);
+		setThreadCount(Runtime.getRuntime().availableProcessors());
+	}
 
 	public MetaParameterDia(MetaBaseParameter metaPar, MagDbItem magDbItem, boolean librarySearch,
 			boolean selfModelSearch, String[] library, boolean useModel, String[] models) {
 		super();
 		// Copy all fields from the base parameter using setters
-		this.setWorkflowType(metaPar.getWorkflowType().toString());
+		this.setWorkflowType(uk.ac.quadram.metapilot.MetaPilotApp.WorkflowType.DIA_NORMAL.getAnalysisType());
 		this.setMetadata(metaPar.getMetadata());
 		this.setResult(metaPar.getResult());
 		this.setMicroDb(metaPar.getMicroDb());

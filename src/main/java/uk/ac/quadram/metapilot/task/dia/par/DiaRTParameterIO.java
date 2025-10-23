@@ -4,8 +4,8 @@ import java.io.File;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.task.par.BaseParameterIO;
@@ -19,7 +19,7 @@ import uk.ac.quadram.metapilot.task.mag.MagDbItem;
  */
 public class DiaRTParameterIO extends BaseParameterIO {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(DiaRTParameterIO.class);
+    private static final Logger LOGGER = LogManager.getLogger(DiaRTParameterIO.class);
 
     // Workflow-specific file names
     private static final String PARAMETER_FILENAME = "dia_rt_analysis_parameters.json";
@@ -43,7 +43,7 @@ public class DiaRTParameterIO extends BaseParameterIO {
 
     @Override
     protected String getWorkflowType() {
-        return uk.ac.quadram.metapilot.task.MetaLabWorkflowType.DiaNNMAGRT.name();
+        return uk.ac.quadram.metapilot.MetaPilotApp.WorkflowType.DIA_REALTIME.getAnalysisType();
     }
 
     @Override
@@ -92,7 +92,7 @@ public class DiaRTParameterIO extends BaseParameterIO {
             System.out.println("DEBUG: Processing base parameters...");
             System.out.println("DEBUG: Base parameters exist, creating JSON...");
             JSONObject baseParams = new JSONObject();
-            baseParams.put("workflowType", params.getWorkflowType());
+            baseParams.put("workflowType", params.getWorkflowTypeString());
             baseParams.put("result", params.getResult());
             baseParams.put("microDb", params.getMicroDb());
             baseParams.put("appendHostDb", params.isAppendHostDb());
@@ -253,23 +253,14 @@ public class DiaRTParameterIO extends BaseParameterIO {
     }
 
     @Override
-    protected Object createDefaultParameters() {
-        // Create a default MetaParameterDiaRT with minimal parameters
-        uk.ac.quadram.metapilot.task.par.MetaBaseParameter metaBasePar = new uk.ac.quadram.metapilot.task.par.MetaBaseParameter(
-            uk.ac.quadram.metapilot.task.MetaLabWorkflowType.DiaNNMAGRT.name(),
-            new MetaData(),
-            "",
-            "",
-            false,
-            "",
-            "DIA",
-            1,
-            Runtime.getRuntime().availableProcessors(),
-            true
-        );
-        
-        return new MetaParameterDiaRT(metaBasePar, null, true, false, new String[0], false, new String[0]);
-    }
+	protected Object createDefaultParameters() {
+		// Create a default MetaParameterDiaRT with minimal parameters
+		uk.ac.quadram.metapilot.task.par.MetaBaseParameter metaBasePar = new uk.ac.quadram.metapilot.task.par.MetaBaseParameter(
+				uk.ac.quadram.metapilot.MetaPilotApp.WorkflowType.DIA_REALTIME.getAnalysisType(), new MetaData(), "",
+				"", false, "", "DIA", 1, Runtime.getRuntime().availableProcessors(), true);
+
+		return new MetaParameterDiaRT(metaBasePar, null, true, false, new String[0], false, new String[0]);
+	}
 
     private boolean validateParameters(Object parameters) {
         if (!(parameters instanceof MetaParameterDiaRT)) {

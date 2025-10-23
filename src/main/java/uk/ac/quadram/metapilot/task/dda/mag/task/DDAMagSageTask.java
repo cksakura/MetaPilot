@@ -184,7 +184,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 	@Override
 	public void forceStop() {
 		LOGGER.info(getTaskName() + ": Force stop requested");
-		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Force stop requested");
+		LOGGER.info("[{}] Force stop requested", getTaskName());
 
 		// Cancel Sage task if running
 		if (sageTask != null) {
@@ -228,7 +228,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		this.cancel(true);
 
 		LOGGER.info(getTaskName() + ": Force stop completed");
-		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Force stop completed");
+		LOGGER.info("[{}] Force stop completed", getTaskName());
 	}
 
 	@Override
@@ -247,7 +247,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		updateProgress(0, 100);
 
 		LOGGER.info(getTaskName() + ": started");
-		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": started");
+		LOGGER.info("[{}] Started", getTaskName());
 
 		// Log detailed parameter information
 		LOGGER.info("Workflow parameters:");
@@ -301,8 +301,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		updateMessage(getTaskName() + ": Searching high abundant database...");
 		Platform.runLater(() -> secondBar.setProgress(ProgressBar.INDETERMINATE_PROGRESS));
 
-		System.out.println(
-				format.format(new Date()) + "\t" + getTaskName() + ": searching high abundant database started");
+		LOGGER.info("[{}] Searching high abundant database started", getTaskName());
 
 		// Initialize separateResultFolders
 		LOGGER.info("Initializing result directories in: {}", magSageParams.getDbSearchResultFile().getAbsolutePath());
@@ -758,8 +757,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		for (int i = 0; i < this.separateResultFolders.length; i++) {
 			File resultFile = new File(separateResultFolders[i], "results.sage.tsv");
 			if (resultFile.exists() && resultFile.length() > 0) {
-				System.out.println(format.format(new Date()) + "\t" + getTaskName()
-						+ ": Sage search result already exists in " + separateResultFolders[i].getAbsolutePath());
+				LOGGER.info("[{}] Sage search result already exists in {}", getTaskName(), separateResultFolders[i].getAbsolutePath());
 
 				LOGGER.info(getTaskName() + ": Sage search result already exists in "
 						+ separateResultFolders[i].getAbsolutePath());
@@ -767,8 +765,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 				File hapFile = new File(separateResultFolders[i], "hap");
 				File db = new File(hapFile, separateResultFolders[i].getName() + ".fasta");
 				if (!db.exists()) {
-					System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": sample-specific database"
-							+ db + " was not found");
+					LOGGER.error("[{}] sample-specific database {} was not found", getTaskName(), db);
 
 					LOGGER.error(getTaskName() + ": sample-specific database" + db + " was not found");
 					return false;
@@ -790,10 +787,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 						sageTask.searchMzML(new String[] { mzMLFile.getAbsolutePath() },
 								separateResultFolders[i].getAbsolutePath(), db.getAbsolutePath(), magSageParams, false);
 					} else {
-						System.out.println(
-								format.format(new Date()) + "\t" + getTaskName() + ": no protein sequences were in "
-										+ db + ", which means no peptides/proteins can be identifed from "
-										+ separateResultFolders[i].getName());
+						LOGGER.warn("[{}] no protein sequences were in {}, which means no peptides/proteins can be identified from {}", getTaskName(), db, separateResultFolders[i].getName());
 
 						LOGGER.error(getTaskName() + ": no protein sequences were in " + db
 								+ ", which means no peptides/proteins can be identifed from "
@@ -989,21 +983,18 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 						magSageParams, true);
 			} catch (Exception e) {
 				LOGGER.error(getTaskName() + ": error in running Sage search against combined database", e);
-				System.out.println(format.format(new Date()) + "\t" + getTaskName()
-						+ ": error in running Sage search against combined database");
+				LOGGER.error("[{}] error in running Sage search against combined database", getTaskName());
 				return false;
 			}
 
 			LOGGER.info(getTaskName() + ": searching combined database started");
-			System.out.println(
-					format.format(new Date()) + "\t" + getTaskName() + ": searching combined database started");
+			LOGGER.info("[{}] searching combined database started", getTaskName());
 
 			LOGGER.info("Starting Sage execution");
 			sageTask.run(separateResultFolders.length * 3);
 
 		} else {
-			System.out.println(format.format(new Date()) + "\t" + getTaskName()
-					+ ": Sage search result already exists in " + magSageParams.getDbSearchResultFile());
+			LOGGER.info("[{}] Sage search result already exists in {}", getTaskName(), magSageParams.getDbSearchResultFile());
 			LOGGER.info(
 					getTaskName() + ": Sage search result already exists in " + magSageParams.getDbSearchResultFile());
 		}
@@ -1012,12 +1003,11 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		if (pepResultFile.exists() && pepResultFile.length() > 0 && quanResultFile.exists()
 				&& quanResultFile.length() > 0) {
 			LOGGER.info(getTaskName() + ": combined database search finished successfully");
-			System.out.println(format.format(new Date()) + "\t" + getTaskName()
-					+ ": combined database search finished successfully");
+			LOGGER.info("[{}] combined database search finished successfully", getTaskName());
 			return true;
 		} else {
 			LOGGER.info(getTaskName() + ": combined database search failed");
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": combined database search failed");
+			LOGGER.error("[{}] combined database search failed", getTaskName());
 			return false;
 		}
 	}
@@ -1044,7 +1034,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 	 */
 	protected boolean exportReport() {
 		LOGGER.info(getTaskName() + ": exporting peptide report started");
-		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting peptide report started");
+		LOGGER.info("[{}] exporting peptide report started", getTaskName());
 
 		// Build file list and mapping
 		ArrayList<String> fileList = new ArrayList<String>();

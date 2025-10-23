@@ -41,6 +41,7 @@ import uk.ac.quadram.metapilot.mdb.unipept.UnipProInfo;
 
 import org.apache.commons.math3.stat.inference.TTest;
 import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 
 /**
  * Abstract base class for DDA IGC (Integrated Gene Catalog) workflow tasks.
@@ -51,6 +52,8 @@ import org.apache.logging.log4j.Logger;
  * generation, and taxonomic analysis.
  */
 public abstract class MetaPilotIgcTask extends MetaPilotTask {
+
+	private static final Logger LOGGER = LogManager.getLogger(MetaPilotIgcTask.class);
 
 	// Common fields for all IGC workflows
 	protected String[] rawFiles;

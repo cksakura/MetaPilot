@@ -28,7 +28,7 @@ public abstract class MetaDbCreateTask extends MetaAbstractTask {
 	protected String originalFasta;
 	protected File[] clusterResults;
 
-	protected Logger LOGGER = LogManager.getLogger(MetaDbCreateTask.class);
+	private static final Logger LOGGER = LogManager.getLogger(MetaDbCreateTask.class);
 	protected String taskName = "Sample specific database generation";
 
 	public MetaDbCreateTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar) {
@@ -74,6 +74,10 @@ public abstract class MetaDbCreateTask extends MetaAbstractTask {
 				updateProgress(35, 100);
 				updateProgress(35, 100);
 				updateMessage("Sample-specific database found, proceeding to next step...");
+
+				// Stop the progress bar on successful completion
+				updateProgress(100, 100);
+				updateMessage(taskName + ": Database creation completed successfully!");
 
 				return true;
 
@@ -180,6 +184,10 @@ public abstract class MetaDbCreateTask extends MetaAbstractTask {
 		updateProgress(35, 100);
 		updateProgress(35, 100);
 		updateMessage("Sample-specific database created successfully!");
+
+		// Stop the progress bar on successful completion
+		updateProgress(100, 100);
+		updateMessage(taskName + ": Database creation completed successfully!");
 
 		LOGGER.info(taskName + ": finished");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": finished");

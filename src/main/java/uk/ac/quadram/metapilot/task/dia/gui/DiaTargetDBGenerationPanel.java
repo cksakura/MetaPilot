@@ -246,22 +246,20 @@ public class DiaTargetDBGenerationPanel extends VBox {
         // Create a simple MetaParameterDiaTg with default values for database generation
         // This is for internal use, so we don't need complex parameters
         try {
-            metaParameter = new MetaParameterDiaTg(
-                new uk.ac.quadram.metapilot.task.par.MetaBaseParameter(
-                    uk.ac.quadram.metapilot.task.MetaLabWorkflowType.DiaNNMAGTG.name(),
-                    new uk.ac.quadram.metapilot.task.par.MetaData(new String[0], new String[0], new int[0], new int[0]), // Empty metadata
-                    "", // Empty result directory
-                    currentMagDbItem.getCurrentFile() != null ? currentMagDbItem.getCurrentFile().getAbsolutePath() : "",
-                    false, // appendHostDb - not used in DIA Target
-                    "", // hostDB - not used in DIA Target
-                    "DIA", // MS2 scan mode
-                    1, // Core count
-                    4, // Thread count
-                    true // Meta workflow
-                ),
-                currentMagDbItem,
-                false, false, new String[0], false, new String[0]
-            );
+			metaParameter = new MetaParameterDiaTg(new uk.ac.quadram.metapilot.task.par.MetaBaseParameter(
+					uk.ac.quadram.metapilot.MetaPilotApp.WorkflowType.DIA_TARGET.getAnalysisType(),
+					new uk.ac.quadram.metapilot.task.par.MetaData(new String[0], new String[0], new int[0], new int[0]), // Empty
+																															// metadata
+					"", // Empty result directory
+					currentMagDbItem.getCurrentFile() != null ? currentMagDbItem.getCurrentFile().getAbsolutePath()
+							: "",
+					false, // appendHostDb - not used in DIA Target
+					"", // hostDB - not used in DIA Target
+					"DIA", // MS2 scan mode
+					1, // Core count
+					4, // Thread count
+					true // Meta workflow
+			), currentMagDbItem, false, false, new String[0], false, new String[0]);
             System.out.println("DEBUG: Created default MetaParameterDiaTg for database generation");
         } catch (Exception e) {
             System.err.println("ERROR: Failed to create MetaParameterDiaTg: " + e.getMessage());

@@ -1436,29 +1436,20 @@ public class MetaProteinXMLReader2 {
 			
 			// Split NOG IDs by comma
 			String[] nogIdArray = nogIds.split(",");
-			int numIds = nogIdArray.length;
 			
-			if (numIds > 0) {
-				// Calculate equal share of intensity for each NOG ID
-				double[] sharedIntensities = new double[intensities.length];
-				for (int i = 0; i < intensities.length; i++) {
-					sharedIntensities[i] = intensities[i] / numIds;
-				}
-
-				// Add to hashmap for each NOG ID
-				for (String nogId : nogIdArray) {
-					nogId = nogId.trim();
-					if (!nogId.isEmpty()) {
-						if (nogIntensityMap.containsKey(nogId)) {
-							// Sum with existing intensities
-							double[] existingIntensities = nogIntensityMap.get(nogId);
-							for (int i = 0; i < sharedIntensities.length; i++) {
-								existingIntensities[i] += sharedIntensities[i];
-							}
-						} else {
-							// Create new entry
-							nogIntensityMap.put(nogId, sharedIntensities.clone());
+			// Add to hashmap for each NOG ID (NOG gets full intensity, not shared)
+			for (String nogId : nogIdArray) {
+				nogId = nogId.trim();
+				if (!nogId.isEmpty()) {
+					if (nogIntensityMap.containsKey(nogId)) {
+						// Sum with existing intensities
+						double[] existingIntensities = nogIntensityMap.get(nogId);
+						for (int i = 0; i < intensities.length; i++) {
+							existingIntensities[i] += intensities[i];
 						}
+					} else {
+						// Create new entry
+						nogIntensityMap.put(nogId, intensities.clone());
 					}
 				}
 			}
@@ -1481,6 +1472,190 @@ public class MetaProteinXMLReader2 {
 
 	public void exportBriteReport(String tsv) throws IOException {
 		exportBriteReport(new File(tsv));
+	}
+
+	public void exportCOGCategoryReport(String tsv) throws IOException {
+		exportCOGCategoryReport(new File(tsv));
+	}
+
+	public void exportCOGCategoryReport(File tsv) throws IOException {
+		PrintWriter writer = new PrintWriter(tsv);
+		StringBuilder title = new StringBuilder();
+		title.append("COG Category").append("\t");
+
+		if (this.searchType.equals(MetaConstants.maxQuant) && this.quanMode.equals(MetaConstants.labelFree)) {
+			for (String exp : fileNames) {
+				if (exp.startsWith("LFQ intensity")) {
+					title.append(exp.replace("LFQ intensity", "Intensity")).append("\t");
+				} else {
+					title.append("Intensity ").append(exp).append("\t");
+				}
+			}
+		} else {
+			for (String exp : fileNames) {
+				title.append("Intensity ").append(exp).append("\t");
+			}
+		}
+		writer.println(title.toString());
+
+		// HashMap to store COG category -> intensity arrays
+		HashMap<String, double[]> cogCategoryIntensityMap = new HashMap<String, double[]>();
+
+		for (MetaProteinAnnoEggNog protein : proteins) {
+			String cogIds = protein.getCog();
+			if (cogIds == null || cogIds.trim().isEmpty() || cogIds.equals("-")) {
+				continue;
+			}
+
+			double[] intensities = protein.getPro().getIntensities();
+			
+			// Split COG IDs by comma
+			String[] cogIdArray = cogIds.split(",");
+			
+			// For each COG ID, get the category from usedCogMap
+			for (String cogId : cogIdArray) {
+				cogId = cogId.trim();
+				if (!cogId.isEmpty() && usedCogMap.containsKey(cogId)) {
+					String[] cogInfo = usedCogMap.get(cogId);
+					String category = cogInfo[0]; // First element is category
+					
+					if (category != null && !category.trim().isEmpty() && !category.equals("-")) {
+						// Calculate equal share of intensity for each character in the category
+						int categoryLength = category.length();
+						double[] sharedIntensities = new double[intensities.length];
+						for (int i = 0; i < intensities.length; i++) {
+							sharedIntensities[i] = intensities[i] / categoryLength;
+						}
+						
+						// Handle multiple categories concatenated together (e.g., "ER", "EH")
+						// Split into individual characters
+						for (char categoryChar : category.toCharArray()) {
+							String singleCategory = String.valueOf(categoryChar).trim();
+							if (!singleCategory.isEmpty()) {
+								if (cogCategoryIntensityMap.containsKey(singleCategory)) {
+									// Sum with existing intensities
+									double[] existingIntensities = cogCategoryIntensityMap.get(singleCategory);
+									for (int i = 0; i < sharedIntensities.length; i++) {
+										existingIntensities[i] += sharedIntensities[i];
+									}
+								} else {
+									// Create new entry
+									cogCategoryIntensityMap.put(singleCategory, sharedIntensities.clone());
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Write data
+		for (String category : cogCategoryIntensityMap.keySet()) {
+			StringBuilder sb = new StringBuilder();
+			sb.append(category).append("\t");
+			double[] intensities = cogCategoryIntensityMap.get(category);
+			for (double intensity : intensities) {
+				sb.append(intensity).append("\t");
+			}
+			sb.deleteCharAt(sb.length() - 1);
+			writer.println(sb);
+		}
+
+		writer.close();
+	}
+
+	public void exportNOGCategoryReport(String tsv) throws IOException {
+		exportNOGCategoryReport(new File(tsv));
+	}
+
+	public void exportNOGCategoryReport(File tsv) throws IOException {
+		PrintWriter writer = new PrintWriter(tsv);
+		StringBuilder title = new StringBuilder();
+		title.append("NOG Category").append("\t");
+
+		if (this.searchType.equals(MetaConstants.maxQuant) && this.quanMode.equals(MetaConstants.labelFree)) {
+			for (String exp : fileNames) {
+				if (exp.startsWith("LFQ intensity")) {
+					title.append(exp.replace("LFQ intensity", "Intensity")).append("\t");
+				} else {
+					title.append("Intensity ").append(exp).append("\t");
+				}
+			}
+		} else {
+			for (String exp : fileNames) {
+				title.append("Intensity ").append(exp).append("\t");
+			}
+		}
+		writer.println(title.toString());
+
+		// HashMap to store NOG category -> intensity arrays
+		HashMap<String, double[]> nogCategoryIntensityMap = new HashMap<String, double[]>();
+
+		for (MetaProteinAnnoEggNog protein : proteins) {
+			String nogIds = protein.getNog();
+			if (nogIds == null || nogIds.trim().isEmpty() || nogIds.equals("-")) {
+				continue;
+			}
+
+			double[] intensities = protein.getPro().getIntensities();
+			
+			// Split NOG IDs by comma
+			String[] nogIdArray = nogIds.split(",");
+			
+			// For each NOG ID, get the category from usedNogMap
+			for (String nogId : nogIdArray) {
+				nogId = nogId.trim();
+				if (nogId.contains("|")) {
+					nogId = nogId.substring(0, nogId.indexOf("|"));
+				}
+
+				if (!nogId.isEmpty() && usedNogMap.containsKey(nogId)) {
+					String[] nogInfo = usedNogMap.get(nogId);
+					String category = nogInfo[0]; // First element is category
+
+					if (category != null && !category.trim().isEmpty() && !category.equals("-")) {
+						// Calculate equal share of intensity for each character in the category
+						int categoryLength = category.length();
+						double[] sharedIntensities = new double[intensities.length];
+						for (int i = 0; i < intensities.length; i++) {
+							sharedIntensities[i] = intensities[i] / categoryLength;
+						}
+
+						// Handle multiple categories concatenated together (e.g., "ER", "EH")
+						// Split into individual characters
+						for (char categoryChar : category.toCharArray()) {
+							String singleCategory = String.valueOf(categoryChar).trim();
+							if (!singleCategory.isEmpty()) {
+								if (nogCategoryIntensityMap.containsKey(singleCategory)) {
+									// Sum with existing intensities
+									double[] existingIntensities = nogCategoryIntensityMap.get(singleCategory);
+									for (int i = 0; i < sharedIntensities.length; i++) {
+										existingIntensities[i] += sharedIntensities[i];
+									}
+								} else {
+									// Create new entry
+									nogCategoryIntensityMap.put(singleCategory, sharedIntensities.clone());
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Write data
+		for (String category : nogCategoryIntensityMap.keySet()) {
+			StringBuilder sb = new StringBuilder();
+			sb.append(category).append("\t");
+			double[] intensities = nogCategoryIntensityMap.get(category);
+			for (double intensity : intensities) {
+				sb.append(intensity).append("\t");
+			}
+			sb.deleteCharAt(sb.length() - 1);
+			writer.println(sb);
+		}
+
+		writer.close();
 	}
 
 	public void exportBriteReport(File tsv) throws IOException {

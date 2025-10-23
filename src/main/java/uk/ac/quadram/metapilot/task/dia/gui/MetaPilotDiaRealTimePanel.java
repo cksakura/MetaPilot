@@ -1330,18 +1330,15 @@ public class MetaPilotDiaRealTimePanel extends VBox {
             int threadCount = threadsComboBox != null ? threadsComboBox.getValue() : 4;
             
             // Create MetaBaseParameter
-            MetaBaseParameter metaBasePar = new MetaBaseParameter(
-                uk.ac.quadram.metapilot.task.MetaLabWorkflowType.DiaNNMAGRT.name(), // Workflow type
-                metaData,
-                result,
-                selectedMagDb.getCurrentFile() != null ? selectedMagDb.getCurrentFile().getAbsolutePath() : "", // MicroDb path
-                appendHostDb,
-                hostDB,
-                "DIA", // MS2 scan mode (default for DIA)
-                1, // Core count
-                threadCount,
-                true // Meta workflow
-            );
+			MetaBaseParameter metaBasePar = new MetaBaseParameter(
+					uk.ac.quadram.metapilot.MetaPilotApp.WorkflowType.DIA_REALTIME.getAnalysisType(), // Workflow type
+					metaData, result,
+					selectedMagDb.getCurrentFile() != null ? selectedMagDb.getCurrentFile().getAbsolutePath() : "", // MicroDb
+																													// path
+					appendHostDb, hostDB, "DIA", // MS2 scan mode (default for DIA)
+					1, // Core count
+					threadCount, true // Meta workflow
+			);
             
             // Get library information
             String[] library = new String[0];

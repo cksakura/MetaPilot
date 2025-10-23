@@ -155,8 +155,7 @@ public abstract class MetaAbstractTask extends Task<Boolean> {
 		this.setOnCancelled(event -> {
 			Logger LOGGER = getLogger();
 			String taskName = getTaskName();
-			LOGGER.info(taskName + ": cancelled");
-			System.out.println(format.format(new Date()) + "\t" + taskName + ": task cancelled");
+			LOGGER.info("[{}] task cancelled", taskName);
 		});
 	}
 
@@ -189,8 +188,7 @@ public abstract class MetaAbstractTask extends Task<Boolean> {
 		this.setOnCancelled(event -> {
 			Logger LOGGER = getLogger();
 			String taskName = getTaskName();
-			LOGGER.info(taskName + ": cancelled");
-			System.out.println(format.format(new Date()) + "\t" + taskName + ": task cancelled");
+			LOGGER.info("[{}] task cancelled", taskName);
 		});
 	}
 
@@ -234,8 +232,7 @@ public abstract class MetaAbstractTask extends Task<Boolean> {
 		}
 
 		if (finished) {
-			LOGGER.info(taskName + ": finished");
-			System.out.println(format.format(new Date()) + "\t" + taskName + ": task finished");
+			LOGGER.info("[{}] task finished", taskName);
 
 			if (nextWork != null) {
 				Thread thread = new Thread(nextWork);
@@ -245,8 +242,7 @@ public abstract class MetaAbstractTask extends Task<Boolean> {
 				updateProgress(1.0, 1.0);
 			}
 		} else {
-			LOGGER.info(taskName + ": failed");
-			System.out.println(format.format(new Date()) + "\t" + taskName + ": task failed");
+			LOGGER.info("[{}] task failed", taskName);
 		}
 	}
 

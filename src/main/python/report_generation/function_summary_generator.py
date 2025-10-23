@@ -9,37 +9,26 @@ from .base_generator import BaseReportGenerator
 class FunctionSummaryGenerator(BaseReportGenerator):
     """Generator for function summary reports."""
     
-    def create_function_summary(self, func_df, metadata=None, input_file_path=None):
+    def create_function_summary(self, metadata=None, input_file_path=None):
         """Create function summary with data-driven functional category analysis."""
-        # Store input file path in DataFrame attrs if provided
-        if input_file_path and hasattr(func_df, 'attrs'):
-            func_df.attrs['file_path'] = input_file_path
-        
-        # Validate data before processing
-        if not self.validate_data(func_df, "function"):
-            return self.create_empty_data_plot(
-                "Function Summary Report",
-                "No function data available for analysis.<br>Please check if the functional annotation completed successfully."
-            )
-
-        intensity_cols, sample_names, groups, group_colors = self.extract_sample_info(func_df, metadata)
-        
-        # Use experiment names directly (no file ID mapping needed)
-        simple_names = sample_names
-        
-        # Ensure all intensity columns are numeric to prevent dtype errors
-        for col in intensity_cols:
-            if col in func_df.columns:
-                func_df[col] = pd.to_numeric(func_df[col], errors='coerce').fillna(0)
+        # All data comes from separate files in the input_file_path folder
+        # We'll get sample info from the first separate file we find
         
         # Check for available functional categories and files
-        available_plots = self._check_available_functional_plots(func_df)
+        available_plots = self._check_available_functional_plots(input_file_path)
         
         if not available_plots:
             return self.create_empty_data_plot(
                 "Function Summary Report",
                 "No functional categories detected in the data.<br>Please check if the functional annotation completed successfully."
             )
+        
+        # Get sample info from the first available separate file
+        sample_df = available_plots[0]['data_source']
+        intensity_cols, sample_names, groups, group_colors = self.extract_sample_info(sample_df, metadata)
+        
+        # Use experiment names directly (no file ID mapping needed)
+        simple_names = sample_names
         
         # Create dynamic subplot layout based on available plots
         num_rows = len(available_plots)
@@ -146,7 +135,7 @@ class FunctionSummaryGenerator(BaseReportGenerator):
         
         return available_categories
     
-    def _check_available_functional_plots(self, func_df):
+    def _check_available_functional_plots(self, input_file_path=None):
         """
         Check for available functional categories and files, return list of plots to create.
         
@@ -157,42 +146,22 @@ class FunctionSummaryGenerator(BaseReportGenerator):
         
         plots = []
         
-        # Get the directory of the current file
-        current_file_path = func_df.attrs.get('file_path', '') if hasattr(func_df, 'attrs') else ''
-        func_dir = os.path.dirname(current_file_path) if current_file_path else ''
+        # For function reports, input_file_path is now the folder path containing all separate files
+        # Get the directory from the input_file_path parameter (which is now the folder path)
+        func_dir = input_file_path if input_file_path else ''
         
-        print(f"DEBUG: func_df has attrs: {hasattr(func_df, 'attrs')}")
-        print(f"DEBUG: current_file_path: '{current_file_path}'")
+        print(f"DEBUG: input_file_path (folder): '{input_file_path}'")
         print(f"DEBUG: func_dir: '{func_dir}'")
         
-        # Check for stacked bar charts (COG category, NOG category from main file)
-        if 'COG category' in func_df.columns:
-            cog_data = func_df[func_df['COG category'].notna() & (func_df['COG category'] != "") & (func_df['COG category'] != "-")]
-            if len(cog_data) > 0:
-                plots.append({
-                    'name': 'COG Category',
-                    'type': 'Stacked Bar Chart',
-                    'data_source': func_df,
-                    'column': 'COG category'
-                })
-        
-        if 'NOG category' in func_df.columns:
-            nog_data = func_df[func_df['NOG category'].notna() & (func_df['NOG category'] != "") & (func_df['NOG category'] != "-")]
-            if len(nog_data) > 0:
-                plots.append({
-                    'name': 'NOG Category',
-                    'type': 'Stacked Bar Chart',
-                    'data_source': func_df,
-                    'column': 'NOG category'
-                })
-        
-        # Note: COG and NOG accession PCA/Heatmap will be generated from separate files
-        # Only categories (stacked bar charts) come from the main functions_report.tsv file
+        # All function data now comes from separate files (COG Category, NOG Category, COG Accession, NOG Accession, GO, EC, KEGG, BRITE)
+        # The main functions_report.tsv file is only used for validation and basic info
         
         # Check for separate files (COG, NOG, Gene Ontology, EC, KEGG, BRITE)
         print(f"DEBUG: Checking for separate files. func_dir exists: {bool(func_dir)}")
         if func_dir:
             separate_files = {
+                'COG Category': 'COG_category_report.tsv',
+                'NOG Category': 'NOG_category_report.tsv',
                 'COG Accession': 'COG_accession_report.tsv',
                 'NOG Accession': 'NOG_accession_report.tsv',
                 'Gene Ontology': 'Gene_Ontology_id_report.tsv',
@@ -219,19 +188,31 @@ class FunctionSummaryGenerator(BaseReportGenerator):
                                 if col in separate_df.columns:
                                     separate_df[col] = pd.to_numeric(separate_df[col], errors='coerce').fillna(0)
                             
-                            print(f"DEBUG:   Adding PCA and Heatmap plots for {category_name}")
-                            plots.append({
-                                'name': category_name,
-                                'type': 'PCA',
-                                'data_source': separate_df,
-                                'column': separate_df.columns[0]
-                            })
-                            plots.append({
-                                'name': category_name,
-                                'type': 'Heatmap',
-                                'data_source': separate_df,
-                                'column': separate_df.columns[0]
-                            })
+                            # Determine plot type based on category name
+                            if "Category" in category_name:
+                                plot_type = "Stacked Bar Chart"
+                                print(f"DEBUG:   Adding {plot_type} plot for {category_name}")
+                                plots.append({
+                                    'name': category_name,
+                                    'type': plot_type,
+                                    'data_source': separate_df,
+                                    'column': separate_df.columns[0]
+                                })
+                            else:
+                                plot_type = "PCA"
+                                print(f"DEBUG:   Adding {plot_type} and Heatmap plots for {category_name}")
+                                plots.append({
+                                    'name': category_name,
+                                    'type': plot_type,
+                                    'data_source': separate_df,
+                                    'column': separate_df.columns[0]
+                                })
+                                plots.append({
+                                    'name': category_name,
+                                    'type': 'Heatmap',
+                                    'data_source': separate_df,
+                                    'column': separate_df.columns[0]
+                                })
                         else:
                             print(f"DEBUG:   Skipping {category_name} - insufficient data")
                     except Exception as e:

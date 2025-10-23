@@ -1,7 +1,6 @@
 package uk.ac.quadram.metapilot.task.par;
 
 import uk.ac.quadram.metapilot.MetaPilotApp;
-import uk.ac.quadram.metapilot.task.MetaLabWorkflowType;
 import uk.ac.quadram.metapilot.task.dia.par.DiaParameterIO;
 import uk.ac.quadram.metapilot.task.dia.par.DiaTargetParameterIO;
 import uk.ac.quadram.metapilot.task.dia.par.DiaRTParameterIO;
@@ -23,7 +22,16 @@ public class ParameterIORegistry {
 	 * application startup
 	 */
 	public static void registerAllParameterIOs() {
-		// Register DIA workflow types using MetaLabWorkflowType enum
+		System.out.println("DEBUG: ParameterIORegistry.registerAllParameterIOs() called");
+		
+		// Register DIA workflow types using the actual workflow type strings from JSON files
+		System.out.println("DEBUG: Registering DIA workflow types from JSON files...");
+		BaseParameterIO.registerParameterIO("DiaNNMAG", DiaParameterIO.class);
+		BaseParameterIO.registerParameterIO("DiaNNMAGTG", DiaTargetParameterIO.class);
+		BaseParameterIO.registerParameterIO("DiaNNMAGRT", DiaRTParameterIO.class);
+		
+		// Also register the enum-based workflow types for backward compatibility
+		System.out.println("DEBUG: Registering enum-based workflow types...");
 		BaseParameterIO.registerParameterIO(MetaPilotApp.WorkflowType.DIA_NORMAL.getAnalysisType(),
 				DiaParameterIO.class);
 		BaseParameterIO.registerParameterIO(MetaPilotApp.WorkflowType.DIA_TARGET.getAnalysisType(),
@@ -32,6 +40,7 @@ public class ParameterIORegistry {
 				DiaRTParameterIO.class);
 
 		// Register DDA MAG workflow types
+		System.out.println("DEBUG: Registering DDA MAG workflow types...");
 		BaseParameterIO.registerParameterIO(MetaPilotApp.WorkflowType.DDA_MAG_PFIND.getAnalysisType(),
 				DDAMagPfindParameterIO.class);
 		BaseParameterIO.registerParameterIO(MetaPilotApp.WorkflowType.DDA_MAG_FRAGPIPE.getAnalysisType(),
@@ -40,6 +49,7 @@ public class ParameterIORegistry {
 				DDAMagSageParameterIO.class);
 
 		// Register DDA IGC workflow types
+		System.out.println("DEBUG: Registering DDA IGC workflow types...");
 		BaseParameterIO.registerParameterIO(MetaPilotApp.WorkflowType.DDA_IGC_PFIND.getAnalysisType(),
 				DDAIgcPFindParameterIO.class);
 		BaseParameterIO.registerParameterIO(MetaPilotApp.WorkflowType.DDA_IGC_MAXQUANT.getAnalysisType(),
@@ -48,6 +58,9 @@ public class ParameterIORegistry {
 				DDAMagFragPipeParameterIO.class);
 		BaseParameterIO.registerParameterIO(MetaPilotApp.WorkflowType.DDA_IGC_SAGE.getAnalysisType(),
 				DDAMagSageParameterIO.class);
+		
+		System.out.println("DEBUG: ParameterIORegistry registration completed. Total registered types: " + BaseParameterIO.getSupportedWorkflowTypes().size());
+		System.out.println("DEBUG: Registered workflow types: " + BaseParameterIO.getSupportedWorkflowTypes());
 	}
 
 	/**
@@ -57,17 +70,6 @@ public class ParameterIORegistry {
 		System.out.println("Supported workflow types:");
 		for (String workflowType : BaseParameterIO.getSupportedWorkflowTypes()) {
 			System.out.println("  - " + workflowType);
-		}
-	}
-
-	/**
-	 * Get the workflow type enum from a string name
-	 */
-	public static MetaLabWorkflowType getWorkflowTypeFromName(String workflowName) {
-		try {
-			return MetaLabWorkflowType.valueOf(workflowName);
-		} catch (IllegalArgumentException e) {
-			return null;
 		}
 	}
 }

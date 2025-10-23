@@ -10,6 +10,8 @@ import javafx.collections.ObservableList;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.scene.paint.Color;
+import javafx.scene.control.Alert.AlertType;
+import java.util.Optional;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.util.converter.DefaultStringConverter;
@@ -1079,26 +1081,42 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
     }
 
     private boolean validateInputs() {
+        LOGGER.info("Starting input validation for IGC Sage workflow");
+        
         if (ioPanel.getIoPanel().getExperimentData().isEmpty()) {
-            showAlert("Validation Error", "Please select at least one raw file for analysis.");
+            LOGGER.error("No experiment data found in IO panel");
+            showError("Validation Error", "Please select at least one raw file for analysis.");
             return false;
         }
+        LOGGER.info("Experiment data validation passed: {} experiments found", ioPanel.getIoPanel().getExperimentData().size());
+        
         if (ioPanel.getIoPanel().getOutputDirectory().isEmpty()) {
-            showAlert("Validation Error", "Please select an output directory.");
+            LOGGER.error("Output directory not set");
+            showError("Validation Error", "Please select an output directory.");
             return false;
         }
+        LOGGER.info("Output directory validation passed: {}", ioPanel.getIoPanel().getOutputDirectory());
+        
         if (ioPanel.getMicrobiomeDBPath().isEmpty()) {
-            showAlert("Validation Error", "Please select a microbiome database file.");
+            LOGGER.error("Microbiome database not selected");
+            showError("Validation Error", "Please select a microbiome database file.");
             return false;
         }
+        LOGGER.info("Microbiome database validation passed: {}", ioPanel.getMicrobiomeDBPath());
+        
         if (ioPanel.isHostDBEnabled() && ioPanel.getHostDBPath().isEmpty()) {
-            showAlert("Validation Error", "Please select a host database file.");
+            LOGGER.error("Host database enabled but not selected");
+            showError("Validation Error", "Please select a host database file.");
             return false;
         }
         if (enzymeComboBox.getValue() == null) {
-            showAlert("Validation Error", "Please select an enzyme.");
+            LOGGER.error("No enzyme selected");
+            showError("Validation Error", "Please select an enzyme.");
             return false;
         }
+        LOGGER.info("Enzyme validation passed: {}", enzymeComboBox.getValue());
+        
+        LOGGER.info("All validations passed for IGC Sage workflow");
         return true;
     }
 
@@ -1106,7 +1124,7 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
     protected void startAnalysis() {
         try {
             consolePanel.appendConsoleText("Starting IGC Sage analysis...\n");
-            System.out.println("DEBUG: startAnalysis called - IGC Sage workflow");
+            LOGGER.debug("[IGC Sage] startAnalysis called");
             
             // Validate inputs first
             if (!validateInputs()) {
@@ -1243,10 +1261,41 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
 
     @Override
     protected void stopAnalysis() {
-        if (consolePanel != null) {
-            consolePanel.appendConsoleText("Stopping Sage analysis...\n");
+        Alert alert = new Alert(AlertType.CONFIRMATION);
+        alert.setTitle("Stop Analysis");
+        alert.setHeaderText("Are you sure you want to stop the analysis?");
+        alert.setContentText("This action cannot be undone.");
+        
+        Optional<ButtonType> result = alert.showAndWait();
+        if (result.isPresent() && result.get() == ButtonType.OK) {
+            if (consolePanel != null) {
+                consolePanel.appendConsoleText("Stopping Sage analysis...\n");
+            }
+            LOGGER.info("stopAnalysis called - user confirmed stop");
+            
+            // Force stop the running task if it exists
+            if (currentTask != null && currentTask.isRunning()) {
+                consolePanel.appendConsoleText("Force stopping Sage task...\n");
+                currentTask.forceStop();
+                consolePanel.appendConsoleText("Sage task stop requested.\n");
+            } else {
+                consolePanel.appendConsoleText("No running Sage task to stop.\n");
+            }
+            
+            // Unbind progress bars to prevent memory leaks
+            if (consolePanel != null) {
+                consolePanel.getOverallProgressBar().progressProperty().unbind();
+                consolePanel.getCurrentTaskProgressBar().progressProperty().unbind();
+                
+                consolePanel.setButtonsEnabled(true, false, false);
+                consolePanel.stopStatusTimer();
+                consolePanel.getOverallProgressBar().setProgress(0);
+                consolePanel.getCurrentTaskProgressBar().setProgress(0);
+                consolePanel.setCurrentTaskLabel("Current Task: None");
+            }
+        } else {
+            LOGGER.info("stopAnalysis cancelled by user");
         }
-        System.out.println("DEBUG: stopAnalysis called");
     }
     
     @Override
@@ -1464,8 +1513,12 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
                     updateParameterView();
                 });
             } else {
-                consolePanel.appendConsoleText("No previous parameters found, using defaults\n");
-                LOGGER.warn("No parameters loaded, using defaults");
+                consolePanel.appendConsoleText("No previous parameters found, creating defaults\n");
+                LOGGER.info("No parameters loaded from file, creating defaults");
+                DDAIgcSageParameters defaultParams = new DDAIgcSageParameters();
+                applyParametersToUI(defaultParams);
+                consolePanel.appendConsoleText("✓ Default parameters loaded into UI\n");
+                LOGGER.info("Applied default parameters to UI successfully");
             }
         } catch (Exception e) {
             String errorMsg = "WARNING: Failed to load last used parameters: " + e.getMessage();
@@ -1676,9 +1729,11 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
         try {
             DDAIgcSageParameters params = (DDAIgcSageParameters) parameterIO.loadAnalysisParameters(resultDirectory);
             applyParametersToUI(params);
-            showAlert("Success", "Loaded Sage analysis parameters from " + resultDirectory);
+            LOGGER.info("Loaded Sage analysis parameters from {}", resultDirectory);
+            consolePanel.appendConsoleText("✓ Loaded Sage analysis parameters from " + resultDirectory + "\n");
         } catch (Exception e) {
-            showAlert("Error", "Failed to load Sage analysis parameters: " + e.getMessage());
+            LOGGER.error("Failed to load Sage analysis parameters from " + resultDirectory, e);
+            consolePanel.appendConsoleText("WARNING: Failed to load Sage analysis parameters: " + e.getMessage() + "\n");
         }
     }
     

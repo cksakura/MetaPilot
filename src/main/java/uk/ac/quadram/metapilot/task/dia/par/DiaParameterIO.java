@@ -4,8 +4,8 @@ import java.io.File;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.task.par.BaseParameterIO;
@@ -20,7 +20,7 @@ import uk.ac.quadram.metapilot.task.mag.MagDbConfigIO;
  */
 public class DiaParameterIO extends BaseParameterIO {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(DiaParameterIO.class);
+    private static final Logger LOGGER = LogManager.getLogger(DiaParameterIO.class);
 
     // Workflow-specific file names
     private static final String PARAMETER_FILENAME = "dia_analysis_parameters.json";
@@ -43,9 +43,9 @@ public class DiaParameterIO extends BaseParameterIO {
     }
 
     @Override
-    protected String getWorkflowType() {
-        return uk.ac.quadram.metapilot.task.MetaLabWorkflowType.DiaNNMAG.name();
-    }
+	protected String getWorkflowType() {
+		return uk.ac.quadram.metapilot.MetaPilotApp.WorkflowType.DIA_NORMAL.getAnalysisType();
+	}
 
     @Override
     protected boolean saveParametersToFile(Object parameters, File outputFile, String description) {
@@ -326,29 +326,18 @@ public class DiaParameterIO extends BaseParameterIO {
     }
 
     @Override
-    protected Object createDefaultParameters() {
-        // Create a default MetaParameterDia with minimal parameters
-        uk.ac.quadram.metapilot.task.par.MetaBaseParameter metaBasePar = new uk.ac.quadram.metapilot.task.par.MetaBaseParameter(
-            uk.ac.quadram.metapilot.task.MetaLabWorkflowType.DiaNNMAG.name(),
-            new MetaData(),
-            "",
-            "",
-            false,
-            "",
-            "DDA",
-            1,
-            Runtime.getRuntime().availableProcessors(),
-            true
-        );
-        
-        return new MetaParameterDia(
-            metaBasePar,
-            null, // No MAG database by default
-            false, // librarySearch
-            false, // selfModelSearch
-            new String[0], // library
-            false, // useModel
-            new String[0] // models
-        );
-    }
+	protected Object createDefaultParameters() {
+		// Create a default MetaParameterDia with minimal parameters
+		uk.ac.quadram.metapilot.task.par.MetaBaseParameter metaBasePar = new uk.ac.quadram.metapilot.task.par.MetaBaseParameter(
+				uk.ac.quadram.metapilot.MetaPilotApp.WorkflowType.DIA_NORMAL.getAnalysisType(), new MetaData(), "", "",
+				false, "", "DIA", 1, Runtime.getRuntime().availableProcessors(), true);
+
+		return new MetaParameterDia(metaBasePar, null, // No MAG database by default
+				false, // librarySearch
+				false, // selfModelSearch
+				new String[0], // library
+				false, // useModel
+				new String[0] // models
+		);
+	}
 }

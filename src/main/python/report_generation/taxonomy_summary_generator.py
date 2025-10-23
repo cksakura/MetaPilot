@@ -152,9 +152,12 @@ class TaxonomySummaryGenerator(BaseReportGenerator):
                         raise ValueError("Insufficient data after filtering zero variance")
                     
                     scaled = StandardScaler().fit_transform(filtered_matrix)
-                    pca = PCA(n_components=2)
+                    
+                    # Transpose for sample-level PCA (samples as points, taxa as features)
+                    scaled = scaled.T
+                    pca = PCA(n_components=min(2, scaled.shape[1]))
                     components = pca.fit_transform(scaled)
-                    taxon_labels = filtered_taxon_labels
+                    point_labels = simple_names  # Samples as points
                     explained = pca.explained_variance_ratio_
 
                     # Convert to lists explicitly for better Plotly compatibility
@@ -172,7 +175,7 @@ class TaxonomySummaryGenerator(BaseReportGenerator):
                                 opacity=0.8,  # Higher opacity
                                 line=dict(width=2, color='#333333')  # Thicker border
                             ),
-                            text=taxon_labels,
+                            text=point_labels,
                             textposition='top center',
                             hovertemplate='<b>%{text}</b><br>PC1: %{x:.2f}<br>PC2: %{y:.2f}<br><extra></extra>',
                             showlegend=False

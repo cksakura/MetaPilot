@@ -6,8 +6,8 @@ import java.util.List;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.task.par.BaseParameterIO;
@@ -20,7 +20,7 @@ import uk.ac.quadram.metapilot.task.par.BaseParameterIO;
  */
 public class DDAMagFragPipeParameterIO extends BaseParameterIO {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(DDAMagFragPipeParameterIO.class);
+    private static final Logger LOGGER = LogManager.getLogger(DDAMagFragPipeParameterIO.class);
 
     // Workflow-specific file names
     private static final String PARAMETER_FILENAME = "mag_fragpipe_analysis_parameters.json";

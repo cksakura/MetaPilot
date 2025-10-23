@@ -10,6 +10,8 @@ import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.scene.paint.Color;
 import javafx.application.Platform;
+import javafx.scene.control.Alert.AlertType;
+import java.util.Optional;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
 import uk.ac.quadram.metapilot.task.common.gui.MagDatabaseSettingsPanel;
 import uk.ac.quadram.metapilot.task.common.gui.MetadataConfigurationPanel;
@@ -55,8 +57,6 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
     
     // MetaDiaTask for DIA analysis
     private MetaDiaTask currentTask;
-    
-    
 
     // DIA-specific mode selection
     private ComboBox<String> modeSelectionComboBox;
@@ -88,8 +88,6 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
         initializeSpecificUI();
         // Set MAG databases after UI is initialized
         setAvailableMagDatabases(magDbItems);
-        // Load last used parameters after UI and databases are initialized
-        loadLastUsedParameters();
     }
 
     // Load available MAG databases
@@ -106,7 +104,7 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
             // Create library generation panel now that MAG database is available
             createLibraryGenerationPanel();
         } else {
-            System.out.println("DEBUG: magDatabasePanel is null - UI not initialized yet");
+            LOGGER.debug("magDatabasePanel is null - UI not initialized yet");
         }
     }
 
@@ -128,7 +126,7 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
             return;
         }
         
-        System.out.println("DEBUG: Creating library generation panel with MAG database available");
+        LOGGER.debug("Creating library generation panel with MAG database available");
         
         // Try to load last used parameters first, then create with minimal parameters for library generation
         loadLastUsedParameters();
@@ -145,7 +143,7 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
             // We need to find the left column and add the panel
             addLibraryPanelToUI();
             
-            System.out.println("DEBUG: Library generation panel created successfully");
+            LOGGER.debug("Library generation panel created successfully");
         } else {
             System.err.println("ERROR: Failed to create library generation panel - no valid parameters");
         }
@@ -155,21 +153,21 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
      * Ensure the library generation panel is created when switching to Parameters tab
      */
     private void ensureLibraryGenerationPanelCreated() {
-        System.out.println("DEBUG: ensureLibraryGenerationPanelCreated() called");
+        LOGGER.debug("ensureLibraryGenerationPanelCreated() called");
         
         // Check if library generation panel already exists
         if (libraryGenerationPanel != null) {
-            System.out.println("DEBUG: Library generation panel already exists");
+            LOGGER.debug("Library generation panel already exists");
             return;
         }
         
         // Check if MAG database is available
         if (magDatabasePanel == null || magDatabasePanel.getSelectedMagDatabase() == null) {
-            System.out.println("DEBUG: No MAG database selected yet, cannot create library generation panel");
+            LOGGER.debug("No MAG database selected yet, cannot create library generation panel");
             return;
         }
         
-        System.out.println("DEBUG: Creating library generation panel on tab switch");
+        LOGGER.debug("Creating library generation panel on tab switch");
         createLibraryGenerationPanel();
     }
     
@@ -181,13 +179,13 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
             return;
         }
         
-        System.out.println("DEBUG: Replacing library placeholder with actual library generation panel");
+        LOGGER.debug("Replacing library placeholder with actual library generation panel");
         
         // Replace the placeholder with the actual library generation panel
         int placeholderIndex = leftColumn.getChildren().indexOf(libraryPlaceholder);
         if (placeholderIndex >= 0) {
             leftColumn.getChildren().set(placeholderIndex, libraryGenerationPanel);
-            System.out.println("DEBUG: Successfully replaced library placeholder with actual panel");
+            LOGGER.debug("Successfully replaced library placeholder with actual panel");
         } else {
             System.err.println("ERROR: Could not find library placeholder in left column");
         }
@@ -240,47 +238,53 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
 
         // Add tab change listener to update metadata when Parameters tab is selected
         // and save parameters when Console tab is selected
-        tabPane.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, newTab) -> {
-            if (newTab == paramTab) {
-                updateMetadataTableFromIOPanel();
-                // Ensure library generation panel is created when switching to Parameters tab
-                ensureLibraryGenerationPanelCreated();
-                // Update parameter view when switching to Parameters tab
-                updateParameterView();
-            } else if (newTab == consoleTab) {
-                // Update parameter view when switching to Console tab
-                updateParameterView();
-                
-                // Save current parameters when Console tab is selected
-                try {
-                    consolePanel.appendConsoleText("Auto-saving parameters when switching to Console tab...\n");
-                    MetaParameterDia currentParams = collectParametersFromUI();
-                    if (currentParams == null) {
-                        // If full validation fails (e.g., no raw files), use minimal validation for library generation
-                        currentParams = generateMetaParameterDiaForLibraryGeneration();
-                    }
-                    if (currentParams != null) {
-                        boolean saved = parameterIO.saveLastUsedParameters(currentParams);
-                        if (saved) {
-                            consolePanel.appendConsoleText("✓ Parameters auto-saved to config folder\n");
-                        } else {
-                            consolePanel.appendConsoleText("WARNING: Failed to auto-save parameters to config folder\n");
-                        }
-                    } else {
-                        consolePanel.appendConsoleText("WARNING: No parameters to auto-save\n");
-                    }
-                } catch (Exception e) {
-                    String errorMsg = "ERROR: Failed to auto-save parameters: " + e.getMessage();
-                    consolePanel.appendConsoleText(errorMsg + "\n");
-                }
-            }
-        });
+		tabPane.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, newTab) -> {
+			if (newTab == paramTab) {
+				updateMetadataTableFromIOPanel();
+				// Ensure library generation panel is created when switching to Parameters tab
+				ensureLibraryGenerationPanelCreated();
+				// Update parameter view when switching to Parameters tab
+				updateParameterView();
+			} else if (newTab == consoleTab) {
+				// Update parameter view when switching to Console tab
+				updateParameterView();
+
+				// Save current parameters when Console tab is selected
+				try {
+					consolePanel.appendConsoleText("Auto-saving parameters when switching to Console tab...\n");
+					MetaParameterDia currentParams = collectParametersFromUI();
+					if (currentParams == null) {
+						// If full validation fails (e.g., no raw files), use minimal validation for
+						// library generation
+						currentParams = generateMetaParameterDiaForLibraryGeneration();
+					}
+					if (currentParams != null) {
+						boolean saved = parameterIO.saveLastUsedParameters(currentParams);
+						if (saved) {
+							consolePanel.appendConsoleText("✓ Parameters auto-saved to config folder\n");
+						} else {
+							consolePanel
+									.appendConsoleText("WARNING: Failed to auto-save parameters to config folder\n");
+						}
+					} else {
+						consolePanel.appendConsoleText("WARNING: No parameters to auto-save\n");
+					}
+				} catch (Exception e) {
+					String errorMsg = "ERROR: Failed to auto-save parameters: " + e.getMessage();
+					consolePanel.appendConsoleText(errorMsg + "\n");
+				}
+			}
+		});
 
         // Add tab pane to main panel
         getChildren().add(tabPane);
         
-        // Initialize parameter view
-        updateParameterView();
+        Platform.runLater(() -> {
+//            loadLastUsedParameters();
+            
+            // Add window close event handler to save parameters
+            setupWindowCloseHandler();
+        });
     }
 
     // Create IO tab (same as MAG workflows)
@@ -766,15 +770,36 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
 
     @Override
     protected void stopAnalysis() {
-        consolePanel.appendConsoleText("Stopping DIA analysis...\n");
-        LOGGER.info("stopAnalysis called");
+        Alert alert = new Alert(AlertType.CONFIRMATION);
+        alert.setTitle("Stop Analysis");
+        alert.setHeaderText("Are you sure you want to stop the analysis?");
+        alert.setContentText("This action cannot be undone.");
         
-        if (currentTask != null && currentTask.isRunning()) {
-            consolePanel.appendConsoleText("Force stopping DIA task...\n");
-            currentTask.forceStop();
-            consolePanel.appendConsoleText("DIA task stop requested.\n");
+        Optional<ButtonType> result = alert.showAndWait();
+        if (result.isPresent() && result.get() == ButtonType.OK) {
+            consolePanel.appendConsoleText("Stopping DIA analysis...\n");
+            LOGGER.info("stopAnalysis called - user confirmed stop");
+            
+            // Force stop the running task if it exists
+            if (currentTask != null && currentTask.isRunning()) {
+                consolePanel.appendConsoleText("Force stopping DIA task...\n");
+                currentTask.forceStop();
+                consolePanel.appendConsoleText("DIA task stop requested.\n");
+            } else {
+                consolePanel.appendConsoleText("No running DIA task to stop.\n");
+            }
+            
+            // Unbind progress bars to prevent memory leaks
+            consolePanel.getOverallProgressBar().progressProperty().unbind();
+            consolePanel.getCurrentTaskProgressBar().progressProperty().unbind();
+            
+            consolePanel.setButtonsEnabled(true, false, false);
+            consolePanel.stopStatusTimer();
+            consolePanel.getOverallProgressBar().setProgress(0);
+            consolePanel.getCurrentTaskProgressBar().setProgress(0);
+            consolePanel.setCurrentTaskLabel("Current Task: None");
         } else {
-            consolePanel.appendConsoleText("No running DIA task to stop.\n");
+            LOGGER.info("stopAnalysis cancelled by user");
         }
     }
     
@@ -1008,15 +1033,15 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
      * @return MetaParameterDia object with minimal parameters, or null if essential validation fails
      */
     public MetaParameterDia generateMetaParameterDiaForLibraryGeneration() {
-        System.out.println("DEBUG: generateMetaParameterDiaForLibraryGeneration() called");
+        LOGGER.debug("[DIA Normal] generateMetaParameterDiaForLibraryGeneration() called");
         try {
             // Validate only essential inputs for library generation
-            System.out.println("DEBUG: Starting minimal input validation for library generation...");
+            LOGGER.debug("[DIA Normal] Starting minimal input validation for library generation...");
             if (!validateInputsForLibraryGeneration()) {
                 System.err.println("Minimal input validation failed - cannot generate MetaParameterDia for library generation");
                 return null;
             }
-            System.out.println("DEBUG: Minimal input validation passed");
+            LOGGER.debug("[DIA Normal] Minimal input validation passed");
             
             // Create minimal MetaData (empty experiments for library generation)
             MetaData metaData = new MetaData(new String[0], new String[0], new int[0], new int[0]);
@@ -1039,7 +1064,7 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
             
             // Set the version on the MagDbItem - this is critical!
             selectedMagDb.setUsedVersion(selectedVersion);
-            System.out.println("DEBUG: Set version " + selectedVersion.getCatalogueVersion() + " on MagDbItem " + selectedMagDb.getCatalogueID());
+            LOGGER.debug("[DIA Normal] Set version {} on MagDbItem {}", selectedVersion.getCatalogueVersion(), selectedMagDb.getCatalogueID());
             
             // Get host database settings
             boolean appendHostDb = magDatabasePanel.isAppendHostDb();
@@ -1049,18 +1074,15 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
             int threadCount = threadsComboBox != null ? threadsComboBox.getValue() : 4;
             
             // Create MetaBaseParameter with minimal data
-            MetaBaseParameter metaBasePar = new MetaBaseParameter(
-                uk.ac.quadram.metapilot.task.MetaLabWorkflowType.DiaNNMAG.name(), // Workflow type
-                metaData,
-                result,
-                selectedMagDb.getCurrentFile() != null ? selectedMagDb.getCurrentFile().getAbsolutePath() : "", // MicroDb path
-                appendHostDb,
-                hostDB,
-                "DDA", // MS2 scan mode (default for DIA)
-                1, // Core count
-                threadCount,
-                true // Meta workflow
-            );
+			MetaBaseParameter metaBasePar = new MetaBaseParameter(
+					uk.ac.quadram.metapilot.MetaPilotApp.WorkflowType.DIA_NORMAL.getAnalysisType(), // Workflow type
+					metaData, result,
+					selectedMagDb.getCurrentFile() != null ? selectedMagDb.getCurrentFile().getAbsolutePath() : "", // MicroDb
+																													// path
+					appendHostDb, hostDB, "DDA", // MS2 scan mode (default for DIA)
+					1, // Core count
+					threadCount, true // Meta workflow
+			);
             
             // Create MetaParameterDia with minimal parameters for library generation
             MetaParameterDia metaParameterDia = new MetaParameterDia(
@@ -1174,7 +1196,7 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
             
             // Set the version on the MagDbItem - this is critical!
             selectedMagDb.setUsedVersion(selectedVersion);
-            System.out.println("DEBUG: Set version " + selectedVersion.getCatalogueVersion() + " on MagDbItem " + selectedMagDb.getCatalogueID());
+            LOGGER.debug("[DIA Normal] Set version {} on MagDbItem {}", selectedVersion.getCatalogueVersion(), selectedMagDb.getCatalogueID());
             
             // Get host database settings
             boolean appendHostDb = magDatabasePanel.isAppendHostDb();
@@ -1290,46 +1312,52 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
      * @return true if all required inputs are valid, false otherwise
      */
     private boolean validateInputs() {
-        System.out.println("DEBUG: validateInputs() called");
+        LOGGER.info("Starting input validation for DIA Normal workflow");
         
         // Check if IO panel has experiment data
         if (ioPanel == null) {
-            System.err.println("DEBUG: ioPanel is null");
+            LOGGER.error("IO panel is null");
+            showError("Validation Error", "IO panel is not initialized.");
             return false;
         }
         if (ioPanel.getExperimentData().isEmpty()) {
-            System.err.println("DEBUG: No experiment data found in IO panel");
+            LOGGER.error("No experiment data found in IO panel");
+            showError("Validation Error", "Please add at least one experiment.");
             return false;
         }
-        System.out.println("DEBUG: IO panel has " + ioPanel.getExperimentData().size() + " experiments");
+        LOGGER.info("Experiment data validation passed: {} experiments found", ioPanel.getExperimentData().size());
         
         // Check if result directory is set
         String outputDir = ioPanel.getOutputDirectory();
         if (outputDir == null || outputDir.trim().isEmpty()) {
-            System.err.println("DEBUG: Result directory not set (value: " + outputDir + ")");
+            LOGGER.error("Result directory not set (value: {})", outputDir);
+            showError("Validation Error", "Please select an output directory.");
             return false;
         }
-        System.out.println("DEBUG: Output directory is set: " + outputDir);
+        LOGGER.info("Output directory validation passed: {}", outputDir);
         
         // Check if MAG database is selected
         if (magDatabasePanel == null) {
-            System.err.println("DEBUG: magDatabasePanel is null");
+            LOGGER.error("MAG database panel is null");
+            showError("Validation Error", "MAG database panel is not initialized.");
             return false;
         }
         if (magDatabasePanel.getSelectedMagDatabase() == null) {
-            System.err.println("DEBUG: No MAG database selected");
+            LOGGER.error("No MAG database selected");
+            showError("Validation Error", "Please select a MAG database.");
             return false;
         }
-        System.out.println("DEBUG: MAG database selected: " + magDatabasePanel.getSelectedMagDatabase().getCatalogueID());
+        LOGGER.info("MAG database validation passed: {}", magDatabasePanel.getSelectedMagDatabase().getCatalogueID());
         
         // Check if MAG database version is selected
         if (magDatabasePanel.getSelectedMagVersion() == null) {
-            System.err.println("DEBUG: No MAG database version selected");
+            LOGGER.error("No MAG database version selected");
+            showError("Validation Error", "Please select a MAG database version.");
             return false;
         }
-        System.out.println("DEBUG: MAG database version selected: " + magDatabasePanel.getSelectedMagVersion().getCatalogueVersion());
+        LOGGER.info("MAG database version validation passed: {}", magDatabasePanel.getSelectedMagVersion().getCatalogueVersion());
         
-        System.out.println("DEBUG: All validations passed");
+        LOGGER.info("All validations passed for DIA Normal workflow");
         return true;
     }
     
@@ -1354,8 +1382,12 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
                 applyParametersToUI(params);
                 LOGGER.info("Applied parameters to UI successfully");
             } else {
-                consolePanel.appendConsoleText("No previous parameters found, using defaults\n");
-                LOGGER.info("No parameters loaded from file, using defaults");
+                consolePanel.appendConsoleText("No previous parameters found, creating defaults\n");
+                LOGGER.info("No parameters loaded from file, creating defaults");
+                MetaParameterDia defaultParams = new MetaParameterDia();
+                applyParametersToUI(defaultParams);
+                consolePanel.appendConsoleText("✓ Default parameters loaded into UI\n");
+                LOGGER.info("Applied default parameters to UI successfully");
             }
         } catch (Exception e) {
             String errorMsg = "WARNING: Failed to load last used parameters: " + e.getMessage();
@@ -1460,8 +1492,8 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
             }
         }
         
-        // Update parameter view after applying parameters
-        Platform.runLater(() -> updateParameterView());
+        // Update parameter view after applying parameters - removed to prevent pop-ups during initialization
+        // updateParameterView() will be called when user switches to Console tab
         
         consolePanel.appendConsoleText("✓ Successfully applied parameters to UI\n");
         LOGGER.info("Successfully applied parameters to UI for DIA Normal workflow");
@@ -1502,6 +1534,27 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
         } catch (Exception e) {
             System.err.println("ERROR: Failed to save current parameters: " + e.getMessage());
             e.printStackTrace();
+        }
+    }
+    
+    /**
+     * Load analysis parameters from a specific result directory
+     */
+    public void loadAnalysisParameters(String resultDirectory) {
+        try {
+            LOGGER.info("Loading DIA Normal analysis parameters from: {}", resultDirectory);
+            MetaParameterDia params = (MetaParameterDia) parameterIO.loadAnalysisParameters(resultDirectory);
+            if (params != null) {
+                applyParametersToUI(params);
+                LOGGER.info("Loaded DIA Normal analysis parameters from {}", resultDirectory);
+                consolePanel.appendConsoleText("✓ Loaded DIA Normal analysis parameters from " + resultDirectory + "\n");
+            } else {
+                LOGGER.warn("No parameters found in {}", resultDirectory);
+                consolePanel.appendConsoleText("WARNING: No parameters found in " + resultDirectory + "\n");
+            }
+        } catch (Exception e) {
+            LOGGER.error("Failed to load DIA Normal analysis parameters from {}", resultDirectory, e);
+            consolePanel.appendConsoleText("WARNING: Failed to load parameters from " + resultDirectory + ": " + e.getMessage() + "\n");
         }
     }
     

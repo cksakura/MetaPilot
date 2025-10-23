@@ -8,8 +8,8 @@ import java.time.Instant;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 
 /**
  * Generates and updates manifest files for the MetaPilot report system.
@@ -17,7 +17,7 @@ import org.slf4j.LoggerFactory;
  */
 public class ReportManifestGenerator {
     
-    private static final Logger LOGGER = LoggerFactory.getLogger(ReportManifestGenerator.class);
+    private static final Logger LOGGER = LogManager.getLogger(ReportManifestGenerator.class);
     
     private final File reportsDir;
     private final File manifestJsonFile;

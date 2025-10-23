@@ -9,6 +9,8 @@ import javafx.collections.ObservableList;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.scene.paint.Color;
+import javafx.scene.control.Alert.AlertType;
+import java.util.Optional;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
 import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
 import uk.ac.quadram.metapilot.task.common.gui.MetadataConfigurationPanel;
@@ -30,8 +32,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagSageParameters;
 import uk.ac.quadram.metapilot.task.dda.mag.task.DDAMagSageTask;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagSageParameterIO;
@@ -83,23 +85,23 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 	private ObservableList<String> enzymes = FXCollections.observableArrayList();
 
 	// Logger
-	private static final Logger LOGGER = LoggerFactory.getLogger(MetaPilotDdaMagSagePanel.class);
+	private static final Logger LOGGER = LogManager.getLogger(MetaPilotDdaMagSagePanel.class);
 
 	public MetaPilotDdaMagSagePanel(MagDbItem[] magDbItems) {
 		// Call parent constructor first
 		super();
 
-		System.out.println("DEBUG: MetaPilotDdaMagSagePanel() constructor started");
+		LOGGER.debug("[DDA MAG Sage] Constructor started");
 		try {
 			// Initialize parameter IO instance
 			parameterIO = new DDAMagSageParameterIO();
 
 			loadEnzymesFromIni();
-			System.out.println("DEBUG: Loading MAG databases...");
-			System.out.println("DEBUG: Found " + (magDbItems != null ? magDbItems.length : 0) + " MAG database items");
+			LOGGER.debug("[DDA MAG Sage] Loading MAG databases...");
+			LOGGER.debug("[DDA MAG Sage] Found {} MAG database items", magDbItems != null ? magDbItems.length : 0);
 			initializeSpecificUI();
 			setAvailableMagDatabases(magDbItems);
-			System.out.println("DEBUG: MetaPilotDdaMagSagePanel constructor completed successfully");
+			LOGGER.info("[DDA MAG Sage] Constructor completed successfully");
 		} catch (Exception e) {
 			System.err.println("ERROR: Exception in MetaPilotDdaMagSagePanel constructor: " + e.getMessage());
 			e.printStackTrace();
@@ -825,15 +827,36 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 
 	@Override
 	protected void stopAnalysis() {
-		consolePanel.appendConsoleText("Stopping MAG Sage analysis...\n");
-		System.out.println("DEBUG: stopAnalysis called");
+		Alert alert = new Alert(AlertType.CONFIRMATION);
+		alert.setTitle("Stop Analysis");
+		alert.setHeaderText("Are you sure you want to stop the analysis?");
+		alert.setContentText("This action cannot be undone.");
+		
+		Optional<ButtonType> result = alert.showAndWait();
+		if (result.isPresent() && result.get() == ButtonType.OK) {
+			consolePanel.appendConsoleText("Stopping MAG Sage analysis...\n");
+			LOGGER.info("stopAnalysis called - user confirmed stop");
 
-		if (currentTask != null && currentTask.isRunning()) {
-			consolePanel.appendConsoleText("Force stopping MAG Sage task...\n");
-			currentTask.forceStop();
-			consolePanel.appendConsoleText("MAG Sage task stop requested.\n");
+			// Force stop the running task if it exists
+			if (currentTask != null && currentTask.isRunning()) {
+				consolePanel.appendConsoleText("Force stopping MAG Sage task...\n");
+				currentTask.forceStop();
+				consolePanel.appendConsoleText("MAG Sage task stop requested.\n");
+			} else {
+				consolePanel.appendConsoleText("No running MAG Sage task to stop.\n");
+			}
+			
+			// Unbind progress bars to prevent memory leaks
+			consolePanel.getOverallProgressBar().progressProperty().unbind();
+			consolePanel.getCurrentTaskProgressBar().progressProperty().unbind();
+			
+			consolePanel.setButtonsEnabled(true, false, false);
+			consolePanel.stopStatusTimer();
+			consolePanel.getOverallProgressBar().setProgress(0);
+			consolePanel.getCurrentTaskProgressBar().setProgress(0);
+			consolePanel.setCurrentTaskLabel("Current Task: None");
 		} else {
-			consolePanel.appendConsoleText("No running MAG Sage task to stop.\n");
+			LOGGER.info("stopAnalysis cancelled by user");
 		}
 	}
 
@@ -1505,8 +1528,12 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 					updateParameterView();
 				});
 			} else {
-				consolePanel.appendConsoleText("No previous parameters found, using defaults\n");
-				LOGGER.warn("No parameters loaded from file, using defaults");
+				consolePanel.appendConsoleText("No previous parameters found, creating defaults\n");
+				LOGGER.info("No parameters loaded from file, creating defaults");
+				DDAMagSageParameters defaultParams = new DDAMagSageParameters();
+				applyParametersToUI(defaultParams);
+				consolePanel.appendConsoleText("✓ Default parameters loaded into UI\n");
+				LOGGER.info("Applied default parameters to UI successfully");
 			}
 		} catch (Exception e) {
 			String errorMsg = "WARNING: Failed to load last used parameters: " + e.getMessage();
@@ -1735,15 +1762,15 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 			DDAMagSageParameters params = (DDAMagSageParameters) parameterIO.loadAnalysisParameters(resultDirectory);
 			if (params != null) {
 				applyParametersToUI(params);
-				showError("Success", "Loaded MAG Sage analysis parameters from " + resultDirectory);
 				LOGGER.info("Loaded MAG Sage analysis parameters from {}", resultDirectory);
+				consolePanel.appendConsoleText("✓ Loaded MAG Sage analysis parameters from " + resultDirectory + "\n");
 			} else {
-				showError("Warning", "No parameters found in " + resultDirectory);
 				LOGGER.warn("No parameters found in {}", resultDirectory);
+				consolePanel.appendConsoleText("WARNING: No parameters found in " + resultDirectory + "\n");
 			}
 		} catch (Exception e) {
-			showError("Error", "Failed to load parameters from " + resultDirectory + ": " + e.getMessage());
 			LOGGER.error("Failed to load MAG Sage analysis parameters from {}", resultDirectory, e);
+			consolePanel.appendConsoleText("WARNING: Failed to load parameters from " + resultDirectory + ": " + e.getMessage() + "\n");
 		}
 	}
 

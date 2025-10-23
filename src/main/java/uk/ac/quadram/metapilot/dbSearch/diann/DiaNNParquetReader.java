@@ -55,8 +55,10 @@ public class DiaNNParquetReader {
 
 			for (int i = 0; i < rowCount; i++) {
 				Group group = recordReader.read();
-				String sequence = group.getBinary("Stripped.Sequence", 0).toStringUsingUTF8();
-				set.add(sequence);
+				if ((int) group.getLong("Decoy", 0) != 1) {
+					String sequence = group.getBinary("Stripped.Sequence", 0).toStringUsingUTF8();
+					set.add(sequence);
+				}
 			}
 		}
 
@@ -90,12 +92,14 @@ public class DiaNNParquetReader {
 
 			for (int i = 0; i < rowCount; i++) {
 				Group group = recordReader.read();
-				String sequence = group.getBinary("Stripped.Sequence", 0).toStringUsingUTF8();
-				double preNormal = group.getFloat("Precursor.Normalised", 0);
-				if (map.containsKey(sequence)) {
-					map.put(sequence, map.get(sequence) + preNormal);
-				} else {
-					map.put(sequence, preNormal);
+				if ((int) group.getLong("Decoy", 0) != 1) {
+					String sequence = group.getBinary("Stripped.Sequence", 0).toStringUsingUTF8();
+					double preNormal = group.getFloat("Precursor.Normalised", 0);
+					if (map.containsKey(sequence)) {
+						map.put(sequence, map.get(sequence) + preNormal);
+					} else {
+						map.put(sequence, preNormal);
+					}
 				}
 			}
 		}
@@ -302,8 +306,10 @@ public class DiaNNParquetReader {
 	}
 	
 	public static void main(String[] args) throws IOException {
-		DiaNNParquetReader.matchGenome("Z:\\Kai\\Database\\human-gut\\v2.0.2", 
-				"E:\\20250423\\20250422_MetaLAB_DIA_search\\selfModel\\mag_result\\combined.parquet");
+		DiaNNParquetReader.getPeptideSet("Z:\\PRIDE_dataset\\PXD050781\\MetaPilot_DIA_10507\\Blautia\\combined\\"
+				+ "combined.parquet");
+//		DiaNNParquetReader.matchGenome("Z:\\Kai\\Database\\human-gut\\v2.0.2", 
+//				"E:\\20250423\\20250422_MetaLAB_DIA_search\\selfModel\\mag_result\\combined.parquet");
 	}
 
 }

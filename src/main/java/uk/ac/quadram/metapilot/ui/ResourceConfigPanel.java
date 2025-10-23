@@ -392,18 +392,25 @@ public class ResourceConfigPanel extends BorderPane {
 					FileChooser fileChooser = new FileChooser();
 					fileChooser.setTitle("Select " + toolType.getDisplayName() + " Executable");
 
-					// Add appropriate extension filters
+					// Add specific executable name filter
 					MetaResourceParameters.ToolInfo toolInfo = resourceParams.getToolInfoMap().get(toolType);
 					String executableName = toolInfo != null ? toolInfo.getExecutableName() : "";
 
-					if (executableName.endsWith(".exe")) {
+					if (executableName != null && !executableName.isEmpty()) {
+						// Filter by specific executable name
 						fileChooser.getExtensionFilters()
-								.add(new FileChooser.ExtensionFilter("Executable Files", "*.exe"));
-					} else if (executableName.endsWith(".jar")) {
-						fileChooser.getExtensionFilters()
-								.add(new FileChooser.ExtensionFilter("Java JAR Files", "*.jar"));
-					} else if (executableName.endsWith(".bat")) {
-						fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Batch Files", "*.bat"));
+								.add(new FileChooser.ExtensionFilter(toolType.getDisplayName() + " (" + executableName + ")", executableName));
+						
+						// Add general extension filter as fallback
+						if (executableName.endsWith(".exe")) {
+							fileChooser.getExtensionFilters()
+									.add(new FileChooser.ExtensionFilter("Executable Files", "*.exe"));
+						} else if (executableName.endsWith(".jar")) {
+							fileChooser.getExtensionFilters()
+									.add(new FileChooser.ExtensionFilter("Java JAR Files", "*.jar"));
+						} else if (executableName.endsWith(".bat")) {
+							fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Batch Files", "*.bat"));
+						}
 					}
 
 					fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("All Files", "*.*"));

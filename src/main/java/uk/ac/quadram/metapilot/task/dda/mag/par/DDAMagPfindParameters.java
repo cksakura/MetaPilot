@@ -69,9 +69,6 @@ public class DDAMagPfindParameters extends MetaBaseParameter {
         setMs2ScanMode(MetaConstants.HCD_FTMS);
         setThreadCount(Runtime.getRuntime().availableProcessors());
         setQuantitativeMode(MetaConstants.labelFree);
-        setReduceDb(true);
-        setSpectraCluster(false);
-        
         // Initialize with default modifications for pFind
         setFixMods(new String[]{"Carbamidomethyl[C] 0"});
         setVariMods(new String[]{"Acetyl[ProteinN-term] 0", "Oxidation[M] 0"});

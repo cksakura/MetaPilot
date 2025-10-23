@@ -8,7 +8,6 @@ import java.io.FileNotFoundException;
 import java.io.PrintWriter;
 
 import uk.ac.quadram.metapilot.core.mod.IsobaricTag;
-import uk.ac.quadram.metapilot.task.MetaLabWorkflowType;
 
 /**
  * 
@@ -289,12 +288,15 @@ public class MetaBaseParameter {
 		this.currentDb = currentDb;
 	}
 
-	public MetaLabWorkflowType getWorkflowType() {
-		return MetaLabWorkflowType.valueOf(workflowType);
-	}
-
 	public void setWorkflowType(String workflowType) {
 		this.workflowType = workflowType;
+	}
+	
+	/**
+	 * Get the original workflow type string (not the enum)
+	 */
+	public String getWorkflowTypeString() {
+		return this.workflowType;
 	}
 
 	/**

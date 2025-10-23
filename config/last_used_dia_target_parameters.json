@@ -226,7 +226,7 @@
     }
   },
   "selectedFunctions": [],
-  "generated_at": "2025-10-02 16:43:53",
+  "generated_at": "2025-10-03 14:45:59",
   "workflowType": "DiaNNMAGTG",
   "targetLibraryName": "Blautia",
   "functionalLevel": "Choose the functional level",
@@ -234,5 +234,5 @@
     "Blautia",
     "Blautia_A"
   ],
-  "timestamp": 1759419833038
+  "timestamp": 1759499159964
 }

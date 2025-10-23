@@ -19,6 +19,8 @@ import javafx.stage.FileChooser;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.prefs.Preferences;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagVersion;
@@ -134,7 +136,7 @@ import uk.ac.quadram.metapilot.task.par.ParameterIORegistry;
  * </ul>
  * 
  * @author Kai Cheng - Quadram Institute Bioscience
- * @version 2.0
+ * @version 1.0
  * @since 1.0
  * 
  * @see uk.ac.quadram.metapilot.task.MetaAbstractTask
@@ -142,6 +144,8 @@ import uk.ac.quadram.metapilot.task.par.ParameterIORegistry;
  * @see uk.ac.quadram.metapilot.task.MetaLabWorkflowType
  */
 public class MetaPilotApp extends Application {
+    
+    private static final Logger LOGGER = LogManager.getLogger(MetaPilotApp.class);
     
     private MetaResourceParameters resourceParams;
     private MetaResourceIO resourceIO;
@@ -163,6 +167,9 @@ public class MetaPilotApp extends Application {
     
     @Override
     public void start(Stage primaryStage) {
+        LOGGER.info("MetaPilot GUI starting...");
+        LOGGER.debug("Primary stage: {}", primaryStage.getTitle());
+        
         // Initialize registration manager (but don't enforce registration yet)
         registrationManager = RegistrationManager.getInstance();
         
@@ -238,13 +245,17 @@ public class MetaPilotApp extends Application {
         // Add a tab change listener to check for unsaved changes
         tabPane.getSelectionModel().selectedItemProperty().addListener((observable, oldTab, newTab) -> {
             if (oldTab == resourcesTab) {
-                // When leaving resources tab, check for unsaved changes
+                // When leaving resources tab, check for unsaved changes and update resourceParams
                 Pane content = (Pane) oldTab.getContent();
                 if (content instanceof ResourceConfigPanel) {
                     ResourceConfigPanel configPanel = (ResourceConfigPanel) content;
                     if (!configPanel.checkUnsavedChanges()) {
                         // User cancelled, go back to resources tab
                         Platform.runLater(() -> tabPane.getSelectionModel().select(oldTab));
+                    } else {
+                        // User didn't cancel, update resourceParams with current state
+                        this.resourceParams = configPanel.getResourceParameters();
+                        System.out.println("DEBUG: Resource parameters updated when leaving Resources tab");
                     }
                 }
             }
@@ -895,17 +906,26 @@ public class MetaPilotApp extends Application {
         }
         
         try {
+            System.out.println("DEBUG: MetaPilotApp.loadParameterFile - Loading file: " + selectedFile.getAbsolutePath());
+            
             // Load parameters from file
             Object parameters = BaseParameterIO.loadParametersFromFilePath(selectedFile.getAbsolutePath());
+            System.out.println("DEBUG: MetaPilotApp.loadParameterFile - Loaded parameters: " + (parameters != null ? parameters.getClass().getSimpleName() : "NULL"));
+            
             if (parameters == null) {
+                System.out.println("DEBUG: MetaPilotApp.loadParameterFile - Parameters is null, showing warning");
                 showWarning("Load Parameter File", 
                     "Failed to load parameters from file. The file may be corrupted or not a valid parameter file.");
                 return;
             }
             
             // Get workflow type from parameters
+            System.out.println("DEBUG: MetaPilotApp.loadParameterFile - Getting workflow type from parameters...");
             String workflowType = BaseParameterIO.getWorkflowTypeFromParameters(parameters);
+            System.out.println("DEBUG: MetaPilotApp.loadParameterFile - Workflow type: '" + workflowType + "'");
+            
             if (workflowType == null) {
+                System.out.println("DEBUG: MetaPilotApp.loadParameterFile - Workflow type is null, showing warning");
                 showWarning("Load Parameter File", 
                     "Could not determine workflow type from parameter file.");
                 return;
@@ -932,12 +952,31 @@ public class MetaPilotApp extends Application {
      * Map workflow type string to WorkflowType enum
      */
     private WorkflowType getWorkflowTypeFromString(String workflowType) {
+        System.out.println("DEBUG: getWorkflowTypeFromString called with: '" + workflowType + "'");
+        
+        // First try direct matching with analysis types
         for (WorkflowType type : WorkflowType.values()) {
             if (type.getAnalysisType().equals(workflowType)) {
+                System.out.println("DEBUG: Found direct match: " + type);
                 return type;
             }
         }
-        return null;
+        
+        // Handle DIA workflow type mapping from JSON to WorkflowType enum
+        switch (workflowType) {
+            case "DiaNNMAG":
+                System.out.println("DEBUG: Mapping DiaNNMAG to DIA_NORMAL");
+                return WorkflowType.DIA_NORMAL;
+            case "DiaNNMAGRT":
+                System.out.println("DEBUG: Mapping DiaNNMAGRT to DIA_REALTIME");
+                return WorkflowType.DIA_REALTIME;
+            case "DiaNNMAGTG":
+                System.out.println("DEBUG: Mapping DiaNNMAGTG to DIA_TARGET");
+                return WorkflowType.DIA_TARGET;
+            default:
+                System.out.println("DEBUG: No mapping found for workflow type: '" + workflowType + "'");
+                return null;
+        }
     }
     
     /**
@@ -1426,13 +1465,18 @@ public class MetaPilotApp extends Application {
     }
     
     public static void main(String[] args) {
+        LOGGER.info("MetaPilot application starting...");
+        LOGGER.debug("Command line arguments: {}", java.util.Arrays.toString(args));
+        
         // Check if running in CLI mode
         if (args.length > 0 && args[0].equals("--cli")) {
+            LOGGER.info("Starting in CLI mode");
             // Remove --cli from args and pass to CLI class
             String[] cliArgs = new String[args.length - 1];
             System.arraycopy(args, 1, cliArgs, 0, cliArgs.length);
             MetaPilotCLI.main(cliArgs);
         } else {
+            LOGGER.info("Starting in GUI mode");
             launch(args);
         }
     }

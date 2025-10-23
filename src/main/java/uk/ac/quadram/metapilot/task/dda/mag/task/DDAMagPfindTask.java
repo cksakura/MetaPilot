@@ -146,7 +146,8 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 
 		this.dbReducerExe = new File(mrp.getToolPath(ToolType.DBREDUCER));
 		this.pFindExe = new File(mrp.getToolPath(ToolType.PFIND));
-
+		this.pFindTask = new PFindTask(pFindExe.getParentFile());
+		
 		LOGGER.info("DBReducer path from MetaResourceParameters: {}", mrp.getToolPath(ToolType.DBREDUCER));
 		LOGGER.info("pFind path from MetaResourceParameters: {}", mrp.getToolPath(ToolType.PFIND));
 		LOGGER.info("DBReducer executable file: {}", dbReducerExe.getAbsolutePath());
@@ -163,7 +164,7 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 	@Override
 	public void forceStop() {
 		LOGGER.info(getTaskName() + ": Force stop requested");
-		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Force stop requested");
+		LOGGER.info("[{}] Force stop requested", getTaskName());
 		
 		// Cancel spectra conversion task if running
 		if (spectraConvertTask != null && !spectraConvertTask.isDone()) {
@@ -207,7 +208,7 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 		this.cancel(true);
 		
 		LOGGER.info(getTaskName() + ": Force stop completed");
-		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Force stop completed");
+		LOGGER.info("[{}] Force stop completed", getTaskName());
 	}
 
 	@Override
@@ -229,7 +230,7 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 		updateProgress(0, 100);
 
 		LOGGER.info(getTaskName() + ": started");
-		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": started");
+		LOGGER.info("[{}] started", getTaskName());
 
 		// Log detailed parameter information
 		LOGGER.info("Workflow parameters:");
@@ -302,15 +303,13 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 		Platform.runLater(() -> secondBar.setProgress(ProgressBar.INDETERMINATE_PROGRESS));
 		updateMessage("Performing high abundant protein search...");
 
-		System.out.println(
-				format.format(new Date()) + "\t" + getTaskName() + ": searching high abundant database started");
+		LOGGER.info("[{}] searching high abundant database started", getTaskName());
 
 		boolean searchHap = this.separateSearchHap();
 
 		if (searchHap) {
 			LOGGER.info("Step 2: High abundant database search completed successfully");
-			System.out.println(
-					format.format(new Date()) + "\t" + getTaskName() + ": searching high abundant database finished");
+			LOGGER.info("[{}] searching high abundant database finished", getTaskName());
 		} else {
 			LOGGER.error(getTaskName() + ": error in searching high abundant database");
 			System.err.println(
@@ -335,8 +334,7 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 
 		if (extract) {
 			LOGGER.info("Step 3: Protein extraction from HAP results completed successfully");
-			System.out.println(format.format(new Date()) + "\t" + getTaskName()
-					+ ": extracting proteins from the HAP result finished");
+			LOGGER.info("[{}] extracting proteins from the HAP result finished", getTaskName());
 		} else {
 			LOGGER.error(getTaskName() + ": error in protein extraction");
 			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in protein extraction");
@@ -355,8 +353,7 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 		Platform.runLater(() -> secondBar.setProgress(ProgressBar.INDETERMINATE_PROGRESS));
 		updateMessage("Preparing for database search...");
 
-		System.out.println(
-				format.format(new Date()) + "\t" + getTaskName() + ": searching sample-specific database started");
+		LOGGER.info("[{}] searching sample-specific database started", getTaskName());
 
 		boolean search = this.separateSearch();
 
@@ -514,10 +511,6 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 
 		// Get thread configuration
 		int threadCount = magPfindParams.getThreadCount();
-		int totalThreadCount = magPfindParams.getThreadCount();
-		int threadPoolCount = totalThreadCount > this.pf2Files.length ? this.pf2Files.length : totalThreadCount;
-		LOGGER.info("Thread configuration: total={}, per-task={}, pool-size={}", threadCount, threadPoolCount,
-				threadPoolCount);
 
 		File hapFastaFile = this.magDb.getHapFastaFile();
 		if (hapFastaFile == null || !hapFastaFile.exists()) {
@@ -541,6 +534,10 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 		if (needNewSearch) {
 			LOGGER.info("Found {} files requiring new search out of {} total files", filesNeedingSearch,
 					this.pf2Files.length);
+
+			int threadPoolCount = maxTaskCount > filesNeedingSearch ? filesNeedingSearch : maxTaskCount;
+			LOGGER.info("Thread configuration: total={}, per-task={}, pool-size={}", threadCount,
+					threadCount / threadPoolCount + 1, threadPoolCount);
 
 			// Validate pFind installation and configuration
 			File pFindBinDir = pFindExe.getParentFile();
@@ -584,8 +581,7 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 			}
 
 			// Create PFindTask and perform searches
-			PFindTask task = new PFindTask(pFindBinDir);
-			task.setTotalThread(threadCount);
+			pFindTask.setTotalThread(threadCount / threadPoolCount + 1);
 
 			// Get required parameters
 			MetaOpenPar mosp = magPfindParams.getMop();
@@ -596,28 +592,32 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 				if (!hapFile.exists()) {
 					hapFile.mkdirs();
 				}
-				File pf2 = new File(pf2Files[i]);
-				if (pf2.exists()) {
-					// Safety check for HAP FASTA file
-					if (hapFastaFile == null || !hapFastaFile.exists()) {
-						LOGGER.error("HAP FASTA file is null or does not exist for MAG database: {}",
-								this.magDb.getCatalogueID());
-						return false;
-					}
 
-					LOGGER.info("  Searching file {} with pFind", i + 1);
-					task.searchPF2(new String[] { pf2.getAbsolutePath() }, hapFile.getAbsolutePath(),
-							hapFastaFile.getAbsolutePath(), ms2Type, magPfindParams.isOpenSearch(), true,
-							mosp.getOpenPsmFDR(), magPfindParams.getFixedModifications().toArray(new String[0]),
-							magPfindParams.getVariableModifications().toArray(new String[0]),
-							magPfindParams.getEnzyme(), magPfindParams.getMissCleavages(),
-							magPfindParams.getDigestMode(), magPfindParams.getIsobaricTag());
-				} else {
-					LOGGER.warn("PF2 file {} was not found, skipping", pf2Files[i]);
+				File resultFile = new File(hapFile, "pFind-Filtered.spectra");
+				if (!resultFile.exists() || resultFile.length() == 0) {
+					File pf2 = new File(pf2Files[i]);
+					if (pf2.exists()) {
+						// Safety check for HAP FASTA file
+						if (hapFastaFile == null || !hapFastaFile.exists()) {
+							LOGGER.error("HAP FASTA file is null or does not exist for MAG database: {}",
+									this.magDb.getCatalogueID());
+							return false;
+						}
+
+						LOGGER.info("  Searching file {} with pFind", i + 1);
+						pFindTask.searchPF2(new String[] { pf2.getAbsolutePath() }, hapFile.getAbsolutePath(),
+								hapFastaFile.getAbsolutePath(), ms2Type, magPfindParams.isOpenSearch(), true,
+								mosp.getOpenPsmFDR(), magPfindParams.getFixedModifications().toArray(new String[0]),
+								magPfindParams.getVariableModifications().toArray(new String[0]),
+								magPfindParams.getEnzyme(), magPfindParams.getMissCleavages(),
+								magPfindParams.getDigestMode(), magPfindParams.getIsobaricTag());
+					} else {
+						LOGGER.warn("PF2 file {} was not found, skipping", pf2Files[i]);
+					}
 				}
 			}
 			LOGGER.info("Starting pFind execution with {} threads", threadPoolCount);
-			task.run(threadPoolCount, separateResultFolders.length * 3);
+			pFindTask.run(threadPoolCount, separateResultFolders.length * 3);
 		} else {
 			LOGGER.info("No new searches required, all results already exist");
 		}
@@ -659,7 +659,6 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 
 		return true;
 	}
-
 
 	protected boolean fastaExtract4Iterator() {
 		LOGGER.info("Starting FASTA extraction for {} result folders", separateResultFolders.length);
@@ -801,8 +800,8 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 		String ms2Type = magPfindParams.getMs2ScanMode();
 		if (taskCount > 0) {
 			int totalThreadCount = magPfindParams.getThreadCount();
-			int threadCount = totalThreadCount > taskCount ? totalThreadCount / taskCount : 1;
-			int threadPoolCount = totalThreadCount > taskCount ? taskCount : totalThreadCount;
+			int threadPoolCount = maxTaskCount > taskCount ? taskCount : maxTaskCount;
+			int threadCount = totalThreadCount / threadPoolCount + 1;
 
 			if (this.useDBReducer) {
 				dbReducerTask = new DBReducerTask(dbReducerExe);
@@ -820,8 +819,9 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 							File hapFile = new File(separateResultFolders[i], "hap");
 							File db = new File(hapFile, separateResultFolders[i].getName() + ".fasta");
 							if (db.length() > 0) {
-								dbReducerTask.searchMgf(new String[] { mgf.getAbsolutePath() }, dbReducerFile.getAbsolutePath(),
-										db.getAbsolutePath(), ms2Type, mosp.getOpenPsmFDR(),
+								dbReducerTask.searchMgf(new String[] { mgf.getAbsolutePath() },
+										dbReducerFile.getAbsolutePath(), db.getAbsolutePath(), ms2Type,
+										mosp.getOpenPsmFDR(),
 										magPfindParams.getFixedModifications().toArray(new String[0]),
 										magPfindParams.getVariableModifications().toArray(new String[0]));
 							} else {
@@ -854,30 +854,31 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 					File pf2 = new File(pf2Files[i]);
 					File dbReducerFile = new File(separateResultFolders[i], "DBReducer");
 					File db = new File(dbReducerFile, "DBReducer.fasta");
+					File resultFile = new File(separateResultFolders[i], "pFind-Filtered.spectra");
 
-					if (pf2.exists()) {
+					if (!resultFile.exists() || resultFile.length() == 0) {
+						if (pf2.exists()) {
 
-						if (db.exists() && db.length() > 0) {
-							pFindTask.searchPF2(new String[] { pf2.getAbsolutePath() },
-									separateResultFolders[i].getAbsolutePath(), db.getAbsolutePath(), ms2Type,
-									magPfindParams.isOpenSearch(), true, mosp.getOpenPsmFDR(),
-									magPfindParams.getFixedModifications().toArray(new String[0]),
-									magPfindParams.getVariableModifications().toArray(new String[0]),
-									magPfindParams.getEnzyme(),
-									magPfindParams.getMissCleavages(),
-									magPfindParams.getDigestMode(),
-									magPfindParams.getIsobaricTag());
+							if (db.exists() && db.length() > 0) {
+								pFindTask.searchPF2(new String[] { pf2.getAbsolutePath() },
+										separateResultFolders[i].getAbsolutePath(), db.getAbsolutePath(), ms2Type,
+										magPfindParams.isOpenSearch(), true, mosp.getOpenPsmFDR(),
+										magPfindParams.getFixedModifications().toArray(new String[0]),
+										magPfindParams.getVariableModifications().toArray(new String[0]),
+										magPfindParams.getEnzyme(), magPfindParams.getMissCleavages(),
+										magPfindParams.getDigestMode(), magPfindParams.getIsobaricTag());
 
-						} else {
+							} else {
 
-							System.out.println(
-									format.format(new Date()) + "\t" + getTaskName() + ": no protein sequences were in "
-											+ db + ", which means no peptides/proteins can be identifed from "
-											+ separateResultFolders[i].getName());
+								System.out.println(format.format(new Date()) + "\t" + getTaskName()
+										+ ": no protein sequences were in " + db
+										+ ", which means no peptides/proteins can be identifed from "
+										+ separateResultFolders[i].getName());
 
-							LOGGER.error(getTaskName() + ": no protein sequences were in " + db
-									+ ", which means no peptides/proteins can be identifed from "
-									+ separateResultFolders[i].getName());
+								LOGGER.error(getTaskName() + ": no protein sequences were in " + db
+										+ ", which means no peptides/proteins can be identifed from "
+										+ separateResultFolders[i].getName());
+							}
 						}
 					}
 				}
@@ -892,27 +893,30 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 					File pf2 = new File(pf2Files[i]);
 					File hapFile = new File(separateResultFolders[i], "hap");
 					File db = new File(hapFile, separateResultFolders[i].getName() + ".fasta");
-					if (pf2.exists()) {
-						if (db.exists() && db.length() > 0) {
-							pFindTask.searchPF2(new String[] { pf2.getAbsolutePath() },
-									separateResultFolders[i].getAbsolutePath(), db.getAbsolutePath(), ms2Type,
-									magPfindParams.isOpenSearch(), true, mosp.getOpenPsmFDR(),
-									magPfindParams.getFixedModifications().toArray(new String[0]),
-									magPfindParams.getVariableModifications().toArray(new String[0]),
-									magPfindParams.getEnzyme(),
-									magPfindParams.getMissCleavages(),
-									magPfindParams.getDigestMode(),
-									magPfindParams.getIsobaricTag());
-						} else {
+					File resultFile = new File(separateResultFolders[i], "pFind-Filtered.spectra");
+					if (!resultFile.exists() || resultFile.length() == 0) {
+						if (pf2.exists()) {
+							if (db.exists() && db.length() > 0) {
+								pFindTask.searchPF2(new String[] { pf2.getAbsolutePath() },
+										separateResultFolders[i].getAbsolutePath(), db.getAbsolutePath(), ms2Type,
+										magPfindParams.isOpenSearch(), true, mosp.getOpenPsmFDR(),
+										magPfindParams.getFixedModifications().toArray(new String[0]),
+										magPfindParams.getVariableModifications().toArray(new String[0]),
+										magPfindParams.getEnzyme(),
+										magPfindParams.getMissCleavages(),
+										magPfindParams.getDigestMode(),
+										magPfindParams.getIsobaricTag());
+							} else {
 
-							System.out.println(
-									format.format(new Date()) + "\t" + getTaskName() + ": no protein sequences were in "
-											+ db + ", which means no peptides/proteins can be identifed from "
-											+ separateResultFolders[i].getName());
+								System.out.println(
+										format.format(new Date()) + "\t" + getTaskName() + ": no protein sequences were in "
+												+ db + ", which means no peptides/proteins can be identifed from "
+												+ separateResultFolders[i].getName());
 
-							LOGGER.error(getTaskName() + ": no protein sequences were in " + db
-									+ ", which means no peptides/proteins can be identifed from "
-									+ separateResultFolders[i].getName());
+								LOGGER.error(getTaskName() + ": no protein sequences were in " + db
+										+ ", which means no peptides/proteins can be identifed from "
+										+ separateResultFolders[i].getName());
+							}
 						}
 					}
 				}

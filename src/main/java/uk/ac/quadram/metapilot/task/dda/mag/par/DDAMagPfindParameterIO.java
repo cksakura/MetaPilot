@@ -6,8 +6,8 @@ import java.util.List;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 
 import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel.MetadataRow;
 import uk.ac.quadram.metapilot.task.par.MetaData;
@@ -21,7 +21,7 @@ import uk.ac.quadram.metapilot.task.par.BaseParameterIO;
  */
 public class DDAMagPfindParameterIO extends BaseParameterIO {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(DDAMagPfindParameterIO.class);
+    private static final Logger LOGGER = LogManager.getLogger(DDAMagPfindParameterIO.class);
 
     // Workflow-specific file names
     private static final String PARAMETER_FILENAME = "mag_pfind_analysis_parameters.json";

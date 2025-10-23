@@ -9,6 +9,8 @@ import javafx.collections.ObservableList;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.scene.paint.Color;
+import javafx.scene.control.Alert.AlertType;
+import java.util.Optional;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
 import uk.ac.quadram.metapilot.task.common.gui.MagDatabaseSettingsPanel;
 import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
@@ -24,8 +26,8 @@ import uk.ac.quadram.metapilot.MetaPilotApp;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.common.gui.AbstractWorkflowPanel;
 import javafx.application.Platform;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -66,7 +68,7 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
     
     
     // Logger
-    private static final Logger LOGGER = LoggerFactory.getLogger(MetaPilotDdaMagFragPipePanel.class);
+    private static final Logger LOGGER = LogManager.getLogger(MetaPilotDdaMagFragPipePanel.class);
 
 	public MetaPilotDdaMagFragPipePanel(MagDbItem[] magDbItems, MetaResourceParameters resourceParams) {
 		// Call parent constructor first
@@ -725,15 +727,36 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
 
     @Override
     protected void stopAnalysis() {
-        consolePanel.appendConsoleText("Stopping FragPipe analysis...\n");
-        System.out.println("DEBUG: stopAnalysis called");
+        Alert alert = new Alert(AlertType.CONFIRMATION);
+        alert.setTitle("Stop Analysis");
+        alert.setHeaderText("Are you sure you want to stop the analysis?");
+        alert.setContentText("This action cannot be undone.");
         
-        if (currentTask != null && currentTask.isRunning()) {
-            consolePanel.appendConsoleText("Force stopping MAG FragPipe task...\n");
-            currentTask.forceStop();
-            consolePanel.appendConsoleText("MAG FragPipe task stop requested.\n");
+        Optional<ButtonType> result = alert.showAndWait();
+        if (result.isPresent() && result.get() == ButtonType.OK) {
+            consolePanel.appendConsoleText("Stopping FragPipe analysis...\n");
+            LOGGER.info("stopAnalysis called - user confirmed stop");
+            
+            // Force stop the running task if it exists
+            if (currentTask != null && currentTask.isRunning()) {
+                consolePanel.appendConsoleText("Force stopping MAG FragPipe task...\n");
+                currentTask.forceStop();
+                consolePanel.appendConsoleText("MAG FragPipe task stop requested.\n");
+            } else {
+                consolePanel.appendConsoleText("No running MAG FragPipe task to stop.\n");
+            }
+            
+            // Unbind progress bars to prevent memory leaks
+            consolePanel.getOverallProgressBar().progressProperty().unbind();
+            consolePanel.getCurrentTaskProgressBar().progressProperty().unbind();
+            
+            consolePanel.setButtonsEnabled(true, false, false);
+            consolePanel.stopStatusTimer();
+            consolePanel.getOverallProgressBar().setProgress(0);
+            consolePanel.getCurrentTaskProgressBar().setProgress(0);
+            consolePanel.setCurrentTaskLabel("Current Task: None");
         } else {
-            consolePanel.appendConsoleText("No running MAG FragPipe task to stop.\n");
+            LOGGER.info("stopAnalysis cancelled by user");
         }
     }
     
@@ -1022,8 +1045,12 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
                     updateParameterView();
                 });
             } else {
-                consolePanel.appendConsoleText("No previous parameters found, using defaults\n");
-                LOGGER.warn("No parameters loaded from file, using defaults");
+                consolePanel.appendConsoleText("No previous parameters found, creating defaults\n");
+                LOGGER.info("No parameters loaded from file, creating defaults");
+                DDAMagFragPipeParameters defaultParams = new DDAMagFragPipeParameters();
+                applyParametersToUI(defaultParams);
+                consolePanel.appendConsoleText("✓ Default parameters loaded into UI\n");
+                LOGGER.info("Applied default parameters to UI successfully");
             }
         } catch (Exception e) {
             String errorMsg = "WARNING: Failed to load last used parameters: " + e.getMessage();
@@ -1221,6 +1248,27 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
             default:
                 // Default to trypsin
                 return new String[]{"stricttrypsin", "KR", ""};
+        }
+    }
+    
+    /**
+     * Load analysis parameters from a specific result directory
+     */
+    public void loadAnalysisParameters(String resultDirectory) {
+        try {
+            LOGGER.info("Loading MAG FragPipe analysis parameters from: {}", resultDirectory);
+            DDAMagFragPipeParameters params = (DDAMagFragPipeParameters) parameterIO.loadAnalysisParameters(resultDirectory);
+            if (params != null) {
+                applyParametersToUI(params);
+                LOGGER.info("Loaded MAG FragPipe analysis parameters from {}", resultDirectory);
+                consolePanel.appendConsoleText("✓ Loaded MAG FragPipe analysis parameters from " + resultDirectory + "\n");
+            } else {
+                LOGGER.warn("No parameters found in {}", resultDirectory);
+                consolePanel.appendConsoleText("WARNING: No parameters found in " + resultDirectory + "\n");
+            }
+        } catch (Exception e) {
+            LOGGER.error("Failed to load MAG FragPipe analysis parameters from {}", resultDirectory, e);
+            consolePanel.appendConsoleText("WARNING: Failed to load parameters from " + resultDirectory + ": " + e.getMessage() + "\n");
         }
     }
     

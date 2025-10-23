@@ -270,6 +270,11 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 		// Update progress for completion
 		updateProgress(100, 100);
 		updateMessage(getTaskName() + ": Analysis completed successfully!");
+		if (Platform.isFxApplicationThread()) {
+			secondBar.setProgress(0.0);
+		} else {
+			Platform.runLater(() -> secondBar.setProgress(0.0));
+		}
 
 		LOGGER.info(getTaskName() + ": finished - analysis completed successfully");
 		System.out.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
@@ -449,6 +454,7 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 		System.out.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName() + ": "
 				+ this.diaPp.length + " PSMs were obtained with Global.Q.Value<0.01");
 
+		int originalDecoyCount = 0;
 		HashSet<String> pepSet = new HashSet<String>();
 		HashMap<String, String> decoyPepMap = new HashMap<String, String>();
 		if (diaPp != null && diaPp.length > 0) {
@@ -464,27 +470,25 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 							decoyPepMap.put(sequence, targetSeq);
 						}
 					}
+					originalDecoyCount++;
 				}
 			}
 		}
 
-		LOGGER.info(getTaskName() + ": total sequence count: " + pepSet.size());
-		System.out.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
-				+ ": total sequence count: " + pepSet.size());
+		LOGGER.info(getTaskName() + ": total sequence count: " + pepSet.size() + "; decoy precursor count: "
+				+ originalDecoyCount);
+		System.out
+				.println(format.format(new Date()) + "\t" + getTaskName() + ": total sequence count: " + pepSet.size());
 
 		ConcurrentHashMap<String, HashMap<String, HashSet<String>>> matchedMap = getGenomeFromPep(pepSet, threadCount);
 		if (matchedMap == null) {
 			return false;
 		}
 
-		HashSet<String> genomeSet = new HashSet<String>();
-		HashSet<String> proteinSet = new HashSet<String>();
 		HashMap<String, HashSet<String>> pepProMap = new HashMap<String, HashSet<String>>();
 		for (String genome : matchedMap.keySet()) {
-			genomeSet.add(genome);
 			HashMap<String, HashSet<String>> proPepMap = matchedMap.get(genome);
 			for (String pro : proPepMap.keySet()) {
-				proteinSet.add(pro);
 				HashSet<String> pset = proPepMap.get(pro);
 				for (String pep : pset) {
 					if (pepProMap.containsKey(pep)) {
@@ -502,6 +506,7 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 		System.out.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
 				+ ": matched sequence count: " + pepProMap.size());
 
+		int decoyPPCount = 0;
 		HashMap<String, HashSet<String>> genomeMap = new HashMap<String, HashSet<String>>();
 		HashMap<String, HashSet<String>> proteinPepMap = new HashMap<String, HashSet<String>>();
 		HashSet<String> tempPepSet = new HashSet<String>();
@@ -554,6 +559,7 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 							}
 						}
 						tempPepSet.add(sequence);
+						decoyPPCount++;
 					}
 				} else {
 					missSet.add(sequence);
@@ -564,6 +570,8 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 		LOGGER.info(getTaskName() + ": " + missSet.size()
 				+ " peptide sequences were not found from the in-silico digested MAG database, "
 				+ "maybe due to unspecific digestion, will be not be included in the following analysis");
+		LOGGER.info(getTaskName() + ": " + decoyPPCount
+				+ " decoy precursor will be used for FDR control in the following steps.");
 		System.out.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName() + ": "
 				+ missSet.size() + " peptide sequences were not found from the in-silico digested MAG database, "
 				+ "maybe due to unspecific digestion, will be not be included in the following analysis");
@@ -579,7 +587,7 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 					HashSet<String> pros = pepProMap.get(sequence);
 					for (String pro : pros) {
 						String genome = pro.split("_")[0];
-						if (genomeSet.contains(genome) && proteinSet.contains(pro)) {
+						if (genomeMap.containsKey(genome) && proteinPepMap.containsKey(pro)) {
 							proList.add(pro);
 						}
 					}
@@ -590,8 +598,8 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 							HashSet<String> pros = pepProMap.get(targetSeq);
 							for (String pro : pros) {
 								String genome = pro.split("_")[0];
-								if (genomeSet.contains(FastaManager.shuffle + genome)
-										&& proteinSet.contains(FastaManager.shuffle + pro)) {
+								if (genomeMap.containsKey(FastaManager.shuffle + genome)
+										&& proteinPepMap.containsKey(FastaManager.shuffle + pro)) {
 									proList.add(FastaManager.shuffle + pro);
 								}
 							}
@@ -1115,7 +1123,6 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 		}
 
 		File funTsv = new File(funcFile, "functions.tsv");
-		File funReportTsv = new File(funcFile, "functions_report.tsv");
 		final_pro_xml_file = new File(funcFile, "functions.xml");
 
 		HashMap<String, Integer> proTaxIdMap = new HashMap<String, Integer>();
@@ -1142,12 +1149,29 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 			return false;
 		}
 
-		if (!funTsv.exists() || !funReportTsv.exists()) {
+		if (!funTsv.exists()) {
 			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": writing results to " + funTsv.getName()
 					+ " started");
 			try {
-				funReader.exportTsv(funTsv);
-				funReader.exportTsvReport(funReportTsv);
+				funReader.exportTsv(funTsv);				
+				// Export separate functional category reports
+				File goReportTsv = new File(funcFile, "Gene_Ontology_id_report.tsv");
+				File ecReportTsv = new File(funcFile, "EC_id_report.tsv");
+				File keggReportTsv = new File(funcFile, "KEGG_ko_report.tsv");
+				File briteReportTsv = new File(funcFile, "BRITE_report.tsv");
+				File cogReportTsv = new File(funcFile, "COG_accession_report.tsv");
+				File nogReportTsv = new File(funcFile, "NOG_accession_report.tsv");
+				File cogCatTsv = new File(funcFile, "COG_category_report.tsv");
+				File nogCatTsv = new File(funcFile, "NOG_category_report.tsv");
+				
+				funReader.exportGOReport(goReportTsv);
+				funReader.exportECReport(ecReportTsv);
+				funReader.exportKeggReport(keggReportTsv);
+				funReader.exportBriteReport(briteReportTsv);
+				funReader.exportCOGReport(cogReportTsv);
+				funReader.exportNOGReport(nogReportTsv);
+				funReader.exportCOGCategoryReport(cogCatTsv);
+				funReader.exportNOGCategoryReport(nogCatTsv);
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
 				LOGGER.error(getTaskName() + ": error in writing protein function information to " + funTsv.getName(), e);
@@ -1625,16 +1649,16 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 			}
 		}
 
-		if (!funReportTsv.exists() || funReportTsv.length() == 0) {
+		if (!funcFile.exists() || funcFile.listFiles().length == 0) {
 			return false;
 		} else {
 			File report_function_summary = new File(this.reportHtmlDir, "report_function_summary.html");
 			if (!report_function_summary.exists() || report_function_summary.length() == 0) {
 
 				if (summaryMetaFile != null && summaryMetaFile.exists()) {
-					task.addTask(MetaPythonReportTask.FUNCTION, funReportTsv, report_function_summary, summaryMetaFile);
+					task.addTask(MetaPythonReportTask.FUNCTION, funcFile, report_function_summary, summaryMetaFile);
 				} else {
-					task.addTask(MetaPythonReportTask.FUNCTION, funReportTsv, report_function_summary);
+					task.addTask(MetaPythonReportTask.FUNCTION, funcFile, report_function_summary);
 				}
 			}
 		}
