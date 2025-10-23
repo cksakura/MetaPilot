@@ -165,6 +165,28 @@ public class MetaPilotApp extends Application {
     // Flag to control whether registration is required
     private static final boolean REGISTRATION_ENABLED = false; // Set to true when server is available
     
+    /**
+     * Configure basic logging for JAR execution
+     */
+    private static void configureBasicLogging() {
+        try {
+            // Create logs directory if it doesn't exist
+            File logsDir = new File("logs");
+            if (!logsDir.exists()) {
+                boolean created = logsDir.mkdirs();
+                if (!created) {
+                    System.err.println("Warning: Could not create logs directory: " + logsDir.getAbsolutePath());
+                }
+            }
+            
+            System.out.println("Basic logging configuration completed successfully");
+            
+        } catch (Exception e) {
+            System.err.println("Warning: Could not configure basic logging: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+    
     @Override
     public void start(Stage primaryStage) {
         LOGGER.info("MetaPilot GUI starting...");
@@ -1465,6 +1487,9 @@ public class MetaPilotApp extends Application {
     }
     
     public static void main(String[] args) {
+        // Configure basic logging for JAR execution
+        configureBasicLogging();
+        
         LOGGER.info("MetaPilot application starting...");
         LOGGER.debug("Command line arguments: {}", java.util.Arrays.toString(args));
         
