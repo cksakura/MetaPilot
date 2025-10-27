@@ -1,15 +1,21 @@
 package uk.ac.quadram.metapilot.task;
 
 import javafx.concurrent.Task;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.io.*;
+import java.net.URISyntaxException;
+import java.net.URL;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.io.ReportManifestGenerator;
@@ -86,6 +92,7 @@ public class MetaPythonReportTask extends Task<Boolean> {
 
     // Python configuration - will be resolved from MetaResourceParameters
     private String pythonExecutable;
+    private File pythonScriptsDirectory;
 
     // Task management
     private final ExecutorService executor;
@@ -96,6 +103,9 @@ public class MetaPythonReportTask extends Task<Boolean> {
     // Manifest integration
     private ReportManifestGenerator manifestGenerator;
     private String workflowType = "UNKNOWN";
+    
+    // Classpath resource path for Python scripts
+    private static final String PYTHON_SCRIPTS_RESOURCE_PATH = "/python_scripts";
 
     /**
      * Creates a new Python report generation task with specified thread count.
@@ -137,6 +147,15 @@ public class MetaPythonReportTask extends Task<Boolean> {
         
         // Resolve Python executable path from resource parameters
         this.pythonExecutable = resolvePythonExecutable();
+        
+        // Extract Python scripts from classpath to filesystem
+        try {
+            this.pythonScriptsDirectory = extractPythonScripts();
+            logger.info("{}: Python scripts extracted to: {}", TASK_NAME, pythonScriptsDirectory.getAbsolutePath());
+        } catch (IOException e) {
+            logger.error("{}: Failed to extract Python scripts", TASK_NAME, e);
+            throw new RuntimeException("Failed to extract Python scripts from classpath", e);
+        }
         
         logger.info("{}: Initialized with {} threads, Python: {}", TASK_NAME, threadCount, pythonExecutable);
         logger.info("{}: Python availability check: {}", TASK_NAME, isPythonAvailable());
@@ -377,7 +396,9 @@ public class MetaPythonReportTask extends Task<Boolean> {
             // Python script to execute
             StringBuilder pythonScript = new StringBuilder();
             pythonScript.append("import sys, os\n");
-            pythonScript.append("sys.path.append(os.path.join(os.getcwd(), 'src', 'main', 'python'))\n");
+            // Add the extracted Python scripts directory to Python path
+            String pythonScriptsPath = escapePathForPython(pythonScriptsDirectory.getAbsolutePath());
+            pythonScript.append("sys.path.insert(0, r'").append(pythonScriptsPath).append("')\n");
             pythonScript.append("from report_generation.metapilot_report_generator import MetaPilotReportGenerator\n");
             pythonScript.append("import pandas as pd\n");
             pythonScript.append("import numpy as np\n");
@@ -535,5 +556,123 @@ public class MetaPythonReportTask extends Task<Boolean> {
      */
     public String getPythonExecutable() {
         return pythonExecutable;
+    }
+    
+    /**
+     * Extracts Python scripts from classpath resources to a temporary directory.
+     * Works both from IDE (directory) and from JAR (packaged resources).
+     * 
+     * @return Directory containing extracted Python scripts
+     * @throws IOException if extraction fails
+     */
+    private File extractPythonScripts() throws IOException {
+        // Create a temporary directory for Python scripts
+        File tempDir = new File(System.getProperty("java.io.tmpdir"), "metapilot_python_" + System.currentTimeMillis());
+        if (!tempDir.exists()) {
+            tempDir.mkdirs();
+        }
+        
+        logger.info("{}: Extracting Python scripts from classpath to: {}", TASK_NAME, tempDir.getAbsolutePath());
+        
+        // Get the resource URL
+        URL resourceUrl = getClass().getResource(PYTHON_SCRIPTS_RESOURCE_PATH);
+        
+        if (resourceUrl == null) {
+            throw new IOException("Python scripts resource not found at: " + PYTHON_SCRIPTS_RESOURCE_PATH);
+        }
+        
+        // Check if we're running from a JAR
+        String protocol = resourceUrl.getProtocol();
+        
+        if ("jar".equals(protocol)) {
+            // Running from JAR - extract from JAR
+            extractFromJar(resourceUrl, tempDir);
+        } else if ("file".equals(protocol)) {
+            // Running from IDE/file system - copy from filesystem
+            extractFromFileSystem(resourceUrl, tempDir);
+        } else {
+            throw new IOException("Unsupported protocol for Python scripts: " + protocol);
+        }
+        
+        logger.info("{}: Successfully extracted Python scripts", TASK_NAME);
+        return tempDir;
+    }
+    
+    /**
+     * Extracts Python scripts from JAR file
+     */
+    private void extractFromJar(URL resourceUrl, File targetDir) throws IOException {
+        // Extract JAR path from jar:file:/path/to/app.jar!/python_scripts
+        String jarPath = resourceUrl.getPath();
+        int exclamationIdx = jarPath.indexOf("!");
+        if (exclamationIdx > 0) {
+            jarPath = jarPath.substring(0, exclamationIdx);
+            if (jarPath.startsWith("file:")) {
+                jarPath = jarPath.substring(5);
+            }
+        }
+        
+        logger.info("{}: Extracting Python scripts from JAR: {}", TASK_NAME, jarPath);
+        
+        try (JarFile jarFile = new JarFile(jarPath)) {
+            Enumeration<JarEntry> entries = jarFile.entries();
+            
+            while (entries.hasMoreElements()) {
+                JarEntry entry = entries.nextElement();
+                String entryName = entry.getName();
+                
+                // Only process entries in the python_scripts directory
+                if (entryName.startsWith("python_scripts/")) {
+                    // Get relative path (remove "python_scripts/" prefix)
+                    String relativePath = entryName.substring("python_scripts/".length());
+                    
+                    if (relativePath.isEmpty()) {
+                        continue; // Skip the directory entry itself
+                    }
+                    
+                    // Skip __pycache__ directories
+                    if (relativePath.contains("__pycache__")) {
+                        continue;
+                    }
+                    
+                    File targetFile = new File(targetDir, relativePath);
+                    
+                    if (entry.isDirectory()) {
+                        targetFile.mkdirs();
+                    } else {
+                        // Create parent directories if needed
+                        targetFile.getParentFile().mkdirs();
+                        
+                        // Copy file from JAR
+                        try (InputStream is = jarFile.getInputStream(entry);
+                             FileOutputStream fos = new FileOutputStream(targetFile)) {
+                            IOUtils.copy(is, fos);
+                        }
+                        
+                        logger.debug("{}: Extracted Python script: {}", TASK_NAME, relativePath);
+                    }
+                }
+            }
+        }
+    }
+    
+    /**
+     * Extracts Python scripts from file system (development mode)
+     */
+    private void extractFromFileSystem(URL resourceUrl, File targetDir) throws IOException {
+        try {
+            File sourceDir = new File(resourceUrl.toURI());
+            
+            if (!sourceDir.exists()) {
+                throw new IOException("Source Python scripts not found: " + sourceDir.getAbsolutePath());
+            }
+            
+            logger.info("{}: Copying Python scripts from filesystem: {}", TASK_NAME, sourceDir.getAbsolutePath());
+            FileUtils.copyDirectory(sourceDir, targetDir);
+            logger.info("{}: Python scripts copied successfully from filesystem", TASK_NAME);
+            
+        } catch (URISyntaxException e) {
+            throw new IOException("Invalid Python scripts resource URL", e);
+        }
     }
 } 
