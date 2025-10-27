@@ -897,10 +897,10 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 			logger.error(taskName + ": error in exporting metadata", e);
 		}
 
-		// Generate summary report
-		MetaPythonReportTask reportTask = new MetaPythonReportTask(metaPar.getThreadCount(), mrp);
-		reportTask.setWorkflowType("IGC");
-		reportTask.initializeManifestGenerator(reportHtmlDir);
+	// Generate summary report
+	MetaPythonReportTask reportTask = new MetaPythonReportTask(metaPar.getThreadCount(), mrp, logger);
+	reportTask.setWorkflowType("IGC");
+	reportTask.initializeManifestGenerator(reportHtmlDir);
 
 		// Create initial manifest file to ensure index page can load
 		ReportManifestGenerator manifestGen = new ReportManifestGenerator(reportHtmlDir);
@@ -1062,9 +1062,9 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 			logger.info(getTaskName() + ": Generating bubble chart report from " + treeJsFile.getName());
 			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Generating bubble chart report");
 
-			// Use MetaPythonReportTask to generate the bubble chart
-			MetaPythonReportTask reportTask = new MetaPythonReportTask(1, mrp);
-			boolean success = reportTask.addTask(MetaPythonReportTask.BUBBLE_CHART, treeJsFile, outputFile);
+		// Use MetaPythonReportTask to generate the bubble chart
+		MetaPythonReportTask reportTask = new MetaPythonReportTask(1, mrp, logger);
+		boolean success = reportTask.addTask(MetaPythonReportTask.BUBBLE_CHART, treeJsFile, outputFile);
 
 			if (success) {
 				// Wait for completion

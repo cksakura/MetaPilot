@@ -1937,10 +1937,10 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			logger.error(taskName + ": error in exporting metadata", e);
 		}
 
-		// Generate summary report
-		MetaPythonReportTask reportTask = new MetaPythonReportTask(threadCount, mrp);
-		reportTask.setWorkflowType("MAG");
-		reportTask.initializeManifestGenerator(reportHtmlDir);
+	// Generate summary report
+	MetaPythonReportTask reportTask = new MetaPythonReportTask(threadCount, mrp, logger);
+	reportTask.setWorkflowType("MAG");
+	reportTask.initializeManifestGenerator(reportHtmlDir);
 
 		// Create initial manifest file to ensure index page can load
 		ReportManifestGenerator manifestGen = new ReportManifestGenerator(reportHtmlDir);
@@ -2028,19 +2028,19 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			}
 		}
 
-	File funcHtmlFile = new File(metaPar.getDbSearchResultFile(), "functional_annotation\\functions.html");
-	if (funcHtmlFile.exists()) {
-		File reportFunctionsHtml = new File(reportHtmlDir, "functions.html");
-		try {
-			Files.copy(funcHtmlFile.toPath(), reportFunctionsHtml.toPath(), StandardCopyOption.REPLACE_EXISTING);
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			logger.error("Copied functions.html to reports directory failed", e);
+		File funcHtmlFile = new File(metaPar.getDbSearchResultFile(), "functional_annotation\\functions.html");
+		if (funcHtmlFile.exists()) {
+			File reportFunctionsHtml = new File(reportHtmlDir, "functions.html");
+			try {
+				Files.copy(funcHtmlFile.toPath(), reportFunctionsHtml.toPath(), StandardCopyOption.REPLACE_EXISTING);
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				logger.error("Copied functions.html to reports directory failed", e);
+			}
+			logger.info("Copied functions.html to reports directory: " + reportFunctionsHtml.getAbsolutePath());
+		} else {
+			logger.info("functions.html was not exist in " + funcHtmlFile.getAbsolutePath());
 		}
-		logger.info("Copied functions.html to reports directory: " + reportFunctionsHtml.getAbsolutePath());
-	} else {
-		logger.info("functions.html was not exist in " + funcHtmlFile.getAbsolutePath());
-	}
 
 		if (!reportSuccess) {
 			logger.warn(taskName + ": Some report tasks could not be added");
@@ -2084,9 +2084,9 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			logger.info(getTaskName() + ": Generating bubble chart report from " + treeJsFile.getName());
 			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Generating bubble chart report");
 
-			// Use MetaPythonReportTask to generate the bubble chart
-			MetaPythonReportTask reportTask = new MetaPythonReportTask(1, mrp);
-			boolean success = reportTask.addTask(MetaPythonReportTask.BUBBLE_CHART, treeJsFile, outputFile);
+		// Use MetaPythonReportTask to generate the bubble chart
+		MetaPythonReportTask reportTask = new MetaPythonReportTask(1, mrp, logger);
+		boolean success = reportTask.addTask(MetaPythonReportTask.BUBBLE_CHART, treeJsFile, outputFile);
 
 			if (success) {
 				// Wait for completion

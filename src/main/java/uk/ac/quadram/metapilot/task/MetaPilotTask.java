@@ -218,10 +218,10 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 			}
 			metaPar.setReportDir(reportDir);
 
-			// Copy report templates using MetaPythonReportCopyTask
-			MetaPythonReportCopyTask reportCopyTask = new MetaPythonReportCopyTask(resultDir);
-			Thread reportCopyThread = new Thread(reportCopyTask);
-			reportCopyThread.start();
+		// Copy report templates using MetaPythonReportCopyTask
+		MetaPythonReportCopyTask reportCopyTask = new MetaPythonReportCopyTask(resultDir, this.logger);
+		Thread reportCopyThread = new Thread(reportCopyTask);
+		reportCopyThread.start();
 
 			updateMessage("Copying report templates...");
 

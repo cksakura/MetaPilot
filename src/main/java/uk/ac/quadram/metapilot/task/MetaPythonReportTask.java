@@ -72,7 +72,7 @@ import uk.ac.quadram.metapilot.task.io.ReportManifestGenerator;
  */
 public class MetaPythonReportTask extends Task<Boolean> {
 
-    private static final Logger LOGGER = LogManager.getLogger(MetaPythonReportTask.class);
+    private final Logger logger;
     private static final String TASK_NAME = "Python report generation task";
     private static final SimpleDateFormat FORMAT = new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss");
 
@@ -101,9 +101,11 @@ public class MetaPythonReportTask extends Task<Boolean> {
      * Creates a new Python report generation task with specified thread count.
      * 
      * @param threadCount Number of threads to use for parallel report generation
+     * @deprecated Use constructor with Logger parameter for proper task-specific logging
      */
+    @Deprecated
     public MetaPythonReportTask(int threadCount) {
-        this(threadCount, new MetaResourceParameters());
+        this(threadCount, new MetaResourceParameters(), LogManager.getLogger(MetaPythonReportTask.class));
     }
     
     /**
@@ -111,8 +113,23 @@ public class MetaPythonReportTask extends Task<Boolean> {
      * 
      * @param threadCount Number of threads to use for parallel report generation
      * @param resourceParameters Resource parameters containing Python executable path
+     * @deprecated Use constructor with Logger parameter for proper task-specific logging
      */
+    @Deprecated
     public MetaPythonReportTask(int threadCount, MetaResourceParameters resourceParameters) {
+        this(threadCount, resourceParameters, LogManager.getLogger(MetaPythonReportTask.class));
+    }
+    
+    /**
+     * Creates a new Python report generation task with specified thread count, resource parameters, and logger.
+     * This is the recommended constructor for proper task-specific logging.
+     * 
+     * @param threadCount Number of threads to use for parallel report generation
+     * @param resourceParameters Resource parameters containing Python executable path
+     * @param logger Logger instance from parent task for task-specific logging
+     */
+    public MetaPythonReportTask(int threadCount, MetaResourceParameters resourceParameters, Logger logger) {
+        this.logger = logger;
         this.resourceParameters = resourceParameters;
         this.executor = Executors.newFixedThreadPool(threadCount);
         this.reportTasks = new ArrayList<>();
@@ -121,8 +138,8 @@ public class MetaPythonReportTask extends Task<Boolean> {
         // Resolve Python executable path from resource parameters
         this.pythonExecutable = resolvePythonExecutable();
         
-        LOGGER.info("{}: Initialized with {} threads, Python: {}", TASK_NAME, threadCount, pythonExecutable);
-        LOGGER.info("{}: Python availability check: {}", TASK_NAME, isPythonAvailable());
+        logger.info("{}: Initialized with {} threads, Python: {}", TASK_NAME, threadCount, pythonExecutable);
+        logger.info("{}: Python availability check: {}", TASK_NAME, isPythonAvailable());
         System.out.println(FORMAT.format(new Date()) + "\t" + TASK_NAME + ": Initialized with " + threadCount + " threads, Python: " + pythonExecutable);
         System.out.println(FORMAT.format(new Date()) + "\t" + TASK_NAME + ": Python availability: " + isPythonAvailable());
     }
@@ -169,17 +186,17 @@ public class MetaPythonReportTask extends Task<Boolean> {
     public boolean addTask(String reportType, File inputFile, File outputFile, File metaFile) {
         // Validate input parameters
         if (reportType == null || reportType.trim().isEmpty()) {
-            LOGGER.error("{}: Report type cannot be null or empty", TASK_NAME);
+            logger.error("{}: Report type cannot be null or empty", TASK_NAME);
             return false;
         }
 
         if (inputFile == null || !inputFile.exists()) {
-            LOGGER.error("{}: Input file does not exist: {}", TASK_NAME, inputFile);
+            logger.error("{}: Input file does not exist: {}", TASK_NAME, inputFile);
             return false;
         }
 
         if (outputFile == null) {
-            LOGGER.error("{}: Output file cannot be null", TASK_NAME);
+            logger.error("{}: Output file cannot be null", TASK_NAME);
             return false;
         }
 
@@ -194,7 +211,7 @@ public class MetaPythonReportTask extends Task<Boolean> {
         reportTasks.add(taskInfo);
         outputFiles.add(outputFile);
 
-        LOGGER.info("{}: Added {} report task - Input: {}, Output: {}", 
+        logger.info("{}: Added {} report task - Input: {}, Output: {}", 
                    TASK_NAME, reportType, inputFile.getName(), outputFile.getName());
         System.out.println(FORMAT.format(new Date()) + "\t" + TASK_NAME + ": Added " + reportType + " report task");
 
@@ -218,12 +235,12 @@ public class MetaPythonReportTask extends Task<Boolean> {
             // Validate Python environment
             if (!isPythonAvailable()) {
                 String errorMsg = "Python environment not available. Please check resource configuration.";
-                LOGGER.error("{}: {}", TASK_NAME, errorMsg);
+                logger.error("{}: {}", TASK_NAME, errorMsg);
                 updateMessage(errorMsg);
                 return false;
             }
 
-            LOGGER.info("{}: Starting report generation for {} tasks using Python: {}", TASK_NAME, reportTasks.size(), pythonExecutable);
+            logger.info("{}: Starting report generation for {} tasks using Python: {}", TASK_NAME, reportTasks.size(), pythonExecutable);
             System.out.println(FORMAT.format(new Date()) + "\t" + TASK_NAME + ": Starting report generation using Python: " + pythonExecutable);
 
             // Shutdown executor and wait for completion
@@ -231,7 +248,7 @@ public class MetaPythonReportTask extends Task<Boolean> {
             boolean finished = executor.awaitTermination(30, TimeUnit.MINUTES);
 
             if (!finished) {
-                LOGGER.error("{}: Report generation timed out after 30 minutes", TASK_NAME);
+                logger.error("{}: Report generation timed out after 30 minutes", TASK_NAME);
                 updateMessage("Report generation timed out");
                 return false;
             }
@@ -242,7 +259,7 @@ public class MetaPythonReportTask extends Task<Boolean> {
 
             for (File outputFile : outputFiles) {
                 if (!outputFile.exists() || outputFile.length() == 0) {
-                    LOGGER.error("{}: Report file not generated or empty: {}", TASK_NAME, outputFile.getName());
+                    logger.error("{}: Report file not generated or empty: {}", TASK_NAME, outputFile.getName());
                     updateMessage("Failed to generate report: " + outputFile.getName());
                     return false;
                 }
@@ -251,13 +268,13 @@ public class MetaPythonReportTask extends Task<Boolean> {
             updateMessage("All reports generated successfully");
             updateProgress(100, 100);
 
-            LOGGER.info("{}: All reports generated successfully", TASK_NAME);
+            logger.info("{}: All reports generated successfully", TASK_NAME);
             System.out.println(FORMAT.format(new Date()) + "\t" + TASK_NAME + ": All reports generated successfully");
 
             return true;
 
         } catch (Exception e) {
-            LOGGER.error("{}: Error during report generation", TASK_NAME, e);
+            logger.error("{}: Error during report generation", TASK_NAME, e);
             updateMessage("Error during report generation: " + e.getMessage());
             return false;
         }
@@ -270,7 +287,7 @@ public class MetaPythonReportTask extends Task<Boolean> {
      */
     private void generateReport(ReportTaskInfo taskInfo) {
         try {
-            LOGGER.info("{}: Generating {} report from {}", TASK_NAME, taskInfo.reportType, taskInfo.inputFile.getName());
+            logger.info("{}: Generating {} report from {}", TASK_NAME, taskInfo.reportType, taskInfo.inputFile.getName());
             System.out.println(FORMAT.format(new Date()) + "\t" + TASK_NAME + ": Generating " + taskInfo.reportType + " report");
 
             // Build Python command
@@ -281,7 +298,7 @@ public class MetaPythonReportTask extends Task<Boolean> {
             processBuilder.redirectErrorStream(true);
             processBuilder.directory(new File(System.getProperty("user.dir"))); // Set working directory
 
-            LOGGER.info("{}: Executing Python command: {}", TASK_NAME, String.join(" ", command));
+            logger.info("{}: Executing Python command: {}", TASK_NAME, String.join(" ", command));
             System.out.println(FORMAT.format(new Date()) + "\t" + TASK_NAME + ": Executing Python command: " + String.join(" ", command));
 
             Process process = processBuilder.start();
@@ -290,7 +307,7 @@ public class MetaPythonReportTask extends Task<Boolean> {
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    LOGGER.debug("{}: Python output: {}", TASK_NAME, line);
+                    logger.debug("{}: Python output: {}", TASK_NAME, line);
                     System.out.println(FORMAT.format(new Date()) + "\t" + TASK_NAME + ": " + line);
                 }
             }
@@ -299,7 +316,7 @@ public class MetaPythonReportTask extends Task<Boolean> {
             int exitCode = process.waitFor();
 
             if (exitCode == 0) {
-                LOGGER.info("{}: Successfully generated {} report", TASK_NAME, taskInfo.reportType);
+                logger.info("{}: Successfully generated {} report", TASK_NAME, taskInfo.reportType);
                 System.out.println(FORMAT.format(new Date()) + "\t" + TASK_NAME + ": Successfully generated " + taskInfo.reportType + " report");
                 
                 // Add to manifest if generator is available
@@ -307,18 +324,18 @@ public class MetaPythonReportTask extends Task<Boolean> {
                     try {
                         String fileName = taskInfo.outputFile.getName();
                         manifestGenerator.addPythonReport(taskInfo.reportType, fileName, workflowType);
-                        LOGGER.info("{}: Added {} report to manifest", TASK_NAME, taskInfo.reportType);
+                        logger.info("{}: Added {} report to manifest", TASK_NAME, taskInfo.reportType);
                     } catch (Exception e) {
-                        LOGGER.warn("{}: Failed to add {} report to manifest: {}", TASK_NAME, taskInfo.reportType, e.getMessage());
+                        logger.warn("{}: Failed to add {} report to manifest: {}", TASK_NAME, taskInfo.reportType, e.getMessage());
                     }
                 }
             } else {
-                LOGGER.error("{}: Python script failed with exit code {} for {} report", TASK_NAME, exitCode, taskInfo.reportType);
+                logger.error("{}: Python script failed with exit code {} for {} report", TASK_NAME, exitCode, taskInfo.reportType);
                 System.err.println(FORMAT.format(new Date()) + "\t" + TASK_NAME + ": Python script failed for " + taskInfo.reportType + " report");
             }
 
         } catch (Exception e) {
-            LOGGER.error("{}: Error generating {} report", TASK_NAME, taskInfo.reportType, e);
+            logger.error("{}: Error generating {} report", TASK_NAME, taskInfo.reportType, e);
             System.err.println(FORMAT.format(new Date()) + "\t" + TASK_NAME + ": Error generating " + taskInfo.reportType + " report: " + e.getMessage());
         }
     }
@@ -350,7 +367,7 @@ public class MetaPythonReportTask extends Task<Boolean> {
         String outputPath = escapePathForPython(taskInfo.outputFile.getAbsolutePath());
         String outputDir = escapePathForPython(taskInfo.outputFile.getParent());
         
-        LOGGER.info("{}: Processing paths - Input: {}, Output: {}, OutputDir: {}", TASK_NAME, inputPath, outputPath, outputDir);
+        logger.info("{}: Processing paths - Input: {}, Output: {}, OutputDir: {}", TASK_NAME, inputPath, outputPath, outputDir);
         
         // Create temporary Python script file to avoid command line length issues
         try {
@@ -428,7 +445,7 @@ public class MetaPythonReportTask extends Task<Boolean> {
             command.add(tempScript.getAbsolutePath());
             
         } catch (IOException e) {
-            LOGGER.error("{}: Failed to create temporary Python script: {}", TASK_NAME, e.getMessage());
+            logger.error("{}: Failed to create temporary Python script: {}", TASK_NAME, e.getMessage());
             throw new RuntimeException("Failed to create temporary Python script", e);
         }
         
@@ -467,7 +484,7 @@ public class MetaPythonReportTask extends Task<Boolean> {
      * @return Logger instance
      */
     public Logger getLogger() {
-        return LOGGER;
+        return logger;
     }
     
     /**
@@ -479,26 +496,26 @@ public class MetaPythonReportTask extends Task<Boolean> {
         try {
             // Get Python path from resource parameters
             String pythonPath = resourceParameters.getToolPath(MetaResourceParameters.ToolType.PYTHON);
-            LOGGER.info("{}: Retrieved Python path from MetaResourceParameters: '{}'", TASK_NAME, pythonPath);
+            logger.info("{}: Retrieved Python path from MetaResourceParameters: '{}'", TASK_NAME, pythonPath);
             
             if (pythonPath != null && !pythonPath.trim().isEmpty()) {
                 File pythonFile = new File(pythonPath);
-                LOGGER.info("{}: Checking Python file existence: {} -> {}", TASK_NAME, pythonPath, pythonFile.exists());
+                logger.info("{}: Checking Python file existence: {} -> {}", TASK_NAME, pythonPath, pythonFile.exists());
                 if (pythonFile.exists()) {
-                    LOGGER.info("{}: Using bundled Python executable: {}", TASK_NAME, pythonPath);
+                    logger.info("{}: Using bundled Python executable: {}", TASK_NAME, pythonPath);
                     return pythonPath;
                 } else {
-                    LOGGER.warn("{}: Bundled Python executable not found at: {}, falling back to system python", TASK_NAME, pythonPath);
+                    logger.warn("{}: Bundled Python executable not found at: {}, falling back to system python", TASK_NAME, pythonPath);
                 }
             } else {
-                LOGGER.warn("{}: No Python path configured in resource parameters, falling back to system python", TASK_NAME);
+                logger.warn("{}: No Python path configured in resource parameters, falling back to system python", TASK_NAME);
             }
         } catch (Exception e) {
-            LOGGER.warn("{}: Error resolving Python executable from resource parameters: {}, falling back to system python", TASK_NAME, e.getMessage());
+            logger.warn("{}: Error resolving Python executable from resource parameters: {}, falling back to system python", TASK_NAME, e.getMessage());
         }
         
         // Fallback to system python
-        LOGGER.info("{}: Using system Python executable as fallback", TASK_NAME);
+        logger.info("{}: Using system Python executable as fallback", TASK_NAME);
         return "python";
     }
     

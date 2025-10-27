@@ -1546,10 +1546,10 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 			reportDir.mkdirs();
 		}
 
-		// Copy report templates using MetaPythonReportCopyTask (same as DDA workflow)
-		MetaPythonReportCopyTask reportCopyTask = new MetaPythonReportCopyTask(resultFolderFile);
-		Thread copyThread = new Thread(reportCopyTask);
-		copyThread.start();
+	// Copy report templates using MetaPythonReportCopyTask (same as DDA workflow)
+	MetaPythonReportCopyTask reportCopyTask = new MetaPythonReportCopyTask(resultFolderFile, logger);
+	Thread copyThread = new Thread(reportCopyTask);
+	copyThread.start();
 		try {
 			copyThread.join();
 			if (!reportCopyTask.get()) {
@@ -1591,9 +1591,9 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 			}
 		}
 
-		MetaPythonReportTask task = new MetaPythonReportTask(metaPar.getThreadCount(), mrp);
-		task.setWorkflowType("DIA");
-		task.initializeManifestGenerator(new File(metaPar.getReportDir(), "reports"));
+	MetaPythonReportTask task = new MetaPythonReportTask(metaPar.getThreadCount(), mrp, logger);
+	task.setWorkflowType("DIA");
+	task.initializeManifestGenerator(new File(metaPar.getReportDir(), "reports"));
 		
 		// Create initial manifest file to ensure index page can load
 		ReportManifestGenerator manifestGen = new ReportManifestGenerator(new File(metaPar.getReportDir(), "reports"));

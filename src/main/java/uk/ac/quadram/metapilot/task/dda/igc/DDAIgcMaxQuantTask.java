@@ -248,11 +248,11 @@ public class DDAIgcMaxQuantTask extends MetaPilotIgcTask {
 					reportDir.mkdirs();
 				}
 
-				updateProgress(65, 100);
-				updateMessage("Copying report templates...");
-				reportCopyTask = new MetaPythonReportCopyTask(new File(metaPar.getResult()));
-				reportCopyThread = new Thread(reportCopyTask);
-				reportCopyThread.start();
+			updateProgress(65, 100);
+			updateMessage("Copying report templates...");
+			reportCopyTask = new MetaPythonReportCopyTask(new File(metaPar.getResult()), logger);
+			reportCopyThread = new Thread(reportCopyTask);
+			reportCopyThread.start();
 				try {
 					reportCopyThread.join();
 					if (!reportCopyTask.get()) {
@@ -276,9 +276,9 @@ public class DDAIgcMaxQuantTask extends MetaPilotIgcTask {
 					reportFolder.mkdirs();
 				}
 
-				reportTask = new MetaPythonReportTask(metaPar.getThreadCount());
+			reportTask = new MetaPythonReportTask(metaPar.getThreadCount(), mrp, logger);
 
-				File report_ID_summary = new File(reportFolder, "report_ID_summary.html");
+			File report_ID_summary = new File(reportFolder, "report_ID_summary.html");
 
 				if (!report_ID_summary.exists() || report_ID_summary.length() == 0) {
 					reportTask.addTask(MetaPythonReportTask.ID_SUMMARY, summary, report_ID_summary);

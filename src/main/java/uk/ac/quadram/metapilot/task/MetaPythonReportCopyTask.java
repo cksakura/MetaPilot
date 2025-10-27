@@ -29,7 +29,7 @@ import java.util.jar.JarFile;
 public class MetaPythonReportCopyTask extends Task<Boolean> {
 
     private static final String TASK_NAME = "Python report copy task";
-    protected Logger logger;
+    protected final Logger logger;
     
     // Classpath resource path (works from inside JAR)
     private static final String REPORT_RESOURCE_PATH = "/report";
@@ -38,12 +38,29 @@ public class MetaPythonReportCopyTask extends Task<Boolean> {
     private final File reportDirectory;
     private final File htmlReportDirectory;
 
+    /**
+     * Creates a new report copy task with a default logger.
+     * @param resultDirectory Result directory where reports will be copied
+     * @deprecated Use constructor with Logger parameter for proper task-specific logging
+     */
+    @Deprecated
     public MetaPythonReportCopyTask(File resultDirectory) {
+        this(resultDirectory, LogManager.getLogger(MetaPythonReportCopyTask.class));
+    }
+
+    /**
+     * Creates a new report copy task with specified logger for task-specific logging.
+     * This is the recommended constructor.
+     * 
+     * @param resultDirectory Result directory where reports will be copied
+     * @param logger Logger instance from parent task for task-specific logging
+     */
+    public MetaPythonReportCopyTask(File resultDirectory, Logger logger) {
+        this.logger = logger;
         this.resultDirectory = resultDirectory;
         this.reportDirectory = new File(resultDirectory, "report");
         this.htmlReportDirectory = new File(reportDirectory, "reports");
         
-        this.logger = LogManager.getLogger(TASK_NAME);
         logger.info("{}: Initialized for {}", TASK_NAME, resultDirectory.getAbsolutePath());
     }
 
