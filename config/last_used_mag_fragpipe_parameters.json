@@ -3,20 +3,128 @@
   "input_output": {
     "host_database": "C:\\Users\\daz25hak\\MetaProAI\\database\\uniprotkb_Human_AND_reviewed_true_AND_m_2025_09_01.fasta",
     "mag_database": "human-gut",
-    "output_directory": "Z:\\PRIDE_dataset\\PXD050781\\DDA_stool\\MetaPilot",
+    "output_directory": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW",
     "append_host_db": true,
     "experiments": [
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA_stool\\Haonan_20210924_isotope_mix_Stool1.raw",
-        "experiment_name": "Stool1"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib1.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib1"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA_stool\\Haonan_20210924_isotope_mix_Stool2.raw",
-        "experiment_name": "Stool2"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib2.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib2"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA_stool\\Haonan_20210924_isotope_mix_Stool3.raw",
-        "experiment_name": "Stool3"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib3.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib3"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib4.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib4"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib5.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib5"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib6.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib6"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib7.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib7"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib8.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib8"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib9.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib9"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib10.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib10"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib11.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib11"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib12.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib12"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib13.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib13"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib14.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib14"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib15.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib15"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib16.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib16"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib17.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib17"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib18.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib18"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib19.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib19"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib20.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib20"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib21.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib21"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib22.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib22"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib23.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib23"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib24.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib24"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib25.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib25"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib26.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib26"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib27.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib27"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib28.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib28"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib29.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib29"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib30.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib30"
       }
     ]
   },
@@ -25,13 +133,13 @@
     "missed_cleavages": 2,
     "digestion_mode": "Specific"
   },
-  "generated_at": "2025-10-23 10:54:54",
+  "generated_at": "2025-10-27 10:30:50",
   "fragpipe_workflow_configured": true,
   "additional_parameters": {
     "generate_sample_specific_db": true,
     "ms2_scan_mode": "Regular MS",
     "spectra_clustering": false,
-    "threads": 20
+    "threads": 24
   },
   "description": "Last used parameters",
   "version": "1.0",

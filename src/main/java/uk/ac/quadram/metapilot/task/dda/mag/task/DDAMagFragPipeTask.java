@@ -16,7 +16,6 @@ import java.util.HashSet;
 import java.util.concurrent.ExecutionException;
 
 import org.apache.commons.io.FileUtils;
-import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import uk.ac.quadram.metapilot.core.prodb.FastaManager;

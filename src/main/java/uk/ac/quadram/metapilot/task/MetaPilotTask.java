@@ -88,11 +88,18 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 		super(metaPar, mrp, progressBar);
 		this.secondBar = secondBar;
 		
-		// Configure logging for this task's result folder
-		this.configLog(new File(metaPar.getResult()));
+		// Configure logging for this task's result folder and get the task-specific logger name
+		String taskLoggerName = this.configLog(new File(metaPar.getResult()));
 		
-		// Initialize logger AFTER configLog() to ensure proper file appender configuration
-		this.logger = LogManager.getLogger(this.getClass());
+		// Initialize logger with the task-specific logger name (not the class name)
+		// This ensures the logger uses the file appender we just configured
+		if (taskLoggerName != null) {
+			this.logger = LogManager.getLogger(taskLoggerName);
+		} else {
+			// Fallback to class-based logger if configuration failed
+			this.logger = LogManager.getLogger(this.getClass());
+			System.err.println("Warning: Using fallback logger configuration");
+		}
 		
 		// Log task initialization
 		logger.info("========================================");
@@ -245,13 +252,13 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 		}
 	}
 
-	protected void configLog(File logDir) {
+	protected String configLog(File logDir) {
 		// Ensure log directory exists
 		if (!logDir.exists()) {
 			boolean created = logDir.mkdirs();
 			if (!created) {
 				System.err.println("Warning: Could not create log directory: " + logDir.getAbsolutePath());
-				return;
+				return null;
 			}
 		}
 
@@ -284,14 +291,36 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 			fileAppender.start();
 			config.addAppender(fileAppender);
 			
-			// Add appender to root logger
-			org.apache.logging.log4j.core.config.LoggerConfig rootLogger = config.getRootLogger();
-			rootLogger.addAppender(fileAppender, Level.DEBUG, null);
+			// Create unique logger name for this task
+			String taskLoggerName = "TaskLogger_" + System.currentTimeMillis();
 			
-			// Update loggers
+			// Create new LoggerConfig for this task (not using root logger)
+			org.apache.logging.log4j.core.config.LoggerConfig taskLoggerConfig = 
+				org.apache.logging.log4j.core.config.LoggerConfig.createLogger(
+					false,  // additive = false, don't pass events to parent
+					Level.DEBUG,
+					taskLoggerName,
+					"true",
+					new org.apache.logging.log4j.core.config.AppenderRef[0],
+					null,
+					config,
+					null
+				);
+			
+			// Add the file appender to the task logger config
+			taskLoggerConfig.addAppender(fileAppender, Level.DEBUG, null);
+			
+			// Explicitly set additive to false to prevent duplication in metapilot.log
+			taskLoggerConfig.setAdditive(false);
+			
+			// Add the logger config to the configuration
+			config.addLogger(taskLoggerName, taskLoggerConfig);
+			
+			// CRITICAL: Update loggers to activate the new configuration
 			context.updateLoggers();
 			
 			System.out.println("Task logger configured successfully to: " + logFile.getAbsolutePath());
+			System.out.println("Task logger name: " + taskLoggerName);
 			
 			// Redirect System.out and System.err to system_output.log in task folder
 			File systemOutFile = new File(logDir, "system_output.log");
@@ -310,9 +339,13 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 			System.out.println("Task logger file: " + logFile.getAbsolutePath());
 			System.out.println("========================================");
 			
+			// Return the task logger name so caller can get the right logger
+			return taskLoggerName;
+			
 		} catch (Exception e) {
 			System.err.println("Warning: Could not configure logging: " + e.getMessage());
 			e.printStackTrace();
+			return null;
 		}
 	}
 

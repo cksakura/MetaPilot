@@ -17,9 +17,9 @@ import java.io.IOException;
  */
 public class MetaPythonReportCopyTask extends Task<Boolean> {
 
-    private static final Logger LOGGER = LogManager.getLogger(MetaPythonReportCopyTask.class);
     private static final String TASK_NAME = "Python report copy task";
-
+    protected Logger logger;
+    
     private static final String REPORT_TEMPLATE_PATH = "src/main/java/uk/ac/quadram/metapilot/report";
     
     private final File resultDirectory;
@@ -31,7 +31,8 @@ public class MetaPythonReportCopyTask extends Task<Boolean> {
         this.reportDirectory = new File(resultDirectory, "report");
         this.htmlReportDirectory = new File(reportDirectory, "reports");
         
-        LOGGER.info("{}: Initialized for {}", TASK_NAME, resultDirectory.getAbsolutePath());
+        this.logger = LogManager.getLogger(TASK_NAME);
+        logger.info("{}: Initialized for {}", TASK_NAME, resultDirectory.getAbsolutePath());
     }
 
 
@@ -58,11 +59,11 @@ public class MetaPythonReportCopyTask extends Task<Boolean> {
             updateMessage("Template setup completed successfully");
             updateProgress(100, 100);
 
-            LOGGER.info("{}: Successfully completed template setup", TASK_NAME);
+            logger.info("{}: Successfully completed template setup", TASK_NAME);
             return true;
 
         } catch (Exception e) {
-            LOGGER.error("{}: Error during template setup", TASK_NAME, e);
+        	logger.error("{}: Error during template setup", TASK_NAME, e);
             updateMessage("Error: " + e.getMessage());
             return false;
         }
@@ -73,16 +74,16 @@ public class MetaPythonReportCopyTask extends Task<Boolean> {
             File sourceReportDir = new File(REPORT_TEMPLATE_PATH);
             
             if (!sourceReportDir.exists()) {
-                LOGGER.error("{}: Source template not found: {}", TASK_NAME, sourceReportDir.getAbsolutePath());
+            	logger.error("{}: Source template not found: {}", TASK_NAME, sourceReportDir.getAbsolutePath());
                 return false;
             }
 
             FileUtils.copyDirectory(sourceReportDir, reportDirectory);
-            LOGGER.info("{}: Template copied successfully", TASK_NAME);
+            logger.info("{}: Template copied successfully", TASK_NAME);
             return true;
 
         } catch (IOException e) {
-            LOGGER.error("{}: Failed to copy template", TASK_NAME, e);
+        	logger.error("{}: Failed to copy template", TASK_NAME, e);
             return false;
         }
     }
@@ -100,7 +101,7 @@ public class MetaPythonReportCopyTask extends Task<Boolean> {
             }
 
         } catch (IOException e) {
-            LOGGER.warn("{}: Failed to cleanup directories", TASK_NAME, e);
+        	logger.warn("{}: Failed to cleanup directories", TASK_NAME, e);
         }
     }
 

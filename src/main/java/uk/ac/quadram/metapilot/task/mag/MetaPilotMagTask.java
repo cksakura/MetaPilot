@@ -30,8 +30,6 @@ import org.apache.logging.log4j.Logger;
 
 import com.sun.management.OperatingSystemMXBean;
 
-import org.apache.logging.log4j.LogManager;
-
 import uk.ac.quadram.metapilot.core.function.v2.EnzymeCommission;
 import uk.ac.quadram.metapilot.core.function.v2.GoObo;
 import uk.ac.quadram.metapilot.core.math.MathTool;
@@ -306,7 +304,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 					idenCount++;
 				}
 			}
-			logger.info(totalIntensity+"\t"+idenCount);
+
 			if (totalIntensity == 0 || idenCount == 0) {
 				continue;
 			}
@@ -1872,7 +1870,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			System.err.println(format.format(new Date()) + "\t" + "Error in writing taxa information to " + taxaFile);
 			return false;
 		}
-
+/*
 		// Export JS for taxonomy visualization
 		File jsOutput = new File(metaPar.getReportDir() + "\\reports\\tree.js");
 		if (!jsOutput.getParentFile().exists()) {
@@ -1896,7 +1894,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 						+ ": Bubble chart generation failed, continuing with other reports");
 			}
 		}
-
+*/
 		logger.info(taskName + ": taxonomy analysis finished");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": taxonomy analysis finished");
 

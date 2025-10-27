@@ -20,7 +20,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ExecutionException;
 
-import org.apache.logging.log4j.LogManager;
+import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.Logger;
 
 import uk.ac.quadram.metapilot.dbSearch.sage.SageTask;
@@ -553,15 +553,19 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 				if (!hapFile.exists()) {
 					hapFile.mkdirs();
 				}
-				File mzMLFile = new File(mzMLFiles[i]);
-				if (mzMLFile.exists()) {
-					logger.info("  Searching file {} with Sage", i + 1);
 
-					// Use the new searchMzML method with DDAMagSageParameters
-					sageTask.searchMzML(new String[] { mzMLFile.getAbsolutePath() }, hapFile.getAbsolutePath(),
-							hapFastaFile.getAbsolutePath(), magSageParams, false); // isQuant = false for HAP search
-				} else {
-					logger.warn("mzML file {} was not found, skipping", mzMLFiles[i]);
+				File resultFile = new File(hapFile, "results.sage.tsv");
+				if (!resultFile.exists() || resultFile.length() == 0) {
+					File mzMLFile = new File(mzMLFiles[i]);
+					if (mzMLFile.exists()) {
+						logger.info("  Searching file {} with Sage", i + 1);
+
+						// Use the new searchMzML method with DDAMagSageParameters
+						sageTask.searchMzML(new String[] { mzMLFile.getAbsolutePath() }, hapFile.getAbsolutePath(),
+								hapFastaFile.getAbsolutePath(), magSageParams, false); // isQuant = false for HAP search
+					} else {
+						logger.warn("mzML file {} was not found, skipping", mzMLFiles[i]);
+					}
 				}
 			}
 
@@ -578,7 +582,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 			startWatchServiceLoop(separateResultFolders, "hap", filter, filesNeedingSearch, 10, 40);
 
 			// Calculate optimal thread pool based on RAM (1 thread per 16GB)
-			int threadPool = calculateOptimalSageThreadPool();
+			int threadPool = maxTaskCount > filesNeedingSearch ? filesNeedingSearch : maxTaskCount;
 			logger.info("Starting Sage execution with {} thread pool for {} tasks", threadPool, this.mzMLFiles.length);
 			sageTask.run(threadPool, separateResultFolders.length * 3);
 		} else {
@@ -610,57 +614,6 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 	}
 
 	/**
-	 * Create Sage configuration file for database search
-	 */
-	private File createSageConfigFile(File mzMLFile, File fastaFile, File outputDir, boolean isQuant) {
-		File configFile = new File(outputDir, "sage_config.json");
-
-		try (PrintWriter writer = new PrintWriter(configFile)) {
-			writer.println("{");
-			writer.println("  \"database\": {");
-			writer.println("    \"fasta\": \"" + fastaFile.getAbsolutePath().replace("\\", "\\\\") + "\",");
-			writer.println("    \"decoy_tag\": \"" + magSageParams.getDecoysTag() + "\",");
-			writer.println("    \"generate_decoys\": " + magSageParams.isGenerateDecoys());
-			writer.println("  },");
-			writer.println("  \"precursor_tol\": {");
-			writer.println("    \"ppm\": [" + magSageParams.getPrecursorToleranceMin() + ", "
-					+ magSageParams.getPrecursorToleranceMax() + "]");
-			writer.println("  },");
-			writer.println("  \"fragment_tol\": {");
-			writer.println("    \"ppm\": [0, " + magSageParams.getFragmentTolerance() + "]");
-			writer.println("  },");
-			writer.println("  \"enzyme\": {");
-			writer.println("    \"missed_cleavages\": " + magSageParams.getMissCleavages());
-			writer.println("  },");
-			writer.println("  \"output_directory\": \"" + outputDir.getAbsolutePath().replace("\\", "\\\\") + "\",");
-			writer.println("  \"mzml_paths\": [\"" + mzMLFile.getAbsolutePath().replace("\\", "\\\\") + "\"]");
-
-			// Add quantification settings if isQuant is true
-			if (isQuant) {
-				writer.println(",");
-				writer.println("  \"quant\": {");
-				writer.println("    \"lfq\": true,");
-				writer.println("    \"lfq_settings\": {");
-				writer.println("      \"peak_scoring\": \"" + magSageParams.getPeakScoring() + "\",");
-				writer.println("      \"integration\": \"" + magSageParams.getIntegration() + "\",");
-				writer.println("      \"spectral_angle\": " + magSageParams.getSpectralAngle() + ",");
-				writer.println("      \"ppm_tolerance\": " + magSageParams.getLfqPpmTolerance());
-				writer.println("    }");
-				writer.println("  }");
-			}
-
-			writer.println("}");
-
-			logger.info("Created Sage config file: {}", configFile.getAbsolutePath());
-			return configFile;
-
-		} catch (IOException e) {
-			logger.error("Failed to create Sage config file: {}", configFile.getAbsolutePath(), e);
-			return null;
-		}
-	}
-
-	/**
 	 * Extract protein sequences from HAP search results
 	 */
 	protected boolean fastaExtract4Iterator() {
@@ -684,33 +637,67 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 				String[] header = headerLine.split("\t");
 
 				// Find the index of "proteins" column
+				int peptidesIndex = -1;
 				int proteinsIndex = -1;
+				int labelIndex = -1;
+				int peptideQIndex = -1;
 				for (int j = 0; j < header.length; j++) {
-					if (header[j].toLowerCase().contains("proteins")) {
+					if (header[j].toLowerCase().equals("peptide")) {
+						peptidesIndex = j;
+					} else if (header[j].toLowerCase().equals("proteins")) {
 						proteinsIndex = j;
-						break;
+					} else if (header[j].toLowerCase().equals("label")) {
+						labelIndex = j;
+					} else if (header[j].toLowerCase().equals("peptide_q")) {
+						peptideQIndex = j;
 					}
 				}
 
-				if (proteinsIndex == -1) {
-					logger.error("Could not find 'proteins' column in header: {}", headerLine);
+				if (proteinsIndex == -1 || labelIndex == -1 || peptideQIndex == -1) {
+					logger.error("Could not find 'proteins' 'label' or 'peptide_q' column in header: {}", headerLine);
 					continue;
 				}
 
+				logger.info("Found peptide column at index {}: {}", peptidesIndex, header[peptidesIndex]);
 				logger.info("Found proteins column at index {}: {}", proteinsIndex, header[proteinsIndex]);
+				logger.info("Found label column at index {}: {}", labelIndex, header[labelIndex]);
+				logger.info("Found peptide_q column at index {}: {}", peptideQIndex, header[peptideQIndex]);
 
 				String line;
 				while ((line = hapReader.readLine()) != null) {
 					String[] cs = line.split("\t");
+					if (cs.length > labelIndex) {
+						if (!cs[labelIndex].equals("1")) {
+							continue;
+						}
+					} else {
+						continue;
+					}
+
+					if (cs.length > peptideQIndex) {
+						if (Double.parseDouble(cs[peptideQIndex]) > 0.01) {
+							continue;
+						}
+					} else {
+						continue;
+					}
+
 					if (cs.length > proteinsIndex) {
 						String[] pros = cs[proteinsIndex].split(";");
 						for (String pro : pros) {
 							if (pro.startsWith(magDb.getIdentifier())) {
 								String genome = pro.split("_")[0];
-								genomeMap.computeIfAbsent(genome, k -> new HashSet<>()).add(cs[0]);
+								if (genomeMap.containsKey(genome)) {
+									genomeMap.get(genome).add(cs[peptidesIndex]);
+								} else {
+									HashSet<String> set = new HashSet<String>();
+									set.add(cs[peptidesIndex]);
+									genomeMap.put(genome, set);
+								}
+
 							}
 						}
-						pepSet.add(cs[0]);
+						pepSet.add(cs[peptidesIndex]);
 					}
 				}
 			} catch (IOException e) {
@@ -779,19 +766,24 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 				File mzMLFile = new File(mzMLFiles[i]);
 				File hapFile = new File(separateResultFolders[i], "hap");
 				File db = new File(hapFile, separateResultFolders[i].getName() + ".fasta");
+				File resultFile = new File(separateResultFolders[i], "results.sage.tsv");
+				if (!resultFile.exists() || resultFile.length() == 0) {
+					if (mzMLFile.exists()) {
+						if (db.exists() && db.length() > 0) {
+							// Use the new searchMzML method with DDAMagSageParameters for sample-specific
+							// database search
+							sageTask.searchMzML(new String[] { mzMLFile.getAbsolutePath() },
+									separateResultFolders[i].getAbsolutePath(), db.getAbsolutePath(), magSageParams,
+									false);
+						} else {
+							logger.warn(
+									"[{}] no protein sequences were in {}, which means no peptides/proteins can be identified from {}",
+									getTaskName(), db, separateResultFolders[i].getName());
 
-				if (mzMLFile.exists()) {
-					if (db.exists() && db.length() > 0) {
-						// Use the new searchMzML method with DDAMagSageParameters for sample-specific
-						// database search
-						sageTask.searchMzML(new String[] { mzMLFile.getAbsolutePath() },
-								separateResultFolders[i].getAbsolutePath(), db.getAbsolutePath(), magSageParams, false);
-					} else {
-						logger.warn("[{}] no protein sequences were in {}, which means no peptides/proteins can be identified from {}", getTaskName(), db, separateResultFolders[i].getName());
-
-						logger.error(getTaskName() + ": no protein sequences were in " + db
-								+ ", which means no peptides/proteins can be identifed from "
-								+ separateResultFolders[i].getName());
+							logger.error(getTaskName() + ": no protein sequences were in " + db
+									+ ", which means no peptides/proteins can be identifed from "
+									+ separateResultFolders[i].getName());
+						}
 					}
 				}
 			}
@@ -809,7 +801,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 			startWatchServiceLoop(separateResultFolders, "", filter, taskCount, 40, 65);
 
 			// Calculate optimal thread pool based on RAM (1 thread per 16GB)
-			int threadPool = calculateOptimalSageThreadPool();
+			int threadPool = maxTaskCount > taskCount ? taskCount : maxTaskCount;
 			logger.info("Starting Sage execution with {} thread pool for {} tasks", threadPool, taskCount);
 			sageTask.run(threadPool, this.separateResultFolders.length * 10);
 		}
@@ -864,7 +856,8 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 				}
 				while ((line = combineTsvReader.readLine()) != null) {
 					String[] cs = line.split("\t");
-					if (Double.parseDouble(cs[qvalueid]) > 0.01 || cs[proid].contains("REV_")) {
+					if (Double.parseDouble(cs[qvalueid]) > 0.01 || cs[proid].contains("REV_")
+							|| cs[proid].contains("rev_")) {
 						continue;
 					}
 					String[] pros = cs[proid].split(";");
@@ -1119,34 +1112,15 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		// TODO Auto-generated method stub
 		return null;
 	}
-
-	/**
-	 * Calculate optimal Sage thread pool size based on available system RAM.
-	 * For every 16GB of RAM, assign 1 thread to the pool.
-	 * This prevents running too many memory-intensive Sage processes simultaneously.
-	 * 
-	 * @return Optimal thread pool size (minimum 1)
-	 */
-	private int calculateOptimalSageThreadPool() {
-		try {
-			// Get total system RAM in bytes
-			com.sun.management.OperatingSystemMXBean osBean = 
-				(com.sun.management.OperatingSystemMXBean) java.lang.management.ManagementFactory.getOperatingSystemMXBean();
-			@SuppressWarnings("deprecation")
-			long totalRAM = osBean.getTotalPhysicalMemorySize();
-			
-			// Convert to GB
-			long totalRAM_GB = totalRAM / (1024L * 1024L * 1024L);
-			
-			// Calculate thread pool: 1 thread per 16GB RAM
-			int threadPool = Math.max(1, (int)(totalRAM_GB / 16));
-			
-			logger.info("System RAM: {} GB, Calculated Sage thread pool size: {}", totalRAM_GB, threadPool);
-			
-			return threadPool;
-		} catch (Exception e) {
-			logger.warn("Failed to calculate optimal thread pool based on RAM, defaulting to 1: {}", e.getMessage());
-			return 1; // Safe default
+	
+	public static void main(String[] args) {
+		File[] files = (new File("Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\sage_MAG_search")).listFiles();
+		for(int i=0;i<files.length;i++) {
+			File hapFile = new File(files[i], "hap");
+			File fastaFile = new File(hapFile, files[i].getName()+".fasta");
+			File genomeFile = new File(hapFile, "hap_genomes.tsv");
+			FileUtils.deleteQuietly(fastaFile);
+			FileUtils.deleteQuietly(genomeFile);
 		}
 	}
 }

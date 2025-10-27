@@ -6,106 +6,142 @@
     "min_peptide_length": 7,
     "max_peptide_length": 50,
     "max_variable_modifications": 2,
-    "search_type": "Closed Search",
+    "search_type": "Open Search",
     "decoys_enabled": true,
-    "precursor_tolerance_min": -20,
+    "precursor_tolerance_min": -500,
     "decoys_tag": "rev_",
     "generate_decoys": true,
     "fragment_tolerance_unit": "ppm",
-    "precursor_tolerance_unit": "ppm",
-    "precursor_tolerance_max": 20,
+    "precursor_tolerance_unit": "Da",
+    "precursor_tolerance_max": 150,
     "max_q": 0.01
   },
   "workflow": "DDA_MAG_SAGE",
   "input_output": {
     "host_database": "C:\\Users\\daz25hak\\MetaProAI\\database\\uniprotkb_Human_AND_reviewed_true_AND_m_2025_09_01.fasta",
     "mag_database": "C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-gut\\v2.0.2",
-    "output_directory": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\MetaPilot",
+    "output_directory": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW",
     "append_host_db": true,
     "experiments": [
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_1.raw",
-        "experiment_name": "DDA_S48_1"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib1.raw",
+        "experiment_name": "DDA_lib1"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_2.raw",
-        "experiment_name": "DDA_S48_2"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib2.raw",
+        "experiment_name": "DDA_lib2"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_3.raw",
-        "experiment_name": "DDA_S48_3"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib3.raw",
+        "experiment_name": "DDA_lib3"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_4.raw",
-        "experiment_name": "DDA_S48_4"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib4.raw",
+        "experiment_name": "DDA_lib4"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_5.raw",
-        "experiment_name": "DDA_S48_5"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib5.raw",
+        "experiment_name": "DDA_lib5"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_6.raw",
-        "experiment_name": "DDA_S48_6"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib6.raw",
+        "experiment_name": "DDA_lib6"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_7.raw",
-        "experiment_name": "DDA_S48_7"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib7.raw",
+        "experiment_name": "DDA_lib7"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_8.raw",
-        "experiment_name": "DDA_S48_8"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib8.raw",
+        "experiment_name": "DDA_lib8"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_9.raw",
-        "experiment_name": "DDA_S48_9"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib9.raw",
+        "experiment_name": "DDA_lib9"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_10.raw",
-        "experiment_name": "DDA_S48_10"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib10.raw",
+        "experiment_name": "DDA_lib10"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_11.raw",
-        "experiment_name": "DDA_S48_11"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib11.raw",
+        "experiment_name": "DDA_lib11"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_12.raw",
-        "experiment_name": "DDA_S48_12"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib12.raw",
+        "experiment_name": "DDA_lib12"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_13.raw",
-        "experiment_name": "DDA_S48_13"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib13.raw",
+        "experiment_name": "DDA_lib13"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_14.raw",
-        "experiment_name": "DDA_S48_14"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib14.raw",
+        "experiment_name": "DDA_lib14"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_15.raw",
-        "experiment_name": "DDA_S48_15"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib15.raw",
+        "experiment_name": "DDA_lib15"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_16.raw",
-        "experiment_name": "DDA_S48_16"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib16.raw",
+        "experiment_name": "DDA_lib16"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_17.raw",
-        "experiment_name": "DDA_S48_17"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib17.raw",
+        "experiment_name": "DDA_lib17"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_18.raw",
-        "experiment_name": "DDA_S48_18"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib18.raw",
+        "experiment_name": "DDA_lib18"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_19.raw",
-        "experiment_name": "DDA_S48_19"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib19.raw",
+        "experiment_name": "DDA_lib19"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_20.raw",
-        "experiment_name": "DDA_S48_20"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib20.raw",
+        "experiment_name": "DDA_lib20"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA21\\Haonan_20220809_DDA_S48_21.raw",
-        "experiment_name": "DDA_S48_21"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib21.raw",
+        "experiment_name": "DDA_lib21"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib22.raw",
+        "experiment_name": "DDA_lib22"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib23.raw",
+        "experiment_name": "DDA_lib23"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib24.raw",
+        "experiment_name": "DDA_lib24"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib25.raw",
+        "experiment_name": "DDA_lib25"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib26.raw",
+        "experiment_name": "DDA_lib26"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib27.raw",
+        "experiment_name": "DDA_lib27"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib28.raw",
+        "experiment_name": "DDA_lib28"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib29.raw",
+        "experiment_name": "DDA_lib29"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib30.raw",
+        "experiment_name": "DDA_lib30"
       }
     ]
   },
@@ -114,7 +150,7 @@
     "missed_cleavages": 2,
     "digestion_mode": "Specific"
   },
-  "generated_at": "2025-10-03 14:49:36",
+  "generated_at": "2025-10-24 11:10:23",
   "additional_parameters": {
     "generate_sample_specific_db": true,
     "spectra_clustering": false,
