@@ -2028,19 +2028,19 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			}
 		}
 
-		File funcHtmlFile = new File(metaPar.getDbSearchResultFile(), "functional_annotation\\functions.html");
-		if (funcHtmlFile.exists()) {
-			File reportFunctionsHtml = new File(reportHtmlDir, "reports/functions.html");
-			try {
-				Files.copy(funcHtmlFile.toPath(), reportFunctionsHtml.toPath(), StandardCopyOption.REPLACE_EXISTING);
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				logger.error("Copied functions.html to reports directory failed", e);
-			}
-			logger.info("Copied functions.html to reports directory: " + reportFunctionsHtml.getAbsolutePath());
-		} else {
-			logger.info("functions.html was not exist in " + funcHtmlFile.getAbsolutePath());
+	File funcHtmlFile = new File(metaPar.getDbSearchResultFile(), "functional_annotation\\functions.html");
+	if (funcHtmlFile.exists()) {
+		File reportFunctionsHtml = new File(reportHtmlDir, "functions.html");
+		try {
+			Files.copy(funcHtmlFile.toPath(), reportFunctionsHtml.toPath(), StandardCopyOption.REPLACE_EXISTING);
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			logger.error("Copied functions.html to reports directory failed", e);
 		}
+		logger.info("Copied functions.html to reports directory: " + reportFunctionsHtml.getAbsolutePath());
+	} else {
+		logger.info("functions.html was not exist in " + funcHtmlFile.getAbsolutePath());
+	}
 
 		if (!reportSuccess) {
 			logger.warn(taskName + ": Some report tasks could not be added");
