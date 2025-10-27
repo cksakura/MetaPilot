@@ -2038,12 +2038,13 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 		} else {
 			try {
 				// Ensure the PyTorch script is available in the model folder
-				try (InputStream inputStream = DiaPyTorchModelTask.class.getResourceAsStream("pytorch_model.py");
+				// Load from bundled resources in python_scripts/deep_learning/
+				try (InputStream inputStream = DiaPyTorchModelTask.class.getResourceAsStream("/python_scripts/deep_learning/pytorch_model.py");
 						BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
 					if (inputStream == null) {
-						LOGGER.info(taskName + ": the pytorch_model.py file is not found");
-						System.out.println(format.format(new Date()) + "\t" + taskName
-								+ ": the pytorch_model.py file is not found");
+						LOGGER.error(taskName + ": pytorch_model.py not found in classpath at /python_scripts/deep_learning/pytorch_model.py");
+						System.err.println(format.format(new Date()) + "\t" + taskName
+								+ ": pytorch_model.py not found in classpath");
 						return;
 					}
 					PrintWriter writer = new PrintWriter(pythonFile);
@@ -2054,10 +2055,11 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 					reader.close();
 					inputStream.close();
 					writer.close();
+					LOGGER.info(taskName + ": pytorch_model.py extracted successfully to " + pythonFile.getAbsolutePath());
 				} catch (IOException e) {
-					LOGGER.info(taskName + ": error in writing the pytorch_model.py file");
-					System.out.println(format.format(new Date()) + "\t" + taskName
-							+ ": error in writing the pytorch_model.py file");
+					LOGGER.error(taskName + ": error in extracting pytorch_model.py file", e);
+					System.err.println(format.format(new Date()) + "\t" + taskName
+							+ ": error in extracting pytorch_model.py file");
 				}
 
 				// Run python synchronously in model folder
