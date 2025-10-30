@@ -1,10 +1,11 @@
 # Ignore large and generated artifacts
 logs/*.log
-tests/*.db
-tests/*.tsv
+
+# Ignore entire build and test directories
+target/
+tests/
 
 # Common build outputs
-target/
 *.class
 
 # Python caches in resources
