@@ -26,7 +26,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 import org.apache.commons.math3.stat.inference.TTest;
-import org.apache.logging.log4j.Logger;
 
 import com.sun.management.OperatingSystemMXBean;
 
@@ -75,7 +74,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 	protected File combinedFile;
 
 	protected int maxTaskCount;
-	
+
 	public MetaPilotMagTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
 			ProgressBar secondBar) {
 		super(metaPar, mrp, progressBar, secondBar);
@@ -98,7 +97,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": the number of max memory is "
 				+ totalMemorySize + " GB, the max number of tasks is set as " + maxTaskCount);
 	}
-	
+
 	protected void createSeparateFolders() {
 		MetaData metaData = metaPar.getMetadata();
 		if (metaData == null) {
@@ -127,7 +126,8 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 
 		this.rawFileNames = new String[rawFiles.length];
 		this.separateResultFolders = new File[rawFiles.length];
-
+		this.expNameMap = new HashMap<String, String>();
+		
 		for (int i = 0; i < rawFiles.length; i++) {
 			rawFileNames[i] = rawFiles[i].substring(rawFiles[i].lastIndexOf("\\") + 1, rawFiles[i].lastIndexOf("."));
 			this.separateResultFolders[i] = new File(metaPar.getDbSearchResultFile(), rawFileNames[i]);
@@ -137,7 +137,8 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			} else {
 				logger.info("  Result directory already exists: {}", this.separateResultFolders[i].getAbsolutePath());
 			}
-
+			expNameMap.put(rawFileNames[i], quanExpNames[i]);
+			
 			File hapFile = new File(separateResultFolders[i], "hap");
 			if (!hapFile.exists()) {
 				hapFile.mkdirs();
@@ -1557,7 +1558,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 				File nogReportTsv = new File(funcFile, "NOG_accession_report.tsv");
 				File cogCatTsv = new File(funcFile, "COG_category_report.tsv");
 				File nogCatTsv = new File(funcFile, "NOG_category_report.tsv");
-				
+
 				funReader.exportGOReport(goReportTsv);
 				funReader.exportECReport(ecReportTsv);
 				funReader.exportKeggReport(keggReportTsv);
@@ -1565,7 +1566,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 				funReader.exportCOGReport(cogReportTsv);
 				funReader.exportNOGReport(nogReportTsv);
 				funReader.exportCOGCategoryReport(cogCatTsv);
-				funReader.exportNOGCategoryReport(nogCatTsv);				
+				funReader.exportNOGCategoryReport(nogCatTsv);
 			} catch (Exception e) {
 				logger.error(taskName + ": error in writing protein function information to " + funTsv.getName(), e);
 				System.err.println(format.format(new Date()) + "\t" + taskName
@@ -1870,31 +1871,26 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			System.err.println(format.format(new Date()) + "\t" + "Error in writing taxa information to " + taxaFile);
 			return false;
 		}
-/*
-		// Export JS for taxonomy visualization
-		File jsOutput = new File(metaPar.getReportDir() + "\\reports\\tree.js");
-		if (!jsOutput.getParentFile().exists()) {
-			jsOutput.getParentFile().mkdirs();
-		}
-
-		if (!jsOutput.exists() || jsOutput.length() == 0) {
-			MetaTreeHandler.exportJS(taxRankMaps, taxIntensityMaps, cellularIntensity, intensityTitle, jsOutput);
-		}
-
-		// Generate bubble chart report from tree.js data (optional - don't fail if this
-		// doesn't work)
-		File bubbleChartOutput = new File(metaPar.getReportDir() + "\\reports\\bubble_chart_report.html");
-		if (!bubbleChartOutput.exists() || bubbleChartOutput.length() == 0) {
-			try {
-				generateBubbleChartReport(jsOutput, bubbleChartOutput);
-			} catch (Exception e) {
-				logger.warn(getTaskName() + ": Bubble chart generation failed, continuing with other reports: "
-						+ e.getMessage());
-				System.out.println(format.format(new Date()) + "\t" + getTaskName()
-						+ ": Bubble chart generation failed, continuing with other reports");
-			}
-		}
-*/
+		/*
+		 * // Export JS for taxonomy visualization File jsOutput = new
+		 * File(metaPar.getReportDir() + "\\reports\\tree.js"); if
+		 * (!jsOutput.getParentFile().exists()) { jsOutput.getParentFile().mkdirs(); }
+		 * 
+		 * if (!jsOutput.exists() || jsOutput.length() == 0) {
+		 * MetaTreeHandler.exportJS(taxRankMaps, taxIntensityMaps, cellularIntensity,
+		 * intensityTitle, jsOutput); }
+		 * 
+		 * // Generate bubble chart report from tree.js data (optional - don't fail if
+		 * this // doesn't work) File bubbleChartOutput = new
+		 * File(metaPar.getReportDir() + "\\reports\\bubble_chart_report.html"); if
+		 * (!bubbleChartOutput.exists() || bubbleChartOutput.length() == 0) { try {
+		 * generateBubbleChartReport(jsOutput, bubbleChartOutput); } catch (Exception e)
+		 * { logger.warn(getTaskName() +
+		 * ": Bubble chart generation failed, continuing with other reports: " +
+		 * e.getMessage()); System.out.println(format.format(new Date()) + "\t" +
+		 * getTaskName() +
+		 * ": Bubble chart generation failed, continuing with other reports"); } }
+		 */
 		logger.info(taskName + ": taxonomy analysis finished");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": taxonomy analysis finished");
 
@@ -1937,10 +1933,10 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			logger.error(taskName + ": error in exporting metadata", e);
 		}
 
-	// Generate summary report
-	MetaPythonReportTask reportTask = new MetaPythonReportTask(threadCount, mrp, logger);
-	reportTask.setWorkflowType("MAG");
-	reportTask.initializeManifestGenerator(reportHtmlDir);
+		// Generate summary report
+		MetaPythonReportTask reportTask = new MetaPythonReportTask(threadCount, mrp, logger);
+		reportTask.setWorkflowType("MAG");
+		reportTask.initializeManifestGenerator(reportHtmlDir);
 
 		// Create initial manifest file to ensure index page can load
 		ReportManifestGenerator manifestGen = new ReportManifestGenerator(reportHtmlDir);
@@ -2017,7 +2013,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 
 		// Add function report
 		File funReportTsv = new File(metaPar.getDbSearchResultFile(), "functional_annotation");
-		if (funReportTsv.exists() && funReportTsv.length() > 0) {
+		if (funReportTsv.exists()) {
 			File report_function_summary = new File(reportHtmlDir, "report_function_summary.html");
 			if (summaryMetaFile != null && summaryMetaFile.exists()) {
 				reportSuccess &= reportTask.addTask(MetaPythonReportTask.FUNCTION, funReportTsv,
@@ -2084,9 +2080,9 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			logger.info(getTaskName() + ": Generating bubble chart report from " + treeJsFile.getName());
 			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Generating bubble chart report");
 
-		// Use MetaPythonReportTask to generate the bubble chart
-		MetaPythonReportTask reportTask = new MetaPythonReportTask(1, mrp, logger);
-		boolean success = reportTask.addTask(MetaPythonReportTask.BUBBLE_CHART, treeJsFile, outputFile);
+			// Use MetaPythonReportTask to generate the bubble chart
+			MetaPythonReportTask reportTask = new MetaPythonReportTask(1, mrp, logger);
+			boolean success = reportTask.addTask(MetaPythonReportTask.BUBBLE_CHART, treeJsFile, outputFile);
 
 			if (success) {
 				// Wait for completion
@@ -2136,12 +2132,11 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 		private String[] intensityTitle;
 		private String taskName;
 		private MetaPilotMagTask parentTask;
-		private Logger logger;
 
 		public DDAMagPostAnalysisTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
 				MetaPeptide[] quanPeps, MetaPSM[] psms, HashMap<String, Integer> fileIdMap, ArrayList<String> fileList,
 				String quanMode, String[] intensityTitle, String taskName, MetaPilotMagTask parentTask) {
-			super(metaPar, mrp, progressBar);
+			super(metaPar, mrp, progressBar, parentTask.getLogger());
 			this.quanPeps = quanPeps;
 			this.psms = psms;
 			this.fileIdMap = fileIdMap;
@@ -2150,17 +2145,11 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			this.intensityTitle = intensityTitle;
 			this.taskName = taskName;
 			this.parentTask = parentTask;
-			this.logger = org.apache.logging.log4j.LogManager.getLogger(getClass());
 		}
 
 		@Override
 		protected String getTaskName() {
 			return taskName + " Post-Analysis";
-		}
-
-		@Override
-		protected Logger getLogger() {
-			return logger;
 		}
 
 		@Override

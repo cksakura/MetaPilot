@@ -1,6 +1,5 @@
 package uk.ac.quadram.metapilot.task.dia;
 
-import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import javafx.application.Platform;
@@ -542,7 +541,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 				}
 				int batchThreadCount = threadCount / maxTaskCount + 1;
 				DiaPyTorchModelTask diaModelTask = new DiaPyTorchModelTask((MetaParameterDia) metaPar, mrp, secondBar,
-						pepIntenMap, modelFolderFile, batchThreadCount);
+						logger, pepIntenMap, modelFolderFile, batchThreadCount);
 				diaModelTask.execute();
 
 				updateTableRowStatus(finalFileName, 2, "Working");

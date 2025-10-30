@@ -669,29 +669,59 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
             consolePanel.appendConsoleText("Starting DIA Normal analysis...\n");
             LOGGER.info("startAnalysis called - DIA Normal workflow");
             
-            // 1. Validate inputs (if applicable)
-            if (!validateInputs()) {
-                showError("Validation Error", "Please check all required inputs before starting analysis.");
-                return;
-            }
-            
-            // 2. Collect parameters from UI
+            // 1. Collect parameters from UI
             consolePanel.appendConsoleText("Collecting parameters from UI...\n");
             MetaParameterDia metaParameterDia = collectParametersFromUI();
             if (metaParameterDia == null) {
                 consolePanel.appendConsoleText("ERROR: Failed to collect parameters from UI.\n");
                 LOGGER.error("Failed to collect parameters from UI in startAnalysis");
-                showError("Parameter Error", "Failed to generate analysis parameters. Please check your settings.");
                 return;
             }
             
             consolePanel.appendConsoleText("✓ Successfully collected parameters from UI\n");
             LOGGER.info("Successfully collected parameters from UI for DIA Normal workflow");
             
-            // 3. Store parameters for later use
-            currentAnalysisParams = metaParameterDia;
+            // Store analysis parameters for viewReport
+            this.currentAnalysisParams = metaParameterDia;
             
-            // 4. Load resource parameters from config file
+            // 2. Save parameters to file
+            String outputDir = metaParameterDia.getResult();
+            if (outputDir != null && !outputDir.trim().isEmpty()) {
+                consolePanel.appendConsoleText("Saving parameters to output directory...\n");
+                boolean paramsSaved = parameterIO.saveAnalysisParameters(outputDir, metaParameterDia);
+                if (!paramsSaved) {
+                    consolePanel.appendConsoleText("WARNING: Failed to save parameters to file. Analysis will continue.\n");
+                    LOGGER.warn("Failed to save analysis parameters to file: {}", outputDir);
+                } else {
+                    consolePanel.appendConsoleText("✓ Parameters saved to: " + outputDir + "/dia_normal_analysis_parameters.json\n");
+                    LOGGER.info("Successfully saved analysis parameters to: {}", outputDir);
+                }
+                
+                // Also save as last used parameters
+                boolean lastParamsSaved = parameterIO.saveLastUsedParameters(metaParameterDia);
+                if (lastParamsSaved) {
+                    consolePanel.appendConsoleText("✓ Last used parameters saved\n");
+                    LOGGER.info("Successfully saved last used parameters");
+                } else {
+                    consolePanel.appendConsoleText("WARNING: Failed to save last used parameters\n");
+                    LOGGER.warn("Failed to save last used parameters");
+                }
+                
+                // Save to preferences
+                boolean prefsSaved = parameterIO.savePreferences(metaParameterDia);
+                if (prefsSaved) {
+                    consolePanel.appendConsoleText("✓ Preferences saved\n");
+                    LOGGER.info("Successfully saved preferences");
+                } else {
+                    consolePanel.appendConsoleText("WARNING: Failed to save preferences\n");
+                    LOGGER.warn("Failed to save preferences");
+                }
+            } else {
+                consolePanel.appendConsoleText("WARNING: No output directory specified, skipping parameter save\n");
+                LOGGER.warn("No output directory specified, skipping parameter save");
+            }
+            
+            // 3. Load resource parameters from config file
             consolePanel.appendConsoleText("Loading resource parameters from config...\n");
             MetaResourceIO resourceIO = new MetaResourceIO();
             MetaResourceParameters mrp = resourceIO.loadParameters();
@@ -701,20 +731,27 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
             }
             consolePanel.appendConsoleText("✓ Resource parameters loaded from config file\n");
             
+            // 4. Set up progress tracking
+            consolePanel.appendConsoleText("Setting up progress tracking...\n");
+            consolePanel.appendConsoleText("✓ Progress bars and status label initialized\n");
+            
             // Clear console and start analysis
             consolePanel.clearConsole();
             consolePanel.appendConsoleText("Parameters validated successfully.\n");
             consolePanel.appendConsoleText("Result directory: " + metaParameterDia.getResult() + "\n");
         
             // 5. Create and configure task
+            consolePanel.appendConsoleText("Creating DIA Normal task...\n");
             currentTask = new MetaDiaTask(
                 metaParameterDia,
                 mrp,
                 consolePanel.getOverallProgressBar(),
                 consolePanel.getCurrentTaskProgressBar()
             );
+            consolePanel.appendConsoleText("✓ Task created successfully\n");
             
             // 6. Set up task event handlers
+            consolePanel.appendConsoleText("Setting up task callbacks...\n");
             currentTask.setOnSucceeded(e -> {
                 Platform.runLater(() -> {
                     Boolean result = currentTask.getValue();
@@ -726,7 +763,7 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
                         consolePanel.setButtonsEnabled(true, false, true);
                     } else {
                         // Task completed but returned false (failed)
-                        consolePanel.appendConsoleText("✗ Analysis failed. Check console output for details.\n");
+                        consolePanel.appendConsoleText("⚠ Analysis completed but may not have been fully successful.\n");
                         consolePanel.setButtonsEnabled(true, false, false);
                     }
                     consolePanel.stopStatusTimer(); // Stop the timer when task completes
@@ -752,7 +789,10 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
                 });
             });
             
+            consolePanel.appendConsoleText("✓ Task callbacks configured\n");
+            
             // 7. Run task in background thread
+            consolePanel.appendConsoleText("Starting task execution...\n");
             Thread taskThread = new Thread(currentTask);
             taskThread.setDaemon(true);
             taskThread.start();
@@ -976,16 +1016,11 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
         predictionConsole.appendText("  Using Threads: " + threadCount + " (60% of available)\n\n");
         
         // Create and configure DeepDetectTask with all required parameters
-        deepDetectTask = new DeepDetectTask(
-            metaBaseParameter,
-            resourceParams,
-            predictionProgressBar,
-            deepDetectParam,
-            magDbItem,
-            threadCount, // Use 60% of available threads
-            timeTextField // JavaFX TextField for time display
-        );
-        
+		deepDetectTask = new DeepDetectTask(metaBaseParameter, resourceParams, predictionProgressBar, deepDetectParam,
+				magDbItem, threadCount, // Use 60% of available threads
+				timeTextField, // JavaFX TextField for time display
+				LOGGER);
+
         // Set up task completion callback
         deepDetectTask.setOnSucceeded(e -> {
             predictionConsole.appendText("\n=== Prediction Completed ===\n");
@@ -1431,7 +1466,8 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
                 }
                 if (ioPanel != null) {
                     ioPanel.setExperimentData(experimentRows);
-                    System.out.println("DEBUG: Applied metadata with " + rawFiles.length + " raw files to IO panel");
+                    consolePanel.appendConsoleText("Applied " + rawFiles.length + " experiment rows to IO panel\n");
+                    LOGGER.info("Applied metadata with {} raw files to IO panel", rawFiles.length);
                     
                     // Update the metadata configuration panel with the experiment data
                     if (metadataConfigurationPanel != null) {
@@ -1451,7 +1487,8 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
         if (params.getResult() != null && !params.getResult().trim().isEmpty()) {
             if (ioPanel != null) {
                 ioPanel.setOutputDirectory(params.getResult());
-                System.out.println("DEBUG: Applied output directory: " + params.getResult());
+                consolePanel.appendConsoleText("Applied output directory: " + params.getResult() + "\n");
+                LOGGER.info("Applied output directory: {}", params.getResult());
             } else {
                 System.err.println("ERROR: ioPanel is null, cannot apply output directory");
             }

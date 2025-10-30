@@ -125,6 +125,7 @@ public abstract class MetaAbstractTask extends Task<Boolean> {
 	protected MetaBaseParameter metaPar;
 	protected MetaResourceParameters mrp;
 	protected ProgressBar progressBar;
+	protected Logger logger;
 	protected Task<Boolean> nextWork;
 	protected SimpleDateFormat format = new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss");
 	protected ConfigurationBuilder<BuiltConfiguration> builder;
@@ -138,10 +139,12 @@ public abstract class MetaAbstractTask extends Task<Boolean> {
 	 * @param progressBar2 The secondary progress bar
 	 * @param nextWork     The next task to execute after this one completes
 	 */
-	public MetaAbstractTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar) {
+	public MetaAbstractTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
+			Logger logger) {
 		this.metaPar = metaPar;
 		this.mrp = mrp;
 		this.progressBar = progressBar;
+		this.logger = logger;
 		// Set up progress property listeners
 		this.progressProperty().addListener((observable, oldValue, newValue) -> {
 			if (this.progressBar != null) {
@@ -153,9 +156,8 @@ public abstract class MetaAbstractTask extends Task<Boolean> {
 		this.setOnSucceeded(event -> done());
 		this.setOnFailed(event -> done());
 		this.setOnCancelled(event -> {
-			Logger LOGGER = getLogger();
 			String taskName = getTaskName();
-			LOGGER.info("[{}] task cancelled", taskName);
+			logger.info("[{}] task cancelled", taskName);
 		});
 	}
 
@@ -169,10 +171,11 @@ public abstract class MetaAbstractTask extends Task<Boolean> {
 	 * @param nextWork     The next task to execute after this one completes
 	 */
 	public MetaAbstractTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
-			Task<Boolean> nextWork) {
+			Logger logger, Task<Boolean> nextWork) {
 		this.metaPar = metaPar;
 		this.mrp = mrp;
 		this.progressBar = progressBar;
+		this.logger = logger;
 		this.nextWork = nextWork;
 
 		// Set up progress property listeners
@@ -186,9 +189,8 @@ public abstract class MetaAbstractTask extends Task<Boolean> {
 		this.setOnSucceeded(event -> done());
 		this.setOnFailed(event -> done());
 		this.setOnCancelled(event -> {
-			Logger LOGGER = getLogger();
 			String taskName = getTaskName();
-			LOGGER.info("[{}] task cancelled", taskName);
+			logger.info("[{}] task cancelled", taskName);
 		});
 	}
 
@@ -213,26 +215,26 @@ public abstract class MetaAbstractTask extends Task<Boolean> {
 	 * 
 	 * @return The logger
 	 */
-	protected abstract Logger getLogger();
+	protected Logger getLogger() {
+		return logger;
+	}
 
 	/**
 	 * This method is called when the task completes, whether successfully or not.
 	 * It replaces the SwingWorker's done() method.
 	 */
 	protected void done() {
-		Logger LOGGER = getLogger();
 		String taskName = getTaskName();
-
 		boolean finished = false;
 		try {
 			finished = get();
 		} catch (InterruptedException | ExecutionException e) {
-			LOGGER.error(taskName + ": failed", e);
+			logger.error(taskName + ": failed", e);
 			System.err.println(format.format(new Date()) + "\t" + taskName + ": task failed");
 		}
 
 		if (finished) {
-			LOGGER.info("[{}] task finished", taskName);
+			logger.info("[{}] task finished", taskName);
 
 			if (nextWork != null) {
 				Thread thread = new Thread(nextWork);
@@ -242,7 +244,7 @@ public abstract class MetaAbstractTask extends Task<Boolean> {
 				updateProgress(1.0, 1.0);
 			}
 		} else {
-			LOGGER.info("[{}] task failed", taskName);
+			logger.info("[{}] task failed", taskName);
 		}
 	}
 

@@ -9,7 +9,6 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.concurrent.ExecutionException;
 
-import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import uk.ac.quadram.metapilot.core.mod.PostTransModification;
@@ -174,7 +173,7 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 		updateProgress(5, 100);
 		updateMessage("Starting spectra conversion...");
 
-		spectraConvertTask = new PFindSpectraConvertTask(metaPar, mrp, secondBar);
+		spectraConvertTask = new PFindSpectraConvertTask(metaPar, mrp, secondBar, logger);
 		logger.info("{}: PFindSpectraConvertTask created, executing...", taskName);
 		spectraConvertTask.execute();
 		try {
@@ -204,7 +203,7 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 		updateProgress(25, 100);
 		updateMessage("Creating sample-specific database...");
 
-		metaDbReducerTask = new MetaDbReducerTask(metaPar, mrp, secondBar);
+		metaDbReducerTask = new MetaDbReducerTask(metaPar, mrp, secondBar, logger);
 		logger.info("{}: MetaDbReducerTask created, executing...", taskName);
 		metaDbReducerTask.execute();
 		try {

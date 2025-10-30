@@ -155,7 +155,7 @@ public class DDAIgcMaxQuantTask extends MetaPilotIgcTask {
 			updateProgress(5, 100);
 			updateMessage("Starting spectra format conversion...");
 			logger.info("Step 1: Starting spectra format conversion...");
-			spectraConvertTask = new PFindSpectraConvertTask(metaPar, mrp, secondBar);
+			spectraConvertTask = new PFindSpectraConvertTask(metaPar, mrp, secondBar, logger);
 			spectraConvertTask.execute();
 			try {
 				boolean convert = spectraConvertTask.get(); // Wait for completion and get result
@@ -181,7 +181,7 @@ public class DDAIgcMaxQuantTask extends MetaPilotIgcTask {
 			updateProgress(25, 100);
 			updateMessage("Creating sample-specific database...");
 			logger.info("Step 2: Starting sample-specific database generation...");
-			dbReducerTask = new MetaDbReducerTask(metaPar, mrp, secondBar);
+			dbReducerTask = new MetaDbReducerTask(metaPar, mrp, secondBar, logger);
 			dbReducerTask.execute();
 			try {
 				boolean dbReduced = dbReducerTask.get(); // Wait for completion and get result

@@ -3,8 +3,8 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>uk.ac.quadram</groupId>
   <artifactId>metapilot</artifactId>
-  <name>metapilot</name>
-  <version>1.0-SNAPSHOT</version>
+  <name>MetaPilot</name>
+  <version>1.0.0-beta.2</version>
   <url>http://maven.apache.org</url>
   <build>
     <plugins>
@@ -34,6 +34,12 @@
               <transformers>
                 <transformer>
                   <mainClass>uk.ac.quadram.metapilot.MetaPilotApp</mainClass>
+                  <manifestEntries>
+                    <Implementation-Title>${project.name}</Implementation-Title>
+                    <Implementation-Version>${project.version}</Implementation-Version>
+                    <Build-Jdk-Spec>${maven.compiler.target}</Build-Jdk-Spec>
+                    <Created-By>MetaPilot Build System</Created-By>
+                  </manifestEntries>
                 </transformer>
                 <transformer />
               </transformers>

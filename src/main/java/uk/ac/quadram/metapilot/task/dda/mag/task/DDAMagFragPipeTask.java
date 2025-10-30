@@ -19,7 +19,6 @@ import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.Logger;
 
 import uk.ac.quadram.metapilot.core.prodb.FastaManager;
-import uk.ac.quadram.metapilot.core.tools.FormatTool;
 import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragPipeTask;
 import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragPipePSM;
 import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragpipePepReader;
@@ -1125,8 +1124,8 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 				String line = null;
 				while ((line = reader.readLine()) != null) {
 					String[] cs = line.split("\t");
-					fileIdMap.put(cs[1] + "_" + cs[2], fileIdMap.size());
-					fileList.add(cs[1] + "_" + cs[2]);
+					fileIdMap.put(cs[1], fileIdMap.size());
+					fileList.add(cs[1]);
 				}
 				reader.close();
 			} catch (IOException e) {
@@ -1179,152 +1178,6 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		} catch (ExecutionException e) {
 			logger.error(getTaskName() + ": Post-analysis task failed with exception", e);
 			return false;
-		}
-	}
-
-	protected boolean exportSummary(MetaPythonReportTask task) {
-
-		File final_summary_txt = new File(metaPar.getResult(), "final_summary.tsv");
-		try {
-			HashMap<String, int[]> idMap = new HashMap<String, int[]>();
-			File[] magResultFiles = this.combinedFile.listFiles();
-			for (int i = 0; i < magResultFiles.length; i++) {
-				if (magResultFiles[i].isDirectory()) {
-					int[] counts = new int[3];
-					String resultName = null;
-					File[] subFiles = magResultFiles[i].listFiles();
-					HashSet<String> pepSet = new HashSet<String>();
-
-					for (int j = 0; j < subFiles.length; j++) {
-						String fileNameString = subFiles[j].getName();
-						if (fileNameString.equals("psm.tsv")) {
-							BufferedReader psmReader = new BufferedReader(new FileReader(subFiles[j]));
-							String psmLine = psmReader.readLine();
-							while ((psmLine = psmReader.readLine()) != null) {
-								counts[1]++;
-								String[] cs = psmLine.split("\t");
-								pepSet.add(cs[2]);
-							}
-							psmReader.close();
-						}
-						if (fileNameString.endsWith(".pepXML")) {
-							resultName = fileNameString.substring(0, fileNameString.length() - ".pepXML".length());
-						}
-					}
-					counts[2] = pepSet.size();
-
-					if (resultName != null) {
-						File mzmlFile = new File(this.rawDir, resultName + "_uncalibrated.mzML");
-						if (mzmlFile.exists()) {
-							BufferedReader mzmlReader = new BufferedReader(new FileReader(mzmlFile));
-							String mzmlLine = null;
-							while ((mzmlLine = mzmlReader.readLine()) != null) {
-								if (mzmlLine.trim().equals("</spectrum>")) {
-									counts[0]++;
-								}
-							}
-							mzmlReader.close();
-						}
-					}
-
-					idMap.put(resultName, counts);
-				}
-			}
-
-			PrintWriter countWriter = new PrintWriter(final_summary_txt);
-			StringBuilder titlesb = new StringBuilder();
-			titlesb.append("Raw file").append("\t");
-			titlesb.append("Experiment").append("\t");
-			titlesb.append("MS/MS").append("\t");
-			titlesb.append("MS/MS Identified").append("\t");
-			titlesb.append("MS/MS Identified [%]").append("\t");
-			titlesb.append("Peptide Sequences Identified");
-
-			countWriter.println(titlesb);
-
-			int totalms2count = 0;
-			int totalpsmCount = 0;
-			int totalUnipepCount = 0;
-
-			for (int i = 0; i < this.rawFiles.length; i++) {
-				File rawFile = new File(this.rawFiles[i]);
-				String rawNameString = rawFile.getName();
-				rawNameString = rawNameString.substring(0, rawNameString.lastIndexOf("."));
-
-				if (idMap.containsKey(rawNameString)) {
-
-					StringBuilder sb = new StringBuilder();
-					sb.append(rawNameString).append("\t");
-					sb.append(this.fragpipeExpNames[i]).append("\t");
-					int[] idCounts = idMap.get(rawNameString);
-
-					sb.append(idCounts[0]).append("\t");
-					sb.append(idCounts[1]).append("\t");
-
-					double ratio = 0;
-					if (idCounts[0] > 0 && idCounts[1] > 0) {
-						ratio = (double) idCounts[1] / (double) idCounts[0] * 100.0;
-					}
-
-					sb.append(FormatTool.getDF2().format(ratio)).append("\t");
-					sb.append(idCounts[2]);
-
-					countWriter.println(sb);
-
-					totalms2count += idCounts[0];
-					totalpsmCount += idCounts[1];
-					totalUnipepCount += idCounts[2];
-
-				} else {
-					StringBuilder sb = new StringBuilder();
-					sb.append(rawNameString).append("\t");
-					sb.append(this.fragpipeExpNames[i]).append("\t");
-					sb.append("0\t0\t0%\t0");
-
-					countWriter.println(sb);
-				}
-			}
-
-			StringBuilder sb = new StringBuilder();
-			sb.append("Total").append("\t");
-			sb.append("\t");
-			sb.append(totalms2count).append("\t");
-			sb.append(totalpsmCount).append("\t");
-
-			double ratio = 0;
-			if (totalms2count > 0) {
-				ratio = (double) totalpsmCount / (double) totalms2count * 100.0;
-			}
-
-			sb.append(FormatTool.getDF2().format(ratio)).append("\t");
-
-			sb.append(totalUnipepCount);
-
-			countWriter.print(sb);
-
-			countWriter.close();
-
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			logger.error(getTaskName() + ": error in writing PSM information to " + final_summary_txt.getName(), e);
-			System.err.println(format.format(new Date()) + "\t" + getTaskName()
-					+ ": error in writing PSM information to " + final_summary_txt.getName());
-		}
-
-		if (!final_summary_txt.exists() || final_summary_txt.length() == 0) {
-			return false;
-
-		} else {
-
-			boolean finish = false;
-			File report_ID_summary = new File(metaPar.getReportDir(), "report_ID_summary.html");
-			if (summaryMetaFile != null && summaryMetaFile.exists()) {
-				finish = task.addTask(MetaPythonReportTask.ID_SUMMARY, final_summary_txt, report_ID_summary, summaryMetaFile);
-			} else {
-				finish = task.addTask(MetaPythonReportTask.ID_SUMMARY, final_summary_txt, report_ID_summary);
-			}
-
-			return finish;
 		}
 	}
 }

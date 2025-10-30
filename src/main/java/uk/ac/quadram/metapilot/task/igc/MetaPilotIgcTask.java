@@ -40,8 +40,6 @@ import uk.ac.quadram.metapilot.mdb.unipept.UnipProResult;
 import uk.ac.quadram.metapilot.mdb.unipept.UnipProInfo;
 
 import org.apache.commons.math3.stat.inference.TTest;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.LogManager;
 
 /**
  * Abstract base class for DDA IGC (Integrated Gene Catalog) workflow tasks.
@@ -981,8 +979,8 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 		}
 
 		// Add function report
-		File funReportTsv = new File(metaPar.getDbSearchResultFile(), "functional_annotation\\functions.tsv");
-		if (funReportTsv.exists() && funReportTsv.length() > 0) {
+		File funReportTsv = new File(metaPar.getDbSearchResultFile(), "functional_annotation");
+		if (funReportTsv.exists()) {
 			File report_function_summary = new File(reportHtmlDir, "report_function_summary.html");
 			if (summaryMetaFile != null && summaryMetaFile.exists()) {
 				reportSuccess &= reportTask.addTask(MetaPythonReportTask.FUNCTION, funReportTsv,
@@ -1362,12 +1360,11 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 		private String[] intensityTitle;
 		private String taskName;
 		private MetaPilotIgcTask parentTask;
-		private Logger logger;
 
 		public DDAIgcPostAnalysisTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
 				MetaPeptide[] quanPeps, MetaPSM[] psms, HashMap<String, Integer> fileIdMap, ArrayList<String> fileList,
 				String quanMode, String[] intensityTitle, String taskName, MetaPilotIgcTask parentTask) {
-			super(metaPar, mrp, progressBar);
+			super(metaPar, mrp, progressBar, parentTask.getLogger());
 			this.quanPeps = quanPeps;
 			this.psms = psms;
 			this.fileIdMap = fileIdMap;
@@ -1376,17 +1373,11 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 			this.intensityTitle = intensityTitle;
 			this.taskName = taskName;
 			this.parentTask = parentTask;
-			this.logger = org.apache.logging.log4j.LogManager.getLogger(getClass());
 		}
 
 		@Override
 		protected String getTaskName() {
 			return taskName + " Post-Analysis";
-		}
-
-		@Override
-		protected Logger getLogger() {
-			return logger;
 		}
 
 		@Override

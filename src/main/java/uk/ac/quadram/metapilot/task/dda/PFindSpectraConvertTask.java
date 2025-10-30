@@ -13,7 +13,6 @@ import java.util.Date;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import uk.ac.quadram.metapilot.dbSearch.pfind.PFindTask;
@@ -37,11 +36,11 @@ public class PFindSpectraConvertTask extends MetaAbstractTask {
 	private int totalFiles;
 	private volatile boolean watchServiceRunning = false;
 
-	private static final Logger LOGGER = LogManager.getLogger(PFindSpectraConvertTask.class);
 	private static final String taskName = "pFind spectrum convert workflow";
 
-	public PFindSpectraConvertTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar) {
-		super(metaPar, mrp, progressBar);
+	public PFindSpectraConvertTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
+			Logger logger) {
+		super(metaPar, mrp, progressBar, logger);
 		// TODO Auto-generated constructor stub
 	}
 
@@ -54,7 +53,7 @@ public class PFindSpectraConvertTask extends MetaAbstractTask {
 	@Override
 	protected Logger getLogger() {
 		// TODO Auto-generated constructor stub
-		return LOGGER;
+		return logger;
 	}
 
 	@Override
@@ -64,18 +63,18 @@ public class PFindSpectraConvertTask extends MetaAbstractTask {
 		updateMessage(getTaskName() + ": extracting spectra");
 
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": extracting spectra started");
-		LOGGER.info(getTaskName() + ": extracting spectra started");
+		logger.info(getTaskName() + ": extracting spectra started");
 
 		// Log detailed information about the task
-		LOGGER.info("PFindSpectraConvertTask parameters:");
-		LOGGER.info("  Spectra directory: " + metaPar.getSpectraFile());
-		LOGGER.info("  MS2 scan mode: " + metaPar.getMs2ScanMode());
-		LOGGER.info("  Thread count: " + metaPar.getThreadCount());
+		logger.info("PFindSpectraConvertTask parameters:");
+		logger.info("  Spectra directory: " + metaPar.getSpectraFile());
+		logger.info("  MS2 scan mode: " + metaPar.getMs2ScanMode());
+		logger.info("  Thread count: " + metaPar.getThreadCount());
 		if (metaPar.getMetadata() != null) {
 			String[] rawFiles = metaPar.getMetadata().getRawFiles();
-			LOGGER.info("  Raw files count: " + (rawFiles != null ? rawFiles.length : 0));
+			logger.info("  Raw files count: " + (rawFiles != null ? rawFiles.length : 0));
 		}
-		LOGGER.info("  pFind path: " + mrp.getToolPath(MetaResourceParameters.ToolType.PFIND));
+		logger.info("  pFind path: " + mrp.getToolPath(MetaResourceParameters.ToolType.PFIND));
 
 		String ms2Type = this.metaPar.getMs2ScanMode();
 		String suffix = "";
@@ -116,7 +115,7 @@ public class PFindSpectraConvertTask extends MetaAbstractTask {
 		}
 
 		ArrayList<String> extractRawList = new ArrayList<String>();
-		LOGGER.info("Checking existing spectra files...");
+		logger.info("Checking existing spectra files...");
 		for (int i = 0; i < rawFiles.length; i++) {
 			File rawi = new File(rawFiles[i]);
 			String rawName = rawi.getName();
@@ -128,43 +127,43 @@ public class PFindSpectraConvertTask extends MetaAbstractTask {
 
 			ms2FileNames[i] = ms2.getAbsolutePath();
 
-			LOGGER.info("  Raw file " + (i + 1) + ": " + rawName);
-			LOGGER.info("    Expected pf2 file: " + pf2.getAbsolutePath());
-			LOGGER.info("    Expected ms2 file: " + ms2.getAbsolutePath());
-			LOGGER.info("    pf2 exists: " + pf2.exists() + " (size: " + (pf2.exists() ? pf2.length() : 0) + ")");
-			LOGGER.info("    ms2 exists: " + ms2.exists() + " (size: " + (ms2.exists() ? ms2.length() : 0) + ")");
+			logger.info("  Raw file " + (i + 1) + ": " + rawName);
+			logger.info("    Expected pf2 file: " + pf2.getAbsolutePath());
+			logger.info("    Expected ms2 file: " + ms2.getAbsolutePath());
+			logger.info("    pf2 exists: " + pf2.exists() + " (size: " + (pf2.exists() ? pf2.length() : 0) + ")");
+			logger.info("    ms2 exists: " + ms2.exists() + " (size: " + (ms2.exists() ? ms2.length() : 0) + ")");
 
 			if (!pf2.exists() || pf2.length() == 0) {
 				extractRawList.add(rawFiles[i]);
-				LOGGER.info("    -> Will extract spectra for this file");
+				logger.info("    -> Will extract spectra for this file");
 			} else {
-				LOGGER.info("    -> Spectra already exist, skipping extraction");
+				logger.info("    -> Spectra already exist, skipping extraction");
 			}
 
 			pf2Files[i] = pf2.getAbsolutePath();
 		}
 
-		LOGGER.info("Files to extract: " + extractRawList.size());
+		logger.info("Files to extract: " + extractRawList.size());
 		if (extractRawList.size() > 0) {
-			LOGGER.info("Starting spectra extraction for " + extractRawList.size() + " files...");
+			logger.info("Starting spectra extraction for " + extractRawList.size() + " files...");
 			for (int i = 0; i < extractRawList.size(); i++) {
-				LOGGER.info("  Extract file " + (i + 1) + ": " + extractRawList.get(i));
+				logger.info("  Extract file " + (i + 1) + ": " + extractRawList.get(i));
 			}
 
 			// Start WatchService to monitor MGF file generation
 			startWatchServiceLoop();
 
 			File pFindBin = (new File(mrp.getToolPath(ToolType.PFIND))).getParentFile();
-			LOGGER.info("pFind binary directory: " + pFindBin.getAbsolutePath());
-			LOGGER.info("pFind binary exists: " + pFindBin.exists());
+			logger.info("pFind binary directory: " + pFindBin.getAbsolutePath());
+			logger.info("pFind binary exists: " + pFindBin.exists());
 
 			PFindTask pFindTask = new PFindTask(pFindBin, metaPar.getThreadCount());
 			String[] extractRaws = extractRawList.toArray(new String[extractRawList.size()]);
-			LOGGER.info("Calling pFindTask.extract() with spectra directory: " + spectraDirFile.getAbsolutePath());
+			logger.info("Calling pFindTask.extract() with spectra directory: " + spectraDirFile.getAbsolutePath());
 			pFindTask.extract(spectraDirFile.getAbsolutePath(), extractRaws);
-			LOGGER.info("Calling pFindTask.run() with " + extractRaws.length + " files");
+			logger.info("Calling pFindTask.run() with " + extractRaws.length + " files");
 			pFindTask.run(extractRaws.length);
-			LOGGER.info("pFindTask.run() completed");
+			logger.info("pFindTask.run() completed");
 
 			// Wait for WatchService to detect all files or timeout
 			updateMessage(getTaskName() + ": Waiting for PF2 file generation to complete...");
@@ -175,11 +174,11 @@ public class PFindSpectraConvertTask extends MetaAbstractTask {
 					Thread.sleep(1000);
 					waitedSeconds++;
 					if (waitedSeconds % 10 == 0) {
-						LOGGER.info("Waiting for MGF files... (" + completedFiles.get() + "/" + totalFiles
+						logger.info("Waiting for MGF files... (" + completedFiles.get() + "/" + totalFiles
 								+ " completed, " + waitedSeconds + "s elapsed)");
 					}
 				} catch (InterruptedException e) {
-					LOGGER.warn("Wait interrupted");
+					logger.warn("Wait interrupted");
 					Thread.currentThread().interrupt();
 					break;
 				}
@@ -189,10 +188,10 @@ public class PFindSpectraConvertTask extends MetaAbstractTask {
 			stopWatchService();
 
 			if (completedFiles.get() >= totalFiles) {
-				LOGGER.info("All MGF files have been generated successfully");
+				logger.info("All MGF files have been generated successfully");
 				updateMessage(getTaskName() + ": All " + totalFiles + " MGF files generated successfully");
 			} else {
-				LOGGER.warn("Timeout waiting for MGF files. Generated " + completedFiles.get() + "/" + totalFiles
+				logger.warn("Timeout waiting for MGF files. Generated " + completedFiles.get() + "/" + totalFiles
 						+ " files");
 				updateMessage(getTaskName() + ": Timeout - Generated " + completedFiles.get() + "/" + totalFiles
 						+ " MGF files");
@@ -200,18 +199,18 @@ public class PFindSpectraConvertTask extends MetaAbstractTask {
 		} else {
 			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": spectra files have been found in "
 					+ spectraDirFile);
-			LOGGER.info(getTaskName() + ": spectra files have been found in " + spectraDirFile);
-			LOGGER.info("All required spectra files already exist");
+			logger.info(getTaskName() + ": spectra files have been found in " + spectraDirFile);
+			logger.info("All required spectra files already exist");
 		}
 
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": extracting spectra finished");
-		LOGGER.info(getTaskName() + ": extracting spectra finished");
+		logger.info(getTaskName() + ": extracting spectra finished");
 
 		if (!rtFile.exists() || rtFile.length() == 0 || !ms2CountFile.exists() || ms2CountFile.length() == 0) {
 
 			System.out.println(
 					format.format(new Date()) + "\t" + getTaskName() + ": writing retention time information started");
-			LOGGER.info(getTaskName() + ": writing retention time information started");
+			logger.info(getTaskName() + ": writing retention time information started");
 
 			PrintWriter rtWriter = new PrintWriter(rtFile);
 			PrintWriter ms2CountWriter = new PrintWriter(ms2CountFile);
@@ -269,7 +268,7 @@ public class PFindSpectraConvertTask extends MetaAbstractTask {
 								// TODO Auto-generated catch block
 								System.err.println(format.format(new Date()) + "\t" + getTaskName()
 										+ ": error in parsing the number from " + line);
-								LOGGER.error(getTaskName() + ": error in parsing the number from " + line, e);
+								logger.error(getTaskName() + ": error in parsing the number from " + line, e);
 								reader.close();
 								writer.close();
 								rtWriter.close();
@@ -293,7 +292,7 @@ public class PFindSpectraConvertTask extends MetaAbstractTask {
 									// TODO Auto-generated catch block
 									System.err.println(format.format(new Date()) + "\t" + getTaskName()
 											+ ": error in parsing the number from " + line);
-									LOGGER.error(getTaskName() + ": error in parsing the number from " + line, e);
+									logger.error(getTaskName() + ": error in parsing the number from " + line, e);
 									reader.close();
 									writer.close();
 									rtWriter.close();
@@ -320,7 +319,7 @@ public class PFindSpectraConvertTask extends MetaAbstractTask {
 
 			System.out.println(
 					format.format(new Date()) + "\t" + getTaskName() + ": writing retention time information finished");
-			LOGGER.info(getTaskName() + ": writing retention time information finished");
+			logger.info(getTaskName() + ": writing retention time information finished");
 		} else {
 			DecimalFormat format = null;
 			for (int i = 0; i < rawFiles.length; i++) {
@@ -371,7 +370,7 @@ public class PFindSpectraConvertTask extends MetaAbstractTask {
 									// TODO Auto-generated catch block
 									System.err.println(format.format(new Date()) + "\t" + getTaskName()
 											+ ": error in parsing the number from " + line);
-									LOGGER.error(getTaskName() + ": error in parsing the number from " + line, e);
+									logger.error(getTaskName() + ": error in parsing the number from " + line, e);
 									reader.close();
 									writer.close();
 									return false;
@@ -392,7 +391,7 @@ public class PFindSpectraConvertTask extends MetaAbstractTask {
 										// TODO Auto-generated catch block
 										System.err.println(format.format(new Date()) + "\t" + getTaskName()
 												+ ": error in parsing the number from " + line);
-										LOGGER.error(getTaskName() + ": error in parsing the number from " + line, e);
+										logger.error(getTaskName() + ": error in parsing the number from " + line, e);
 										reader.close();
 										writer.close();
 										return false;
@@ -441,7 +440,7 @@ public class PFindSpectraConvertTask extends MetaAbstractTask {
 					StandardWatchEventKinds.ENTRY_MODIFY);
 
 			watchServiceRunning = true;
-			LOGGER.info("WatchService started for directory: " + spectraDirPath);
+			logger.info("WatchService started for directory: " + spectraDirPath);
 
 			// Start the watch service in a separate thread
 			Thread watchThread = new Thread(() -> {
@@ -477,12 +476,12 @@ public class PFindSpectraConvertTask extends MetaAbstractTask {
 									updateMessage(getTaskName() + ": Generated " + currentCompleted + "/"
 											+ totalFiles * 2 + " MGF/MS2 files");
 
-									LOGGER.info("MGF/MS2 file detected: " + filename + " (Progress: " + currentCompleted
+									logger.info("MGF/MS2 file detected: " + filename + " (Progress: " + currentCompleted
 											+ "/" + totalFiles * 2 + ")");
 
 									// Check if all files are completed
 									if (currentCompleted >= totalFiles * 2.0) {
-										LOGGER.info("All MGF files have been generated. Stopping WatchService.");
+										logger.info("All MGF files have been generated. Stopping WatchService.");
 										stopWatchService();
 										break;
 									}
@@ -492,15 +491,15 @@ public class PFindSpectraConvertTask extends MetaAbstractTask {
 
 						boolean valid = key.reset();
 						if (!valid) {
-							LOGGER.warn("WatchKey is no longer valid");
+							logger.warn("WatchKey is no longer valid");
 							break;
 						}
 					}
 				} catch (InterruptedException e) {
-					LOGGER.info("WatchService interrupted");
+					logger.info("WatchService interrupted");
 					Thread.currentThread().interrupt();
 				} catch (Exception e) {
-					LOGGER.error("Error in WatchService loop", e);
+					logger.error("Error in WatchService loop", e);
 				}
 			});
 
@@ -509,7 +508,7 @@ public class PFindSpectraConvertTask extends MetaAbstractTask {
 			watchThread.start();
 
 		} catch (Exception e) {
-			LOGGER.error("Failed to start WatchService", e);
+			logger.error("Failed to start WatchService", e);
 		}
 	}
 
@@ -521,9 +520,9 @@ public class PFindSpectraConvertTask extends MetaAbstractTask {
 		if (watchService != null) {
 			try {
 				watchService.close();
-				LOGGER.info("WatchService stopped");
+				logger.info("WatchService stopped");
 			} catch (Exception e) {
-				LOGGER.error("Error stopping WatchService", e);
+				logger.error("Error stopping WatchService", e);
 			}
 		}
 	}
@@ -543,17 +542,17 @@ public class PFindSpectraConvertTask extends MetaAbstractTask {
 			File mgfFile = new File(spectraDirFile, rawName + ".mgf");
 			if (mgfFile.exists() && mgfFile.length() > 0) {
 				existingCount++;
-				LOGGER.info("Existing MGF file found: " + mgfFile.getName());
+				logger.info("Existing MGF file found: " + mgfFile.getName());
 			}
 
 			File ms2File = new File(spectraDirFile, rawName + ".ms2");
 			if (ms2File.exists() && ms2File.length() > 0) {
 				existingCount++;
-				LOGGER.info("Existing MS2 file found: " + ms2File.getName());
+				logger.info("Existing MS2 file found: " + ms2File.getName());
 			}
 		}
 
-		LOGGER.info("Found " + existingCount + " existing MGF/MS2 files");
+		logger.info("Found " + existingCount + " existing MGF/MS2 files");
 		return existingCount;
 	}
 

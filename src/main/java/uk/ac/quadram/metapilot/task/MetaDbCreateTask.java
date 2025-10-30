@@ -7,7 +7,6 @@ import java.io.PrintWriter;
 import java.util.Date;
 
 import org.apache.commons.io.FileUtils;
-import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import javafx.scene.control.ProgressBar;
@@ -28,14 +27,12 @@ public abstract class MetaDbCreateTask extends MetaAbstractTask {
 	protected String originalFasta;
 	protected File[] clusterResults;
 
-	private static final Logger LOGGER = LogManager.getLogger(MetaDbCreateTask.class);
 	protected String taskName = "Sample specific database generation";
 
-	public MetaDbCreateTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar) {
-		super(metaPar, mrp, progressBar);
+	public MetaDbCreateTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
+			Logger logger) {
+		super(metaPar, mrp, progressBar, logger);
 	}
-
-
 
 	@Override
 	protected Boolean call() throws Exception {
@@ -45,7 +42,7 @@ public abstract class MetaDbCreateTask extends MetaAbstractTask {
 
 		// Removed invalid method setPromptText from ProgressBar
 
-		LOGGER.info(taskName + ": start");
+		logger.info(taskName + ": start");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": start");
 
 		if (metaPar.isSpectraCluster()) {
@@ -66,7 +63,7 @@ public abstract class MetaDbCreateTask extends MetaAbstractTask {
 		if (this.ssdbFile.exists()) {
 
 			if (ssdbFile.length() > 0) {
-				LOGGER.info(taskName + ": sample specific database was found in " + ssdbFile + ", go to next step");
+				logger.info(taskName + ": sample specific database was found in " + ssdbFile + ", go to next step");
 				System.out.println(format.format(new Date()) + "\t" + taskName
 						+ ": sample specific database was found in " + ssdbFile + ", go to next step");
 				metaPar.setCurrentDb(ssdbFile.getAbsolutePath());
@@ -166,7 +163,7 @@ public abstract class MetaDbCreateTask extends MetaAbstractTask {
 			proCount = writeDatabase(false);
 		}
 
-		LOGGER.info(taskName + ": sample specific protein database " + ssdbFile + " was created, " + proCount
+		logger.info(taskName + ": sample specific protein database " + ssdbFile + " was created, " + proCount
 				+ " target protein sequences were included");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": sample specific protein database "
 				+ ssdbFile + " was created, " + proCount + " target protein sequences were included");
@@ -176,7 +173,7 @@ public abstract class MetaDbCreateTask extends MetaAbstractTask {
 		if (proCount == 0) {
 			System.err.println(format.format(new Date()) + "\t" + taskName
 					+ ": cannot create the sample-specific database because no proteins are identified from the original database, task terminated.");
-			LOGGER.error(taskName
+			logger.error(taskName
 					+ ": cannot create the sample-specific database because no proteins are identified from the original database, task terminated.");
 			return false;
 		}
@@ -189,7 +186,7 @@ public abstract class MetaDbCreateTask extends MetaAbstractTask {
 		updateProgress(100, 100);
 		updateMessage(taskName + ": Database creation completed successfully!");
 
-		LOGGER.info(taskName + ": finished");
+		logger.info(taskName + ": finished");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": finished");
 
 		return ssdbFile.exists();
@@ -224,12 +221,6 @@ public abstract class MetaDbCreateTask extends MetaAbstractTask {
 	protected String getTaskName() {
 		// TODO Auto-generated method stub
 		return taskName;
-	}
-
-	@Override
-	protected Logger getLogger() {
-		// TODO Auto-generated method stub
-		return LOGGER;
 	}
 
 	public void forceStop() {

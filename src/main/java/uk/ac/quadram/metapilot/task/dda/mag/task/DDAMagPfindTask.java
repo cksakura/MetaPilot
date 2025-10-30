@@ -12,7 +12,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.concurrent.ExecutionException;
 
-import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import uk.ac.quadram.metapilot.core.mod.IsobaricTag;
@@ -135,7 +134,6 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 		}
 		this.mgfFiles = new String[rawFiles.length];
 		this.pf2Files = new String[rawFiles.length];
-		this.expNameMap = new HashMap<String, String>();
 
 		for (int i = 0; i < rawFiles.length; i++) {
 			File mgfFile = new File(spectraDirFile, rawFileNames[i] + ".mgf");
@@ -272,7 +270,7 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 		updateProgress(10, 100);
 		Platform.runLater(() -> secondBar.setProgress(ProgressBar.INDETERMINATE_PROGRESS));
 
-		spectraConvertTask = new PFindSpectraConvertTask(magPfindParams, mrp, secondBar);
+		spectraConvertTask = new PFindSpectraConvertTask(magPfindParams, mrp, secondBar, logger);
 		spectraConvertTask.execute();
 		try {
 			boolean convert = spectraConvertTask.get(); // Wait for completion and get result

@@ -128,7 +128,6 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		// Initialize using the DDAMagSageParameters directly
 		String[] rawFiles = magSageParams.getMetadata().getRawFiles();
 		this.mzMLFiles = new String[rawFiles.length];
-		this.expNameMap = new HashMap<String, String>();
 		this.spectraDirFile = magSageParams.getSpectraFile();
 		for (int i = 0; i < rawFiles.length; i++) {
 			File rawi = new File(rawFiles[i]);
@@ -140,6 +139,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 			if (fileName.toLowerCase().endsWith(".mzml")) {
 				// File is already in mzML format, use original path directly
 				mzMLFiles[i] = rawFiles[i];
+				baseName = fileName.substring(0, fileName.length() - ".mzml".length());
 			} else if (fileName.toLowerCase().endsWith(".raw")) {
 				// File is in .raw format
 				baseName = fileName.substring(0, fileName.length() - ".raw".length());
@@ -1111,16 +1111,5 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 	protected String getVersion() {
 		// TODO Auto-generated method stub
 		return null;
-	}
-	
-	public static void main(String[] args) {
-		File[] files = (new File("Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\sage_MAG_search")).listFiles();
-		for(int i=0;i<files.length;i++) {
-			File hapFile = new File(files[i], "hap");
-			File fastaFile = new File(hapFile, files[i].getName()+".fasta");
-			File genomeFile = new File(hapFile, "hap_genomes.tsv");
-			FileUtils.deleteQuietly(fastaFile);
-			FileUtils.deleteQuietly(genomeFile);
-		}
 	}
 }

@@ -22,8 +22,6 @@ import org.apache.logging.log4j.Logger;
  */
 public class CGF2MGF {
 
-	private static Logger LOGGER = LogManager.getLogger();
-
 	private static final int maxSpCount = 100000;
 
 	public static int convert2Mgf(String[] fileNames, String cgf, String clusteredMgf, boolean singleFile)
@@ -191,7 +189,7 @@ public class CGF2MGF {
 			}
 		} catch (NumberFormatException | IOException e) {
 			// TODO Auto-generated catch block
-			LOGGER.error("Error in reading cluster file " + cgf, e);
+			System.err.println("Error in reading cluster file " + cgf);
 		}
 
 		return specMap;
@@ -264,7 +262,7 @@ public class CGF2MGF {
 
 		} catch (NumberFormatException | IOException e) {
 			// TODO Auto-generated catch block
-			LOGGER.error("Error in writing mgf spectra file " + mgf, e);
+			System.err.println("Error in writing mgf spectra file " + mgf);
 		}
 
 		return totalSpectraCount;
@@ -354,7 +352,7 @@ public class CGF2MGF {
 
 		} catch (NumberFormatException | IOException e) {
 			// TODO Auto-generated catch block
-			LOGGER.error("Error in writing mgf spectra file " + mgf, e);
+			System.err.println("Error in writing mgf spectra file " + mgf);
 		}
 
 		return totalSpectraCount;
@@ -423,7 +421,7 @@ public class CGF2MGF {
 
 		} catch (NumberFormatException | IOException e) {
 			// TODO Auto-generated catch block
-			LOGGER.error("Error in writing mgf spectra file " + mgf, e);
+			System.err.println("Error in writing mgf spectra file " + mgf);
 		}
 
 		return totalSpectraCount;

@@ -1,3 +1,15 @@
+# Ignore large and generated artifacts
+logs/*.log
+tests/*.db
+tests/*.tsv
+
+# Common build outputs
+target/
+*.class
+
+# Python caches in resources
+**/__pycache__/
+*.pyc
 /target/
 *.jar
 *.jar

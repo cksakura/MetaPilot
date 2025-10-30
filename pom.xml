@@ -5,9 +5,9 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>uk.ac.quadram</groupId>
 	<artifactId>metapilot</artifactId>
-	<version>1.0-SNAPSHOT</version>
+	<version>1.0.0-beta.2</version>
 	<packaging>jar</packaging>
-	<name>metapilot</name>
+	<name>MetaPilot</name>
 	<url>http://maven.apache.org</url>
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -25,7 +25,8 @@
 		</repository>
 		<repository>
 			<id>ebi-repo</id>
-			<url>https://www.ebi.ac.uk/Tools/maven/repos/content/repositories/pst-release</url>
+			<url>
+				https://www.ebi.ac.uk/Tools/maven/repos/content/repositories/pst-release</url>
 		</repository>
 		<repository>
 			<id>jitpack.io</id>
@@ -363,11 +364,21 @@
 								</filter>
 							</filters>
 							<transformers>
+								<!-- Write manifest with version info -->
 								<transformer
 									implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
 									<mainClass>
 										uk.ac.quadram.metapilot.MetaPilotApp</mainClass>
+									<manifestEntries>
+										<Implementation-Title>${project.name}</Implementation-Title>
+										<Implementation-Version>
+											${project.version}</Implementation-Version>
+										<Build-Jdk-Spec>${maven.compiler.target}</Build-Jdk-Spec>
+										<Created-By>MetaPilot Build System</Created-By>
+									</manifestEntries>
 								</transformer>
+
+								<!-- Keep service files (used by some libraries) -->
 								<transformer
 									implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer" />
 							</transformers>
@@ -375,6 +386,7 @@
 					</execution>
 				</executions>
 			</plugin>
+
 			<plugin>
 				<groupId>org.openjfx</groupId>
 				<artifactId>javafx-maven-plugin</artifactId>

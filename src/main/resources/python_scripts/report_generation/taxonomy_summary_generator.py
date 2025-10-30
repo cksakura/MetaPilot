@@ -53,7 +53,7 @@ class TaxonomySummaryGenerator(BaseReportGenerator):
                 [{"type": "bar"}]
             ])
         
-        subplot_spacing = min(0.06, 0.8 / max(total_rows - 1, 1)) if total_rows > 1 else 0
+        subplot_spacing = min(0.06, 0.25 / max(total_rows - 1, 1)) if total_rows > 1 else 0
         fig = make_subplots(
             rows=total_rows,
             cols=1,

@@ -1479,7 +1479,7 @@ public class MetaPilotApp extends Application {
         alert.setHeaderText("MetaPilot v" + UpdateChecker.getCurrentVersion());
         alert.setContentText(
             "Comprehensive Workflow Manager for Metaproteomics\n\n" +
-            "© 2024 Quadram Institute Bioscience\n" +
+            "© 2025 Quadram Institute Bioscience\n" +
             "All rights reserved.\n\n" +
             "Registered to: " + Preferences.userRoot().node(getClass().getPackage().getName()).get(PREF_REGISTERED_EMAIL, "")
         );

@@ -9,7 +9,6 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.util.Date;
 
-import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import javafx.scene.control.ProgressBar;
@@ -27,12 +26,12 @@ public class MetaDiaTargetDBTask extends MetaAbstractTask {
 	public static final String[] FUNCTIONS = new String[] { "GOs", "EC", "KEGG_ko", "KEGG_Pathway", "KEGG_Module",
 			"KEGG_Reaction", "KEGG_rclass", "BRITE", "KEGG_TC", "CAZy" };
 
-	private static final Logger LOGGER = LogManager.getLogger(MetaDiaTargetDBTask.class);
 	protected static final String taskName = "Create taxa-function database";
 
-	public MetaDiaTargetDBTask(MetaParameterDiaTg metaPar, MetaResourceParameters mrp, ProgressBar progressBar) {
-		super(metaPar, mrp, progressBar);
-		
+	public MetaDiaTargetDBTask(MetaParameterDiaTg metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
+			Logger logger) {
+		super(metaPar, mrp, progressBar, logger);
+
 		// Get MAG database directory from the parameter
 		magDbDir = metaPar.getMagDbItem().getCurrentFile().getAbsolutePath();
 		this.eggnogDir = magDbDir + "\\eggNOG";
@@ -45,18 +44,22 @@ public class MetaDiaTargetDBTask extends MetaAbstractTask {
 	}
 
 	@Override
-	protected Logger getLogger() {
-		return LOGGER;
-	}
-
-	@Override
 	protected Boolean call() throws Exception {
 		// Create the Python script for database generation
 		File pythonFile = new File(magDbDir, "profuncSql.py");
 
-		try (InputStream inputStream = MetaDiaTargetDBTask.class.getResourceAsStream("profuncSql.py");
+		try (InputStream inputStream = MetaDiaTargetDBTask.class
+				.getResourceAsStream("/python_scripts/db/profuncSql.py");
 				BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
 				PrintWriter writer = new PrintWriter(pythonFile)) {
+
+			if (inputStream == null) {
+				logger.error(taskName + ": profuncSql.py not found in classpath at /python_scripts/db/profuncSql.py");
+				System.err.println(
+						format.format(new Date()) + "\t" + taskName + ": profuncSql.py not found in classpath");
+				return false;
+			}
+
 			String line;
 			while ((line = reader.readLine()) != null) {
 				writer.println(line);
@@ -128,7 +131,7 @@ public class MetaDiaTargetDBTask extends MetaAbstractTask {
 			inBr.close();
 			in.close();
 		} catch (Exception e) {
-			LOGGER.error(taskName + ": error in creating the taxa-function SQL database", e);
+			logger.error(taskName + ": error in creating the taxa-function SQL database", e);
 			System.err.println(
 					format.format(new Date()) + "\t" + taskName + ": error in creating the taxa-function SQL database");
 			return false;

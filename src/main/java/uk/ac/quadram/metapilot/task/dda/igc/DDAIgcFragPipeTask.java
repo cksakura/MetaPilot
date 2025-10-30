@@ -230,7 +230,7 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 		updateMessage("MGF conversion completed, starting database reduction...");
 
 		// Step 3: Database reduction using MetaDbReducerTask
-		dbReducerTask = new MetaDbReducerTask(metaPar, mrp, secondBar);
+		dbReducerTask = new MetaDbReducerTask(metaPar, mrp, secondBar, logger);
 		logger.info("{}: MetaDbReducerTask created, executing...", taskName);
 		dbReducerTask.execute();
 		try {

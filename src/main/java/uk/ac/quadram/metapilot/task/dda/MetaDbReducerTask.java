@@ -15,7 +15,6 @@ import java.util.Iterator;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.LogManager;
 
 import uk.ac.quadram.metapilot.core.prodb.FastaReader;
 import uk.ac.quadram.metapilot.core.prodb.ProteinItem;
@@ -40,8 +39,6 @@ import uk.ac.quadram.metapilot.task.par.MetaConstants;
  */
 public class MetaDbReducerTask extends MetaDbCreateTask {
 
-	private static final Logger LOGGER = LogManager.getLogger(MetaDbReducerTask.class);
-
 	private String[] mgfFiles;
 	private String[] pf2Files;
 	private File dbReducerExe;
@@ -49,72 +46,75 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 	private boolean useDBReducer = false;
 	private double psmFdr = 0.01;
 
-	public MetaDbReducerTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar) {
-		super(metaPar, mrp, progressBar);
-		
-		LOGGER.info("{}: MetaDbReducerTask constructor called", taskName);
-		
+	public MetaDbReducerTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
+			Logger logger) {
+		super(metaPar, mrp, progressBar, logger);
+
+		logger.info("{}: MetaDbReducerTask constructor called", taskName);
+
 		// Log metadata information
 		if (metaPar.getMetadata() != null) {
 			String[] rawFiles = metaPar.getMetadata().getRawFiles();
-			LOGGER.info("{}: Constructor - Found {} raw files in metadata", taskName, rawFiles != null ? rawFiles.length : 0);
-			
+			logger.info("{}: Constructor - Found {} raw files in metadata", taskName,
+					rawFiles != null ? rawFiles.length : 0);
+
 			if (rawFiles != null) {
 				for (int i = 0; i < rawFiles.length; i++) {
 					File rawFile = new File(rawFiles[i]);
-					LOGGER.debug("{}: Constructor - Raw file {}: {} (exists: {}, size: {} bytes)", 
-						taskName, i, rawFiles[i], rawFile.exists(), rawFile.length());
+					logger.debug("{}: Constructor - Raw file {}: {} (exists: {}, size: {} bytes)", taskName, i,
+							rawFiles[i], rawFile.exists(), rawFile.length());
 				}
 			}
 		} else {
-			LOGGER.error("{}: Constructor - Metadata is null in MetaBaseParameter", taskName);
+			logger.error("{}: Constructor - Metadata is null in MetaBaseParameter", taskName);
 		}
-		
+
 		// Log tool paths
 		this.dbReducerExe = new File(mrp.getToolPath(ToolType.DBREDUCER));
 		this.pFindExe = new File(mrp.getToolPath(ToolType.PFIND));
-		
-		LOGGER.info("{}: DBReducer executable: {} (exists: {})", taskName, dbReducerExe.getAbsolutePath(), dbReducerExe.exists());
-		LOGGER.info("{}: pFind executable: {} (exists: {})", taskName, pFindExe.getAbsolutePath(), pFindExe.exists());
-		
+
+		logger.info("{}: DBReducer executable: {} (exists: {})", taskName, dbReducerExe.getAbsolutePath(),
+				dbReducerExe.exists());
+		logger.info("{}: pFind executable: {} (exists: {})", taskName, pFindExe.getAbsolutePath(), pFindExe.exists());
+
 		if (dbReducerExe.getName().equals("DBReducer.exe") && dbReducerExe.exists()
 				&& metaPar.getMs2ScanMode().equals(MetaConstants.HCD_FTMS)) {
 			useDBReducer = true;
-			LOGGER.info("{}: Using DBReducer for database reduction", taskName);
+			logger.info("{}: Using DBReducer for database reduction", taskName);
 		} else {
-			LOGGER.info("{}: Using pFind for database reduction (DBReducer conditions not met)", taskName);
-			LOGGER.debug("{}: DBReducer conditions - name: {}, exists: {}, ms2Mode: {}", 
-				taskName, dbReducerExe.getName(), dbReducerExe.exists(), metaPar.getMs2ScanMode());
+			logger.info("{}: Using pFind for database reduction (DBReducer conditions not met)", taskName);
+			logger.debug("{}: DBReducer conditions - name: {}, exists: {}, ms2Mode: {}", taskName,
+					dbReducerExe.getName(), dbReducerExe.exists(), metaPar.getMs2ScanMode());
 		}
-		
+
 		// Initialize file arrays directly in constructor
-		LOGGER.info("{}: Initializing file arrays in constructor", taskName);
-		
+		logger.info("{}: Initializing file arrays in constructor", taskName);
+
 		// Log MS2 scan mode
 		String ms2Type = this.metaPar.getMs2ScanMode();
-		LOGGER.info("{}: MS2 scan mode: {}", taskName, ms2Type);
-		
+		logger.info("{}: MS2 scan mode: {}", taskName, ms2Type);
+
 		// Log spectra file directory
 		File spectraDirFile = metaPar.getSpectraFile();
-		LOGGER.info("{}: Spectra directory: {} (exists: {}, isDirectory: {})", 
-			taskName, spectraDirFile.getAbsolutePath(), spectraDirFile.exists(), spectraDirFile.isDirectory());
-		
+		logger.info("{}: Spectra directory: {} (exists: {}, isDirectory: {})", taskName,
+				spectraDirFile.getAbsolutePath(), spectraDirFile.exists(), spectraDirFile.isDirectory());
+
 		// Initialize file arrays with safety checks
 		if (metaPar.getMetadata() == null) {
-			LOGGER.error("{}: Cannot initialize file arrays - metadata is null", taskName);
+			logger.error("{}: Cannot initialize file arrays - metadata is null", taskName);
 			this.mgfFiles = new String[0];
 			this.pf2Files = new String[0];
 			return;
 		}
-		
+
 		String[] rawFiles = metaPar.getMetadata().getRawFiles();
 		if (rawFiles == null || rawFiles.length == 0) {
-			LOGGER.error("{}: Cannot initialize file arrays - raw files array is null or empty", taskName);
+			logger.error("{}: Cannot initialize file arrays - raw files array is null or empty", taskName);
 			this.mgfFiles = new String[0];
 			this.pf2Files = new String[0];
 			return;
 		}
-		
+
 		String suffix = "";
 		if (ms2Type.equals(MetaConstants.HCD_FTMS)) {
 			suffix = "_HCDFT";
@@ -125,14 +125,14 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 		} else if (ms2Type.equals(MetaConstants.CID_ITMS)) {
 			suffix = "_CIDIT";
 		}
-		
-		LOGGER.info("{}: Using suffix: '{}' for MS2 type: {}", taskName, suffix, ms2Type);
-		
+
+		logger.info("{}: Using suffix: '{}' for MS2 type: {}", taskName, suffix, ms2Type);
+
 		this.mgfFiles = new String[rawFiles.length];
 		this.pf2Files = new String[rawFiles.length];
-		
-		LOGGER.info("{}: Initializing {} MGF and PF2 files", taskName, rawFiles.length);
-		
+
+		logger.info("{}: Initializing {} MGF and PF2 files", taskName, rawFiles.length);
+
 		for (int i = 0; i < rawFiles.length; i++) {
 			File rawi = new File(rawFiles[i]);
 			String rawName = rawi.getName();
@@ -144,14 +144,14 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 			mgfFiles[i] = mgfFile.getAbsolutePath();
 			pf2Files[i] = pf2.getAbsolutePath();
 
-			LOGGER.info(
+			logger.info(
 					"{}: File {} - Raw: {}, MGF: {} (exists: {}, size: {} bytes), PF2: {} (exists: {}, size: {} bytes)",
 					taskName, i, rawName, mgfFile.getName(), mgfFile.exists(), mgfFile.length(), pf2.getName(),
 					pf2.exists(), pf2.length());
 		}
-		
-		LOGGER.info("{}: Constructor completed. MGF files: {}, PF2 files: {}", 
-			taskName, mgfFiles.length, pf2Files.length);
+
+		logger.info("{}: Constructor completed. MGF files: {}, PF2 files: {}", taskName, mgfFiles.length,
+				pf2Files.length);
 	}
 
 	/**
@@ -163,37 +163,38 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 
 		updateMessage(taskName + ": spectra clustering...");
 
-		LOGGER.info(taskName + ": spectra cluster started");
+		logger.info(taskName + ": spectra cluster started");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": spectra cluster started");
-		
+
 		// Update progress at start of clustering
 		updateProgress(20, 100);
 		updateMessage("Starting spectra clustering...");
-		
+
 		// Test CDF resource loading to ensure the resource issue is resolved
 		try {
-			LOGGER.info("{}: Testing CDF resource loading...", taskName);
-			uk.ac.ebi.pride.spectracluster.cdf.CumulativeDistributionFunction cdf = 
-				uk.ac.ebi.pride.spectracluster.cdf.CumulativeDistributionFunctionFactory
+			logger.info("{}: Testing CDF resource loading...", taskName);
+			uk.ac.ebi.pride.spectracluster.cdf.CumulativeDistributionFunction cdf = uk.ac.ebi.pride.spectracluster.cdf.CumulativeDistributionFunctionFactory
 					.getDefaultCumlativeDistributionFunctionForSimilarityMetric(
-						uk.ac.ebi.pride.spectracluster.similarity.CombinedFisherIntensityTest.class);
-			LOGGER.info("{}: CDF loaded successfully: {}", taskName, cdf);
+							uk.ac.ebi.pride.spectracluster.similarity.CombinedFisherIntensityTest.class);
+			logger.info("{}: CDF loaded successfully: {}", taskName, cdf);
 		} catch (Exception e) {
-			LOGGER.warn("{}: CDF loading test failed, but continuing with clustering: {}", taskName, e.getMessage());
+			logger.warn("{}: CDF loading test failed, but continuing with clustering: {}", taskName, e.getMessage());
 		}
 
 		// Log the MGF files that will be used for clustering
-		LOGGER.info("{}: Clustering {} MGF files", taskName, mgfFiles != null ? mgfFiles.length : 0);
+		logger.info("{}: Clustering {} MGF files", taskName, mgfFiles != null ? mgfFiles.length : 0);
 		if (mgfFiles == null || mgfFiles.length == 0) {
-			LOGGER.error("{}: No MGF files available for clustering! Check if raw files were properly loaded.", taskName);
-			LOGGER.error("{}: This usually means the MetaData object was not properly set on the parameters.", taskName);
+			logger.error("{}: No MGF files available for clustering! Check if raw files were properly loaded.",
+					taskName);
+			logger.error("{}: This usually means the MetaData object was not properly set on the parameters.",
+					taskName);
 			return;
 		}
-		
+
 		for (int i = 0; i < mgfFiles.length; i++) {
 			File mgfFile = new File(mgfFiles[i]);
-			LOGGER.info("{}: MGF file {}: {} (exists: {}, size: {} bytes)", 
-				taskName, i, mgfFiles[i], mgfFile.exists(), mgfFile.length());
+			logger.info("{}: MGF file {}: {} (exists: {}, size: {} bytes)", taskName, i, mgfFiles[i], mgfFile.exists(),
+					mgfFile.length());
 		}
 
 		// Update progress before creating cluster directory
@@ -202,16 +203,17 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 
 		File clusterDir = new File(dbcFile, "clustered_spectra");
 		File clusterMgf = new File(clusterDir, "cluster.mgf");
-		
-		LOGGER.info("{}: Cluster directory: {} (exists: {})", taskName, clusterDir.getAbsolutePath(), clusterDir.exists());
-		LOGGER.info("{}: Target cluster MGF: {} (exists: {}, size: {} bytes)", 
-			taskName, clusterMgf.getAbsolutePath(), clusterMgf.exists(), clusterMgf.length());
-		
+
+		logger.info("{}: Cluster directory: {} (exists: {})", taskName, clusterDir.getAbsolutePath(),
+				clusterDir.exists());
+		logger.info("{}: Target cluster MGF: {} (exists: {}, size: {} bytes)", taskName, clusterMgf.getAbsolutePath(),
+				clusterMgf.exists(), clusterMgf.length());
+
 		boolean created = clusterDir.mkdir();
-		LOGGER.info("{}: Created cluster directory: {}", taskName, created);
+		logger.info("{}: Created cluster directory: {}", taskName, created);
 
 		if (clusterMgf.exists()) {
-			LOGGER.info(taskName + ": clustered MS/MS spectra file already existed in " + clusterMgf);
+			logger.info(taskName + ": clustered MS/MS spectra file already existed in " + clusterMgf);
 			System.out.println(format.format(new Date()) + "\t" + taskName
 					+ ": clustered MS/MS spectra file already existed in " + clusterMgf);
 		} else {
@@ -220,19 +222,19 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 			updateProgress(25, 100);
 			updateMessage("Clustering MS/MS spectra...");
 
-			LOGGER.info(taskName + ": clustering MS/MS spectra to " + clusterMgf + " started");
+			logger.info(taskName + ": clustering MS/MS spectra to " + clusterMgf + " started");
 			System.out.println(format.format(new Date()) + "\t" + taskName + ": clustering MS/MS spectra to "
 					+ clusterMgf + " started");
 
-			LOGGER.info("{}: Creating ClusterTask with threadCount={}, fastMode=true, isobaricTag={}", 
-				taskName, metaPar.getThreadCount(), metaPar.getIsobaricTag());
-			
-			ClusterTask clusterTask = new ClusterTask(metaPar.getThreadCount(), true, metaPar.getIsobaricTag());
+			logger.info("{}: Creating ClusterTask with threadCount={}, fastMode=true, isobaricTag={}", taskName,
+					metaPar.getThreadCount(), metaPar.getIsobaricTag());
 
-			LOGGER.info("{}: Starting clustering with ClusterTask.runCli()", taskName);
+			ClusterTask clusterTask = new ClusterTask(metaPar.getThreadCount(), true, metaPar.getIsobaricTag(), logger);
+
+			logger.info("{}: Starting clustering with ClusterTask.runCli()", taskName);
 			clusterTask.runCli(mgfFiles, clusterDir, clusterMgf);
 
-			LOGGER.info(taskName + ": clustering MS/MS spectra to " + clusterMgf + " finished");
+			logger.info(taskName + ": clustering MS/MS spectra to " + clusterMgf + " finished");
 			System.out.println(format.format(new Date()) + "\t" + taskName + ": clustering MS/MS spectra to "
 					+ clusterMgf + " finished");
 		}
@@ -241,7 +243,7 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 		updateProgress(30, 100);
 		updateMessage("Spectra clustering completed!");
 
-		LOGGER.info(taskName + ": spectra cluster finished");
+		logger.info(taskName + ": spectra cluster finished");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": spectra cluster finished");
 
 		updateProgress(30, 100);
@@ -256,7 +258,7 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 
 		updateMessage(taskName + ": searching clustered spectra against the original database");
 
-		LOGGER.info(taskName + ": searching clustered spectra against the original database started");
+		logger.info(taskName + ": searching clustered spectra against the original database started");
 		System.out.println(format.format(new Date()) + "\t" + taskName
 				+ ": searching clustered spectra in original database started");
 
@@ -277,11 +279,11 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 				return false;
 			}
 		});
-		
+
 		// Safety check: if no MGF files were found, return empty array
 		if (mgfs == null || mgfs.length == 0) {
-			LOGGER.warn("{}: No MGF files found in cluster directory: {}", taskName, clusterDir.getAbsolutePath());
-			LOGGER.warn("{}: This may indicate that clustering failed or no spectra were generated.", taskName);
+			logger.warn("{}: No MGF files found in cluster directory: {}", taskName, clusterDir.getAbsolutePath());
+			logger.warn("{}: This may indicate that clustering failed or no spectra were generated.", taskName);
 			return new File[0];
 		}
 
@@ -293,7 +295,7 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 			File reducedDbFile = new File(dbcFile, "DBReducer.fasta");
 			if (reducedDbFile.exists() && reducedDbFile.length() > 0) {
 
-				LOGGER.info(taskName + ": refined database already existed in " + reducedDbFile);
+				logger.info(taskName + ": refined database already existed in " + reducedDbFile);
 				System.out.println(format.format(new Date()) + "\t" + taskName
 						+ ": refined database already existed in " + reducedDbFile);
 
@@ -302,7 +304,7 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 					FileUtils.deleteQuietly(reducedDbFile);
 				}
 
-				LOGGER.info(taskName + ": generating refined database from the original database started");
+				logger.info(taskName + ": generating refined database from the original database started");
 				System.out.println(format.format(new Date()) + "\t" + taskName
 						+ ": generating refined database from the original database started");
 
@@ -313,8 +315,8 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 					mgfFilePaths[i] = mgfs[i].getAbsolutePath();
 				}
 
-				LOGGER.info("{}: Starting DBReducer search with {} MGF files", taskName, mgfFilePaths.length);
-				
+				logger.info("{}: Starting DBReducer search with {} MGF files", taskName, mgfFilePaths.length);
+
 				DBReducerTask task = new DBReducerTask(dbReducerExe);
 				task.setTotalThread(metaPar.getThreadCount());
 
@@ -324,7 +326,7 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 			}
 
 			if (reducedDbFile.exists() && reducedDbFile.length() > 0) {
-				LOGGER.info(taskName + ": generating refined database from the original database finished");
+				logger.info(taskName + ": generating refined database from the original database finished");
 				System.out.println(format.format(new Date()) + "\t" + taskName
 						+ ": generating refined database from the original database finished");
 			}
@@ -340,7 +342,7 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 
 			if (pSpecResult.exists() && pSpecResult.length() > 0) {
 
-				LOGGER.info(taskName + ": search results already existed in " + pSpecResult);
+				logger.info(taskName + ": search results already existed in " + pSpecResult);
 				System.out.println(format.format(new Date()) + "\t" + taskName + ": search results already existed in "
 						+ pSpecResult);
 
@@ -350,7 +352,7 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 					FileUtils.deleteQuietly(pSpecResult);
 				}
 
-				LOGGER.info(taskName + ": searching clustered spectra in original database started");
+				logger.info(taskName + ": searching clustered spectra in original database started");
 				System.out.println(format.format(new Date()) + "\t" + taskName
 						+ ": searching clustered spectra in original database started");
 
@@ -361,8 +363,8 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 					mgfFilePaths[i] = mgfs[i].getAbsolutePath();
 				}
 
-				LOGGER.info("{}: Starting pFind search with {} MGF files", taskName, mgfFilePaths.length);
-				
+				logger.info("{}: Starting pFind search with {} MGF files", taskName, mgfFilePaths.length);
+
 				File pFindBin = pFindExe.getParentFile();
 
 				PFindTask task = new PFindTask(pFindBin);
@@ -375,7 +377,7 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 			}
 
 			if (pSpecResult.exists() && pSpecResult.length() > 0) {
-				LOGGER.info(taskName + ": searching clustered spectra against the original database finished");
+				logger.info(taskName + ": searching clustered spectra against the original database finished");
 				System.out.println(format.format(new Date()) + "\t" + taskName
 						+ ": searching clustered spectra against the original database finished");
 			}
@@ -394,13 +396,15 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 
 		updateMessage(taskName + ": searching clustered spectra in original database");
 
-		LOGGER.info(taskName + ": MetaProIQ started");
+		logger.info(taskName + ": MetaProIQ started");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": MetaProIQ started");
 
 		// Safety check: ensure we have MGF files to work with
 		if (this.mgfFiles == null || this.mgfFiles.length == 0) {
-			LOGGER.error("{}: No MGF files available for MetaProIQ workflow! Check if raw files were properly loaded.", taskName);
-			LOGGER.error("{}: This usually means the MetaData object was not properly set on the parameters.", taskName);
+			logger.error("{}: No MGF files available for MetaProIQ workflow! Check if raw files were properly loaded.",
+					taskName);
+			logger.error("{}: This usually means the MetaData object was not properly set on the parameters.",
+					taskName);
 			return new File[0];
 		}
 
@@ -466,7 +470,7 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 
 						if (!pSpecResult.exists() || pSpecResult.length() == 0) {
 
-							LOGGER.info(taskName + ": first search of " + name + " in original database started");
+							logger.info(taskName + ": first search of " + name + " in original database started");
 							System.out.println(format.format(new Date()) + "\t" + taskName + ": first search of " + name
 									+ " in original database started...");
 
@@ -502,7 +506,7 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 
 						if (!pSpecResult.exists() || pSpecResult.length() == 0) {
 
-							LOGGER.info(taskName + ": first search of " + name + " in original database started");
+							logger.info(taskName + ": first search of " + name + " in original database started");
 							System.out.println(format.format(new Date()) + "\t" + taskName + ": first search of " + name
 									+ " in original database started...");
 
@@ -541,11 +545,11 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 
 			File pSpecResult = new File(firstDir, "pFind.spectra");
 			if (pSpecResult.exists() && pSpecResult.length() > 0) {
-				LOGGER.info(taskName + ": first search of " + name + " in original database finished");
+				logger.info(taskName + ": first search of " + name + " in original database finished");
 				System.out.println(format.format(new Date()) + "\t" + taskName
 						+ ": searching clustered spectra in original database finished...");
 			} else {
-				LOGGER.error(taskName + ": error in searching " + this.mgfFiles[i] + " in first search, task failed");
+				logger.error(taskName + ": error in searching " + this.mgfFiles[i] + " in first search, task failed");
 				System.err.println(format.format(new Date()) + "\t" + taskName + ": error in searching "
 						+ this.mgfFiles[i] + " in first search, task failed");
 			}
@@ -566,7 +570,7 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 					reduceDbReader.close();
 					dbWriter.close();
 				} catch (IOException e) {
-					LOGGER.error(taskName + ": error in reading the database file " + dbReducerFasta, e);
+					logger.error(taskName + ": error in reading the database file " + dbReducerFasta, e);
 					System.err.println(format.format(new Date()) + "\t" + taskName
 							+ ": error in reading the database file " + dbReducerFasta);
 				}
@@ -575,7 +579,7 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 			}
 
 			if (!firstFasta.exists() || firstFasta.length() == 0 || firstProCount == 0) {
-				LOGGER.error(taskName + ": error in creating sample-specific database based on " + this.mgfFiles[i]
+				logger.error(taskName + ": error in creating sample-specific database based on " + this.mgfFiles[i]
 						+ " in first search");
 				System.err.println(format.format(new Date()) + "\t" + taskName
 						+ ": error in creating sample-specific database based on " + this.mgfFiles[i]
@@ -583,7 +587,7 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 				continue;
 
 			} else {
-				LOGGER.info(taskName + ": first search of " + name + " in original database finished, " + firstProCount
+				logger.info(taskName + ": first search of " + name + " in original database finished, " + firstProCount
 						+ " proteins added to " + firstFasta);
 				System.out.println(format.format(new Date()) + "\t" + taskName + ": first search of " + name
 						+ " in original database finished, " + firstProCount + " proteins added to " + firstFasta);
@@ -596,7 +600,7 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 				secondResults[i] = new File(secondDir, "pFind-Filtered.spectra");
 
 				if (secondResults[i].exists() && secondResults[i].length() > 0) {
-					LOGGER.info(taskName + ": second search results " + secondResults[i] + " already existed");
+					logger.info(taskName + ": second search results " + secondResults[i] + " already existed");
 					System.out.println(format.format(new Date()) + "\t" + taskName + ": second search results "
 							+ secondResults[i] + " already existed");
 					continue;
@@ -633,14 +637,14 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 					secondResults[i] = new File(secondDir, "DBReducer.fasta");
 
 					if (secondResults[i].exists() && secondResults[i].length() > 0) {
-						LOGGER.info(taskName + ": refined database " + secondResults[i] + " already existed");
+						logger.info(taskName + ": refined database " + secondResults[i] + " already existed");
 						System.out.println(format.format(new Date()) + "\t" + taskName + ": refined database "
 								+ secondResults[i] + " already existed");
 
 						continue;
 					}
 
-					LOGGER.info(taskName + ": second search of " + name + " against the original database started");
+					logger.info(taskName + ": second search of " + name + " against the original database started");
 					System.out.println(format.format(new Date()) + "\t" + taskName + ": second search of " + name
 							+ " against the original database started...");
 
@@ -670,27 +674,27 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 					secondResults[i] = new File(secondDir, "pFind-Filtered.spectra");
 
 					if (secondResults[i].exists() && secondResults[i].length() > 0) {
-						LOGGER.info(taskName + ": second search results " + secondResults[i] + " already existed");
+						logger.info(taskName + ": second search results " + secondResults[i] + " already existed");
 						System.out.println(format.format(new Date()) + "\t" + taskName + ": second search results "
 								+ secondResults[i] + " already existed");
 
 						continue;
 					}
 
-					LOGGER.info(taskName + ": second search of " + name + " against the original database started");
+					logger.info(taskName + ": second search of " + name + " against the original database started");
 					System.out.println(format.format(new Date()) + "\t" + taskName + ": second search of " + name
 							+ " against the original database started...");
 
 					if ((new File(this.pf2Files[i])).exists()) {
 						task.searchPF2(new String[] { this.pf2Files[i] }, secondDir.getAbsolutePath(),
 								firstFasta.getAbsolutePath(), ms2Type, false, true, 0.01, metaPar.getFixMods(),
-								metaPar.getVariMods(), metaPar.getEnzyme(), metaPar.getMissCleavages(), metaPar.getDigestMode(),
-								metaPar.getIsobaricTag(), true);
+								metaPar.getVariMods(), metaPar.getEnzyme(), metaPar.getMissCleavages(),
+								metaPar.getDigestMode(), metaPar.getIsobaricTag(), true);
 					} else {
 						task.searchMgf(new String[] { this.mgfFiles[i] }, secondDir.getAbsolutePath(),
 								firstFasta.getAbsolutePath(), ms2Type, false, true, 0.01, metaPar.getFixMods(),
-								metaPar.getVariMods(), metaPar.getEnzyme(), metaPar.getMissCleavages(), metaPar.getDigestMode(),
-								metaPar.getIsobaricTag(), true);
+								metaPar.getVariMods(), metaPar.getEnzyme(), metaPar.getMissCleavages(),
+								metaPar.getDigestMode(), metaPar.getIsobaricTag(), true);
 					}
 				}
 
@@ -707,11 +711,11 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 			File firstFasta = new File(firstSearch, name + ".fasta");
 
 			if (secondResults[i].exists() && secondResults[i].length() > 0) {
-				LOGGER.info(taskName + ": second search of " + name + " in " + firstFasta.getName() + " finished");
+				logger.info(taskName + ": second search of " + name + " in " + firstFasta.getName() + " finished");
 				System.out.println(format.format(new Date()) + "\t" + taskName + ": second search of " + name + " in "
 						+ firstFasta.getName() + " finished");
 			} else {
-				LOGGER.error(taskName + ": second search of " + name + " in " + firstFasta.getName() + " failed");
+				logger.error(taskName + ": second search of " + name + " in " + firstFasta.getName() + " failed");
 				System.err.println(format.format(new Date()) + "\t" + taskName + ": second search of " + name + " in "
 						+ firstFasta.getName() + " failed");
 			}
@@ -731,7 +735,7 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 			}
 		}
 
-		LOGGER.info(taskName + ": MetaProIQ finished");
+		logger.info(taskName + ": MetaProIQ finished");
 
 		System.out.println(format.format(new Date()) + "\t" + taskName + ":");
 
@@ -759,7 +763,7 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 					reader.close();
 					writer.close();
 				} catch (IOException e) {
-					LOGGER.error(taskName + ": error in reading the DBReducer result file " + clusterResults[0], e);
+					logger.error(taskName + ": error in reading the DBReducer result file " + clusterResults[0], e);
 					System.err.println(format.format(new Date()) + "\t" + taskName
 							+ ": error in reading the DBReducer result file " + clusterResults[0]);
 				}
@@ -779,7 +783,7 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 							proMap.put(ref, pis[i]);
 						}
 					} catch (IOException e) {
-						LOGGER.error(taskName + ": error in reading the DBReducer result file " + reduceDb, e);
+						logger.error(taskName + ": error in reading the DBReducer result file " + reduceDb, e);
 						System.err.println(format.format(new Date()) + "\t" + taskName
 								+ ": error in reading the DBReducer result file " + reduceDb);
 					}
@@ -793,7 +797,7 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 					writer.close();
 				} catch (IOException e) {
 					// TODO Auto-generated catch block
-					LOGGER.error(taskName + ": error in writing the protein sequences to " + ssdbFile, e);
+					logger.error(taskName + ": error in writing the protein sequences to " + ssdbFile, e);
 					System.err.println(format.format(new Date()) + "\t" + taskName
 							+ ": error in writing the protein sequences to " + ssdbFile);
 				}
@@ -1018,7 +1022,7 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 						set = this.filterRedundantPros(pepProMap, proPepMap);
 					} catch (IOException e) {
 						// TODO Auto-generated catch block
-						LOGGER.error(taskName + ": error in filtering the redundant proteins", e);
+						logger.error(taskName + ": error in filtering the redundant proteins", e);
 						System.err.println(format.format(new Date()) + "\t" + taskName
 								+ ": error in filtering the redundant proteins");
 					}
@@ -1062,7 +1066,7 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
-			LOGGER.error(taskName + ": error in writing protein database to " + ssDb, e);
+			logger.error(taskName + ": error in writing protein database to " + ssDb, e);
 			System.err.println(
 					format.format(new Date()) + "\t" + taskName + ": error in writing protein database to " + ssDb);
 		}

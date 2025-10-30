@@ -35,8 +35,6 @@ import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.math.NumberUtils;
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 import org.apache.commons.math3.stat.inference.MannWhitneyUTest;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.dom4j.DocumentException;
 
 import com.sun.management.OperatingSystemMXBean;
@@ -905,7 +903,7 @@ public class MetaDiaTask extends MetaPilotMagTask {
 
 				int batchThreadCount = threadCount / maxBathCount + 1;
 
-				DiaPyTorchModelTask diaModelTask = new DiaPyTorchModelTask(diaPar, mrp, secondBar, pepIntenMap,
+				DiaPyTorchModelTask diaModelTask = new DiaPyTorchModelTask(diaPar, mrp, secondBar, logger, pepIntenMap,
 						modelFolder, batchThreadCount);
 
 				executor.submit(diaModelTask);
@@ -3647,59 +3645,54 @@ public class MetaDiaTask extends MetaPilotMagTask {
 			reportDir.mkdirs();
 		}
 
-	// Copy report templates using MetaPythonReportCopyTask (same as DDA workflow)
-	MetaPythonReportCopyTask reportCopyTask = new MetaPythonReportCopyTask(resultFolderFile, logger);
-	Thread copyThread = new Thread(reportCopyTask);
-	copyThread.start();
-	try {
-		copyThread.join();
-		if (!reportCopyTask.get()) {
-			logger.error(getTaskName() + ": error in copying report template");
-			System.err.println(
-					format.format(new Date()) + "\t" + getTaskName() + ": error in copying report template");
+		// Copy report templates using MetaPythonReportCopyTask (same as DDA workflow)
+		MetaPythonReportCopyTask reportCopyTask = new MetaPythonReportCopyTask(resultFolderFile, logger);
+		Thread copyThread = new Thread(reportCopyTask);
+		copyThread.start();
+		try {
+			copyThread.join();
+			if (!reportCopyTask.get()) {
+				logger.error(getTaskName() + ": error in copying report template");
+				System.err.println(
+						format.format(new Date()) + "\t" + getTaskName() + ": error in copying report template");
+				return false;
+			}
+		} catch (Exception e) {
+			logger.error(getTaskName() + ": error in copying report template", e);
+			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in copying report template: "
+					+ e.getMessage());
 			return false;
 		}
-	} catch (Exception e) {
-		logger.error(getTaskName() + ": error in copying report template", e);
-		System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in copying report template: "
-				+ e.getMessage());
-		return false;
-	}
 
-	metaPar.setReportDir(reportDir);
+		metaPar.setReportDir(reportDir);
 
-	this.reportHtmlDir = new File(reportDir + "\\reports");
+		this.reportHtmlDir = new File(reportDir + "\\reports");
 
-	if (!reportHtmlDir.exists()) {
-		reportHtmlDir.mkdirs();
-	}
-
-	File jsOutput = new File(metaPar.getReportDir() + "\\reports\\tree.js");
-	if (!jsOutput.getParentFile().exists()) {
-		jsOutput.getParentFile().mkdirs();
-	}
-
-	if (!jsOutput.exists() || jsOutput.length() == 0) {
-		MetaTreeHandler.exportJS(taxRankMaps, taxIntensityMaps, cellularIntensity, expNames, jsOutput);
-	}
-
-	// Generate bubble chart report from tree.js data (optional - don't fail if this
-	// doesn't work)
-	File bubbleChartOutput = new File(metaPar.getReportDir() + "\\reports\\bubble_chart_report.html");
-	if (!bubbleChartOutput.exists() || bubbleChartOutput.length() == 0) {
-		try {
-			generateBubbleChartReport(jsOutput, bubbleChartOutput);
-		} catch (Exception e) {
-			logger.warn(getTaskName() + ": Bubble chart generation failed, continuing with other reports: "
-					+ e.getMessage());
-			System.out.println(format.format(new Date()) + "\t" + getTaskName()
-					+ ": Bubble chart generation failed, continuing with other reports");
+		if (!reportHtmlDir.exists()) {
+			reportHtmlDir.mkdirs();
 		}
-	}
-
-	MetaPythonReportTask task = new MetaPythonReportTask(metaPar.getThreadCount(), mrp, logger);
-	task.setWorkflowType("DIA");
-	task.initializeManifestGenerator(new File(metaPar.getReportDir(), "reports"));
+		/*
+		 * File jsOutput = new File(metaPar.getReportDir() + "\\reports\\tree.js"); if
+		 * (!jsOutput.getParentFile().exists()) { jsOutput.getParentFile().mkdirs(); }
+		 * 
+		 * if (!jsOutput.exists() || jsOutput.length() == 0) {
+		 * MetaTreeHandler.exportJS(taxRankMaps, taxIntensityMaps, cellularIntensity,
+		 * expNames, jsOutput); }
+		 * 
+		 * // Generate bubble chart report from tree.js data (optional - don't fail if
+		 * this // doesn't work) File bubbleChartOutput = new
+		 * File(metaPar.getReportDir() + "\\reports\\bubble_chart_report.html"); if
+		 * (!bubbleChartOutput.exists() || bubbleChartOutput.length() == 0) { try {
+		 * generateBubbleChartReport(jsOutput, bubbleChartOutput); } catch (Exception e)
+		 * { logger.warn(getTaskName() +
+		 * ": Bubble chart generation failed, continuing with other reports: " +
+		 * e.getMessage()); System.out.println(format.format(new Date()) + "\t" +
+		 * getTaskName() +
+		 * ": Bubble chart generation failed, continuing with other reports"); } }
+		 */
+		MetaPythonReportTask task = new MetaPythonReportTask(metaPar.getThreadCount(), mrp, logger);
+		task.setWorkflowType("DIA");
+		task.initializeManifestGenerator(new File(metaPar.getReportDir(), "reports"));
 
 		// Create initial manifest file to ensure index page can load
 		ReportManifestGenerator manifestGen = new ReportManifestGenerator(new File(metaPar.getReportDir(), "reports"));
@@ -3803,41 +3796,41 @@ public class MetaDiaTask extends MetaPilotMagTask {
 		logger.info(getTaskName() + ": exporting report started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting report started");
 
-	File reportDir = new File(resultFolderFile, "report");
-	if (!reportDir.exists()) {
-		reportDir.mkdirs();
-	}
+		File reportDir = new File(resultFolderFile, "report");
+		if (!reportDir.exists()) {
+			reportDir.mkdirs();
+		}
 
-	// Copy report templates using MetaPythonReportCopyTask (same as DDA workflow)
-	MetaPythonReportCopyTask reportCopyTask = new MetaPythonReportCopyTask(resultFolderFile, logger);
-	Thread copyThread = new Thread(reportCopyTask);
-	copyThread.start();
-	try {
-		copyThread.join();
-		if (!reportCopyTask.get()) {
-			logger.error(getTaskName() + ": error in copying report template");
-			System.err.println(
-					format.format(new Date()) + "\t" + getTaskName() + ": error in copying report template");
+		// Copy report templates using MetaPythonReportCopyTask (same as DDA workflow)
+		MetaPythonReportCopyTask reportCopyTask = new MetaPythonReportCopyTask(resultFolderFile, logger);
+		Thread copyThread = new Thread(reportCopyTask);
+		copyThread.start();
+		try {
+			copyThread.join();
+			if (!reportCopyTask.get()) {
+				logger.error(getTaskName() + ": error in copying report template");
+				System.err.println(
+						format.format(new Date()) + "\t" + getTaskName() + ": error in copying report template");
+				return false;
+			}
+		} catch (Exception e) {
+			logger.error(getTaskName() + ": error in copying report template", e);
+			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in copying report template: "
+					+ e.getMessage());
 			return false;
 		}
-	} catch (Exception e) {
-		logger.error(getTaskName() + ": error in copying report template", e);
-		System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in copying report template: "
-				+ e.getMessage());
-		return false;
-	}
 
-	metaPar.setReportDir(reportDir);
+		metaPar.setReportDir(reportDir);
 
-	this.reportHtmlDir = new File(reportDir + "\\reports");
+		this.reportHtmlDir = new File(reportDir + "\\reports");
 
-	if (!reportHtmlDir.exists()) {
-		reportHtmlDir.mkdirs();
-	}
+		if (!reportHtmlDir.exists()) {
+			reportHtmlDir.mkdirs();
+		}
 
-	MetaPythonReportTask task = new MetaPythonReportTask(metaPar.getThreadCount(), mrp, logger);
-	task.setWorkflowType("DIA");
-	task.initializeManifestGenerator(new File(metaPar.getReportDir(), "reports"));
+		MetaPythonReportTask task = new MetaPythonReportTask(metaPar.getThreadCount(), mrp, logger);
+		task.setWorkflowType("DIA");
+		task.initializeManifestGenerator(new File(metaPar.getReportDir(), "reports"));
 
 		// Create initial manifest file to ensure index page can load
 		ReportManifestGenerator manifestGen = new ReportManifestGenerator(new File(metaPar.getReportDir(), "reports"));
@@ -5670,11 +5663,6 @@ public class MetaDiaTask extends MetaPilotMagTask {
 	@Override
 	protected String getTaskName() {
 		return taskName;
-	}
-
-	@Override
-	protected Logger getLogger() {
-		return logger;
 	}
 
 	/**

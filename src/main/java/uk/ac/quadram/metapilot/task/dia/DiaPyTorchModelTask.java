@@ -23,7 +23,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
-import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import uk.ac.quadram.metapilot.core.math.MathTool;
@@ -38,7 +37,6 @@ import uk.ac.quadram.metapilot.task.mag.MagSqliteTask;
 public class DiaPyTorchModelTask extends MetaAbstractTask {
 
 	private static String taskName = "Peptide model predict task";
-	private static final Logger LOGGER = LogManager.getLogger(DiaPyTorchModelTask.class);
 	private static SimpleDateFormat format = new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss");
 
 	private MagDbItem magDbItem;
@@ -52,10 +50,9 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 	private Process process;
 	private String pythonExe;
 
-
 	public DiaPyTorchModelTask(MetaParameterDia metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
-			String filePath) {
-		super(metaPar, mrp, progressBar, null);
+			Logger logger, String filePath) {
+		super(metaPar, mrp, progressBar, logger);
 		// TODO Auto-generated constructor stub
 		this.magDbItem = metaPar.getMagDbItem();
 		this.filePath = filePath;
@@ -65,8 +62,8 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 	}
 
 	public DiaPyTorchModelTask(MetaParameterDia metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
-			String filePath, File modelFolderFile) {
-		super(metaPar, mrp, progressBar, null);
+			Logger logger, String filePath, File modelFolderFile) {
+		super(metaPar, mrp, progressBar, logger);
 		// TODO Auto-generated constructor stub
 		this.magDbItem = metaPar.getMagDbItem();
 		this.filePath = filePath;
@@ -77,8 +74,8 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 	}
 
 	public DiaPyTorchModelTask(MetaParameterDia metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
-			HashMap<String, Double> pepIntenMap) {
-		super(metaPar, mrp, progressBar, null);
+			Logger logger, HashMap<String, Double> pepIntenMap) {
+		super(metaPar, mrp, progressBar, logger);
 		// TODO Auto-generated constructor stub
 		this.magDbItem = metaPar.getMagDbItem();
 		this.pepIntenMap = pepIntenMap;
@@ -88,8 +85,8 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 	}
 
 	public DiaPyTorchModelTask(MetaParameterDia metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
-			HashMap<String, Double> pepIntenMap, File modelFolderFile) {
-		super(metaPar, mrp, progressBar, null);
+			Logger logger, HashMap<String, Double> pepIntenMap, File modelFolderFile) {
+		super(metaPar, mrp, progressBar, logger);
 		// TODO Auto-generated constructor stub
 		this.magDbItem = metaPar.getMagDbItem();
 		this.pepIntenMap = pepIntenMap;
@@ -100,8 +97,8 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 	}
 
 	public DiaPyTorchModelTask(MetaParameterDia metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
-			HashMap<String, Double> pepIntenMap, File modelFolderFile, int threadCount) {
-		super(metaPar, mrp, progressBar, null);
+			Logger logger, HashMap<String, Double> pepIntenMap, File modelFolderFile, int threadCount) {
+		super(metaPar, mrp, progressBar, logger);
 		// TODO Auto-generated constructor stub
 		this.magDbItem = metaPar.getMagDbItem();
 		this.pepIntenMap = pepIntenMap;
@@ -113,8 +110,8 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 
 	// Overloads including model name/type for compatibility with legacy workflow
 	public DiaPyTorchModelTask(MetaParameterDia metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
-			String filePath, String modelName, String modelType) {
-		super(metaPar, mrp, progressBar, null);
+			Logger logger, String filePath, String modelName, String modelType) {
+		super(metaPar, mrp, progressBar, logger);
 		this.magDbItem = metaPar.getMagDbItem();
 		this.filePath = filePath;
 		this.modelName = modelName;
@@ -124,8 +121,8 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 	}
 
 	public DiaPyTorchModelTask(MetaParameterDia metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
-			String filePath, String modelName, String modelType, File modelFolderFile) {
-		super(metaPar, mrp, progressBar, null);
+			Logger logger, String filePath, String modelName, String modelType, File modelFolderFile) {
+		super(metaPar, mrp, progressBar, logger);
 		this.magDbItem = metaPar.getMagDbItem();
 		this.filePath = filePath;
 		this.modelName = modelName;
@@ -151,9 +148,11 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 		updateMessage("Preparing data tables...");
 
 		// Resolve Python executable
-		this.pythonExe = mrp != null ? mrp.getToolPath(uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType.PYTHON) : null;
+		this.pythonExe = mrp != null
+				? mrp.getToolPath(uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType.PYTHON)
+				: null;
 		if (this.pythonExe == null || this.pythonExe.trim().isEmpty()) {
-			LOGGER.error(taskName + ": Python path is not configured");
+			logger.error(taskName + ": Python path is not configured");
 			updateMessage("Python not configured");
 			return false;
 		}
@@ -161,13 +160,13 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 		// Determine MAG DB current folder and model folder
 		File currentDbFolder = magDbItem != null ? magDbItem.getCurrentFile() : null;
 		if (currentDbFolder == null || !currentDbFolder.exists()) {
-			LOGGER.error(taskName + ": MAG DB current folder is missing");
+			logger.error(taskName + ": MAG DB current folder is missing");
 			updateMessage("MAG DB not set");
 			return false;
 		}
 		File predictPepFolder = new File(currentDbFolder, "predicted");
 		if (!predictPepFolder.exists()) {
-			LOGGER.error(taskName + ": no predicted peptide folder found at " + predictPepFolder);
+			logger.error(taskName + ": no predicted peptide folder found at " + predictPepFolder);
 			updateMessage("Predicted peptides not found");
 			return false;
 		}
@@ -191,12 +190,11 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 		File predDataFile = new File(modelFolderFile, "predictionData.tsv");
 
 		if (!(trainFile.exists() && trainFile.length() > 0 && predDataFile.exists() && predDataFile.length() > 0)) {
-			int prepared = sqlDbFile.exists() ?
-					prepareFilesSQL(sqlDbFile, predictPepFolder, modelFolderFile) :
-					prepareFiles(predictPepFolder, new File(currentDbFolder, "genomes-all_metadata.tsv"),
+			int prepared = sqlDbFile.exists() ? prepareFilesSQL(sqlDbFile, predictPepFolder, modelFolderFile)
+					: prepareFiles(predictPepFolder, new File(currentDbFolder, "genomes-all_metadata.tsv"),
 							new File(currentDbFolder, "eggNOG"), modelFolderFile);
 			if (prepared <= 0) {
-				LOGGER.error(taskName + ": preparing data tables failed");
+				logger.error(taskName + ": preparing data tables failed");
 				updateMessage("Failed to prepare data tables");
 				return false;
 			}
@@ -216,23 +214,25 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 		updateMessage("Calculating peptide rank...");
 		int pepCount = getPepRank(currentDbFolder, modelFolderFile);
 		if (pepCount <= 0) {
-			LOGGER.error(taskName + ": peptide rank calculation failed");
+			logger.error(taskName + ": peptide rank calculation failed");
 			updateMessage("Peptide rank failed");
 			return false;
 		}
 
-		// Rename pytorch_predictions.tsv to {modelName}_pytorch_predictions.tsv for MetaDiaTask compatibility
+		// Rename pytorch_predictions.tsv to {modelName}_pytorch_predictions.tsv for
+		// MetaDiaTask compatibility
 		updateMessage("Renaming pytorch predictions file...");
 		renamePytorchPredictionsFile(modelFolderFile);
 
-		// If requested, register model summary into MAG DB config (align with legacy behavior)
+		// If requested, register model summary into MAG DB config (align with legacy
+		// behavior)
 		try {
 			if (addModel && magDbItem != null) {
 				// Read actual values from pytorch_model_results.txt
 				int trainSize = 0;
 				double corr = 0.0;
 				double med = 0.0; // Keep as placeholder since it's not in the new format
-				
+
 				File resultsFile = new File(modelFolderFile, "pytorch_model_results.txt");
 				if (resultsFile.exists()) {
 					try (BufferedReader reader = new BufferedReader(new FileReader(resultsFile))) {
@@ -240,50 +240,51 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 						boolean inDatasetSizes = false;
 						while ((line = reader.readLine()) != null) {
 							line = line.trim();
-							
+
 							// Check for Dataset Sizes section
 							if (line.equals("Dataset Sizes:")) {
 								inDatasetSizes = true;
 								continue;
 							}
-							
+
 							// Parse Training samples
 							if (inDatasetSizes && line.startsWith("Training samples:")) {
 								try {
 									trainSize = Integer.parseInt(line.substring("Training samples:".length()).trim());
 								} catch (NumberFormatException e) {
-									LOGGER.warn(taskName + ": Could not parse training samples from: " + line);
+									logger.warn(taskName + ": Could not parse training samples from: " + line);
 								}
 							}
-							
+
 							// Parse Correlation from metrics section
 							if (line.startsWith("Correlation:")) {
 								try {
 									corr = Double.parseDouble(line.substring("Correlation:".length()).trim());
 								} catch (NumberFormatException e) {
-									LOGGER.warn(taskName + ": Could not parse correlation from: " + line);
+									logger.warn(taskName + ": Could not parse correlation from: " + line);
 								}
 							}
 						}
 					} catch (IOException e) {
-						LOGGER.warn(taskName + ": Could not read results file: " + resultsFile, e);
+						logger.warn(taskName + ": Could not read results file: " + resultsFile, e);
 					}
 				}
-				
+
 				// Fallback to counting lines if results file not found or parsing failed
 				if (trainSize == 0) {
 					trainSize = countLines(new File(modelFolderFile, "trainData.tsv")) - 1;
 				}
-				
+
 				int dataSize = countLines(new File(modelFolderFile, "predictionData.tsv")) - 1;
-				String name = (modelName != null && modelName.trim().length() > 0) ? modelName : modelFolderFile.getName();
+				String name = (modelName != null && modelName.trim().length() > 0) ? modelName
+						: modelFolderFile.getName();
 				magDbItem.addModel(name, trainSize, dataSize, corr, med);
-				
-				LOGGER.info(taskName + ": Registered model - Name: " + name + ", TrainSize: " + trainSize + 
-					", DataSize: " + dataSize + ", Correlation: " + corr);
+
+				logger.info(taskName + ": Registered model - Name: " + name + ", TrainSize: " + trainSize
+						+ ", DataSize: " + dataSize + ", Correlation: " + corr);
 			}
 		} catch (Exception e) {
-			LOGGER.warn(taskName + ": Model registration failed", e);
+			logger.warn(taskName + ": Model registration failed", e);
 			// Non-fatal; model registration failure should not break task success
 		}
 
@@ -294,9 +295,11 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 
 	private int countLines(File f) {
 		int count = 0;
-		if (f == null || !f.exists()) return 0;
+		if (f == null || !f.exists())
+			return 0;
 		try (BufferedReader br = new BufferedReader(new FileReader(f))) {
-			while (br.readLine() != null) count++;
+			while (br.readLine() != null)
+				count++;
 		} catch (IOException e) {
 			return 0;
 		}
@@ -305,7 +308,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 
 	private int prepareFiles(File predictPepFolder, File taxDbFile, File funcFolder, File modelFolder) {
 
-		LOGGER.info(taskName + ": prepare the data tables based on the text database started");
+		logger.info(taskName + ": prepare the data tables based on the text database started");
 		System.out.println(format.format(new Date()) + "\t" + taskName
 				+ ": prepare the data tables based on the text database started");
 
@@ -315,7 +318,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 
 			File pepFile = new File(filePath);
 			if (filePath != null && filePath.length() > 0 && !pepFile.exists() || pepFile.length() == 0) {
-				LOGGER.error(taskName + ": peptide quantification result was not found from " + filePath);
+				logger.error(taskName + ": peptide quantification result was not found from " + filePath);
 				System.out.println(format.format(new Date()) + "\t" + taskName
 						+ ": peptide quantification result was not found from " + filePath);
 
@@ -340,7 +343,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 
 				if (seqid == -1) {
 
-					LOGGER.error(taskName + ": there is no \"Sequence\" column in the file " + filePath);
+					logger.error(taskName + ": there is no \"Sequence\" column in the file " + filePath);
 					System.out.println(format.format(new Date()) + "\t" + taskName
 							+ ": there is no \"Sequence\" column in the file " + filePath);
 
@@ -349,7 +352,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 
 				if (intensityId == -1) {
 
-					LOGGER.error(taskName + ": there is no \"Intensity\" column in the file " + filePath);
+					logger.error(taskName + ": there is no \"Intensity\" column in the file " + filePath);
 					System.out.println(format.format(new Date()) + "\t" + taskName
 							+ ": there is no \"Intensity\" column in the file " + filePath);
 
@@ -397,13 +400,13 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 
 			} catch (IOException e) {
 
-				LOGGER.error(taskName + ": error in reading " + filePath, e);
+				logger.error(taskName + ": error in reading " + filePath, e);
 				System.err.println(format.format(new Date()) + "\t" + taskName + ": error in reading " + filePath);
 
 				return 0;
 			}
 
-			LOGGER.info(taskName + ": " + pepIntenMap.size() + " peptides were found from " + filePath);
+			logger.info(taskName + ": " + pepIntenMap.size() + " peptides were found from " + filePath);
 			System.out.println(format.format(new Date()) + "\t" + taskName + ": " + pepIntenMap.size()
 					+ " peptides were found from " + filePath);
 		} else {
@@ -411,7 +414,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 				pepProMap.put(pep, new HashSet<String>());
 			}
 
-			LOGGER.info(taskName + ": " + pepIntenMap.size() + " peptides were found");
+			logger.info(taskName + ": " + pepIntenMap.size() + " peptides were found");
 			System.out.println(
 					format.format(new Date()) + "\t" + taskName + ": " + pepIntenMap.size() + " peptides were found");
 		}
@@ -462,7 +465,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 					}
 				} catch (IOException e) {
 
-					LOGGER.error(taskName + ": error in reading " + filePath, e);
+					logger.error(taskName + ": error in reading " + filePath, e);
 					System.err.println(format.format(new Date()) + "\t" + taskName + ": error in reading " + filePath);
 				}
 			});
@@ -472,13 +475,13 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 
 		try {
 			if (executor.awaitTermination(1, TimeUnit.HOURS)) {
-				LOGGER.info(taskName + ": matching peptides finished, " + predictPepMap.size() + " peptides from "
+				logger.info(taskName + ": matching peptides finished, " + predictPepMap.size() + " peptides from "
 						+ genomePepMap.size() + " genomes were matched");
 				System.out.println(format.format(new Date()) + "\t" + taskName + ": matching peptides finished, "
 						+ predictPepMap.size() + " peptides from " + genomePepMap.size() + " genomes were matched");
 
 			} else {
-				LOGGER.error(taskName
+				logger.error(taskName
 						+ ": the program didn't responce in a long time, increase the thread count will be helpful");
 				System.err.println(format.format(new Date()) + "\t" + taskName
 						+ ": the program didn't responce in a long time, increase the thread count will be helpful");
@@ -487,7 +490,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 			}
 		} catch (InterruptedException e) {
 
-			LOGGER.error(taskName + ": error in reading predicted peptides", e);
+			logger.error(taskName + ": error in reading predicted peptides", e);
 			System.err.println(format.format(new Date()) + "\t" + taskName + ": error in reading predicted peptides");
 
 			return 0;
@@ -509,7 +512,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 
 			if (lineageId == -1 || genomeId == -1) {
 
-				LOGGER.error(taskName + ": error in reading " + taxDbFile + ", the title format is unknown");
+				logger.error(taskName + ": error in reading " + taxDbFile + ", the title format is unknown");
 				System.err.println(format.format(new Date()) + "\t" + taskName + ": error in reading " + taxDbFile
 						+ ", the title format is unknown");
 
@@ -536,13 +539,13 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 			}
 			taxaReader.close();
 		} catch (IOException e) {
-			LOGGER.error(taskName + ": error in reading " + taxDbFile, e);
+			logger.error(taskName + ": error in reading " + taxDbFile, e);
 			System.err.println(format.format(new Date()) + "\t" + taskName + ": error in reading " + taxDbFile);
 
 			return 0;
 		}
 
-		LOGGER.info(taskName + ": " + taxaMap.size() + " genome were matched to taxa from " + taxDbFile);
+		logger.info(taskName + ": " + taxaMap.size() + " genome were matched to taxa from " + taxDbFile);
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": " + taxaMap.size()
 				+ " genome were matched to taxa from " + taxDbFile);
 
@@ -576,7 +579,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 				}
 				reader.close();
 			} catch (IOException e) {
-				LOGGER.error(taskName + ": error in reading " + proIntenFile, e);
+				logger.error(taskName + ": error in reading " + proIntenFile, e);
 				System.err.println(format.format(new Date()) + "\t" + taskName + ": error in reading " + proIntenFile);
 
 				return 0;
@@ -590,7 +593,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 				}
 				reader.close();
 			} catch (IOException e) {
-				LOGGER.error(taskName + ": error in reading " + genomeIntenFile, e);
+				logger.error(taskName + ": error in reading " + genomeIntenFile, e);
 				System.err
 						.println(format.format(new Date()) + "\t" + taskName + ": error in reading " + genomeIntenFile);
 
@@ -605,7 +608,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 				}
 				reader.close();
 			} catch (IOException e) {
-				LOGGER.error(taskName + ": error in reading " + taxonIntenFile, e);
+				logger.error(taskName + ": error in reading " + taxonIntenFile, e);
 				System.err
 						.println(format.format(new Date()) + "\t" + taskName + ": error in reading " + taxonIntenFile);
 
@@ -668,7 +671,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 				}
 				writer.close();
 			} catch (Exception e) {
-				LOGGER.error(taskName + ": error in writing peptide intensities", e);
+				logger.error(taskName + ": error in writing peptide intensities", e);
 				System.err.println(
 						format.format(new Date()) + "\t" + taskName + ": error in writing peptide intensities");
 				return 0;
@@ -681,7 +684,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 				}
 				proWriter.close();
 			} catch (IOException e) {
-				LOGGER.error(taskName + ": error in writing protein intensities", e);
+				logger.error(taskName + ": error in writing protein intensities", e);
 				System.err.println(
 						format.format(new Date()) + "\t" + taskName + ": error in writing protein intensities");
 				return 0;
@@ -694,7 +697,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 				}
 				genomeWriter.close();
 			} catch (IOException e) {
-				LOGGER.error(taskName + ": error in writing genome intensities", e);
+				logger.error(taskName + ": error in writing genome intensities", e);
 				System.err
 						.println(format.format(new Date()) + "\t" + taskName + ": error in writing genome intensities");
 				return 0;
@@ -707,7 +710,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 				}
 				taxaWriter.close();
 			} catch (IOException e) {
-				LOGGER.error(taskName + ": error in writing taxon intensities", e);
+				logger.error(taskName + ": error in writing taxon intensities", e);
 				System.err
 						.println(format.format(new Date()) + "\t" + taskName + ": error in writing taxon intensities");
 				return 0;
@@ -745,7 +748,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 					}
 
 					if (eggNogId == -1) {
-						LOGGER.error(taskName + ": error in reading " + file + ", the title format is unknown");
+						logger.error(taskName + ": error in reading " + file + ", the title format is unknown");
 						System.err.println(format.format(new Date()) + "\t" + taskName + ": error in reading " + file
 								+ ", the title format is unknown");
 					}
@@ -767,7 +770,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 					}
 					reader.close();
 				} catch (IOException e) {
-					LOGGER.error(taskName + ": error in reading " + file, e);
+					logger.error(taskName + ": error in reading " + file, e);
 					System.err.println(format.format(new Date()) + "\t" + taskName + ": error in reading " + file);
 				}
 
@@ -785,7 +788,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 
 		try {
 			if (executor.awaitTermination(10, TimeUnit.HOURS)) {
-				LOGGER.info(taskName + ": " + funIntenMap.size() + " functions were found");
+				logger.info(taskName + ": " + funIntenMap.size() + " functions were found");
 				System.out.println(format.format(new Date()) + "\t" + taskName + ": " + funIntenMap.size()
 						+ " functions were found");
 			} else {
@@ -794,7 +797,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 		} catch (InterruptedException e) {
 			// TODO Auto-generated catch block
 
-			LOGGER.error(taskName + ": error in matching functions", e);
+			logger.error(taskName + ": error in matching functions", e);
 			System.err.println(format.format(new Date()) + "\t" + taskName + ": error in matching functions");
 
 			return 0;
@@ -807,7 +810,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 			}
 			funcWriter.close();
 		} catch (IOException e) {
-			LOGGER.error(taskName + ": error in writing function intentisies", e);
+			logger.error(taskName + ": error in writing function intentisies", e);
 			System.err.println(format.format(new Date()) + "\t" + taskName + ": error in writing function intentisies");
 			return 0;
 		}
@@ -827,7 +830,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 			}
 			genomeTaxaWriter.close();
 		} catch (IOException e) {
-			LOGGER.error(taskName + ": error in writing genome taxa intentisies", e);
+			logger.error(taskName + ": error in writing genome taxa intentisies", e);
 			System.err.println(
 					format.format(new Date()) + "\t" + taskName + ": error in writing genome taxa intentisies");
 			return 0;
@@ -909,7 +912,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 				proFuncWriter.close();
 
 			} catch (IOException e) {
-				LOGGER.error(taskName + ": error in writing protein function intentisies", e);
+				logger.error(taskName + ": error in writing protein function intentisies", e);
 				System.err.println(format.format(new Date()) + "\t" + taskName
 						+ ": error in writing protein function intentisies");
 				return 0;
@@ -929,13 +932,13 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 			}
 			reader.close();
 		} catch (IOException e) {
-			LOGGER.error(taskName + ": error in reading protein function intentisies", e);
+			logger.error(taskName + ": error in reading protein function intentisies", e);
 			System.err.println(
 					format.format(new Date()) + "\t" + taskName + ": error in reading protein function intentisies");
 			return 0;
 		}
 
-		LOGGER.info(taskName + ": " + profuncIntenMap.size() + " proteins and functions were matched");
+		logger.info(taskName + ": " + profuncIntenMap.size() + " proteins and functions were matched");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": " + profuncIntenMap.size()
 				+ " functions were matched");
 
@@ -953,12 +956,12 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 			}
 			reader.close();
 		} catch (IOException e) {
-			LOGGER.error(taskName + ": error in reading genome taxon intentisies", e);
+			logger.error(taskName + ": error in reading genome taxon intentisies", e);
 			System.err.println(
 					format.format(new Date()) + "\t" + taskName + ": error in reading genome taxon intentisies");
 			return 0;
 		}
-		LOGGER.info(taskName + ": " + genomeTaxaIntenMap.size() + " genomes and taxa were matched");
+		logger.info(taskName + ": " + genomeTaxaIntenMap.size() + " genomes and taxa were matched");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": " + genomeTaxaIntenMap.size()
 				+ " genomes and taxa were matched");
 
@@ -1057,7 +1060,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 			}
 			tableWriter.close();
 		} catch (IOException e) {
-			LOGGER.error(taskName + ": error in writing the peptide table", e);
+			logger.error(taskName + ": error in writing the peptide table", e);
 			System.err.println(format.format(new Date()) + "\t" + taskName + ": error in writing the peptide table");
 			return 0;
 		}
@@ -1065,7 +1068,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 		File datatableFile = new File(modelFolder, "predictionData.tsv");
 		if (!datatableFile.exists() || datatableFile.length() == 0) {
 
-			LOGGER.info(taskName + ": writing all peptide candidate data table started");
+			logger.info(taskName + ": writing all peptide candidate data table started");
 			System.out.println(
 					format.format(new Date()) + "\t" + taskName + ": writing all peptide candidate data table started");
 
@@ -1168,7 +1171,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 						}
 
 					} catch (IOException e) {
-						LOGGER.error(taskName + ": error in reading the peptide detectability information from "
+						logger.error(taskName + ": error in reading the peptide detectability information from "
 								+ predictedFile, e);
 						System.err.println(format.format(new Date()) + "\t" + taskName
 								+ ": error in reading the peptide detectability information from " + predictedFile);
@@ -1209,7 +1212,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 					tableWriter.close();
 				} else {
 
-					LOGGER.info(taskName + ": writing all peptide candidate data table didn't finish in a long time");
+					logger.info(taskName + ": writing all peptide candidate data table didn't finish in a long time");
 					System.out.println(format.format(new Date()) + "\t" + taskName
 							+ ": writing all peptide candidate data table didn't finish in a long time");
 
@@ -1218,7 +1221,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 			} catch (InterruptedException | IOException e) {
 				// TODO Auto-generated catch block
 
-				LOGGER.error(taskName + ": error in matching functions", e);
+				logger.error(taskName + ": error in matching functions", e);
 				System.err.println(format.format(new Date()) + "\t" + taskName + ": error in matching functions");
 
 				return 0;
@@ -1230,7 +1233,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 
 	private int prepareFilesSQL(File sqlDbFile, File predictPepFolder, File modelFolder) {
 
-		LOGGER.info(taskName + ": prepare the data tables for " + modelFolder.getName()
+		logger.info(taskName + ": prepare the data tables for " + modelFolder.getName()
 				+ " based on the SQL database started");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": prepare the data tables for "
 				+ modelFolder.getName() + " based on the SQL database started");
@@ -1241,7 +1244,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 
 			File pepFile = new File(filePath);
 			if (filePath != null && filePath.length() > 0 && !pepFile.exists() || pepFile.length() == 0) {
-				LOGGER.error(taskName + ": peptide quantification result was not found from " + filePath);
+				logger.error(taskName + ": peptide quantification result was not found from " + filePath);
 				System.out.println(format.format(new Date()) + "\t" + taskName
 						+ ": peptide quantification result was not found from " + filePath);
 
@@ -1267,7 +1270,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 
 				if (seqid == -1) {
 
-					LOGGER.error(taskName + ": there is no \"Sequence\" column in the file " + filePath);
+					logger.error(taskName + ": there is no \"Sequence\" column in the file " + filePath);
 					System.out.println(format.format(new Date()) + "\t" + taskName
 							+ ": there is no \"Sequence\" column in the file " + filePath);
 
@@ -1276,7 +1279,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 
 				if (intensityId == -1) {
 
-					LOGGER.error(taskName + ": there is no \"Intensity\" column in the file " + filePath);
+					logger.error(taskName + ": there is no \"Intensity\" column in the file " + filePath);
 					System.out.println(format.format(new Date()) + "\t" + taskName
 							+ ": there is no \"Intensity\" column in the file " + filePath);
 
@@ -1324,13 +1327,13 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 
 			} catch (IOException e) {
 
-				LOGGER.error(taskName + ": error in reading " + filePath, e);
+				logger.error(taskName + ": error in reading " + filePath, e);
 				System.err.println(format.format(new Date()) + "\t" + taskName + ": error in reading " + filePath);
 
 				return 0;
 			}
 
-			LOGGER.info(taskName + ": " + pepIntenMap.size() + " peptides were found from " + filePath);
+			logger.info(taskName + ": " + pepIntenMap.size() + " peptides were found from " + filePath);
 			System.out.println(format.format(new Date()) + "\t" + taskName + ": " + pepIntenMap.size()
 					+ " peptides were found from " + filePath);
 
@@ -1339,7 +1342,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 				pepProMap.put(pep, new HashSet<String>());
 			}
 
-			LOGGER.info(taskName + ": " + pepIntenMap.size() + " peptides were found for " + modelFolder.getName());
+			logger.info(taskName + ": " + pepIntenMap.size() + " peptides were found for " + modelFolder.getName());
 			System.out.println(format.format(new Date()) + "\t" + taskName + ": " + pepIntenMap.size()
 					+ " peptides were found for " + modelFolder.getName());
 		}
@@ -1390,7 +1393,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 					}
 				} catch (IOException e) {
 
-					LOGGER.error(taskName + ": error in reading " + filePath, e);
+					logger.error(taskName + ": error in reading " + filePath, e);
 					System.err.println(format.format(new Date()) + "\t" + taskName + ": error in reading " + filePath);
 				}
 			});
@@ -1400,14 +1403,14 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 
 		try {
 			if (executor.awaitTermination(12, TimeUnit.HOURS)) {
-				LOGGER.info(taskName + ": matching peptides finished, " + predictPepMap.size() + " peptides from "
+				logger.info(taskName + ": matching peptides finished, " + predictPepMap.size() + " peptides from "
 						+ genomePepMap.size() + " genomes were matched for " + modelFolder.getName());
 				System.out.println(format.format(new Date()) + "\t" + taskName + ": matching peptides finished, "
 						+ predictPepMap.size() + " peptides from " + genomePepMap.size() + " genomes were matched for "
 						+ modelFolder.getName());
 
 			} else {
-				LOGGER.error(taskName
+				logger.error(taskName
 						+ ": the program didn't responce in a long time, increase the thread count will be helpful");
 				System.err.println(format.format(new Date()) + "\t" + taskName
 						+ ": the program didn't responce in a long time, increase the thread count will be helpful");
@@ -1416,7 +1419,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 			}
 		} catch (InterruptedException e) {
 
-			LOGGER.error(taskName + ": error in reading predicted peptides", e);
+			logger.error(taskName + ": error in reading predicted peptides", e);
 			System.err.println(format.format(new Date()) + "\t" + taskName + ": error in reading predicted peptides");
 
 			return 0;
@@ -1431,7 +1434,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 			taxaMap.put(genomeContents[i][0], taxaString);
 		}
 
-		LOGGER.info(taskName + ": " + taxaMap.size() + " genome were matched to taxa");
+		logger.info(taskName + ": " + taxaMap.size() + " genome were matched to taxa");
 		System.out.println(
 				format.format(new Date()) + "\t" + taskName + ": " + taxaMap.size() + " genome were matched to taxa");
 
@@ -1456,7 +1459,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 				}
 				reader.close();
 			} catch (IOException e) {
-				LOGGER.error(taskName + ": error in reading " + proIntenFile, e);
+				logger.error(taskName + ": error in reading " + proIntenFile, e);
 				System.err.println(format.format(new Date()) + "\t" + taskName + ": error in reading " + proIntenFile);
 
 				return 0;
@@ -1470,7 +1473,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 				}
 				reader.close();
 			} catch (IOException e) {
-				LOGGER.error(taskName + ": error in reading " + genomeIntenFile, e);
+				logger.error(taskName + ": error in reading " + genomeIntenFile, e);
 				System.err
 						.println(format.format(new Date()) + "\t" + taskName + ": error in reading " + genomeIntenFile);
 
@@ -1485,7 +1488,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 				}
 				reader.close();
 			} catch (IOException e) {
-				LOGGER.error(taskName + ": error in reading " + taxonIntenFile, e);
+				logger.error(taskName + ": error in reading " + taxonIntenFile, e);
 				System.err
 						.println(format.format(new Date()) + "\t" + taskName + ": error in reading " + taxonIntenFile);
 
@@ -1535,7 +1538,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 				}
 				writer.close();
 			} catch (Exception e) {
-				LOGGER.error(taskName + ": error in writing peptide intensities", e);
+				logger.error(taskName + ": error in writing peptide intensities", e);
 				System.err.println(
 						format.format(new Date()) + "\t" + taskName + ": error in writing peptide intensities");
 				return 0;
@@ -1548,7 +1551,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 				}
 				proWriter.close();
 			} catch (IOException e) {
-				LOGGER.error(taskName + ": error in writing protein intensities", e);
+				logger.error(taskName + ": error in writing protein intensities", e);
 				System.err.println(
 						format.format(new Date()) + "\t" + taskName + ": error in writing protein intensities");
 				return 0;
@@ -1561,7 +1564,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 				}
 				genomeWriter.close();
 			} catch (IOException e) {
-				LOGGER.error(taskName + ": error in writing genome intensities", e);
+				logger.error(taskName + ": error in writing genome intensities", e);
 				System.err
 						.println(format.format(new Date()) + "\t" + taskName + ": error in writing genome intensities");
 				return 0;
@@ -1574,7 +1577,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 				}
 				taxaWriter.close();
 			} catch (IOException e) {
-				LOGGER.error(taskName + ": error in writing taxon intensities", e);
+				logger.error(taskName + ": error in writing taxon intensities", e);
 				System.err
 						.println(format.format(new Date()) + "\t" + taskName + ": error in writing taxon intensities");
 				return 0;
@@ -1604,7 +1607,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 			}
 			funcWriter.close();
 		} catch (IOException e) {
-			LOGGER.error(taskName + ": error in writing function intentisies", e);
+			logger.error(taskName + ": error in writing function intentisies", e);
 			System.err.println(format.format(new Date()) + "\t" + taskName + ": error in writing function intentisies");
 			return 0;
 		}
@@ -1624,7 +1627,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 			}
 			genomeTaxaWriter.close();
 		} catch (IOException e) {
-			LOGGER.error(taskName + ": error in writing genome taxa intentisies", e);
+			logger.error(taskName + ": error in writing genome taxa intentisies", e);
 			System.err.println(
 					format.format(new Date()) + "\t" + taskName + ": error in writing genome taxa intentisies");
 			return 0;
@@ -1706,7 +1709,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 				proFuncWriter.close();
 
 			} catch (IOException e) {
-				LOGGER.error(taskName + ": error in writing protein function intentisies", e);
+				logger.error(taskName + ": error in writing protein function intentisies", e);
 				System.err.println(format.format(new Date()) + "\t" + taskName
 						+ ": error in writing protein function intentisies");
 				return 0;
@@ -1726,13 +1729,13 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 			}
 			reader.close();
 		} catch (IOException e) {
-			LOGGER.error(taskName + ": error in reading protein function intentisies", e);
+			logger.error(taskName + ": error in reading protein function intentisies", e);
 			System.err.println(
 					format.format(new Date()) + "\t" + taskName + ": error in reading protein function intentisies");
 			return 0;
 		}
 
-		LOGGER.info(taskName + ": " + profuncIntenMap.size() + " proteins and functions were matched");
+		logger.info(taskName + ": " + profuncIntenMap.size() + " proteins and functions were matched");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": " + profuncIntenMap.size()
 				+ " functions were matched");
 
@@ -1750,12 +1753,12 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 			}
 			reader.close();
 		} catch (IOException e) {
-			LOGGER.error(taskName + ": error in reading genome taxon intentisies", e);
+			logger.error(taskName + ": error in reading genome taxon intentisies", e);
 			System.err.println(
 					format.format(new Date()) + "\t" + taskName + ": error in reading genome taxon intentisies");
 			return 0;
 		}
-		LOGGER.info(taskName + ": " + genomeTaxaIntenMap.size() + " genomes and taxa were matched");
+		logger.info(taskName + ": " + genomeTaxaIntenMap.size() + " genomes and taxa were matched");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": " + genomeTaxaIntenMap.size()
 				+ " genomes and taxa were matched");
 
@@ -1854,7 +1857,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 			}
 			tableWriter.close();
 		} catch (IOException e) {
-			LOGGER.error(taskName + ": error in writing the peptide table", e);
+			logger.error(taskName + ": error in writing the peptide table", e);
 			System.err.println(format.format(new Date()) + "\t" + taskName + ": error in writing the peptide table");
 			return 0;
 		}
@@ -1862,7 +1865,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 		File datatableFile = new File(modelFolder, "predictionData.tsv");
 		if (!datatableFile.exists() || datatableFile.length() == 0) {
 
-			LOGGER.info(taskName + ": writing all peptide candidate data table started");
+			logger.info(taskName + ": writing all peptide candidate data table started");
 			System.out.println(
 					format.format(new Date()) + "\t" + taskName + ": writing all peptide candidate data table started");
 
@@ -1965,7 +1968,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 						}
 
 					} catch (IOException e) {
-						LOGGER.error(taskName + ": error in reading the peptide detectability information from "
+						logger.error(taskName + ": error in reading the peptide detectability information from "
 								+ predictedFile, e);
 						System.err.println(format.format(new Date()) + "\t" + taskName
 								+ ": error in reading the peptide detectability information from " + predictedFile);
@@ -2006,7 +2009,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 					tableWriter.close();
 				} else {
 
-					LOGGER.info(taskName + ": writing all peptide candidate data table didn't finish in a long time");
+					logger.info(taskName + ": writing all peptide candidate data table didn't finish in a long time");
 					System.out.println(format.format(new Date()) + "\t" + taskName
 							+ ": writing all peptide candidate data table didn't finish in a long time");
 
@@ -2015,7 +2018,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 			} catch (InterruptedException | IOException e) {
 				// TODO Auto-generated catch block
 
-				LOGGER.error(taskName + ": error in matching functions", e);
+				logger.error(taskName + ": error in matching functions", e);
 				System.err.println(format.format(new Date()) + "\t" + taskName + ": error in matching functions");
 
 				return 0;
@@ -2031,7 +2034,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 		File predictAllFile = new File(modelFolder, "pytorch_predictions.tsv");
 		if (predictAllFile.exists()) {
 
-			LOGGER.info(taskName + ": the predicted file already exists in " + predictAllFile);
+			logger.info(taskName + ": the predicted file already exists in " + predictAllFile);
 			System.out.println(format.format(new Date()) + "\t" + taskName + ": the predicted file already exists in "
 					+ predictAllFile);
 
@@ -2039,10 +2042,12 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 			try {
 				// Ensure the PyTorch script is available in the model folder
 				// Load from bundled resources in python_scripts/deep_learning/
-				try (InputStream inputStream = DiaPyTorchModelTask.class.getResourceAsStream("/python_scripts/deep_learning/pytorch_model.py");
+				try (InputStream inputStream = DiaPyTorchModelTask.class
+						.getResourceAsStream("/python_scripts/deep_learning/pytorch_model.py");
 						BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
 					if (inputStream == null) {
-						LOGGER.error(taskName + ": pytorch_model.py not found in classpath at /python_scripts/deep_learning/pytorch_model.py");
+						logger.error(taskName
+								+ ": pytorch_model.py not found in classpath at /python_scripts/deep_learning/pytorch_model.py");
 						System.err.println(format.format(new Date()) + "\t" + taskName
 								+ ": pytorch_model.py not found in classpath");
 						return;
@@ -2055,9 +2060,10 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 					reader.close();
 					inputStream.close();
 					writer.close();
-					LOGGER.info(taskName + ": pytorch_model.py extracted successfully to " + pythonFile.getAbsolutePath());
+					logger.info(
+							taskName + ": pytorch_model.py extracted successfully to " + pythonFile.getAbsolutePath());
 				} catch (IOException e) {
-					LOGGER.error(taskName + ": error in extracting pytorch_model.py file", e);
+					logger.error(taskName + ": error in extracting pytorch_model.py file", e);
 					System.err.println(format.format(new Date()) + "\t" + taskName
 							+ ": error in extracting pytorch_model.py file");
 				}
@@ -2070,23 +2076,25 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 				BufferedReader inBr = new BufferedReader(new InputStreamReader(p.getInputStream()));
 				String lineStr;
 				Pattern lossPattern = Pattern.compile(".*loss.*", Pattern.CASE_INSENSITIVE);
-				Pattern errorPattern = Pattern.compile(".*(error|Error|ERROR|exception|Exception|EXCEPTION|traceback|Traceback|TRACEBACK|ModuleNotFoundError|ImportError).*", Pattern.CASE_INSENSITIVE);
+				Pattern errorPattern = Pattern.compile(
+						".*(error|Error|ERROR|exception|Exception|EXCEPTION|traceback|Traceback|TRACEBACK|ModuleNotFoundError|ImportError).*",
+						Pattern.CASE_INSENSITIVE);
 				double prog = 30.0;
 				boolean hasError = false;
 				StringBuilder errorOutput = new StringBuilder();
-				
+
 				while ((lineStr = inBr.readLine()) != null) {
 					System.out.println(lineStr);
 					updateMessage("PyTorch: " + lineStr);
-					
+
 					// Check for errors and highlight them
 					if (errorPattern.matcher(lineStr).matches()) {
 						hasError = true;
 						errorOutput.append(lineStr).append("\n");
 						System.err.println("*** PYTHON ERROR DETECTED: " + lineStr);
-						LOGGER.error(taskName + ": Python error - " + lineStr);
+						logger.error(taskName + ": Python error - " + lineStr);
 					}
-					
+
 					if (lossPattern.matcher(lineStr).matches()) {
 						prog = Math.min(prog + 1.0, 95.0);
 						updateProgress(prog, 100);
@@ -2094,18 +2102,18 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 				}
 				int code = p.waitFor();
 				inBr.close();
-				
+
 				if (code != 0) {
 					String errorMsg = "PyTorch process exited with code " + code;
 					if (hasError) {
 						errorMsg += "\nPython errors detected:\n" + errorOutput.toString();
 					}
-					LOGGER.error(taskName + ": " + errorMsg);
+					logger.error(taskName + ": " + errorMsg);
 					System.err.println("*** PYTHON PROCESS FAILED: " + errorMsg);
 					updateMessage("Python execution failed - check console for details");
 				}
 			} catch (Exception e) {
-				LOGGER.error(taskName + ": error in building the peptide intensity model by deep learning", e);
+				logger.error(taskName + ": error in building the peptide intensity model by deep learning", e);
 				System.err.println(format.format(new Date()) + "\t" + taskName
 						+ ": error in building the peptide intensity model by deep learning");
 			}
@@ -2115,7 +2123,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 	private boolean runPyTorch(File modelFolder, String python) {
 		File predictAllFile = new File(modelFolder, "pytorch_predictions.tsv");
 		if (predictAllFile.exists() && predictAllFile.length() > 0) {
-			LOGGER.info(taskName + ": found existing predictions: " + predictAllFile);
+			logger.info(taskName + ": found existing predictions: " + predictAllFile);
 			return true;
 		}
 		buildModel(modelFolder, python);
@@ -2136,7 +2144,6 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 			pepProReader.close();
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
-			LOGGER.error(taskName + ": error in reading the training dataset peptide from " + pepIntenFile, e);
 			System.err.println(format.format(new Date()) + "\t" + taskName
 					+ ": error in reading the training dataset peptide from " + pepIntenFile);
 		}
@@ -2161,7 +2168,6 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 			pepProReader.close();
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
-			LOGGER.error(taskName + ": error in reading the peptide rank information from " + pepRankFile, e);
 			System.err.println(format.format(new Date()) + "\t" + taskName
 					+ ": error in reading the peptide rank information from " + pepRankFile);
 		}
@@ -2189,7 +2195,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 			pepProReader.close();
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
-			LOGGER.error(
+			logger.error(
 					taskName + ": error in reading the predicted peptide intensity information from " + predictFile, e);
 			System.err.println(format.format(new Date()) + "\t" + taskName
 					+ ": error in reading the predicted peptide intensity information from " + predictFile);
@@ -2206,7 +2212,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 			pepProReader.close();
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
-			LOGGER.error(taskName + ": error in reading the genome information from " + genomeFile, e);
+			logger.error(taskName + ": error in reading the genome information from " + genomeFile, e);
 			System.err.println(format.format(new Date()) + "\t" + taskName
 					+ ": error in reading the genome information from " + genomeFile);
 		}
@@ -2218,7 +2224,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 			writer[0] = new BufferedWriter(new FileWriter(outputFile, true));
 			writer[0].write("pro\tpep\tgenome_rank_score\n");
 		} catch (IOException e) {
-			LOGGER.error(taskName + ": error in writing the peptide rank information to " + outputFile, e);
+			logger.error(taskName + ": error in writing the peptide rank information to " + outputFile, e);
 			System.err.println(format.format(new Date()) + "\t" + taskName
 					+ ": error in writing the peptide rank information to " + outputFile);
 		}
@@ -2255,7 +2261,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 					pepProReader.close();
 				} catch (IOException e) {
 					// TODO Auto-generated catch block
-					LOGGER.error(taskName + ": error in reading the peptide information from " + file, e);
+					logger.error(taskName + ": error in reading the peptide information from " + file, e);
 					System.err.println(format.format(new Date()) + "\t" + taskName
 							+ ": error in reading the peptide information from " + file);
 				}
@@ -2294,7 +2300,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 					try {
 						writer[0].write(sb.toString());
 					} catch (IOException e) {
-						LOGGER.error(taskName + ": error in writing the peptide rank information to " + outputFile, e);
+						logger.error(taskName + ": error in writing the peptide rank information to " + outputFile, e);
 						System.err.println(format.format(new Date()) + "\t" + taskName
 								+ ": error in writing the peptide rank information to " + outputFile);
 					}
@@ -2307,7 +2313,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 			try {
 				writer[0].close();
 			} catch (IOException e) {
-				LOGGER.error(taskName + ": error in writing the peptide rank information to " + outputFile, e);
+				logger.error(taskName + ": error in writing the peptide rank information to " + outputFile, e);
 				System.err.println(format.format(new Date()) + "\t" + taskName
 						+ ": error in writing the peptide rank information to " + outputFile);
 			}
@@ -2329,7 +2335,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 			pepProReader.close();
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
-			LOGGER.error(
+			logger.error(
 					taskName + ": error in reading the predicted peptide intensity information from " + predictFile, e);
 			System.err.println(format.format(new Date()) + "\t" + taskName
 					+ ": error in reading the predicted peptide intensity information from " + predictFile);
@@ -2346,7 +2352,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 			pepProReader.close();
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
-			LOGGER.error(taskName + ": error in reading the genome information from " + genomeFile, e);
+			logger.error(taskName + ": error in reading the genome information from " + genomeFile, e);
 			System.err.println(format.format(new Date()) + "\t" + taskName
 					+ ": error in reading the genome information from " + genomeFile);
 		}
@@ -2412,7 +2418,7 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 			writer.close();
 
 		} catch (IOException e) {
-			LOGGER.error(taskName + ": error in writing the peptide rank information to " + outputFile, e);
+			logger.error(taskName + ": error in writing the peptide rank information to " + outputFile, e);
 			System.err.println(format.format(new Date()) + "\t" + taskName
 					+ ": error in writing the peptide rank information to " + outputFile);
 			return -1;
@@ -2470,31 +2476,28 @@ public class DiaPyTorchModelTask extends MetaAbstractTask {
 		return taskName;
 	}
 
-	@Override
-	protected Logger getLogger() {
-		// TODO Auto-generated method stub
-		return LOGGER;
-	}
-
 	private void renamePytorchPredictionsFile(File modelFolder) {
 		try {
 			File pytorchPredictionsFile = new File(modelFolder, "pytorch_predictions.tsv");
-			File namedPytorchPredictionsFile = new File(modelFolder, modelFolder.getName() + "_pytorch_predictions.tsv");
-			
+			File namedPytorchPredictionsFile = new File(modelFolder,
+					modelFolder.getName() + "_pytorch_predictions.tsv");
+
 			if (!pytorchPredictionsFile.exists()) {
-				LOGGER.warn(taskName + ": pytorch_predictions.tsv not found, cannot rename");
+				logger.warn(taskName + ": pytorch_predictions.tsv not found, cannot rename");
 				return;
 			}
-			
+
 			// Rename pytorch_predictions.tsv to {modelName}_pytorch_predictions.tsv
 			if (pytorchPredictionsFile.renameTo(namedPytorchPredictionsFile)) {
-				LOGGER.info(taskName + ": Renamed pytorch_predictions.tsv to " + modelFolder.getName() + "_pytorch_predictions.tsv");
+				logger.info(taskName + ": Renamed pytorch_predictions.tsv to " + modelFolder.getName()
+						+ "_pytorch_predictions.tsv");
 			} else {
-				LOGGER.warn(taskName + ": Failed to rename pytorch_predictions.tsv to " + modelFolder.getName() + "_pytorch_predictions.tsv");
+				logger.warn(taskName + ": Failed to rename pytorch_predictions.tsv to " + modelFolder.getName()
+						+ "_pytorch_predictions.tsv");
 			}
-			
+
 		} catch (Exception e) {
-			LOGGER.error(taskName + ": Error renaming pytorch_predictions.tsv file", e);
+			logger.error(taskName + ": Error renaming pytorch_predictions.tsv file", e);
 		}
 	}
 }

@@ -56,8 +56,8 @@ public class DeepDetectTask extends MetaAbstractTask {
 
 	private MagDbItem magdb;
 
-	public DeepDetectTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar) {
-		super(metaPar, mrp, progressBar, null);
+	public DeepDetectTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar, Logger logger) {
+		super(metaPar, mrp, progressBar, logger);
 		this.deepDetectFile = new File(mrp.getToolPath(ToolType.DEEPDETECT));
 		String path = deepDetectFile.getAbsolutePath();
 		int id = path.indexOf(":");
@@ -73,14 +73,14 @@ public class DeepDetectTask extends MetaAbstractTask {
 	}
 
 	public DeepDetectTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
-			HashSet<String> genomeSet) {
-		this(metaPar, mrp, progressBar);
+			HashSet<String> genomeSet, Logger logger) {
+		this(metaPar, mrp, progressBar, logger);
 		this.genomeSet = genomeSet;
 	}
 
 	public DeepDetectTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
-			DeepDetectParameter par, MagDbItem magdb, int threads, JTextField timeLeft) {
-		this(metaPar, mrp, progressBar);
+			DeepDetectParameter par, MagDbItem magdb, int threads, JTextField timeLeft, Logger logger) {
+		this(metaPar, mrp, progressBar, logger);
 		this.par = par;
 		this.magdb = magdb;
 		this.threads = threads;
@@ -89,8 +89,8 @@ public class DeepDetectTask extends MetaAbstractTask {
 	}
 
 	public DeepDetectTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
-			DeepDetectParameter par, MagDbItem magdb, JProgressBar bar, JTextField timeLeft) {
-		this(metaPar, mrp, progressBar);
+			DeepDetectParameter par, MagDbItem magdb, JProgressBar bar, JTextField timeLeft, Logger logger) {
+		this(metaPar, mrp, progressBar, logger);
 		this.par = par;
 		this.magdb = magdb;
 
@@ -103,8 +103,8 @@ public class DeepDetectTask extends MetaAbstractTask {
 
 	public DeepDetectTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
 			DeepDetectParameter par, MagDbItem magdb, int threads, JProgressBar bar, JTextField timeLeft,
-			HashSet<String> genomeSet) {
-		this(metaPar, mrp, progressBar);
+			HashSet<String> genomeSet, Logger logger) {
+		this(metaPar, mrp, progressBar, logger);
 		this.par = par;
 		this.magdb = magdb;
 		this.threads = threads;
@@ -115,8 +115,8 @@ public class DeepDetectTask extends MetaAbstractTask {
 
 	// JavaFX version constructor
 	public DeepDetectTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
-			DeepDetectParameter par, MagDbItem magdb, int threads, TextField javafxTimeLeft) {
-		this(metaPar, mrp, progressBar);
+			DeepDetectParameter par, MagDbItem magdb, int threads, TextField javafxTimeLeft, Logger logger) {
+		this(metaPar, mrp, progressBar, logger);
 		this.par = par;
 		this.magdb = magdb;
 		this.threads = threads;

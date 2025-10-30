@@ -30,9 +30,8 @@ public class SageResultReader extends AbstractMetaPeptideReader {
 	private void read() {
 		File psmFile = new File(this.getFile(), "results.sage.tsv");
 		SagePsmReader reader = new SagePsmReader(psmFile);
-		this.psms = reader.getPsms();
 		HashMap<String, ArrayList<SagePSM>> psmMap = new HashMap<String, ArrayList<SagePSM>>();
-		for (SagePSM psm : psms) {
+		for (SagePSM psm : reader.getPsms()) {
 			String modseq = psm.getModSeq();
 			if (psmMap.containsKey(modseq)) {
 				psmMap.get(modseq).add(psm);
@@ -42,6 +41,8 @@ public class SageResultReader extends AbstractMetaPeptideReader {
 				psmMap.put(modseq, psmList);
 			}
 		}
+
+		HashSet<String> modPepSet = new HashSet<String>();
 		ArrayList<SagePeptide> peptideList = new ArrayList<SagePeptide>();
 		try (BufferedReader br = new BufferedReader(new FileReader(new File(this.getFile(), "lfq.tsv")))) {
 			ArrayList<String> list = new ArrayList<String>();
@@ -80,6 +81,7 @@ public class SageResultReader extends AbstractMetaPeptideReader {
 				String[] cs = line.split("\t");
 				String modseq = cs[pepId];
 				if (psmMap.containsKey(modseq)) {
+					modPepSet.add(modseq);
 					ArrayList<SagePSM> psmList = psmMap.get(modseq);
 					SagePSM psm0 = psmList.get(0);
 					String sequence = psm0.getSequence();
@@ -137,6 +139,16 @@ public class SageResultReader extends AbstractMetaPeptideReader {
 		}
 
 		this.peptides = peptideList.toArray(SagePeptide[]::new);
+
+		ArrayList<SagePSM> psmList = new ArrayList<SagePSM>();
+		for (SagePSM psm : reader.getPsms()) {
+			String modseq = psm.getModSeq();
+			if (modPepSet.contains(modseq)) {
+				psmList.add(psm);
+			}
+		}
+
+		this.psms = psmList.toArray(SagePSM[]::new);
 	}
 
 	@Override

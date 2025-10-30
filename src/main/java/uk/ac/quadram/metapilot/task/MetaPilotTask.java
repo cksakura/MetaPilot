@@ -66,7 +66,7 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 	protected ProgressBar secondBar;
 	
 	// Instance logger - initialized in constructor AFTER configLog() to ensure proper configuration
-	protected Logger logger;
+//	protected Logger logger;
 	
 	protected SimpleDateFormat format = new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss");
 	
@@ -85,7 +85,7 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 
 	public MetaPilotTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
 			ProgressBar secondBar) {
-		super(metaPar, mrp, progressBar);
+		super(metaPar, mrp, progressBar, null);
 		this.secondBar = secondBar;
 		
 		// Configure logging for this task's result folder and get the task-specific logger name

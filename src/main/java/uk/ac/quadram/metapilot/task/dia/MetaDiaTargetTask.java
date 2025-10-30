@@ -25,7 +25,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.lang3.math.NumberUtils;
-import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.dom4j.DocumentException;
 
@@ -1570,7 +1569,7 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 		if (!reportHtmlDir.exists()) {
 			reportHtmlDir.mkdirs();
 		}
-		
+		/*
 		File jsOutput = new File(metaPar.getReportDir() + "\\reports\\tree.js");
 		if (!jsOutput.getParentFile().exists()) {
 			jsOutput.getParentFile().mkdirs();
@@ -1590,11 +1589,11 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Bubble chart generation failed, continuing with other reports");
 			}
 		}
+*/
+		MetaPythonReportTask task = new MetaPythonReportTask(metaPar.getThreadCount(), mrp, logger);
+		task.setWorkflowType("DIA");
+		task.initializeManifestGenerator(new File(metaPar.getReportDir(), "reports"));
 
-	MetaPythonReportTask task = new MetaPythonReportTask(metaPar.getThreadCount(), mrp, logger);
-	task.setWorkflowType("DIA");
-	task.initializeManifestGenerator(new File(metaPar.getReportDir(), "reports"));
-		
 		// Create initial manifest file to ensure index page can load
 		ReportManifestGenerator manifestGen = new ReportManifestGenerator(new File(metaPar.getReportDir(), "reports"));
 		manifestGen.createInitialManifest();

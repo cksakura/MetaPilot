@@ -51,10 +51,10 @@ class FunctionSummaryGenerator(BaseReportGenerator):
                 specs.append([{"type": "bar"}])  # Default fallback
         
         # Calculate vertical spacing based on number of rows
-        # Maximum spacing is 1/(rows-1), use 80% of that to be safe
+        # Maximum spacing is 1/(rows-1), use 25% of that to be safe
         if num_rows > 1:
             max_spacing = 1.0 / (num_rows - 1)
-            vertical_spacing = min(0.1, max_spacing * 0.8)
+            vertical_spacing = min(0.1, max_spacing * 0.25)
         else:
             vertical_spacing = 0.1
         

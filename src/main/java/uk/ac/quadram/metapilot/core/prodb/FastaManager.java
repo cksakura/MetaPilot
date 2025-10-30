@@ -304,6 +304,47 @@ public class FastaManager {
 
         return shuffledSequence.toString();
     }
+	
+	private static void combineGenomes(HashSet<String> genomes, String in, String out) {
+		try (PrintWriter writer = new PrintWriter(out)) {
+			for (String genome : genomes) {
+				File file = new File(in, genome + ".faa");
+				if (file.exists()) {
+					BufferedReader reader = new BufferedReader(new FileReader(file));
+					String line = null;
+					while ((line = reader.readLine()) != null) {
+						writer.println(line);
+					}
+					reader.close();
+				}
+			}
+			writer.close();
+		} catch (IOException e) {
+
+		}
+	}
+	
+	private static void form(String in, String out) {
+		try (BufferedReader reader = new BufferedReader(new FileReader(in));
+				PrintWriter writer = new PrintWriter(out)) {
+
+			String line = reader.readLine();
+			while ((line = reader.readLine()) != null) {
+				String[] cs = line.split("\t");
+				if (cs.length != 3) {
+					System.out.println(line);
+				} else {
+					writer.println(">" + cs[0] + "zt" + cs[1]);
+					writer.println(cs[2]);
+				}
+			}
+
+			reader.close();
+			writer.close();
+		} catch (IOException e) {
+
+		}
+	}
     
 	public static void main(String[] args) throws SQLException, IOException {
 		// TODO Auto-generated method stub
@@ -312,10 +353,9 @@ public class FastaManager {
 //        String shuffledSequence = generateTrypticShuffledSequence(originalSequence);
 //        System.out.println("Original Sequence: " + originalSequence);
 //        System.out.println("Shuffled Sequence: " + shuffledSequence);
-    
-        
-		FastaManager.addDecoy("Z:\\Kai\\Raw_files\\single_species\\8482\\uniprotkb_taxonomy_id_821_2024_09_06.fasta", 
-				"Z:\\Kai\\Raw_files\\single_species\\8482\\uniprotkb_taxonomy_id_821_2024_09_06_TD.fasta");
+
+//		FastaManager.addDecoy("C:\\Users\\daz25hak\\MetaProAI\\database\\uniprotkb_Human_AND_reviewed_true_AND_m_2025_09_01.fasta", 
+//				"C:\\Users\\daz25hak\\MetaProAI\\database\\TD_uniprotkb_Human_AND_reviewed_true_AND_m_2025_09_01.fasta");
 		
 //		FastaManager.addShuffle("Z:\\Kai\\Raw_files\\PXD008738\\fecal\\dia\\MetaLab_pep_lib_pfind\\mag_result\\combined.fasta", 
 //				"Z:\\Kai\\Raw_files\\PXD008738\\fecal\\dia\\MetaLab_pep_lib_pfind\\mag_result\\shuf.combined.fasta");
@@ -327,6 +367,9 @@ public class FastaManager {
 		
 //		FastaManager.combine("Z:\\Haonan\\DIA_eva\\database_overlap between DSM10507 and microbiome\\temp", 
 //				"Z:\\Haonan\\DIA_eva\\database_overlap between DSM10507 and microbiome\\sample_specific_db_for48_peps.fasta");
+		
+		FastaManager.form("Z:\\BEV_Simon\\proteins.txt", "Z:\\BEV_Simon\\qib101rs_2runs_Proteins.fasta");
+		
 	}
 	
 }

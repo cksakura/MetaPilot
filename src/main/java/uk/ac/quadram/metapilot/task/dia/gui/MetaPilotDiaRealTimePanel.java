@@ -896,13 +896,16 @@ public class MetaPilotDiaRealTimePanel extends VBox {
 
     private void startRealMonitoringTask() {
         try {
-            // Collect parameters for real-time monitoring
+            // 1. Collect parameters for real-time monitoring
+            consolePanel.appendConsoleText("Collecting parameters from UI...\n");
             MetaParameterDiaRT rtParams = collectParametersFromUIForRealTime();
             if (rtParams == null) {
+                consolePanel.appendConsoleText("ERROR: Failed to collect parameters from UI.\n");
                 showError("Parameter Error", "Failed to collect parameters. Please check your settings.");
                 resetMonitoring();
                 return;
             }
+            consolePanel.appendConsoleText("✓ Successfully collected parameters from UI\n");
             
             // Set monitoring-specific parameters
             rtParams.setMonitorFolder(new File(monitorFolderField.getText()));
@@ -915,14 +918,37 @@ public class MetaPilotDiaRealTimePanel extends VBox {
             // Store current parameters for use in stop control
             currentAnalysisParameters = rtParams;
             
-            // JavaFX models already initialized in constructor
+            // 2. Save parameters to file
+            String resultDir = rtParams.getResultFolder().getAbsolutePath();
+            if (resultDir != null && !resultDir.trim().isEmpty()) {
+                consolePanel.appendConsoleText("Saving parameters...\n");
+                
+                // Save as last used parameters
+                boolean lastParamsSaved = parameterIO.saveLastUsedParameters(rtParams);
+                if (lastParamsSaved) {
+                    consolePanel.appendConsoleText("✓ Last used parameters saved\n");
+                } else {
+                    consolePanel.appendConsoleText("WARNING: Failed to save last used parameters\n");
+                }
+                
+                // Save to preferences
+                boolean prefsSaved = parameterIO.savePreferences(rtParams);
+                if (prefsSaved) {
+                    consolePanel.appendConsoleText("✓ Preferences saved\n");
+                } else {
+                    consolePanel.appendConsoleText("WARNING: Failed to save preferences\n");
+                }
+            }
             
-            consolePanel.appendConsoleText("Starting MetaPilot DIA Real-time monitoring...\n");
+            // 3. Display monitoring configuration
+            consolePanel.appendConsoleText("Setting up monitoring configuration...\n");
             consolePanel.appendConsoleText("Monitor folder: " + rtParams.getMonitorFolder().getAbsolutePath() + "\n");
             consolePanel.appendConsoleText("Result folder: " + rtParams.getResultFolder().getAbsolutePath() + "\n");
             consolePanel.appendConsoleText("Perform analysis after completion: " + performAnalysisAfterComplete + "\n");
+            consolePanel.appendConsoleText("✓ Monitoring configuration ready\n");
             
-            // Create and start MetaDiaMonitorTask
+            // 4. Create and start MetaDiaMonitorTask
+            consolePanel.appendConsoleText("Creating DIA Real-time monitoring task...\n");
             monitorTask = new MetaDiaMonitorTask(
                 rtParams,
                 resourceParams,
@@ -934,8 +960,10 @@ public class MetaPilotDiaRealTimePanel extends VBox {
                 javafxRawListItems,
                 consolePanel
             );
+            consolePanel.appendConsoleText("✓ Task created successfully\n");
             
-            // Set up task monitoring callbacks
+            // 5. Set up task monitoring callbacks
+            consolePanel.appendConsoleText("Setting up task callbacks...\n");
             monitorTask.setOnRunning(e -> {
                 Platform.runLater(() -> {
                     consolePanel.appendConsoleText("Real-time monitoring task started.\n");
@@ -984,22 +1012,24 @@ public class MetaPilotDiaRealTimePanel extends VBox {
                 }
             });
             
+            consolePanel.appendConsoleText("✓ Task callbacks configured\n");
+            
             // Completely disable all sync tasks to isolate threading issues
             // startProgressSyncTask();
             // Sync mechanism removed - using direct JavaFX model updates
-            consolePanel.appendConsoleText("DEBUG: Using direct JavaFX model updates - no sync needed\n");
             
             // Manual refresh button removed - UI updates automatically now
             
             // Add a debug button to show Swing model contents
             addDebugButton();
             
-            // Start the monitoring task properly as a JavaFX Task
+            // 6. Start the monitoring task
+            consolePanel.appendConsoleText("Starting task execution...\n");
             new Thread(monitorTask).start();
+            consolePanel.appendConsoleText("✓ Monitoring task started successfully.\n");
             
             // Enable the working safer sync task
             // startSafeProgressSyncTask(); // Removed - using direct JavaFX model updates
-            consolePanel.appendConsoleText("DEBUG: Direct JavaFX model updates enabled\n");
             
         } catch (Exception e) {
             consolePanel.appendConsoleText("ERROR: Failed to start real-time monitoring - " + e.getMessage() + "\n");

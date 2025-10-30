@@ -1737,6 +1737,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 						}
 					}
 					ioPanel.setExperimentData(experimentRows);
+					consolePanel.appendConsoleText("Applied " + rawFiles.length + " experiment rows to IO panel\n");
 					LOGGER.debug("[DIA Target] Applied metadata with {} raw files to IO panel", rawFiles.length);
 				}
 			}
@@ -1745,6 +1746,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 			if (params.getResult() != null && !params.getResult().trim().isEmpty()) {
 				if (ioPanel != null) {
 					ioPanel.setOutputDirectory(params.getResult());
+					consolePanel.appendConsoleText("Applied output directory: " + params.getResult() + "\n");
 					LOGGER.debug("[DIA Target] Applied output directory: {}", params.getResult());
 				}
 			}

@@ -24,124 +24,124 @@
     "append_host_db": true,
     "experiments": [
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib1.raw",
-        "experiment_name": "DDA_lib1"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib1.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib1"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib2.raw",
-        "experiment_name": "DDA_lib2"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib2.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib2"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib3.raw",
-        "experiment_name": "DDA_lib3"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib3.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib3"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib4.raw",
-        "experiment_name": "DDA_lib4"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib4.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib4"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib5.raw",
-        "experiment_name": "DDA_lib5"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib5.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib5"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib6.raw",
-        "experiment_name": "DDA_lib6"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib6.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib6"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib7.raw",
-        "experiment_name": "DDA_lib7"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib7.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib7"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib8.raw",
-        "experiment_name": "DDA_lib8"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib8.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib8"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib9.raw",
-        "experiment_name": "DDA_lib9"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib9.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib9"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib10.raw",
-        "experiment_name": "DDA_lib10"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib10.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib10"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib11.raw",
-        "experiment_name": "DDA_lib11"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib11.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib11"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib12.raw",
-        "experiment_name": "DDA_lib12"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib12.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib12"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib13.raw",
-        "experiment_name": "DDA_lib13"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib13.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib13"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib14.raw",
-        "experiment_name": "DDA_lib14"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib14.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib14"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib15.raw",
-        "experiment_name": "DDA_lib15"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib15.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib15"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib16.raw",
-        "experiment_name": "DDA_lib16"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib16.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib16"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib17.raw",
-        "experiment_name": "DDA_lib17"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib17.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib17"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib18.raw",
-        "experiment_name": "DDA_lib18"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib18.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib18"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib19.raw",
-        "experiment_name": "DDA_lib19"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib19.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib19"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib20.raw",
-        "experiment_name": "DDA_lib20"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib20.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib20"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib21.raw",
-        "experiment_name": "DDA_lib21"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib21.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib21"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib22.raw",
-        "experiment_name": "DDA_lib22"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib22.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib22"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib23.raw",
-        "experiment_name": "DDA_lib23"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib23.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib23"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib24.raw",
-        "experiment_name": "DDA_lib24"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib24.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib24"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib25.raw",
-        "experiment_name": "DDA_lib25"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib25.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib25"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib26.raw",
-        "experiment_name": "DDA_lib26"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib26.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib26"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib27.raw",
-        "experiment_name": "DDA_lib27"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib27.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib27"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib28.raw",
-        "experiment_name": "DDA_lib28"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib28.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib28"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib29.raw",
-        "experiment_name": "DDA_lib29"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib29.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib29"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib30.raw",
-        "experiment_name": "DDA_lib30"
+        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW\\O20220929sunyy_MPW_DDA_60min_lib30.raw",
+        "experiment_name": "O20220929sunyy_MPW_DDA_60min_lib30"
       }
     ]
   },
@@ -150,7 +150,7 @@
     "missed_cleavages": 2,
     "digestion_mode": "Specific"
   },
-  "generated_at": "2025-10-24 11:10:23",
+  "generated_at": "2025-10-27 13:24:43",
   "additional_parameters": {
     "generate_sample_specific_db": true,
     "spectra_clustering": false,

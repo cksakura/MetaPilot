@@ -8,7 +8,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import javafx.scene.control.ProgressBar;
@@ -22,11 +21,10 @@ import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 
 public class MSConvertTask extends MetaAbstractTask {
 
-	private static final Logger LOGGER = LogManager.getLogger(MSConvertTask.class);
 	private static final String taskName = "pFind spectrum convert workflow";
 
-	public MSConvertTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar) {
-		super(metaPar, mrp, progressBar);
+	public MSConvertTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar, Logger logger) {
+		super(metaPar, mrp, progressBar, logger);
 		// TODO Auto-generated constructor stub
 	}
 
@@ -37,19 +35,13 @@ public class MSConvertTask extends MetaAbstractTask {
 	}
 
 	@Override
-	protected Logger getLogger() {
-		// TODO Auto-generated constructor stub
-		return LOGGER;
-	}
-
-	@Override
 	protected Boolean call() throws Exception {
 		// TODO Auto-generated constructor stub
 
 		updateMessage(getTaskName() + ": extracting spectra");
 
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": extracting spectra started");
-		LOGGER.info(getTaskName() + ": extracting spectra started");
+		logger.info(getTaskName() + ": extracting spectra started");
 
 		File spectraDirFile = metaPar.getSpectraFile();
 		File rtFile = new File(spectraDirFile, "rt.txt");
@@ -101,7 +93,7 @@ public class MSConvertTask extends MetaAbstractTask {
 							} else {
 								System.out.println(
 										format.format(new Date()) + "\t" + getTaskName() + ": unknown spectra format");
-								LOGGER.info(getTaskName() + ": unknown spectra format");
+								logger.info(getTaskName() + ": unknown spectra format");
 							}
 						}
 					};
@@ -114,39 +106,39 @@ public class MSConvertTask extends MetaAbstractTask {
 					boolean finish = es.awaitTermination(extractRawList.size() * 4, TimeUnit.HOURS);
 					if (finish) {
 						System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": msconvert finished");
-						LOGGER.info(getTaskName() + ": msconvert finished");
+						logger.info(getTaskName() + ": msconvert finished");
 					} else {
 						System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": msconvert failed");
-						LOGGER.info(getTaskName() + ": msconvert failed");
+						logger.info(getTaskName() + ": msconvert failed");
 					}
 
 				} catch (InterruptedException e) {
 					// TODO Auto-generated catch block
 					System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": msconvert failed");
-					LOGGER.error(getTaskName() + ": msconvert failed", e);
+					logger.error(getTaskName() + ": msconvert failed", e);
 				}
 
 			} else {
 				System.out.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": msconvert was not found, please " + "put \"ProteoWizard\" into the resource folder");
-				LOGGER.info(getTaskName() + ": msconvert was not found, please "
+				logger.info(getTaskName() + ": msconvert was not found, please "
 						+ "put \"ProteoWizard\" into the resource folder");
 			}
 
 		} else {
 			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": spectra files have been found in "
 					+ spectraDirFile);
-			LOGGER.info(getTaskName() + ": spectra files have been found in " + spectraDirFile);
+			logger.info(getTaskName() + ": spectra files have been found in " + spectraDirFile);
 		}
 
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": extracting spectra finished");
-		LOGGER.info(getTaskName() + ": extracting spectra finished");
+		logger.info(getTaskName() + ": extracting spectra finished");
 
 		if (!rtFile.exists() || rtFile.length() == 0 || !ms2CountFile.exists() || ms2CountFile.length() == 0) {
 
 			System.out.println(
 					format.format(new Date()) + "\t" + getTaskName() + ": writing retention time information started");
-			LOGGER.info(getTaskName() + ": writing retention time information started");
+			logger.info(getTaskName() + ": writing retention time information started");
 
 			PrintWriter rtWriter = new PrintWriter(rtFile);
 			PrintWriter ms2CountWriter = new PrintWriter(ms2CountFile);
@@ -175,7 +167,7 @@ public class MSConvertTask extends MetaAbstractTask {
 
 			System.out.println(
 					format.format(new Date()) + "\t" + getTaskName() + ": writing retention time information finished");
-			LOGGER.info(getTaskName() + ": writing retention time information finished");
+			logger.info(getTaskName() + ": writing retention time information finished");
 		}
 
 		return true;

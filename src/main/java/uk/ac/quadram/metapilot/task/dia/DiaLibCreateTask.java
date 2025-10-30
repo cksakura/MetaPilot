@@ -15,7 +15,6 @@ import java.util.List;
 import java.util.Map;
 
 import org.apache.commons.io.FileUtils;
-import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import uk.ac.quadram.metapilot.dbSearch.deepDetect.DeepDetectParameter;
@@ -39,7 +38,6 @@ import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 public class DiaLibCreateTask extends MetaAbstractTask {
 
 	private static String taskName = "MAG spectra libarary create task";
-	private static final Logger LOGGER = LogManager.getLogger(DiaLibCreateTask.class);
 	private SimpleDateFormat format = new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss");
 
 	private int taskType;
@@ -54,8 +52,8 @@ public class DiaLibCreateTask extends MetaAbstractTask {
 	public static final int fromPeptide = 2;
 
 	public DiaLibCreateTask(MetaParameterDia metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
-			String filePath, ArrayList<String> pathList, int buildType) {
-		super(metaPar, mrp, progressBar, null);
+			String filePath, ArrayList<String> pathList, int buildType, Logger logger) {
+		super(metaPar, mrp, progressBar, logger);
 		this.magDbItem = metaPar.getMagDbItem();
 		this.filePath = filePath;
 		this.enzyme = pathList.get(0);
@@ -147,7 +145,7 @@ public class DiaLibCreateTask extends MetaAbstractTask {
 				}
 				reader.close();
 			} catch (IOException e) {
-				LOGGER.error(taskName + ": error in reading " + pepFile, e);
+				logger.error(taskName + ": error in reading " + pepFile, e);
 				System.err.println(format.format(new Date()) + "\t" + taskName + ": error in reading " + pepFile);
 			}
 
@@ -181,7 +179,7 @@ public class DiaLibCreateTask extends MetaAbstractTask {
 
 					writer.close();
 				} catch (IOException e) {
-					LOGGER.error(taskName + ": error in writing " + pepDbFile, e);
+					logger.error(taskName + ": error in writing " + pepDbFile, e);
 					System.err.println(format.format(new Date()) + "\t" + taskName + ": error in reading " + pepDbFile);
 				}
 			}
@@ -220,7 +218,7 @@ public class DiaLibCreateTask extends MetaAbstractTask {
 
 					if (seqid == -1) {
 
-						LOGGER.error(taskName + ": there is no \"Sequence\" column in the file " + filePath);
+						logger.error(taskName + ": there is no \"Sequence\" column in the file " + filePath);
 						System.out.println(format.format(new Date()) + "\t" + taskName
 								+ ": there is no \"Sequence\" column in the file " + filePath);
 
@@ -256,7 +254,7 @@ public class DiaLibCreateTask extends MetaAbstractTask {
 					reader.close();
 				} catch (IOException e) {
 
-					LOGGER.error(taskName + ": error in reading " + filePath, e);
+					logger.error(taskName + ": error in reading " + filePath, e);
 					System.err.println(format.format(new Date()) + "\t" + taskName + ": error in reading " + filePath);
 
 					return false;
@@ -271,7 +269,7 @@ public class DiaLibCreateTask extends MetaAbstractTask {
 					}
 					writer.close();
 				} catch (IOException e) {
-					LOGGER.error(taskName + ": error in writing " + pepDbFile, e);
+					logger.error(taskName + ": error in writing " + pepDbFile, e);
 					System.err.println(format.format(new Date()) + "\t" + taskName + ": error in reading " + pepDbFile);
 				}
 			}
@@ -313,7 +311,7 @@ public class DiaLibCreateTask extends MetaAbstractTask {
 			writer.close();
 		} catch (Exception e) {
 			// TODO Auto-generated catch block
-			LOGGER.error(taskName + ": error in writing the information to " + infoFile, e);
+			logger.error(taskName + ": error in writing the information to " + infoFile, e);
 			System.err.println(
 					format.format(new Date()) + "\t" + taskName + ": error in writing the information to " + infoFile);
 		}
@@ -327,20 +325,9 @@ public class DiaLibCreateTask extends MetaAbstractTask {
 		this.cancel();
 	}
 
-	public static void main(String[] args) {
-		// TODO Auto-generated method stub
-	}
-
 	@Override
 	protected String getTaskName() {
 		// TODO Auto-generated method stub
 		return taskName;
 	}
-
-	@Override
-	protected Logger getLogger() {
-		// TODO Auto-generated method stub
-		return LOGGER;
-	}
-
 }
