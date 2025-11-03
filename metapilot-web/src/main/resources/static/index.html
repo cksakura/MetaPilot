@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MetaPilot - Workflow Management</title>
+    <!-- SockJS and STOMP for WebSocket -->
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2/lib/stomp.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+        
+        .content {
+            padding: 40px;
+        }
+        
+        .status-bar {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #28a745;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-dot.offline {
+            background: #dc3545;
+            animation: none;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .form-group {
+            margin-bottom: 25px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        input, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn:active {
+            transform: translateY(0);
+        }
+        
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+        }
+        
+        .btn-danger {
+            background: #dc3545;
+        }
+        
+        .jobs-section {
+            margin-top: 40px;
+        }
+        
+        .jobs-section h2 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+        
+        .job-card {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .job-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .job-info {
+            flex: 1;
+        }
+        
+        .job-id {
+            font-family: monospace;
+            color: #667eea;
+            font-weight: 600;
+            font-size: 0.9em;
+        }
+        
+        .job-message {
+            color: #666;
+            margin-top: 5px;
+            font-size: 0.9em;
+        }
+        
+        .progress-bar-container {
+            background: #e0e0e0;
+            border-radius: 10px;
+            height: 20px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+        
+        .progress-bar {
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            height: 100%;
+            width: 0%;
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+        
+        .job-status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+        
+        .status-running {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .status-completed {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .status-failed, .status-cancelled {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .btn-sm {
+            padding: 8px 16px;
+            font-size: 14px;
+        }
+        
+        .alert {
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+        
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border-left: 4px solid #dc3545;
+        }
+        
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border-left: 4px solid #28a745;
+        }
+        
+        .alert-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border-left: 4px solid #17a2b8;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .no-jobs {
+            text-align: center;
+            color: #6c757d;
+            padding: 40px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🧬 MetaPilot</h1>
+            <p>Workflow Management for HPC Environments</p>
+        </div>
+        
+        <div class="content">
+            <div class="status-bar">
+                <div class="status-indicator">
+                    <span class="status-dot" id="api-status-dot"></span>
+                    <span id="api-status">API: Checking...</span>
+                </div>
+                <div id="version-info">Version 1.0.0-beta.3</div>
+            </div>
+            
+            <div id="alert-container"></div>
+            
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="margin: 0;">Submit New Workflow</h2>
+                <a href="parameter-builder.html" style="text-decoration: none;">
+                    <button type="button" class="btn" style="background: #28a745; border: none;">
+                        🎛️ Build Parameters
+                    </button>
+                </a>
+            </div>
+            <form id="submit-form">
+                <div class="form-group">
+                    <label for="param-file">Parameter File</label>
+                    <input type="text" id="param-file" name="paramFile" 
+                           placeholder="/path/to/parameters.json or upload file" required>
+                    <input type="file" id="param-upload" accept=".json" style="margin-top: 10px; display: block;">
+                    <small style="color: #666; margin-top: 5px; display: block;">Upload parameter JSON or provide path</small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="resource-file">Resource Configuration File</label>
+                    <input type="text" id="resource-file" name="resourceFile" 
+                           placeholder="/path/to/resources.params or upload file" required>
+                    <input type="file" id="resource-upload" accept=".params,.properties" style="margin-top: 10px; display: block;">
+                    <small style="color: #666; margin-top: 5px; display: block;">Upload resource config or provide path</small>
+                </div>
+                
+                <div class="actions">
+                    <button type="submit" class="btn" id="submit-btn">Submit Job</button>
+                </div>
+            </form>
+            
+            <div class="jobs-section">
+                <h2>Running Jobs</h2>
+                <div id="jobs-container">
+                    <div class="no-jobs">No jobs submitted yet.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const API_BASE = window.location.origin + '/api/jobs';
+        let stompClient = null;
+        let connectedJobs = new Set();
+        
+        // Check API status on load
+        checkApiStatus();
+        
+        // Connect to WebSocket
+        connectWebSocket();
+        
+        // Handle form submission
+        document.getElementById('submit-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            document.getElementById('submit-btn').disabled = true;
+            document.getElementById('submit-btn').textContent = 'Uploading & Submitting...';
+            
+            try {
+                let paramFile = document.getElementById('param-file').value;
+                let resourceFile = document.getElementById('resource-file').value;
+                
+                // Upload parameter file if provided
+                const paramUpload = document.getElementById('param-upload');
+                if (paramUpload.files.length > 0) {
+                    showAlert('Uploading parameter file...', 'info');
+                    const paramUploadResult = await uploadFile(paramUpload.files[0], 'parameters');
+                    if (!paramUploadResult.success) {
+                        showAlert('Parameter upload failed: ' + paramUploadResult.error, 'error');
+                        return;
+                    }
+                    paramFile = paramUploadResult.path;
+                    showAlert('Parameter file uploaded', 'success');
+                }
+                
+                // Upload resource file if provided
+                const resourceUpload = document.getElementById('resource-upload');
+                if (resourceUpload.files.length > 0) {
+                    showAlert('Uploading resource file...', 'info');
+                    const resourceUploadResult = await uploadFile(resourceUpload.files[0], 'resources');
+                    if (!resourceUploadResult.success) {
+                        showAlert('Resource upload failed: ' + resourceUploadResult.error, 'error');
+                        return;
+                    }
+                    resourceFile = resourceUploadResult.path;
+                    showAlert('Resource file uploaded', 'success');
+                }
+                
+                // Submit job
+                document.getElementById('submit-btn').textContent = 'Submitting Job...';
+                const response = await fetch(API_BASE + '/submit', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        paramFile: paramFile,
+                        resourceFile: resourceFile
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showAlert('Job submitted successfully! Job ID: ' + data.jobId, 'success');
+                    document.getElementById('submit-form').reset();
+                    
+                    // Connect to job progress
+                    subscribeToJob(data.jobId);
+                    addJobCard(data.jobId);
+                } else {
+                    showAlert('Error: ' + (data.error || 'Failed to submit job'), 'error');
+                }
+            } catch (error) {
+                showAlert('Network error: ' + error.message, 'error');
+            } finally {
+                document.getElementById('submit-btn').disabled = false;
+                document.getElementById('submit-btn').textContent = 'Submit Job';
+            }
+        });
+        
+        async function uploadFile(file, category) {
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                const response = await fetch(window.location.origin + '/api/files/' + category, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                return data;
+            } catch (error) {
+                return { success: false, error: error.message };
+            }
+        }
+        
+        async function checkApiStatus() {
+            try {
+                const response = await fetch(API_BASE + '/status');
+                const data = await response.json();
+                document.getElementById('api-status').textContent = 'API: ' + data.status;
+                document.getElementById('api-status-dot').classList.remove('offline');
+            } catch (error) {
+                document.getElementById('api-status').textContent = 'API: Offline';
+                document.getElementById('api-status-dot').classList.add('offline');
+                showAlert('Cannot connect to API server', 'error');
+            }
+        }
+        
+        function connectWebSocket() {
+            const socket = new SockJS(window.location.origin + '/ws-stomp');
+            stompClient = Stomp.over(socket);
+            
+            stompClient.connect({}, function(frame) {
+                console.log('WebSocket connected: ' + frame);
+            }, function(error) {
+                console.error('WebSocket connection error:', error);
+            });
+        }
+        
+        function subscribeToJob(jobId) {
+            if (!stompClient || connectedJobs.has(jobId)) {
+                return;
+            }
+            
+            connectedJobs.add(jobId);
+            
+            stompClient.subscribe('/topic/jobs/' + jobId + '/progress', function(message) {
+                const progress = JSON.parse(message.body);
+                updateJobProgress(jobId, progress);
+            });
+        }
+        
+        function addJobCard(jobId) {
+            const container = document.getElementById('jobs-container');
+            
+            // Remove "no jobs" message
+            const noJobs = container.querySelector('.no-jobs');
+            if (noJobs) {
+                noJobs.remove();
+            }
+            
+            const jobCard = document.createElement('div');
+            jobCard.className = 'job-card';
+            jobCard.id = 'job-' + jobId;
+            jobCard.innerHTML = `
+                <div class="job-header">
+                    <div class="job-info">
+                        <div class="job-id">${jobId}</div>
+                        <div class="job-message" id="job-msg-${jobId}">Initializing...</div>
+                    </div>
+                    <div class="actions">
+                        <button class="btn btn-danger btn-sm" onclick="cancelJob('${jobId}')">Cancel</button>
+                    </div>
+                </div>
+                <div class="progress-bar-container">
+                    <div class="progress-bar" id="job-progress-${jobId}">0%</div>
+                </div>
+            `;
+            
+            container.insertBefore(jobCard, container.firstChild);
+        }
+        
+        function updateJobProgress(jobId, progress) {
+            const progressBar = document.getElementById('job-progress-' + jobId);
+            const message = document.getElementById('job-msg-' + jobId);
+            const jobCard = document.getElementById('job-' + jobId);
+            
+            if (!progressBar || !message) return;
+            
+            const percent = Math.round(progress.progress * 100);
+            progressBar.style.width = percent + '%';
+            progressBar.textContent = percent + '%';
+            
+            message.textContent = progress.message;
+            
+            // Update status badge
+            const statusBadge = jobCard.querySelector('.job-status');
+            if (statusBadge) {
+                statusBadge.className = 'job-status status-' + progress.status.toLowerCase();
+                statusBadge.textContent = progress.status;
+            } else {
+                // Add status badge if it doesn't exist
+                const jobHeader = jobCard.querySelector('.job-header');
+                const statusSpan = document.createElement('span');
+                statusSpan.className = 'job-status status-' + progress.status.toLowerCase();
+                statusSpan.textContent = progress.status;
+                jobHeader.appendChild(statusSpan);
+            }
+            
+            // Auto-remove completed/failed jobs after 10 seconds
+            if (progress.status === 'COMPLETED' || progress.status === 'FAILED' || progress.status === 'CANCELLED') {
+                const cancelBtn = jobCard.querySelector('.btn-danger');
+                if (cancelBtn) cancelBtn.remove();
+                
+                setTimeout(() => {
+                    jobCard.remove();
+                    connectedJobs.delete(jobId);
+                    
+                    // Show "no jobs" if empty
+                    if (document.getElementById('jobs-container').children.length === 0) {
+                        const container = document.getElementById('jobs-container');
+                        container.innerHTML = '<div class="no-jobs">No jobs submitted yet.</div>';
+                    }
+                }, 10000);
+            }
+        }
+        
+        async function cancelJob(jobId) {
+            try {
+                const response = await fetch(API_BASE + '/' + jobId + '/cancel', {
+                    method: 'POST'
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showAlert('Job ' + jobId + ' cancelled', 'success');
+                } else {
+                    showAlert('Error: ' + data.message, 'error');
+                }
+            } catch (error) {
+                showAlert('Network error: ' + error.message, 'error');
+            }
+        }
+        
+        function showAlert(message, type) {
+            const container = document.getElementById('alert-container');
+            const alert = document.createElement('div');
+            alert.className = 'alert alert-' + type;
+            alert.textContent = message;
+            
+            container.innerHTML = '';
+            container.appendChild(alert);
+            
+            setTimeout(() => {
+                alert.style.transition = 'opacity 0.5s';
+                alert.style.opacity = '0';
+                setTimeout(() => container.removeChild(alert), 500);
+            }, 5000);
+        }
+    </script>
+</body>
+</html>

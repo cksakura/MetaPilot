@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MetaPilot - Parameter Builder</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header h1 {
+            font-size: 2em;
+            margin: 0;
+        }
+        
+        .header-actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .btn {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: 2px solid white;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .btn:hover {
+            background: white;
+            color: #667eea;
+        }
+        
+        .content {
+            padding: 40px;
+        }
+        
+        .section {
+            margin-bottom: 40px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 25px;
+        }
+        
+        .section-title {
+            font-size: 1.5em;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        input, select, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .inline-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        
+        .experiment-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        
+        .experiment-table th,
+        .experiment-table td {
+            padding: 10px;
+            border: 1px solid #e0e0e0;
+            text-align: left;
+        }
+        
+        .experiment-table th {
+            background: #f8f9fa;
+            font-weight: 600;
+        }
+        
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+        }
+        
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .checkbox-group {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+        }
+        
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .checkbox-item input[type="checkbox"] {
+            width: auto;
+        }
+        
+        .alert {
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+        
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border-left: 4px solid #28a745;
+        }
+        
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border-left: 4px solid #dc3545;
+        }
+        
+        #alert-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            max-width: 400px;
+        }
+    </style>
+</head>
+<body>
+    <div id="alert-container"></div>
+    
+    <div class="container">
+        <div class="header">
+            <h1>🧬 MetaPilot Parameter Builder</h1>
+            <div class="header-actions">
+                <button class="btn" onclick="loadFromFile()">Load from File</button>
+                <button class="btn" onclick="saveToFile()">Save to File</button>
+                <button class="btn" onclick="window.location.href='index.html'">Back to Jobs</button>
+            </div>
+        </div>
+        
+        <div class="content">
+            <form id="param-form">
+                <!-- Input/Output Settings -->
+                <div class="section">
+                    <h2 class="section-title">Input/Output Settings</h2>
+                    
+                    <div class="form-group">
+                        <label>Output Directory</label>
+                        <input type="text" id="output-dir" placeholder="/path/to/results" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Microbiome Database</label>
+                        <input type="text" id="microbiome-db" placeholder="/path/to/microbiome.fasta" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="append-host-db" style="width: auto; margin-right: 8px;">
+                            Append Host Database
+                        </label>
+                    </div>
+                    
+                    <div class="form-group" id="host-db-group" style="display: none;">
+                        <label>Host Database</label>
+                        <input type="text" id="host-db" placeholder="/path/to/host.fasta">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Experiments</label>
+                        <table class="experiment-table">
+                            <thead>
+                                <tr>
+                                    <th>Raw File Path</th>
+                                    <th>Experiment Name</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="experiments-tbody">
+                            </tbody>
+                        </table>
+                        <button type="button" class="btn btn-primary btn-sm" style="margin-top: 10px;" onclick="addExperiment()">Add Experiment</button>
+                    </div>
+                </div>
+                
+                <!-- Enzyme Settings -->
+                <div class="section">
+                    <h2 class="section-title">Enzyme Settings</h2>
+                    
+                    <div class="inline-group">
+                        <div class="form-group">
+                            <label>Enzyme</label>
+                            <select id="enzyme">
+                                <option value="Trypsin">Trypsin</option>
+                                <option value="Trypsin/P">Trypsin/P</option>
+                                <option value="LysC">LysC</option>
+                                <option value="LysC/P">LysC/P</option>
+                                <option value="Chymotrypsin">Chymotrypsin</option>
+                                <option value="ArgC">ArgC</option>
+                                <option value="AspN">AspN</option>
+                                <option value="GluC">GluC</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Missed Cleavages</label>
+                            <input type="number" id="missed-cleavages" value="2" min="0" max="10">
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Digestion Mode</label>
+                        <select id="digestion-mode">
+                            <option value="Full">Full</option>
+                            <option value="Semi">Semi</option>
+                            <option value="Non">Non</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <!-- Modifications -->
+                <div class="section">
+                    <h2 class="section-title">Modifications</h2>
+                    
+                    <div class="form-group">
+                        <label>Fixed Modifications (comma-separated)</label>
+                        <input type="text" id="fixed-mods" placeholder="e.g., Carbamidomethyl (C)">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Variable Modifications (comma-separated)</label>
+                        <input type="text" id="variable-mods" placeholder="e.g., Oxidation (M), Acetyl (Protein N-term)">
+                    </div>
+                </div>
+                
+                <!-- Quantitative Mode -->
+                <div class="section">
+                    <h2 class="section-title">Quantitative Mode</h2>
+                    
+                    <div class="form-group">
+                        <label>Quantitative Method</label>
+                        <select id="quant-mode" onchange="updateQuantModeUI()">
+                            <option value="Label-Free">Label-Free</option>
+                            <option value="Isotopic">Isotopic</option>
+                            <option value="Isobaric">Isobaric</option>
+                        </select>
+                    </div>
+                    
+                    <div id="isotopic-settings" style="display: none;">
+                        <div class="form-group">
+                            <label>Light Labels (comma-separated)</label>
+                            <input type="text" id="light-labels" placeholder="e.g., Arg0, Lys0">
+                        </div>
+                        <div class="form-group">
+                            <label>Medium Labels (comma-separated)</label>
+                            <input type="text" id="medium-labels" placeholder="e.g., Arg6, Lys4">
+                        </div>
+                        <div class="form-group">
+                            <label>Heavy Labels (comma-separated)</label>
+                            <input type="text" id="heavy-labels" placeholder="e.g., Arg10, Lys8">
+                        </div>
+                    </div>
+                    
+                    <div id="isobaric-settings" style="display: none;">
+                        <div class="form-group">
+                            <label>Isobaric Type</label>
+                            <select id="isobaric-type">
+                                <option value="TMT6">TMT6</option>
+                                <option value="TMT10">TMT10</option>
+                                <option value="TMT16">TMT16</option>
+                                <option value="TMTpro">TMTpro</option>
+                                <option value="ITRAQ4">iTRAQ4</option>
+                                <option value="ITRAQ8">iTRAQ8</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Taxonomic Analysis -->
+                <div class="section">
+                    <h2 class="section-title">Taxonomic Analysis</h2>
+                    
+                    <div class="form-group">
+                        <label>Taxonomic Groups</label>
+                        <div class="checkbox-group">
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="tax-eukaryota" style="width: auto;">
+                                <label for="tax-eukaryota" style="font-weight: normal;">Eukaryota</label>
+                            </div>
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="tax-bacteria" checked>
+                                <label for="tax-bacteria" style="font-weight: normal;">Bacteria</label>
+                            </div>
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="tax-archaea">
+                                <label for="tax-archaea" style="font-weight: normal;">Archaea</label>
+                            </div>
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="tax-viruses">
+                                <label for="tax-viruses" style="font-weight: normal;">Viruses</label>
+                            </div>
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="tax-viroids">
+                                <label for="tax-viroids" style="font-weight: normal;">Viroids</label>
+                            </div>
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="tax-unclassified">
+                                <label for="tax-unclassified" style="font-weight: normal;">Unclassified</label>
+                            </div>
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="tax-other">
+                                <label for="tax-other" style="font-weight: normal;">Other</label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="inline-group">
+                        <div class="form-group">
+                            <label>Ignore Rank</label>
+                            <select id="ignore-rank">
+                                <option value="Species" selected>Species</option>
+                                <option value="Genus">Genus</option>
+                                <option value="Family">Family</option>
+                                <option value="Order">Order</option>
+                                <option value="Class">Class</option>
+                                <option value="Phylum">Phylum</option>
+                                <option value="Kingdom">Kingdom</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="ignore-env-samples" style="width: auto; margin-right: 8px;">
+                                Ignore Environmental Samples
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Additional Parameters -->
+                <div class="section">
+                    <h2 class="section-title">Additional Parameters</h2>
+                    
+                    <div class="inline-group">
+                        <div class="form-group">
+                            <label>Threads</label>
+                            <input type="number" id="threads" value="4" min="1" max="128">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>MS2 Scan Mode</label>
+                            <select id="ms2-scan-mode">
+                                <option value="HCD-FTMS" selected>HCD-FTMS</option>
+                                <option value="HCD-ITMS">HCD-ITMS</option>
+                                <option value="CID-FTMS">CID-FTMS</option>
+                                <option value="CID-ITMS">CID-ITMS</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="gen-sample-db" style="width: auto; margin-right: 8px;">
+                            Generate Sample-Specific Database
+                        </label>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="spectra-cluster" style="width: auto; margin-right: 8px;">
+                            Spectra Clustering
+                        </label>
+                    </div>
+                </div>
+                
+                <div style="text-align: center; margin-top: 30px;">
+                    <button type="button" class="btn" onclick="saveAndSubmit()" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 15px 40px; font-size: 16px;">
+                        Save & Submit Job
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <script>
+        let experimentCounter = 0;
+        
+        // Load experiment toggle
+        document.getElementById('append-host-db').addEventListener('change', function() {
+            document.getElementById('host-db-group').style.display = this.checked ? 'block' : 'none';
+        });
+        
+        function updateQuantModeUI() {
+            const mode = document.getElementById('quant-mode').value;
+            document.getElementById('isotopic-settings').style.display = mode === 'Isotopic' ? 'block' : 'none';
+            document.getElementById('isobaric-settings').style.display = mode === 'Isobaric' ? 'block' : 'none';
+        }
+        
+        function addExperiment() {
+            experimentCounter++;
+            const tbody = document.getElementById('experiments-tbody');
+            const row = document.createElement('tr');
+            row.id = 'exp-' + experimentCounter;
+            row.innerHTML = `
+                <td><input type="text" class="exp-file" placeholder="/path/to/raw/file.raw" required></td>
+                <td><input type="text" class="exp-name" placeholder="Experiment-${experimentCounter}"></td>
+                <td>
+                    <button type="button" class="btn btn-danger btn-sm" onclick="removeExperiment(${experimentCounter})">Remove</button>
+                </td>
+            `;
+            tbody.appendChild(row);
+        }
+        
+        function removeExperiment(id) {
+            document.getElementById('exp-' + id).remove();
+        }
+        
+        function saveToFile() {
+            const params = buildParameters();
+            const blob = new Blob([JSON.stringify(params, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'metapilot_parameters.json';
+            a.click();
+            URL.revokeObjectURL(url);
+            showAlert('Parameters saved to file', 'success');
+        }
+        
+        function loadFromFile() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+            input.onchange = function(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const params = JSON.parse(e.target.result);
+                        loadParameters(params);
+                        showAlert('Parameters loaded successfully', 'success');
+                    } catch (err) {
+                        showAlert('Failed to parse JSON: ' + err.message, 'error');
+                    }
+                };
+                reader.readAsText(file);
+            };
+            input.click();
+        }
+        
+        function loadParameters(params) {
+            // Load input/output
+            if (params.input_output) {
+                document.getElementById('output-dir').value = params.input_output.output_directory || '';
+                document.getElementById('microbiome-db').value = params.input_output.microbiome_database || '';
+                document.getElementById('append-host-db').checked = params.input_output.append_host_db || false;
+                document.getElementById('host-db-group').style.display = params.input_output.append_host_db ? 'block' : 'none';
+                document.getElementById('host-db').value = params.input_output.host_database || '';
+                
+                // Load experiments
+                if (params.input_output.experiments && params.input_output.experiments.length > 0) {
+                    document.getElementById('experiments-tbody').innerHTML = '';
+                    params.input_output.experiments.forEach((exp, idx) => {
+                        experimentCounter = idx + 1;
+                        addExperiment();
+                        const row = document.getElementById('exp-' + experimentCounter);
+                        row.querySelector('.exp-file').value = exp.file_path || '';
+                        row.querySelector('.exp-name').value = exp.experiment_name || '';
+                    });
+                }
+            }
+            
+            // Load enzyme settings
+            if (params.enzyme_settings) {
+                document.getElementById('enzyme').value = params.enzyme_settings.enzyme || 'Trypsin';
+                document.getElementById('missed-cleavages').value = params.enzyme_settings.missed_cleavages || 2;
+                document.getElementById('digestion-mode').value = params.enzyme_settings.digestion_mode || 'Full';
+            }
+            
+            // Load modifications
+            if (params.modifications) {
+                document.getElementById('fixed-mods').value = params.modifications.fixed_modifications ? 
+                    params.modifications.fixed_modifications.join(', ') : '';
+                document.getElementById('variable-mods').value = params.modifications.variable_modifications ? 
+                    params.modifications.variable_modifications.join(', ') : '';
+            }
+            
+            // Load quantitative mode
+            if (params.quantitative_mode) {
+                document.getElementById('quant-mode').value = params.quantitative_mode.mode || 'Label-Free';
+                updateQuantModeUI();
+                
+                if (params.quantitative_mode.light_labels) {
+                    document.getElementById('light-labels').value = params.quantitative_mode.light_labels.join(', ');
+                }
+                if (params.quantitative_mode.medium_labels) {
+                    document.getElementById('medium-labels').value = params.quantitative_mode.medium_labels.join(', ');
+                }
+                if (params.quantitative_mode.heavy_labels) {
+                    document.getElementById('heavy-labels').value = params.quantitative_mode.heavy_labels.join(', ');
+                }
+                if (params.quantitative_mode.isobaric_type) {
+                    document.getElementById('isobaric-type').value = params.quantitative_mode.isobaric_type;
+                }
+            }
+            
+            // Load taxonomic analysis
+            if (params.taxonomic_analysis) {
+                document.getElementById('tax-eukaryota').checked = params.taxonomic_analysis.eukaryota || false;
+                document.getElementById('tax-bacteria').checked = params.taxonomic_analysis.bacteria || false;
+                document.getElementById('tax-archaea').checked = params.taxonomic_analysis.archaea || false;
+                document.getElementById('tax-viruses').checked = params.taxonomic_analysis.viruses || false;
+                document.getElementById('tax-viroids').checked = params.taxonomic_analysis.viroids || false;
+                document.getElementById('tax-unclassified').checked = params.taxonomic_analysis.unclassified || false;
+                document.getElementById('tax-other').checked = params.taxonomic_analysis.other || false;
+                document.getElementById('ignore-rank').value = params.taxonomic_analysis.ignore_rank || 'Species';
+                document.getElementById('ignore-env-samples').checked = params.taxonomic_analysis.ignore_environmental_samples || false;
+            }
+            
+            // Load additional parameters
+            if (params.additional_parameters) {
+                document.getElementById('threads').value = params.additional_parameters.threads || 4;
+                document.getElementById('ms2-scan-mode').value = params.additional_parameters.ms2_scan_mode || 'HCD-FTMS';
+                document.getElementById('gen-sample-db').checked = params.additional_parameters.generate_sample_specific_db || false;
+                document.getElementById('spectra-cluster').checked = params.additional_parameters.spectra_clustering || false;
+            }
+        }
+        
+        function buildParameters() {
+            // Build experiments array
+            const experiments = [];
+            const expRows = document.querySelectorAll('#experiments-tbody tr');
+            expRows.forEach(row => {
+                const file = row.querySelector('.exp-file').value;
+                const name = row.querySelector('.exp-name').value;
+                if (file) {
+                    experiments.push({
+                        file_path: file,
+                        experiment_name: name
+                    });
+                }
+            });
+            
+            // Build quantitative mode
+            const quantMode = {
+                mode: document.getElementById('quant-mode').value
+            };
+            if (quantMode.mode === 'Isotopic') {
+                quantMode.light_labels = document.getElementById('light-labels').value.split(',').map(s => s.trim()).filter(s => s);
+                quantMode.medium_labels = document.getElementById('medium-labels').value.split(',').map(s => s.trim()).filter(s => s);
+                quantMode.heavy_labels = document.getElementById('heavy-labels').value.split(',').map(s => s.trim()).filter(s => s);
+            } else if (quantMode.mode === 'Isobaric') {
+                quantMode.isobaric_type = document.getElementById('isobaric-type').value;
+            }
+            
+            const params = {
+                workflow_type: "DDA_IGC_MaxQuant",
+                description: "Generated from Web UI",
+                input_output: {
+                    output_directory: document.getElementById('output-dir').value,
+                    microbiome_database: document.getElementById('microbiome-db').value,
+                    append_host_db: document.getElementById('append-host-db').checked,
+                    host_database: document.getElementById('host-db').value,
+                    experiments: experiments
+                },
+                enzyme_settings: {
+                    enzyme: document.getElementById('enzyme').value,
+                    missed_cleavages: parseInt(document.getElementById('missed-cleavages').value),
+                    digestion_mode: document.getElementById('digestion-mode').value
+                },
+                modifications: {
+                    fixed_modifications: document.getElementById('fixed-mods').value.split(',').map(s => s.trim()).filter(s => s),
+                    variable_modifications: document.getElementById('variable-mods').value.split(',').map(s => s.trim()).filter(s => s)
+                },
+                quantitative_mode: quantMode,
+                taxonomic_analysis: {
+                    eukaryota: document.getElementById('tax-eukaryota').checked,
+                    bacteria: document.getElementById('tax-bacteria').checked,
+                    archaea: document.getElementById('tax-archaea').checked,
+                    viruses: document.getElementById('tax-viruses').checked,
+                    viroids: document.getElementById('tax-viroids').checked,
+                    unclassified: document.getElementById('tax-unclassified').checked,
+                    other: document.getElementById('tax-other').checked,
+                    ignore_rank: document.getElementById('ignore-rank').value,
+                    ignore_environmental_samples: document.getElementById('ignore-env-samples').checked
+                },
+                additional_parameters: {
+                    threads: parseInt(document.getElementById('threads').value),
+                    ms2_scan_mode: document.getElementById('ms2-scan-mode').value,
+                    generate_sample_specific_db: document.getElementById('gen-sample-db').checked,
+                    spectra_clustering: document.getElementById('spectra-cluster').checked
+                }
+            };
+            
+            return params;
+        }
+        
+        async function saveAndSubmit() {
+            try {
+                const params = buildParameters();
+                
+                // Validate
+                if (!params.input_output.output_directory) {
+                    showAlert('Please specify output directory', 'error');
+                    return;
+                }
+                if (!params.input_output.microbiome_database) {
+                    showAlert('Please specify microbiome database', 'error');
+                    return;
+                }
+                if (params.input_output.experiments.length === 0) {
+                    showAlert('Please add at least one experiment', 'error');
+                    return;
+                }
+                
+                // Upload parameter file
+                showAlert('Uploading parameters...', 'info');
+                const blob = new Blob([JSON.stringify(params, null, 2)], { type: 'application/json' });
+                const file = new File([blob], 'metapilot_parameters.json', { type: 'application/json' });
+                
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                const uploadResponse = await fetch(window.location.origin + '/api/files/parameters', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const uploadData = await uploadResponse.json();
+                
+                if (!uploadResponse.ok) {
+                    showAlert('Upload failed: ' + uploadData.error, 'error');
+                    return;
+                }
+                
+                showAlert('Parameters uploaded successfully. Redirecting to submit job...', 'success');
+                
+                // Redirect to main page with file path pre-filled
+                setTimeout(() => {
+                    window.location.href = 'index.html?paramFile=' + encodeURIComponent(uploadData.path) + 
+                                          '&resourceFile=' + encodeURIComponent('/path/to/resources.params');
+                }, 1500);
+                
+            } catch (error) {
+                showAlert('Error: ' + error.message, 'error');
+            }
+        }
+        
+        function showAlert(message, type) {
+            const container = document.getElementById('alert-container');
+            const alert = document.createElement('div');
+            alert.className = 'alert alert-' + type;
+            alert.textContent = message;
+            
+            container.innerHTML = '';
+            container.appendChild(alert);
+            
+            setTimeout(() => {
+                alert.style.transition = 'opacity 0.5s';
+                alert.style.opacity = '0';
+                setTimeout(() => container.removeChild(alert), 500);
+            }, 3000);
+        }
+        
+        // Add initial experiment row
+        addExperiment();
+    </script>
+</body>
+</html>
+
