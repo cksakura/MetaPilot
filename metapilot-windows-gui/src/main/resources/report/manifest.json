@@ -1,0 +1,12 @@
+{
+  "generated_at": "2025-09-29T11:13:48.832536",
+  "reports": [
+    {
+      "title": "Test Report",
+      "file": "reports/report/test_favicon_report.html",
+      "created_at": "2025-09-29T11:13:48.832536",
+      "source": "test_favicon_report.html",
+      "folder": "report"
+    }
+  ]
+}
