@@ -539,7 +539,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		logger.info("Starting WatchService monitoring for high abundant database search");
 		startWatchServiceLoop(separateResultFolders, "hap", filter, taskCount, 10, 20);
 
-		fragPipeTask.run(1, rawFiles.length * 4);
+		fragPipeTask.run(1, rawFiles.length * 24);
 
 		for (int i = 0; i < separateResultFolders.length; i++) {
 			File hapFile = new File(separateResultFolders[i], "hap");
@@ -926,7 +926,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		logger.info("Starting WatchService monitoring for sample-specific database search");
 		startWatchServiceLoop(separateResultFolders, "", filter, taskCount, 40, 65);
 
-		this.fragPipeTask.run(1, rawFiles.length * 4);
+		this.fragPipeTask.run(1, rawFiles.length * 24);
 
 		for (int i = 0; i < separateResultFolders.length; i++) {
 			File combinePsmFile = new File(spResultFiles[i], "psm.tsv");
@@ -1077,7 +1077,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 					+ ": searching the combined high-abundance database started");
 
 			this.fragPipeTask.addTask(workflowFile, manifest, combinedFile, threadCount);
-			this.fragPipeTask.run(rawFiles.length * 4);
+			this.fragPipeTask.run(rawFiles.length * 24);
 		}
 
 		if (this.quan_pep_file.exists() && this.quan_pep_file.length() > 0 && this.quan_pro_file.exists()
@@ -1119,7 +1119,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		ArrayList<String> fileList = new ArrayList<String>();
 		HashMap<String, Integer> fileIdMap = new HashMap<String, Integer>();
 		File expDesignFile = new File(combinedFile, "raws.fp-manifest");
-		if (expDesignFile.exists()) {
+/*		if (expDesignFile.exists()) {
 			try (BufferedReader reader = new BufferedReader(new FileReader(expDesignFile))) {
 				String line = null;
 				while ((line = reader.readLine()) != null) {
@@ -1133,7 +1133,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 				System.err.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": error in reading the experimental design from " + expDesignFile);
 			}
-		} else {
+		} else {*/
 			File[] files = combinedFile.listFiles();
 			for (int i = 0; i < files.length; i++) {
 				if (files[i].isDirectory() && (new File(files[i], "peptide.tsv")).exists()) {
@@ -1141,7 +1141,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 					fileList.add(files[i].getName());
 				}
 			}
-		}
+//		}
 
 		// Read quantified peptides and PSMs from the same reader
 		FragpipePepReader quanPepReader = new FragpipePepReader(this.quan_pep_file);

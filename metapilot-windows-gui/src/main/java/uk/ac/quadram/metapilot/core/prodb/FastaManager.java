@@ -365,10 +365,10 @@ public class FastaManager {
 //		FastaManager.digest("Z:\\Haonan\\DIA_eva\\database_overlap between DSM10507 and microbiome\\DSM10507.fasta", 
 //				"Z:\\Haonan\\DIA_eva\\database_overlap between DSM10507 and microbiome\\DSM10507_peps.fasta");
 		
-//		FastaManager.combine("Z:\\Haonan\\DIA_eva\\database_overlap between DSM10507 and microbiome\\temp", 
-//				"Z:\\Haonan\\DIA_eva\\database_overlap between DSM10507 and microbiome\\sample_specific_db_for48_peps.fasta");
+		FastaManager.combine("C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-skin\\v1.0\\original_db", 
+				"C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-skin\\v1.0\\combined_original_db.fasta");
 		
-		FastaManager.form("Z:\\BEV_Simon\\proteins.txt", "Z:\\BEV_Simon\\qib101rs_2runs_Proteins.fasta");
+//		FastaManager.form("Z:\\BEV_Simon\\proteins.txt", "Z:\\BEV_Simon\\qib101rs_2runs_Proteins.fasta");
 		
 	}
 	

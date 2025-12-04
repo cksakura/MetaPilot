@@ -1163,66 +1163,72 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			idReader.close();
 
 			File ms2CountFile = new File(spectraDirFile, "ms2Count.txt");
-			BufferedReader ms2CountReader = new BufferedReader(new FileReader(ms2CountFile));
-			line = ms2CountReader.readLine();
+			if (ms2CountFile.exists()) {
+				BufferedReader ms2CountReader = new BufferedReader(new FileReader(ms2CountFile));
+				line = ms2CountReader.readLine();
 
-			while ((line = ms2CountReader.readLine()) != null) {
-				String[] cs = line.split("\t");
-				String rawName = cs[0];
+				while ((line = ms2CountReader.readLine()) != null) {
+					String[] cs = line.split("\t");
+					String rawName = cs[0];
 
-				if (idMap.containsKey(rawName)) {
+					if (idMap.containsKey(rawName)) {
 
-					StringBuilder sb = new StringBuilder();
-					sb.append(cs[0]).append("\t");
-
-					if (this.expNameMap.containsKey(cs[0])) {
-						sb.append(expNameMap.get(cs[0])).append("\t");
-					} else {
+						StringBuilder sb = new StringBuilder();
 						sb.append(cs[0]).append("\t");
+
+						if (this.expNameMap.containsKey(cs[0])) {
+							sb.append(expNameMap.get(cs[0])).append("\t");
+						} else {
+							sb.append(cs[0]).append("\t");
+						}
+
+						int ms2count = Integer.parseInt(cs[1]);
+
+						int[] idCounts = idMap.get(rawName);
+
+						sb.append(ms2count).append("\t");
+						sb.append(idCounts[1]).append("\t");
+
+						double ratio = 0;
+						if (ms2count > 0) {
+							ratio = (double) idCounts[1] / (double) ms2count * 100.0;
+						}
+
+						sb.append(FormatTool.getDF2().format(ratio)).append("\t");
+
+						sb.append(idCounts[0]);
+
+						countWriter.println(sb);
+
+						totalms2count += ms2count;
+						totalpsmCount += idCounts[1];
+						totalUnipepCount += idCounts[0];
 					}
-
-					int ms2count = Integer.parseInt(cs[1]);
-
-					int[] idCounts = idMap.get(rawName);
-
-					sb.append(ms2count).append("\t");
-					sb.append(idCounts[1]).append("\t");
-
-					double ratio = 0;
-					if (ms2count > 0) {
-						ratio = (double) idCounts[1] / (double) ms2count * 100.0;
-					}
-
-					sb.append(FormatTool.getDF2().format(ratio)).append("\t");
-
-					sb.append(idCounts[0]);
-
-					countWriter.println(sb);
-
-					totalms2count += ms2count;
-					totalpsmCount += idCounts[1];
-					totalUnipepCount += idCounts[0];
 				}
+
+				ms2CountReader.close();
+
+				StringBuilder sb = new StringBuilder();
+				sb.append("Total").append("\t");
+				sb.append("\t");
+				sb.append(totalms2count).append("\t");
+				sb.append(totalpsmCount).append("\t");
+
+				double ratio = 0;
+				if (totalms2count > 0) {
+					ratio = (double) totalpsmCount / (double) totalms2count * 100.0;
+				}
+
+				sb.append(FormatTool.getDF2().format(ratio)).append("\t");
+				sb.append(totalUnipepCount);
+				countWriter.print(sb);
+
+			} else {
+				logger.error(getTaskName()
+						+ ": the total MS2 count for each raw file is unknown, the summary report will be unavailable");
+				System.err.println(format.format(new Date()) + "\t" + getTaskName()
+						+ ": the total MS2 count for each raw file is unknown, the summary report will be unavailable");
 			}
-
-			ms2CountReader.close();
-
-			StringBuilder sb = new StringBuilder();
-			sb.append("Total").append("\t");
-			sb.append("\t");
-			sb.append(totalms2count).append("\t");
-			sb.append(totalpsmCount).append("\t");
-
-			double ratio = 0;
-			if (totalms2count > 0) {
-				ratio = (double) totalpsmCount / (double) totalms2count * 100.0;
-			}
-
-			sb.append(FormatTool.getDF2().format(ratio)).append("\t");
-
-			sb.append(totalUnipepCount);
-
-			countWriter.print(sb);
 
 			countWriter.close();
 

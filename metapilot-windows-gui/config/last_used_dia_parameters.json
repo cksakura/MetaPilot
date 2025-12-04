@@ -1,0 +1,74 @@
+{
+  "mag_database": {
+    "catalogue_version": "v2.0.2",
+    "identifier": "MGYG",
+    "catalogue_id": "human-gut"
+  },
+  "metadata": [
+    {
+      "condition": "",
+      "gender": "",
+      "sample_index": 0,
+      "age": ""
+    },
+    {
+      "condition": "",
+      "gender": "",
+      "sample_index": 1,
+      "age": ""
+    },
+    {
+      "condition": "",
+      "gender": "",
+      "sample_index": 2,
+      "age": ""
+    },
+    {
+      "condition": "",
+      "gender": "",
+      "sample_index": 3,
+      "age": ""
+    }
+  ],
+  "workflow": "DIA_NORMAL",
+  "input_output": {
+    "micro_db": "C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-gut\\v2.0.2",
+    "host_database": "",
+    "output_directory": "Z:\\Test\\Pekka_20251201\\MetaPilot",
+    "append_host_db": false,
+    "experiments": [
+      {
+        "file_path": "Z:\\Test\\Pekka_20251201\\250917_F8_Pellet.raw",
+        "experiment_name": "250917_F8_Pellet"
+      },
+      {
+        "file_path": "Z:\\Test\\Pekka_20251201\\250917_F8_SEC.raw",
+        "experiment_name": "250917_F8_SEC"
+      },
+      {
+        "file_path": "Z:\\Test\\Pekka_20251201\\250917_F9_Pellet.raw",
+        "experiment_name": "250917_F9_Pellet"
+      },
+      {
+        "file_path": "Z:\\Test\\Pekka_20251201\\250917_F9_SEC.raw",
+        "experiment_name": "250917_F9_SEC"
+      }
+    ]
+  },
+  "generated_at": "2025-12-04 12:15:21",
+  "description": "Last used parameters",
+  "basic_parameters": {
+    "ms2_scan_mode": "DIA",
+    "threads": 24,
+    "meta_workflow": true,
+    "core_count": 1
+  },
+  "dia_settings": {
+    "library_search": true,
+    "self_model_search": false,
+    "models": [],
+    "use_model": false,
+    "libraries": ["Pekka"]
+  },
+  "version": "1.0"
+}

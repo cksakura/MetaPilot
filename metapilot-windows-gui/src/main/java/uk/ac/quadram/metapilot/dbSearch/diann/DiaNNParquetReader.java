@@ -24,11 +24,108 @@ import org.apache.parquet.hadoop.util.HadoopInputFile;
 import org.apache.parquet.io.ColumnIOFactory;
 import org.apache.parquet.io.MessageColumnIO;
 import org.apache.parquet.io.RecordReader;
+import org.apache.parquet.io.InputFile;
 import org.apache.parquet.schema.MessageType;
+import org.apache.parquet.schema.Type;
+
+import cern.colt.Arrays;
 
 public class DiaNNParquetReader {
 
 	private DiaNNPrecursor[] diaNNPrecursors;
+	
+	public static HashMap<String, HashSet<String>> getPepProMap(String parquet) throws IOException {
+		System.out.println("Reading parquet file " + parquet + "......");
+		
+		HashMap<String, HashSet<String>> map = new HashMap<String, HashSet<String>>();
+		Path path = new Path(parquet);
+
+		HadoopInputFile inputFile = HadoopInputFile.fromPath(path, new Configuration());
+		ParquetReadOptions readOptions = ParquetReadOptions.builder().build();
+		ParquetFileReader fileReader = ParquetFileReader.open(inputFile, readOptions);
+
+		// Get file schema
+		ParquetMetadata metadata = fileReader.getFooter();
+		MessageType schema = metadata.getFileMetaData().getSchema();
+
+		// Loop through row groups in the Parquet file
+		PageReadStore pages;
+		while ((pages = fileReader.readNextRowGroup()) != null) {
+			long rowCount = pages.getRowCount();
+			System.out.println("Row group has " + rowCount + " rows.");
+
+			MessageColumnIO columnIO = new ColumnIOFactory().getColumnIO(schema);
+			GroupRecordConverter recordConverter = new GroupRecordConverter(schema);
+			RecordReader<Group> recordReader = columnIO.getRecordReader(pages, recordConverter);
+
+			for (int i = 0; i < rowCount; i++) {
+				Group group = recordReader.read();
+				String sequence = group.getBinary("Stripped.Sequence", 0).toStringUsingUTF8();
+				String[] proteins = group.getBinary("Protein.Ids", 0).toStringUsingUTF8().split(";");
+				HashSet<String> set;
+				if (map.containsKey(sequence)) {
+					set = map.get(sequence);
+				} else {
+					set = new HashSet<String>();
+					map.put(sequence, set);
+				}
+				for (int j = 0; j < proteins.length; j++) {
+					set.add(proteins[j]);
+				}
+			}
+		}
+
+		fileReader.close();
+
+		return map;
+	}
+	
+	public static HashMap<String, HashSet<String>> getProPepMap(String parquet) throws IOException {
+		System.out.println("Reading parquet file " + parquet + "......");
+
+		HashMap<String, HashSet<String>> map = new HashMap<String, HashSet<String>>();
+		Path path = new Path(parquet);
+
+		HadoopInputFile inputFile = HadoopInputFile.fromPath(path, new Configuration());
+		ParquetReadOptions readOptions = ParquetReadOptions.builder().build();
+		ParquetFileReader fileReader = ParquetFileReader.open(inputFile, readOptions);
+
+		// Get file schema
+		ParquetMetadata metadata = fileReader.getFooter();
+		MessageType schema = metadata.getFileMetaData().getSchema();
+
+		// Loop through row groups in the Parquet file
+		PageReadStore pages;
+		while ((pages = fileReader.readNextRowGroup()) != null) {
+			long rowCount = pages.getRowCount();
+			System.out.println("Row group has " + rowCount + " rows.");
+
+			MessageColumnIO columnIO = new ColumnIOFactory().getColumnIO(schema);
+			GroupRecordConverter recordConverter = new GroupRecordConverter(schema);
+			RecordReader<Group> recordReader = columnIO.getRecordReader(pages, recordConverter);
+
+			for (int i = 0; i < rowCount; i++) {
+				Group group = recordReader.read();
+				String sequence = group.getBinary("Stripped.Sequence", 0).toStringUsingUTF8();
+				String[] proteins = group.getBinary("Protein.Ids", 0).toStringUsingUTF8().split(";");
+
+				for (int j = 0; j < proteins.length; j++) {
+					HashSet<String> set;
+					if (map.containsKey(proteins[j])) {
+						set = map.get(proteins[j]);
+					} else {
+						set = new HashSet<String>();
+						map.put(proteins[j], set);
+					}
+					set.add(sequence);
+				}
+			}
+		}
+
+		fileReader.close();
+
+		return map;
+	}
 
 	public static HashSet<String> getPeptideSet(String parquet) throws IOException {
 		System.out.println("Reading parquet file " + parquet + "......");
@@ -182,7 +279,6 @@ public class DiaNNParquetReader {
 					list.add(diaNNPrecursor);
 				}
 			}
-
 			fileReader.close();
 		} catch (IOException e) {
 			e.printStackTrace();
@@ -204,6 +300,30 @@ public class DiaNNParquetReader {
 		}
 		return list.toArray(DiaNNPrecursor[]::new);
 	}
+	
+	public static ArrayList<String> getParquetColumnNames(String filePath) throws IOException {
+		ArrayList<String> columnNames = new ArrayList<>();
+		Path path = new Path(filePath);
+		Configuration conf = new Configuration();
+
+    // 1. Adapt the Hadoop Path to the generic InputFile interface
+		InputFile inputFile = HadoopInputFile.fromPath(path, conf);
+
+    // 2. Open the reader (this automatically reads the footer)
+    // Using try-with-resources to ensure it closes automatically
+		try (ParquetFileReader reader = ParquetFileReader.open(inputFile)) {
+        
+        // 3. Extract the schema (MessageType)
+			MessageType schema = reader.getFileMetaData().getSchema();
+
+        // 4. Iterate and collect names
+			for (Type field : schema.getFields()) {
+				columnNames.add(field.getName());
+			}
+		}
+
+		return columnNames;
+    }
 
 	@SuppressWarnings("unused")
 	private static void compare(File folder) {
@@ -306,10 +426,18 @@ public class DiaNNParquetReader {
 	}
 	
 	public static void main(String[] args) throws IOException {
-		DiaNNParquetReader.getPeptideSet("Z:\\PRIDE_dataset\\PXD050781\\MetaPilot_DIA_10507\\Blautia\\combined\\"
-				+ "combined.parquet");
+//		DiaNNParquetReader.getPeptideSet("Z:\\Test\\Pekka_20251201\\Metapilot_MGYG_lib\\library_analysis\\combined\\"
+//				+ "combined.parquet");
 //		DiaNNParquetReader.matchGenome("Z:\\Kai\\Database\\human-gut\\v2.0.2", 
 //				"E:\\20250423\\20250422_MetaLAB_DIA_search\\selfModel\\mag_result\\combined.parquet");
+		
+		DiaNNParquetReader reader = new DiaNNParquetReader("Z:\\Test\\Pekka_20251201\\MetaPilot\\iterative_analysis\\combined"
+				+ "\\combined.parquet", "KR");
+
+//		System.out.println(DiaNNParquetReader.getPepProMap(
+//				"C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-gut\\v2.0.2\\libraries\\Pekka"
+//						+ "\\Pekka.parquet"));
+
 	}
 
 }

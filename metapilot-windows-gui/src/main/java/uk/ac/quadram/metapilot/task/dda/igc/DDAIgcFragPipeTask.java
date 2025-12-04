@@ -661,7 +661,7 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 						format.format(new Date()) + "\t" + getTaskName() + ": searching the sample-specific started");
 
 				this.fragPipeTask.addTask(workflowFile, manifestFile, combinedFile, metaPar.getThreadCount());
-				this.fragPipeTask.run(rawFiles.length * 4);
+				this.fragPipeTask.run(rawFiles.length * 24);
 			}
 
 			Platform.runLater(() -> secondBar.setProgress(0));

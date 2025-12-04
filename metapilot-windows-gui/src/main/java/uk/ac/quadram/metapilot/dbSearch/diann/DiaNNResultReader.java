@@ -164,4 +164,9 @@ public class DiaNNResultReader {
 	public DiaNNPrecursor[] getDiaNNPrecursors() {
 		return diaNNPrecursors;
 	}
+	
+	public static void main(String[] args) {
+		DiaNNResultReader reader = new DiaNNResultReader("U:\\problem\\20251117", "combined", "KR");
+		System.out.println(reader.hasResult());
+	}
 }
