@@ -1,0 +1,43 @@
+{
+  "workflow": "DDA_MAG_FRAGPIPE",
+  "input_output": {
+    "host_database": "C:\\Users\\daz25hak\\MetaProAI\\database\\uniprotkb_Human_AND_reviewed_true_AND_m_2025_09_01.fasta",
+    "mag_database": "human-gut",
+    "output_directory": "Z:\\PRIDE_dataset\\PXD008738\\8mix\\DDA\\MetaPilot",
+    "append_host_db": true,
+    "experiments": [
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD008738\\8mix\\DDA\\160822_8Mix_DDA_6ul_01.raw",
+        "experiment_name": "8Mix_DDA_01"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD008738\\8mix\\DDA\\160822_8Mix_DDA_6ul_02.raw",
+        "experiment_name": "8Mix_DDA_02"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD008738\\8mix\\DDA\\160822_8Mix_DDA_6ul_03.raw",
+        "experiment_name": "8Mix_DDA_03"
+      }
+    ]
+  },
+  "enzyme_settings": {
+    "enzyme": "Trypsin",
+    "missed_cleavages": 2,
+    "digestion_mode": "Specific"
+  },
+  "generated_at": "2025-12-04 15:49:10",
+  "fragpipe_workflow_configured": true,
+  "additional_parameters": {
+    "generate_sample_specific_db": true,
+    "ms2_scan_mode": "Regular MS",
+    "spectra_clustering": false,
+    "threads": 20
+  },
+  "description": "Last used parameters",
+  "version": "1.0",
+  "fixed_modifications": ["C:57.02146"],
+  "variable_modifications": [
+    "Oxidation:M:15.9949",
+    "Acetylation:protein n-term:42.0106"
+  ]
+}

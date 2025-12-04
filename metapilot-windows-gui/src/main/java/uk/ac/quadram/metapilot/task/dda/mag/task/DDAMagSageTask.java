@@ -3,6 +3,7 @@ package uk.ac.quadram.metapilot.task.dda.mag.task;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileFilter;
+import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -18,9 +19,10 @@ import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.concurrent.ExecutionException;
 
-import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.Logger;
 
 import uk.ac.quadram.metapilot.dbSearch.sage.SageTask;
@@ -332,30 +334,15 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 
 		// Step 5: Combine Results
 		logger.info("Step 5: Starting combination of separate search results...");
-		updateProgress(70, 100);
+		updateProgress(75, 100);
 		boolean combine = this.combineResults();
 		if (!combine) {
 			logger.error(getTaskName() + ": error in combining separate search results");
 			return false;
 		}
 
-		// Step 6: Quantification
-		logger.info("Step 6: Starting quantification...");
-		updateProgress(75, 100);
-		boolean quant = false;
-
-		if (magSageParams.getQuantitativeMode().equals(MetaConstants.isobaricLabel)) {
-			logger.info("  Using isobaric quantification mode");
-			updateProgress(80, 100);
-			quant = lfQuant();
-			if (!quant) {
-				logger.error(getTaskName() + ": error in isobaric quantification");
-				return false;
-			}
-		}
-
-		// Step 7: Export Report
-		logger.info("Step 7: Starting report generation...");
+		// Step 6: Export Report
+		logger.info("Step 6: Starting report generation...");
 		updateProgress(85, 100);
 		boolean report = this.exportReport();
 		if (!report) {
@@ -375,8 +362,9 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 	/**
 	 * Convert spectra files to mzML format for Sage processing using multiple
 	 * threads
+	 * @throws IOException 
 	 */
-	private boolean convertSpectraToMzML() {
+	private boolean convertSpectraToMzML() throws IOException {
 		logger.info("Starting spectra conversion to mzML format using MSConvert");
 
 		// Validate MSConvert executable
@@ -425,91 +413,146 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		// If no files need conversion, return success
 		if (filesToConvert.isEmpty()) {
 			logger.info("All mzML files already exist, no conversion needed");
-			return true;
-		}
 
-		// Use multiple threads for conversion
-		int threadCount = Math.min(filesToConvert.size(), magSageParams.getThreadCount());
-		ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+		} else {
 
-		logger.info("Processing {} files using {} threads", filesToConvert.size(), threadCount);
+			// Use multiple threads for conversion
+			int threadCount = Math.min(filesToConvert.size(), magSageParams.getThreadCount());
+			ExecutorService executor = Executors.newFixedThreadPool(threadCount);
 
-		// Submit conversion/copy tasks
-		for (int fileIndex : filesToConvert) {
-			executor.submit(() -> {
-				String rawFile = rawFiles[fileIndex];
-				File rawFileObj = new File(rawFile);
-				String fileName = rawFileObj.getName().toLowerCase();
+			logger.info("Processing {} files using {} threads", filesToConvert.size(), threadCount);
 
-				try {
-					String convertedPath = null;
+			// Submit conversion/copy tasks
+			for (int fileIndex : filesToConvert) {
+				executor.submit(() -> {
+					String rawFile = rawFiles[fileIndex];
+					File rawFileObj = new File(rawFile);
+					String fileName = rawFileObj.getName().toLowerCase();
 
-					if (fileName.endsWith(".raw")) {
-						logger.info("Converting .raw file to mzML: {}", rawFile);
-						convertedPath = MSConvertor.raw2mzML(msConvertExe.getAbsolutePath(), rawFile);
-					} else if (fileName.endsWith(".d")) {
-						logger.info("Converting .d file to mzML: {}", rawFile);
-						convertedPath = MSConvertor.d2mzML(msConvertExe.getAbsolutePath(), rawFile,
-								spectraDir.getAbsolutePath());
-					} else {
-						logger.error(
-								"Unsupported file format: {}. Only .raw and .d files are supported for conversion.",
-								fileName);
-						return;
-					}
+					try {
+						String convertedPath = null;
 
-					if (convertedPath != null) {
-						// Verify the converted file exists
-						File convertedFile = new File(convertedPath);
-						if (convertedFile.exists() && convertedFile.length() > 0) {
-							// Move the converted file to the spectra directory
-							File targetFile = new File(mzMLFiles[fileIndex]);
-							try {
-								Files.move(convertedFile.toPath(), targetFile.toPath(),
-										StandardCopyOption.REPLACE_EXISTING);
-								logger.info("Successfully moved converted file from {} to {}", convertedPath,
-										mzMLFiles[fileIndex]);
-							} catch (IOException e) {
-								logger.error("Failed to move converted file from {} to {}: {}", convertedPath,
-										mzMLFiles[fileIndex], e.getMessage());
+						if (fileName.endsWith(".raw")) {
+							logger.info("Converting .raw file to mzML: {}", rawFile);
+							convertedPath = MSConvertor.raw2mzML(msConvertExe.getAbsolutePath(), rawFile);
+						} else if (fileName.endsWith(".d")) {
+							logger.info("Converting .d file to mzML: {}", rawFile);
+							convertedPath = MSConvertor.d2mzML(msConvertExe.getAbsolutePath(), rawFile,
+									spectraDir.getAbsolutePath());
+						} else {
+							logger.error(
+									"Unsupported file format: {}. Only .raw and .d files are supported for conversion.",
+									fileName);
+							return;
+						}
+
+						if (convertedPath != null) {
+							// Verify the converted file exists
+							File convertedFile = new File(convertedPath);
+							if (convertedFile.exists() && convertedFile.length() > 0) {
+								// Move the converted file to the spectra directory
+								File targetFile = new File(mzMLFiles[fileIndex]);
+								try {
+									Files.move(convertedFile.toPath(), targetFile.toPath(),
+											StandardCopyOption.REPLACE_EXISTING);
+									logger.info("Successfully moved converted file from {} to {}", convertedPath,
+											mzMLFiles[fileIndex]);
+								} catch (IOException e) {
+									logger.error("Failed to move converted file from {} to {}: {}", convertedPath,
+											mzMLFiles[fileIndex], e.getMessage());
+								}
+							} else {
+								logger.error("Converted mzML file does not exist or is empty: {}", convertedPath);
 							}
 						} else {
-							logger.error("Converted mzML file does not exist or is empty: {}", convertedPath);
+							logger.error("Failed to convert file to mzML: {}", rawFile);
 						}
-					} else {
-						logger.error("Failed to convert file to mzML: {}", rawFile);
+					} catch (Exception e) {
+						logger.error("Error processing file {}: {}", rawFile, e.getMessage());
 					}
-				} catch (Exception e) {
-					logger.error("Error processing file {}: {}", rawFile, e.getMessage());
+				});
+			}
+
+			// Shutdown executor and wait for completion
+			executor.shutdown();
+
+			try {
+				// Wait for all conversions to complete (with timeout)
+				boolean finished = executor.awaitTermination(filesToConvert.size() * 4, TimeUnit.HOURS);
+				if (finished) {
+					logger.info("All file conversions completed successfully");
+				} else {
+					logger.error("File conversion timeout - some files may not have been converted");
+					executor.shutdownNow();
+					return false;
 				}
-			});
-		}
-
-		// Shutdown executor and wait for completion
-		executor.shutdown();
-
-		try {
-			// Wait for all conversions to complete (with timeout)
-			boolean finished = executor.awaitTermination(filesToConvert.size() * 4, TimeUnit.HOURS);
-			if (finished) {
-				logger.info("All file conversions completed successfully");
-			} else {
-				logger.error("File conversion timeout - some files may not have been converted");
+			} catch (InterruptedException e) {
+				logger.error("File conversion was interrupted: {}", e.getMessage());
 				executor.shutdownNow();
 				return false;
 			}
-		} catch (InterruptedException e) {
-			logger.error("File conversion was interrupted: {}", e.getMessage());
-			executor.shutdownNow();
-			return false;
 		}
 
-		// Verify all files were converted successfully
-		for (int i = 0; i < mzMLFiles.length; i++) {
-			if (mzMLFiles[i] == null) {
-				logger.error("Failed to convert file: {}", rawFiles[i]);
-				return false;
+		File rtFile = new File(spectraDirFile, "rt.txt");
+		File ms2CountFile = new File(spectraDirFile, "ms2Count.txt");
+		
+		if (!rtFile.exists() || rtFile.length() == 0 || !ms2CountFile.exists() || ms2CountFile.length() == 0) {
+
+			PrintWriter rtWriter = new PrintWriter(rtFile);
+			PrintWriter ms2CountWriter = new PrintWriter(ms2CountFile);
+
+			rtWriter.println("FileName\tScannum\tRt");
+			ms2CountWriter.println("FileName\tMS2 count");
+
+			Pattern scanPattern = Pattern.compile("scan=(\\d+)");
+			Pattern rtPattern = Pattern.compile("name=\"scan start time\"\\s+value=\"([^\"]+)\"");
+
+			// Verify all files were converted successfully
+			for (int i = 0; i < mzMLFiles.length; i++) {
+				if (mzMLFiles[i] == null) {
+					logger.error("Failed to convert file: {}", rawFiles[i]);
+					rtWriter.close();
+					ms2CountWriter.close();
+					
+					return false;
+				}
+
+				String fileName = (new File(mzMLFiles[i])).getName();
+				fileName = fileName.substring(0, fileName.length() - ".mzML".length());
+
+				int count = 0;
+				int scannum = 0;
+				boolean isMS2 = false;
+				BufferedReader reader = new BufferedReader(new FileReader(mzMLFiles[i]));
+				String line = null;
+				while ((line = reader.readLine()) != null) {
+					line = line.trim();
+					if (line.startsWith("<spectrum index=")) {
+						Matcher matcher = scanPattern.matcher(line);
+						if (matcher.find()) {
+							scannum = Integer.parseInt(matcher.group(1));
+						}
+						isMS2 = false;
+					} else if (line.endsWith("name=\"MSn spectrum\" value=\"\"/>")) {
+						count++;
+						isMS2 = true;
+					} else if (line.startsWith("<cvParam cvRef=\"MS\" accession=\"MS:1000016\" name=\"scan start time\"")) {
+						Matcher matcher = rtPattern.matcher(line);
+						double rt = -1;
+						if (matcher.find()) {
+							rt = Double.parseDouble(matcher.group(1));
+						}
+						if (isMS2) {
+							rtWriter.println(fileName + "\t" + scannum + "\t" + rt);
+						}
+					}
+				}
+				reader.close();
+				ms2CountWriter.println(fileName + "\t" + count);
 			}
+
+			rtWriter.close();
+			ms2CountWriter.close();
 		}
 
 		logger.info("Spectra conversion completed successfully. Converted {} files to mzML format.", rawFiles.length);
@@ -584,7 +627,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 			// Calculate optimal thread pool based on RAM (1 thread per 16GB)
 			int threadPool = maxTaskCount > filesNeedingSearch ? filesNeedingSearch : maxTaskCount;
 			logger.info("Starting Sage execution with {} thread pool for {} tasks", threadPool, this.mzMLFiles.length);
-			sageTask.run(threadPool, separateResultFolders.length * 3);
+			sageTask.run(threadPool, separateResultFolders.length * 12);
 		} else {
 			logger.info("No new searches required, all results already exist");
 		}
@@ -803,7 +846,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 			// Calculate optimal thread pool based on RAM (1 thread per 16GB)
 			int threadPool = maxTaskCount > taskCount ? taskCount : maxTaskCount;
 			logger.info("Starting Sage execution with {} thread pool for {} tasks", threadPool, taskCount);
-			sageTask.run(threadPool, this.separateResultFolders.length * 10);
+			sageTask.run(threadPool, this.separateResultFolders.length * 12);
 		}
 
 		// Clean and verify results
@@ -984,7 +1027,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 			logger.info("[{}] searching combined database started", getTaskName());
 
 			logger.info("Starting Sage execution");
-			sageTask.run(separateResultFolders.length * 3);
+			sageTask.run(separateResultFolders.length * 12);
 
 		} else {
 			logger.info("[{}] Sage search result already exists in {}", getTaskName(), magSageParams.getDbSearchResultFile());
@@ -1003,23 +1046,6 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 			logger.error("[{}] combined database search failed", getTaskName());
 			return false;
 		}
-	}
-
-	/**
-	 * Perform label-free quantification
-	 */
-	protected boolean lfQuant() {
-		String flashLFQ = mrp.getToolPath(ToolType.FLASHLFQ);
-		flashLfqTask = new FlashLfqTask(flashLFQ, magSageParams.getThreadCount());
-		this.quan_pep_file = new File(magSageParams.getDbSearchResultFile(), "QuantifiedPeptides.tsv");
-
-		if (!quan_pep_file.exists() || quan_pep_file.length() == 0) {
-			File msms = new File(magSageParams.getDbSearchResultFile(), "psms.tsv");
-			boolean lfqQuan = flashLfqTask.run(magSageParams.getMetadata(), msms.getAbsolutePath(),
-					rawDir.getAbsolutePath(), true, true);
-			return lfqQuan && quan_pep_file.exists();
-		}
-		return true;
 	}
 
 	/**

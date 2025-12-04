@@ -61,7 +61,6 @@ import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaTg;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import javafx.application.Platform;
-import uk.ac.quadram.metapilot.task.io.MetaTreeHandler;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProteinAnnoEggNog;
@@ -2413,39 +2412,26 @@ public class MetaDiaTask extends MetaPilotMagTask {
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": protein inference started");
 
 		HashMap<String, HashSet<String>> hostPepProMap = new HashMap<String, HashSet<String>>();
-		HashMap<String, HashSet<String>> hostProPepMap = new HashMap<String, HashSet<String>>();
 		File hostFile = new File(resultFolderFile, "host");
 		File hostTsvFile = new File(hostFile, "host.tsv");
 		if (hostTsvFile.exists()) {
 			File magDbFile = this.magDb.getCurrentFile();
 			File libFolderFile = new File(magDbFile, "libraries");
-			File hostFastaFile = new File(new File(libFolderFile, "host"), "host.predicted.tsv");
+			File hostParquetFile = new File(new File(libFolderFile, "host"), "host.parquet");
 
-			try (BufferedReader reader = new BufferedReader(new FileReader(hostFastaFile))) {
-				String pline = reader.readLine();
-				while ((pline = reader.readLine()) != null) {
-					String[] cs = pline.split("\t");
-
-					if (hostPepProMap.containsKey(cs[1])) {
-						hostPepProMap.get(cs[1]).add(cs[0]);
-					} else {
-						HashSet<String> pSet = new HashSet<String>();
-						pSet.add(cs[0]);
-						hostPepProMap.put(cs[1], pSet);
-					}
-					if (hostProPepMap.containsKey(cs[0])) {
-						hostProPepMap.get(cs[0]).add(cs[1]);
-					} else {
-						HashSet<String> pSet = new HashSet<String>();
-						pSet.add(pline);
-						hostProPepMap.put(cs[0], pSet);
-					}
+			if (hostParquetFile.exists()) {
+				try {
+					hostPepProMap = DiaNNParquetReader.getPepProMap(hostParquetFile.getAbsolutePath());
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					logger.error(getTaskName() + ": error in reading the host database from " + hostParquetFile);
+					System.err.println(format.format(new Date()) + "\t" + getTaskName()
+							+ ": error in reading the host database from " + hostParquetFile);
 				}
-				reader.close();
-			} catch (IOException e) {
-				logger.error(getTaskName() + ": error in reading the host database from " + hostFastaFile, e);
-				System.err.println(format.format(new Date()) + "\t" + getTaskName()
-						+ ": error in reading the host database from " + hostFastaFile);
+			} else {
+				logger.error(getTaskName() + ": host database " + hostParquetFile + " doesn't exist");
+				System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": host database "
+						+ hostParquetFile + " doesn't exist");
 
 				return false;
 			}
@@ -2455,7 +2441,7 @@ public class MetaDiaTask extends MetaPilotMagTask {
 		String[] usedLibs = diaPar.getLibrary();
 
 		File combinedFile = new File(metaPar.getDbSearchResultFile(), "combined");
-		HashMap<String, String> fastaProPepMap = new HashMap<String, String>();
+		HashMap<String, HashMap<Integer, String>> fastaProPepMap = new HashMap<String, HashMap<Integer, String>>();
 
 		File combinedFastaFile = new File(combinedFile, "combined.fasta");
 		if (combinedFastaFile.exists()) {
@@ -2465,7 +2451,14 @@ public class MetaDiaTask extends MetaPilotMagTask {
 				while ((line = reader.readLine()) != null) {
 					if (line.startsWith(">")) {
 						String proName = line.split("\\s")[1];
-						fastaProPepMap.put(proName, reader.readLine());
+						String sequence = reader.readLine();
+						if(fastaProPepMap.containsKey(proName)) {
+							fastaProPepMap.get(proName).put(sequence.length(), sequence);
+						} else {
+							HashMap<Integer, String> seqLengthMap = new HashMap<Integer, String>();
+							seqLengthMap.put(sequence.length(), sequence);
+							fastaProPepMap.put(proName, seqLengthMap);
+						}
 					}
 				}
 				reader.close();
@@ -2487,7 +2480,14 @@ public class MetaDiaTask extends MetaPilotMagTask {
 					while ((line = reader.readLine()) != null) {
 						if (line.startsWith(">")) {
 							String proName = line.split("\\s")[1];
-							fastaProPepMap.put(proName, reader.readLine());
+							String sequence = reader.readLine();
+							if(fastaProPepMap.containsKey(proName)) {
+								fastaProPepMap.get(proName).put(sequence.length(), sequence);
+							} else {
+								HashMap<Integer, String> seqLengthMap = new HashMap<Integer, String>();
+								seqLengthMap.put(sequence.length(), sequence);
+								fastaProPepMap.put(proName, seqLengthMap);
+							}
 						}
 					}
 					reader.close();
@@ -2509,7 +2509,14 @@ public class MetaDiaTask extends MetaPilotMagTask {
 							while ((line = reader.readLine()) != null) {
 								if (line.startsWith(">")) {
 									String proName = line.split("\\s")[1];
-									fastaProPepMap.put(proName, reader.readLine());
+									String sequence = reader.readLine();
+									if(fastaProPepMap.containsKey(proName)) {
+										fastaProPepMap.get(proName).put(sequence.length(), sequence);
+									} else {
+										HashMap<Integer, String> seqLengthMap = new HashMap<Integer, String>();
+										seqLengthMap.put(sequence.length(), sequence);
+										fastaProPepMap.put(proName, seqLengthMap);
+									}
 								}
 							}
 							reader.close();
@@ -2520,6 +2527,35 @@ public class MetaDiaTask extends MetaPilotMagTask {
 
 							return false;
 						}
+					} else {
+						File libParquetFile = new File(new File(libFolderFile, usedLibs[i]), usedLibs[i] + ".parquet");
+						if (libParquetFile.exists()) {
+							try {
+								HashMap<String, HashSet<String>> parquetProPepMap = DiaNNParquetReader
+										.getProPepMap(libParquetFile.getAbsolutePath());
+
+								for (String proName : parquetProPepMap.keySet()) {
+									HashSet<String> seqSet = parquetProPepMap.get(proName);
+									for (String sequence : seqSet) {
+										if (fastaProPepMap.containsKey(proName)) {
+											fastaProPepMap.get(proName).put(sequence.length(), sequence);
+										} else {
+											HashMap<Integer, String> seqLengthMap = new HashMap<Integer, String>();
+											seqLengthMap.put(sequence.length(), sequence);
+											fastaProPepMap.put(proName, seqLengthMap);
+										}
+									}
+								}
+
+							} catch (IOException e) {
+								// TODO Auto-generated catch block
+								logger.error(getTaskName() + ": error in reading the protein database from "
+										+ libParquetFile);
+								System.err.println(format.format(new Date()) + "\t" + getTaskName()
+										+ ": error in reading the protein database from " + libParquetFile);
+							}
+						}
+
 					}
 				}
 			}
@@ -2542,20 +2578,34 @@ public class MetaDiaTask extends MetaPilotMagTask {
 				pepSet.add(sequence);
 				if (diaPp[i].getIsDecoy()) {
 					String[] decoyPros = diaPp[i].getProGroups();
+					String targetSeq = "";
+					int lengthDiff = sequence.length();
 					for (int j = 0; j < decoyPros.length; j++) {
-						String targetSeq = fastaProPepMap.get(decoyPros[j]);
-						if (targetSeq != null && targetSeq.length() == sequence.length()) {
-							pepSet.add(targetSeq);
-							decoyPepMap.put(sequence, targetSeq);
+						if (fastaProPepMap.containsKey(decoyPros[j])) {
+							HashMap<Integer, String> seqLengthMap = fastaProPepMap.get(decoyPros[j]);
+							if (seqLengthMap.containsKey(sequence.length())) {
+								targetSeq = seqLengthMap.get(sequence.length());
+							} else {
+								for (Integer length : seqLengthMap.keySet()) {
+									if (Math.abs(sequence.length() - length) < lengthDiff) {
+										lengthDiff = Math.abs(sequence.length() - length);
+										targetSeq = seqLengthMap.get(length);
+									}
+								}
+							}
 						}
 					}
-					originalDecoyCount++;
+					if (targetSeq.length() > 0) {
+						decoyPepMap.put(sequence, targetSeq);
+						pepSet.add(targetSeq);
+						originalDecoyCount++;
+					}
 				}
 			}
 		}
 
 		logger.info(getTaskName() + ": total sequence count: " + pepSet.size() + "; decoy precursor count: "
-				+ originalDecoyCount);
+				+ originalDecoyCount + "; decoy sequence count: " + decoyPepMap.size());
 		System.out
 				.println(format.format(new Date()) + "\t" + getTaskName() + ": total sequence count: " + pepSet.size());
 

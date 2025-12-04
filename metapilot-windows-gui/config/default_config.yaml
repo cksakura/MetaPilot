@@ -1,0 +1,36 @@
+# Model configuration
+model:
+  input_size: 15
+  lstm_hidden_1: 128
+  lstm_hidden_2: 64
+  num_heads: 4
+  dropout: 0.3
+
+# Training configuration
+training:
+  batch_size: 128
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  epochs: 100
+  patience: 15
+  min_lr: 1e-6
+  factor: 0.5
+  scheduler_patience: 5
+
+# Data configuration
+data:
+  train_path: "data/trainData.tsv"
+  test_path: "data/testData.tsv"
+  prediction_path: "data/predictionData.tsv"
+  output_path: "results/predictions.tsv"
+
+# Model paths
+paths:
+  model_save: "models/best_model_pytorch.pt"
+  model_load: "models/best_model_pytorch.pt"
+
+# Visualization
+visualization:
+  figure_size: [10, 6]
+  dpi: 100
+  style: "seaborn" 

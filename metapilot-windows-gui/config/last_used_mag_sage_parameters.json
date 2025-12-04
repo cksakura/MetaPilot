@@ -1,0 +1,60 @@
+{
+  "quantitative_mode": {"mode": "Label-free"},
+  "metadata": [],
+  "sage_parameters": {
+    "fragment_tolerance": 20,
+    "min_peptide_length": 7,
+    "max_peptide_length": 50,
+    "max_variable_modifications": 2,
+    "search_type": "Open Search",
+    "decoys_enabled": true,
+    "precursor_tolerance_min": -500,
+    "decoys_tag": "rev_",
+    "generate_decoys": true,
+    "fragment_tolerance_unit": "ppm",
+    "precursor_tolerance_unit": "Da",
+    "precursor_tolerance_max": 150,
+    "max_q": 0.01
+  },
+  "workflow": "DDA_MAG_SAGE",
+  "input_output": {
+    "host_database": "C:\\Users\\daz25hak\\MetaProAI\\database\\uniprotkb_Human_AND_reviewed_true_AND_m_2025_09_01.fasta",
+    "mag_database": "C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-gut\\v2.0.2",
+    "output_directory": "Z:\\PRIDE_dataset\\PXD008738\\8mix\\DDA\\MetaPilot",
+    "append_host_db": true,
+    "experiments": [
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD008738\\8mix\\DDA\\160822_8Mix_DDA_6ul_01.raw",
+        "experiment_name": "8Mix_DDA_01"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD008738\\8mix\\DDA\\160822_8Mix_DDA_6ul_02.raw",
+        "experiment_name": "8Mix_DDA_02"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD008738\\8mix\\DDA\\160822_8Mix_DDA_6ul_03.raw",
+        "experiment_name": "8Mix_DDA_03"
+      }
+    ]
+  },
+  "enzyme_settings": {
+    "enzyme": "Trypsin",
+    "missed_cleavages": 2,
+    "digestion_mode": "Specific"
+  },
+  "generated_at": "2025-12-04 15:59:28",
+  "additional_parameters": {
+    "generate_sample_specific_db": true,
+    "spectra_clustering": false,
+    "threads": 20
+  },
+  "description": "Last used parameters",
+  "version": "1.0",
+  "modifications": {
+    "fixed_modifications": ["C:57.02146"],
+    "variable_modifications": [
+      "Oxidation:M:15.9949",
+      "Acetylation:protein n-term:42.0106"
+    ]
+  }
+}

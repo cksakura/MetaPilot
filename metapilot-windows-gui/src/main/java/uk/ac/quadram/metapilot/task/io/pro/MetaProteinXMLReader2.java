@@ -1766,9 +1766,17 @@ public class MetaProteinXMLReader2 {
 
 	public static void main(String[] args) throws DocumentException, IOException {
 		MetaProteinXMLReader2 reader2 = new MetaProteinXMLReader2(
-				"Z:\\Kai\\20230702\\functional_annotation\\functions.xml");
-		reader2.exportTsv("Z:\\Kai\\20230702\\functional_annotation\\new_report.tsv");
-		reader2.exportTsvReport("Z:\\Kai\\20230702\\functional_annotation\\new_report_failed.tsv");
+				"U:\\problem\\20251117\\functions2.xml");
+//		reader2.exportTsv("U:\\problem\\20251117\\new_report.tsv");
+//		reader2.exportGOReport("U:\\problem\\20251117\\Gene_Ontology_id_report.tsv");
+//		reader2.exportECReport("U:\\problem\\20251117\\EC_id_report.tsv");
+//		reader2.exportKeggReport("U:\\problem\\20251117\\KEGG_ko_report.tsv");
+//		reader2.exportBriteReport("U:\\problem\\20251117\\BRITE_report.tsv");
+//		reader2.exportCOGReport("U:\\problem\\20251117\\COG_accession_report.tsv");
+//		reader2.exportNOGReport("U:\\problem\\20251117\\NOG_accession_report.tsv");
+//		reader2.exportCOGCategoryReport("U:\\problem\\20251117\\COG_category_report.tsv");
+//		reader2.exportNOGCategoryReport("U:\\problem\\20251117\\NOG_category_report.tsv");
+//		reader2.exportTsvReport("Z:\\Kai\\20230702\\functional_annotation\\new_report_failed.tsv");
 //		reader2.exportHtml("Z:\\Kai\\20220913_david\\functional_annotation\\functions.html");
 	}
 

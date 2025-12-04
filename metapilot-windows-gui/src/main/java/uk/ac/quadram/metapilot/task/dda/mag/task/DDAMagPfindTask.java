@@ -615,7 +615,7 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 				}
 			}
 			logger.info("Starting pFind execution with {} threads", threadPoolCount);
-			pFindTask.run(threadPoolCount, separateResultFolders.length * 3);
+			pFindTask.run(threadPoolCount, separateResultFolders.length * 12);
 		} else {
 			logger.info("No new searches required, all results already exist");
 		}
@@ -843,7 +843,7 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 						}
 					}
 				}
-				dbReducerTask.run(threadPoolCount, separateResultFolders.length * 3);
+				dbReducerTask.run(threadPoolCount, separateResultFolders.length * 12);
 
 				pFindTask = new PFindTask(pFindExe.getParentFile());
 				pFindTask.setTotalThread(threadCount);
@@ -881,7 +881,7 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 					}
 				}
 
-				pFindTask.run(threadPoolCount, this.separateResultFolders.length * 10);
+				pFindTask.run(threadPoolCount, this.separateResultFolders.length * 12);
 
 			} else {
 				PFindTask pFindTask = new PFindTask(pFindExe.getParentFile());
@@ -919,7 +919,7 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 					}
 				}
 
-				pFindTask.run(threadPoolCount, this.separateResultFolders.length * 10);
+				pFindTask.run(threadPoolCount, this.separateResultFolders.length * 12);
 			}
 		}
 

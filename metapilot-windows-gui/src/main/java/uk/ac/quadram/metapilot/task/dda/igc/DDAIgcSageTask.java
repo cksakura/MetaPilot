@@ -1,6 +1,10 @@
 package uk.ac.quadram.metapilot.task.dda.igc;
 
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
+import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
@@ -10,8 +14,9 @@ import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
-import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import javafx.scene.control.ProgressBar;
@@ -263,27 +268,12 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
         logger.info(getTaskName() + ": database search and identification: finished");
         System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": database search and identification: finished");
 
-        
-
-        // Read Sage results
-        File searchResultDir = metaPar.getDbSearchResultFile();
-        File pepResultFile = new File(searchResultDir, "pep.tsv");
-        File proResultFile = new File(searchResultDir, "pro.tsv");
-
-        if (!pepResultFile.exists() || !proResultFile.exists()) {
-            logger.error("Sage result files not found: {} or {}", pepResultFile.getAbsolutePath(), proResultFile.getAbsolutePath());
-            return false;
-        }
-        
-		SageResultReader sageReader = new SageResultReader(searchResultDir);
+		SageResultReader sageReader = new SageResultReader(combinedFile);
 		super.metaPeptides = sageReader.getMetaPeptides();
 		if (metaPeptides == null || metaPeptides.length == 0) {
-			logger.error("Sage result files not found: {} or {}", pepResultFile.getAbsolutePath(),
-					proResultFile.getAbsolutePath());
+			logger.error("Sage result files not found: {}", combinedFile);
 			return false;
 		}
-		
-		
         
         // Step 5: Report generation
         boolean reportGenerated = exportReport();
@@ -303,133 +293,193 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
     /**
      * Convert spectra files to mzML format for Sage processing using multiple threads
      * This method is similar to the one in DDAMagSageTask
+     * @throws IOException 
+     * @throws NumberFormatException 
      */
-    private boolean convertSpectraToMzML() {
-        logger.info("Starting spectra conversion to mzML format using MSConvert");
-        
-        // Validate MSConvert executable
-        if (msConvertExe == null || !msConvertExe.exists()) {
-            logger.error("MSConvert executable not found: {}", 
-                msConvertExe != null ? msConvertExe.getAbsolutePath() : "null");
-            return false;
-        }
-        
-        DDAIgcSageParameters sageParams = (DDAIgcSageParameters) metaPar;
-        String[] rawFiles = sageParams.getMetadata().getRawFiles();
-        if (rawFiles == null || rawFiles.length == 0) {
-            logger.error("No raw files found in metadata");
-            return false;
-        }
-        
-        // Ensure spectra directory exists
-        File spectraDir = sageParams.getSpectraFile();
-        if (!spectraDir.exists()) {
-            spectraDir.mkdirs();
-            logger.info("Created spectra directory: {}", spectraDir.getAbsolutePath());
-        }
-        
-        // Collect files that need conversion
-        List<Integer> filesToConvert = new ArrayList<>();
-        for (int i = 0; i < rawFiles.length; i++) {
-            String rawFile = rawFiles[i];
-            File rawFileObj = new File(rawFile);
-            
-            if (!rawFileObj.exists()) {
-                logger.error("Raw file does not exist: {}", rawFile);
-                return false;
-            }
-            
-            // Check if the mzML file already exists (mzMLFiles[i] was set in constructor)
-            File mzMLFile = new File(mzMLFiles[i]);
-            
-            if (mzMLFile.exists() && mzMLFile.length() > 0) {
-                logger.info("mzML file already exists, skipping conversion: {}", mzMLFile.getAbsolutePath());
-            } else {
-                filesToConvert.add(i);
-            }
-        }
-        
-        // If no files need conversion, return success
-        if (filesToConvert.isEmpty()) {
-            logger.info("All mzML files already exist, no conversion needed");
-            return true;
-        }
-        
-        // Use multiple threads for conversion
-        int threadCount = Math.min(filesToConvert.size(), sageParams.getThreadCount());
-        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
-        
-        logger.info("Processing {} files using {} threads", filesToConvert.size(), threadCount);
-        
-        // Submit conversion/copy tasks
-        for (int fileIndex : filesToConvert) {
-            executor.submit(() -> {
-                String rawFile = rawFiles[fileIndex];
-                File rawFileObj = new File(rawFile);
-                String fileName = rawFileObj.getName().toLowerCase();
-                
-                try {
-                    String convertedPath = null;
-                    
-                    if (fileName.endsWith(".raw")) {
-                        logger.info("Converting .raw file to mzML: {}", rawFile);
-                        convertedPath = MSConvertor.raw2mzML(msConvertExe.getAbsolutePath(), rawFile);
-                    } else if (fileName.endsWith(".d")) {
-                        logger.info("Converting .d file to mzML: {}", rawFile);
-                        convertedPath = MSConvertor.d2mzML(msConvertExe.getAbsolutePath(), rawFile, spectraDir.getAbsolutePath());
-                    } else {
-                        logger.error("Unsupported file format: {}. Only .raw and .d files are supported for conversion.", fileName);
-                        return;
-                    }
-                    
-                    if (convertedPath != null) {
-                        // Verify the converted file exists
-                        File convertedFile = new File(convertedPath);
-                        if (convertedFile.exists() && convertedFile.length() > 0) {
-                            // Move the converted file to the spectra directory
-                            File targetFile = new File(mzMLFiles[fileIndex]);
-                            try {
-                                Files.move(convertedFile.toPath(), targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                                logger.info("Successfully moved converted file from {} to {}", convertedPath, mzMLFiles[fileIndex]);
-                            } catch (Exception e) {
-                                logger.error("Failed to move converted file from {} to {}: {}", convertedPath, mzMLFiles[fileIndex], e.getMessage());
-                            }
-                        } else {
-                            logger.error("Converted mzML file does not exist or is empty: {}", convertedPath);
-                        }
-                    } else {
-                        logger.error("Failed to convert file to mzML: {}", rawFile);
-                    }
-                } catch (Exception e) {
-                    logger.error("Error converting file {}: {}", rawFile, e.getMessage());
-                }
-            });
-        }
-        
-        // Shutdown executor and wait for completion
-        executor.shutdown();
-        try {
-            // Wait for all tasks to complete
-            while (!executor.isTerminated()) {
-                Thread.sleep(1000);
-            }
-        } catch (InterruptedException e) {
-            logger.error("Interrupted while waiting for conversion tasks to complete", e);
-            return false;
-        }
-        
-        // Verify all conversions were successful
-        for (int fileIndex : filesToConvert) {
-            File mzMLFile = new File(mzMLFiles[fileIndex]);
-            if (!mzMLFile.exists() || mzMLFile.length() == 0) {
-                logger.error("Conversion failed for file: {}", mzMLFiles[fileIndex]);
-                return false;
-            }
-        }
-        
-        logger.info("All spectra files converted successfully to mzML format");
-        return true;
-    }
+	private boolean convertSpectraToMzML() throws NumberFormatException, IOException {
+		logger.info("Starting spectra conversion to mzML format using MSConvert");
+
+		// Validate MSConvert executable
+		if (msConvertExe == null || !msConvertExe.exists()) {
+			logger.error("MSConvert executable not found: {}",
+					msConvertExe != null ? msConvertExe.getAbsolutePath() : "null");
+			return false;
+		}
+
+		DDAIgcSageParameters sageParams = (DDAIgcSageParameters) metaPar;
+		String[] rawFiles = sageParams.getMetadata().getRawFiles();
+		if (rawFiles == null || rawFiles.length == 0) {
+			logger.error("No raw files found in metadata");
+			return false;
+		}
+
+		// Ensure spectra directory exists
+		File spectraDir = sageParams.getSpectraFile();
+		if (!spectraDir.exists()) {
+			spectraDir.mkdirs();
+			logger.info("Created spectra directory: {}", spectraDir.getAbsolutePath());
+		}
+
+		// Collect files that need conversion
+		List<Integer> filesToConvert = new ArrayList<>();
+		for (int i = 0; i < rawFiles.length; i++) {
+			String rawFile = rawFiles[i];
+			File rawFileObj = new File(rawFile);
+
+			if (!rawFileObj.exists()) {
+				logger.error("Raw file does not exist: {}", rawFile);
+				return false;
+			}
+
+			// Check if the mzML file already exists (mzMLFiles[i] was set in constructor)
+			File mzMLFile = new File(mzMLFiles[i]);
+
+			if (mzMLFile.exists() && mzMLFile.length() > 0) {
+				logger.info("mzML file already exists, skipping conversion: {}", mzMLFile.getAbsolutePath());
+			} else {
+				filesToConvert.add(i);
+			}
+		}
+
+		// If no files need conversion, return success
+		if (filesToConvert.isEmpty()) {
+			logger.info("All mzML files already exist, no conversion needed");
+			return true;
+		}
+
+		// Use multiple threads for conversion
+		int threadCount = Math.min(filesToConvert.size(), sageParams.getThreadCount());
+		ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+
+		logger.info("Processing {} files using {} threads", filesToConvert.size(), threadCount);
+
+		// Submit conversion/copy tasks
+		for (int fileIndex : filesToConvert) {
+			executor.submit(() -> {
+				String rawFile = rawFiles[fileIndex];
+				File rawFileObj = new File(rawFile);
+				String fileName = rawFileObj.getName().toLowerCase();
+
+				try {
+					String convertedPath = null;
+
+					if (fileName.endsWith(".raw")) {
+						logger.info("Converting .raw file to mzML: {}", rawFile);
+						convertedPath = MSConvertor.raw2mzML(msConvertExe.getAbsolutePath(), rawFile);
+					} else if (fileName.endsWith(".d")) {
+						logger.info("Converting .d file to mzML: {}", rawFile);
+						convertedPath = MSConvertor.d2mzML(msConvertExe.getAbsolutePath(), rawFile,
+								spectraDir.getAbsolutePath());
+					} else {
+						logger.error(
+								"Unsupported file format: {}. Only .raw and .d files are supported for conversion.",
+								fileName);
+						return;
+					}
+
+					if (convertedPath != null) {
+						// Verify the converted file exists
+						File convertedFile = new File(convertedPath);
+						if (convertedFile.exists() && convertedFile.length() > 0) {
+							// Move the converted file to the spectra directory
+							File targetFile = new File(mzMLFiles[fileIndex]);
+							try {
+								Files.move(convertedFile.toPath(), targetFile.toPath(),
+										StandardCopyOption.REPLACE_EXISTING);
+								logger.info("Successfully moved converted file from {} to {}", convertedPath,
+										mzMLFiles[fileIndex]);
+							} catch (Exception e) {
+								logger.error("Failed to move converted file from {} to {}: {}", convertedPath,
+										mzMLFiles[fileIndex], e.getMessage());
+							}
+						} else {
+							logger.error("Converted mzML file does not exist or is empty: {}", convertedPath);
+						}
+					} else {
+						logger.error("Failed to convert file to mzML: {}", rawFile);
+					}
+				} catch (Exception e) {
+					logger.error("Error converting file {}: {}", rawFile, e.getMessage());
+				}
+			});
+		}
+
+		// Shutdown executor and wait for completion
+		executor.shutdown();
+		try {
+			// Wait for all tasks to complete
+			while (!executor.isTerminated()) {
+				Thread.sleep(1000);
+			}
+		} catch (InterruptedException e) {
+			logger.error("Interrupted while waiting for conversion tasks to complete", e);
+			return false;
+		}
+
+		// Verify all conversions were successful
+
+		File rtFile = new File(spectraDirFile, "rt.txt");
+		File ms2CountFile = new File(spectraDirFile, "ms2Count.txt");
+
+		PrintWriter rtWriter = new PrintWriter(rtFile);
+		PrintWriter ms2CountWriter = new PrintWriter(ms2CountFile);
+
+		rtWriter.println("FileName\tScannum\tRt");
+		ms2CountWriter.println("FileName\tMS2 count");
+
+		Pattern scanPattern = Pattern.compile("scan=(\\d+)");
+		Pattern rtPattern = Pattern.compile("name=\"scan start time\"\\s+value=\"([^\"]+)\"");
+
+		// Verify all files were converted successfully
+		for (int i = 0; i < mzMLFiles.length; i++) {
+			if (mzMLFiles[i] == null) {
+				logger.error("Failed to convert file: {}", rawFiles[i]);
+				rtWriter.close();
+				ms2CountWriter.close();
+
+				return false;
+			}
+
+			String fileName = (new File(mzMLFiles[i])).getName();
+			fileName = fileName.substring(0, fileName.length() - ".mzML".length());
+
+			int count = 0;
+			int scannum = 0;
+			boolean isMS2 = false;
+			BufferedReader reader = new BufferedReader(new FileReader(mzMLFiles[i]));
+			String line = null;
+			while ((line = reader.readLine()) != null) {
+				line = line.trim();
+				if (line.startsWith("<spectrum index=")) {
+					Matcher matcher = scanPattern.matcher(line);
+					if (matcher.find()) {
+						scannum = Integer.parseInt(matcher.group(1));
+					}
+					isMS2 = false;
+				} else if (line.endsWith("name=\"MSn spectrum\" value=\"\"/>")) {
+					count++;
+					isMS2 = true;
+				} else if (line.startsWith("<cvParam cvRef=\"MS\" accession=\"MS:1000016\" name=\"scan start time\"")) {
+					Matcher matcher = rtPattern.matcher(line);
+					double rt = -1;
+					if (matcher.find()) {
+						rt = Double.parseDouble(matcher.group(1));
+					}
+					if (isMS2) {
+						rtWriter.println(fileName + "\t" + scannum + "\t" + rt);
+					}
+				}
+			}
+			reader.close();
+			ms2CountWriter.println(fileName + "\t" + count);
+		}
+
+		rtWriter.close();
+		ms2CountWriter.close();
+
+		logger.info("All spectra files converted successfully to mzML format");
+		return true;
+	}
 
     /**
      * Convert mzML files to MGF format for Sage processing using multiple threads
@@ -549,74 +599,93 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
      * Perform database search and identification using Sage
      * This method follows the same pattern as DDAMagSageTask
      */
-    private boolean performIdentification() {
-        logger.info("Starting Sage database search and identification");
-        
-        // Get Sage executable path
-        String sageExe = mrp.getToolPath(ToolType.SAGE);
-        if (sageExe == null || sageExe.isEmpty()) {
-            logger.error("Sage executable path not found in MetaResourceParameters");
-            return false;
-        }
-        
-        // Create Sage task
-        sageTask = new SageTask(sageExe);
-        
-        // Get current database path (should be the reduced database)
-        String currentDb = metaPar.getCurrentDb();
-        if (currentDb == null || currentDb.isEmpty()) {
-            logger.error("Current database path is not set");
-            return false;
-        }
-        
-        // Create search result directory
-        File sageSearchFile = new File(metaPar.getResult(), "sage_IGC_search");
+	private boolean performIdentification() {
+		logger.info("Starting Sage database search and identification");
+
+		// Get Sage executable path
+		String sageExe = mrp.getToolPath(ToolType.SAGE);
+		if (sageExe == null || sageExe.isEmpty()) {
+			logger.error("Sage executable path not found in MetaResourceParameters");
+			return false;
+		}
+
+		// Create Sage task
+		sageTask = new SageTask(sageExe);
+
+		// Get current database path (should be the reduced database)
+		String currentDb = metaPar.getCurrentDb();
+		if (currentDb == null || currentDb.isEmpty()) {
+			logger.error("Current database path is not set");
+			return false;
+		}
+
+		// Create search result directory
+		File sageSearchFile = new File(metaPar.getResult(), "sage_IGC_search");
 		if (!sageSearchFile.exists()) {
 			sageSearchFile.mkdir();
 			logger.info("  Created Sage search directory: " + sageSearchFile.getAbsolutePath());
 		} else {
 			logger.info("  Sage search directory already exists: " + sageSearchFile.getAbsolutePath());
 		}
-        
-        // Set the database search result file
-        metaPar.setDbSearchResultFile(sageSearchFile);
-        
-        this.combinedFile = new File(sageSearchFile, "combined");
+
+		// Set the database search result file
+		metaPar.setDbSearchResultFile(sageSearchFile);
+
+		this.combinedFile = new File(sageSearchFile, "combined");
 		if (!combinedFile.exists()) {
 			combinedFile.mkdir();
 			logger.info("  Created combined search directory: " + combinedFile.getAbsolutePath());
 		} else {
 			logger.info("  Combined search directory already exists: " + combinedFile.getAbsolutePath());
 		}
-		
-        try {
-            // Run Sage search against the database
-            DDAIgcSageParameters sageParams = (DDAIgcSageParameters) metaPar;
 
-			sageTask.searchMzML(mzMLFiles, combinedFile.getAbsolutePath(), currentDb, sageParams, true);
+		try {
+			// Run Sage search against the database
+			DDAIgcSageParameters sageParams = (DDAIgcSageParameters) metaPar;
 
-            // Run Sage
-            logger.info("Starting Sage execution with {} threads", metaPar.getThreadCount());
-            sageTask.run(metaPar.getThreadCount());
-            
-            // Check if results were generated
-            File pepResultFile = new File(combinedFile, "pep.tsv");
-            File proResultFile = new File(combinedFile, "pro.tsv");
-            
-            if (pepResultFile.exists() && pepResultFile.length() > 0 && 
-                proResultFile.exists() && proResultFile.length() > 0) {
-                logger.info("Sage identification completed successfully");
-                return true;
-            } else {
-                logger.error("Sage identification failed - result files not found or empty");
-                return false;
-            }
-            
-        } catch (Exception e) {
-            logger.error("Error during Sage identification: {}", e.getMessage(), e);
-            return false;
-        }
-    }
+			File pepResultFile = new File(combinedFile, "results.sage.tsv");
+			File quanResultFile = new File(combinedFile, "lfq.tsv");
+
+			if (!pepResultFile.exists() && !quanResultFile.exists()) {
+
+				// Run Sage search against combined database
+				try {
+					sageTask.searchMzML(mzMLFiles, combinedFile.getAbsolutePath(), currentDb, sageParams, true);
+				} catch (Exception e) {
+					logger.error(getTaskName() + ": error in running Sage search against combined database", e);
+					logger.error("[{}] error in running Sage search against combined database", getTaskName());
+					return false;
+				}
+
+				logger.info(getTaskName() + ": searching combined database started");
+				logger.info("[{}] searching combined database started", getTaskName());
+
+				logger.info("Starting Sage execution");
+				sageTask.run(separateResultFolders.length * 12);
+
+			} else {
+				logger.info("[{}] Sage search result already exists in {}", getTaskName(),
+						sageParams.getDbSearchResultFile());
+				logger.info(
+						getTaskName() + ": Sage search result already exists in " + sageParams.getDbSearchResultFile());
+			}
+
+			// Check if results exist
+			if (pepResultFile.exists() && pepResultFile.length() > 0 && quanResultFile.exists()
+					&& quanResultFile.length() > 0) {
+				logger.info(getTaskName() + ": combined database search finished successfully");
+				logger.info("[{}] combined database search finished successfully", getTaskName());
+				return true;
+			} else {
+				logger.info(getTaskName() + ": combined database search failed");
+				logger.error("[{}] combined database search failed", getTaskName());
+				return false;
+			}
+		} catch (Exception e) {
+			logger.error("Error during Sage identification: {}", e.getMessage(), e);
+			return false;
+		}
+	}
 
     /**
      * Export report including peptide/protein reports, taxonomy analysis, and functional annotation

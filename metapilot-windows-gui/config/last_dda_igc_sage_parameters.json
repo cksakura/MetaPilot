@@ -1,0 +1,100 @@
+{
+  "metadata": [
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "240318_01"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "240409_01"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "240412_01"
+    }
+  ],
+  "sage_parameters": {
+    "quantitative_mode": "Label-free",
+    "missed_cleavages": 2,
+    "min_peptide_length": 7,
+    "isobaric_type": "",
+    "heavy_labels": [],
+    "ms2_scan_mode": "HCD-ITMS",
+    "max_peptide_length": 50,
+    "max_variable_modifications": 2,
+    "decoys_enabled": true,
+    "precursor_tolerance_min": -20,
+    "generate_decoys": true,
+    "isobaric_table": [],
+    "digestion_mode": "Specific",
+    "variable_modifications": [
+      "Oxidation:M:15.9949",
+      "Acetylation:protein n-term:42.0106"
+    ],
+    "enzyme": "Trypsin",
+    "fragment_tolerance": 50,
+    "spectra_clustering": false,
+    "min_peak_intensity": 0,
+    "combine_label": false,
+    "light_labels": [],
+    "decoys_tag": "rev_",
+    "fragment_tolerance_unit": "ppm",
+    "precursor_tolerance_unit": "ppm",
+    "medium_labels": [],
+    "precursor_tolerance_max": 20,
+    "thread_count": 24,
+    "reduce_database": true,
+    "max_q": 0.01,
+    "fixed_modifications": ["C:57.02146"],
+    "write_checkpoint": false
+  },
+  "workflow": "DDA_IGC_SAGE",
+  "input_output": {
+    "host_database": "C:\\Users\\daz25hak\\MetaProAI\\database\\uniprotkb_Human_AND_reviewed_true_AND_m_2025_09_01.fasta",
+    "microbiome_database": "C:\\Users\\daz25hak\\MetaProAI\\database\\760MetaHit_139HMP_368PKU_511Bac.uniq.pep.fasta",
+    "output_directory": "Z:\\BEV_Simon\\MetaPilot",
+    "append_host_db": true,
+    "experiments": [
+      {
+        "file_path": "Z:\\BEV_Simon\\240318_01.raw",
+        "experiment_name": "240318_01"
+      },
+      {
+        "file_path": "Z:\\BEV_Simon\\240409_01.raw",
+        "experiment_name": "240409_01"
+      },
+      {
+        "file_path": "Z:\\BEV_Simon\\240412_01.raw",
+        "experiment_name": "240412_01"
+      }
+    ]
+  },
+  "created": "2025-11-14 15:33:14",
+  "description": "Last used parameters",
+  "version": "1.0.0",
+  "parameter_type": "DDAIgcSageParameters"
+}
