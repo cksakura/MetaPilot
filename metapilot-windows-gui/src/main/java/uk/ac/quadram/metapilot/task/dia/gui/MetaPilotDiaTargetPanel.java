@@ -1390,7 +1390,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 
 			// Create MetaBaseParameter
 			MetaBaseParameter metaBasePar = new MetaBaseParameter(
-					uk.ac.quadram.metapilot.MetaPilotApp.WorkflowType.DIA_TARGET.getAnalysisType(), // Workflow type
+					uk.ac.quadram.metapilot.workflow.WorkflowType.DIA_TARGET.getAnalysisType(), // Workflow type
 					metaData, result,
 					selectedMagDb.getCurrentFile() != null ? selectedMagDb.getCurrentFile().getAbsolutePath() : "", // MicroDb
 																													// path
@@ -1474,7 +1474,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 
 			// Create MetaBaseParameter with minimal data
 			MetaBaseParameter metaBasePar = new MetaBaseParameter(
-					uk.ac.quadram.metapilot.MetaPilotApp.WorkflowType.DIA_TARGET.getAnalysisType(), // Workflow type
+					uk.ac.quadram.metapilot.workflow.WorkflowType.DIA_TARGET.getAnalysisType(), // Workflow type
 					metaData, result,
 					selectedMagDb != null && selectedMagDb.getCurrentFile() != null
 							? selectedMagDb.getCurrentFile().getAbsolutePath()

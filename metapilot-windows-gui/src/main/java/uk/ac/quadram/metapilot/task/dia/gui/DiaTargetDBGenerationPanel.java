@@ -258,7 +258,7 @@ public class DiaTargetDBGenerationPanel extends VBox {
 		// This is for internal use, so we don't need complex parameters
 		try {
 			metaParameter = new MetaParameterDiaTg(new uk.ac.quadram.metapilot.task.par.MetaBaseParameter(
-					uk.ac.quadram.metapilot.MetaPilotApp.WorkflowType.DIA_TARGET.getAnalysisType(),
+					uk.ac.quadram.metapilot.workflow.WorkflowType.DIA_TARGET.getAnalysisType(),
 					new uk.ac.quadram.metapilot.task.par.MetaData(new String[0], new String[0], new int[0], new int[0]), // Empty
 																															// metadata
 					"", // Empty result directory

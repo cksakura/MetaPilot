@@ -3,7 +3,6 @@ package uk.ac.quadram.metapilot.task.dda.mag.task;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileFilter;
-import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -65,14 +64,14 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 	private static final String taskName = "DDA MAG database search by Sage workflow";
 
 	public DDAMagSageTask(DDAMagSageParameters magSageParams, MetaResourceParameters mrp, ProgressBar progressBar,
-			ProgressBar secondBar) {
+			ProgressBar secondBar, Label statusLabel) {
 		super(magSageParams, mrp, progressBar, secondBar);
 
 		// Store the direct reference to DDAMagSageParameters
 		this.magSageParams = magSageParams;
 
-		// Initialize status label from parameters
-		this.statusLabel = magSageParams.getStatusLabel();
+		// Initialize status label from constructor parameter (passed directly from GUI)
+		this.statusLabel = statusLabel;
 
 		// Initialize the magDb field from parameters
 		MagDbItem selectedMagDb = magSageParams.getMagDbItem();

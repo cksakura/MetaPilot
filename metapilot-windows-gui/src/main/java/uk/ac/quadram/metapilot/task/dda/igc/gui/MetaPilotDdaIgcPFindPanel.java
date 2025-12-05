@@ -32,6 +32,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -957,7 +958,7 @@ public class MetaPilotDdaIgcPFindPanel extends AbstractWorkflowPanel<DDAIgcPFind
 
         // Create DDAIgcPFindParameters using the correct constructor
         DDAIgcPFindParameters params = new DDAIgcPFindParameters(
-            MetaPilotApp.WorkflowType.DDA_IGC_PFIND.getAnalysisType(),
+            uk.ac.quadram.metapilot.workflow.WorkflowType.DDA_IGC_PFIND.getAnalysisType(),
             metaData,
             result,
             microDb,
@@ -967,8 +968,12 @@ public class MetaPilotDdaIgcPFindPanel extends AbstractWorkflowPanel<DDAIgcPFind
             threadCount
         );
         
-        // Set additional parameters that aren't in the constructor
-        params.setExperimentData(new ArrayList<>(fileRows));
+        // Set additional parameters that aren't in the constructor - Convert ExperimentRow to String[]
+        List<String[]> experimentDataArray = new ArrayList<>();
+        for (MetaPilotIOPanelFX.ExperimentRow row : fileRows) {
+            experimentDataArray.add(row.toArray());
+        }
+        params.setExperimentData(experimentDataArray);
         
         // Enzyme settings
         params.setEnzyme(enzyme);
@@ -993,12 +998,21 @@ public class MetaPilotDdaIgcPFindPanel extends AbstractWorkflowPanel<DDAIgcPFind
         if (isobaricLabelingPanel.getSelectedIsobaricType() != null) {
             params.setIsobaricType(isobaricLabelingPanel.getSelectedIsobaricType());
         }
-        params.setIsobaricTableData(new ArrayList<>(isobaricLabelingPanel.getIsobaricTableData()));
+        // Convert JavaFX IsobaricLabelRow objects to String arrays
+        List<String[]> isobaricDataArray = new ArrayList<>();
+        for (IsobaricLabelingPanel.IsobaricLabelRow row : isobaricLabelingPanel.getIsobaricTableData()) {
+            isobaricDataArray.add(row.toArray());
+        }
+        params.setIsobaricTableData(isobaricDataArray);
         
         // Taxonomic analysis
         
-        // Metadata table data
-        params.setMetadataTableData(new ArrayList<>(metadataTableData));
+        // Metadata table data - Convert JavaFX MetadataRow objects to String arrays
+        List<String[]> metadataDataArray = new ArrayList<>();
+        for (MetaPilotDdaIgcMaxQuantPanel.MetadataRow row : metadataTableData) {
+            metadataDataArray.add(row.toArray());
+        }
+        params.setMetadataTableData(metadataDataArray);
         
         consolePanel.appendConsoleText("✓ Successfully collected parameters from UI\n");
         LOGGER.info("Successfully collected parameters from UI for IGC pFind workflow");
@@ -1025,9 +1039,13 @@ public class MetaPilotDdaIgcPFindPanel extends AbstractWorkflowPanel<DDAIgcPFind
                 consolePanel.appendConsoleText("✓ Successfully loaded last used parameters\n");
                 LOGGER.info("Loaded last used parameters for DDA IGC pFind workflow");
                 
-                // Also apply experiment data to the IO panel if available
+                // Also apply experiment data to the IO panel if available - Convert String[] to ExperimentRow
                 if (params.getExperimentData() != null && !params.getExperimentData().isEmpty()) {
-                    ioPanel.getIoPanel().setExperimentData(params.getExperimentData());
+                    List<MetaPilotIOPanelFX.ExperimentRow> experimentRows = new ArrayList<>();
+                    for (String[] data : params.getExperimentData()) {
+                        experimentRows.add(MetaPilotIOPanelFX.ExperimentRow.fromArray(data));
+                    }
+                    ioPanel.getIoPanel().setExperimentData(experimentRows);
                     consolePanel.appendConsoleText("Applied " + params.getExperimentData().size() + " experiment rows to IO panel\n");
                     LOGGER.info("Applied {} experiment rows to IO panel", params.getExperimentData().size());
                 }
@@ -1162,9 +1180,13 @@ public class MetaPilotDdaIgcPFindPanel extends AbstractWorkflowPanel<DDAIgcPFind
             isobaricLabelingPanel.setSelectedIsobaricType(params.getIsobaricType());
         }
         
-        // Apply isobaric table data if available
+        // Apply isobaric table data if available - Convert String arrays back to JavaFX IsobaricLabelRow objects
         if (params.getIsobaricTableData() != null && !params.getIsobaricTableData().isEmpty() && isobaricLabelingPanel != null) {
-            isobaricLabelingPanel.setIsobaricTableData(params.getIsobaricTableData());
+            List<IsobaricLabelingPanel.IsobaricLabelRow> isobaricRows = new ArrayList<>();
+            for (String[] data : params.getIsobaricTableData()) {
+                isobaricRows.add(IsobaricLabelingPanel.IsobaricLabelRow.fromArray(data));
+            }
+            isobaricLabelingPanel.setIsobaricTableData(isobaricRows);
         }
         
         // Apply taxonomic settings

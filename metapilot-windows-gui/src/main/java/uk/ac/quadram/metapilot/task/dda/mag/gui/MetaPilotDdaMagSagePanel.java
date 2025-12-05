@@ -757,13 +757,10 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 			Label statusLabel = new Label("Ready to start analysis...");
 			consolePanel.appendConsoleText("✓ Progress bars and status label initialized\n");
 
-			analysisParams.setStatusLabel(statusLabel);
-			consolePanel.appendConsoleText("✓ Status label set in parameters\n");
-
-			// Create and run DDAMagSageTask
+			// Create and run DDAMagSageTask - pass statusLabel directly to task (not through parameters)
 			consolePanel.appendConsoleText("Creating MAG Sage task...\n");
 			currentTask = new DDAMagSageTask(analysisParams, mrp, consolePanel.getOverallProgressBar(),
-					consolePanel.getCurrentTaskProgressBar());
+					consolePanel.getCurrentTaskProgressBar(), statusLabel);
 			consolePanel.appendConsoleText("✓ Task created successfully\n");
 
 			// Set up task callbacks
@@ -1101,7 +1098,7 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 
 			// Create DDAMagSageParameters
 			DDAMagSageParameters analysisParams = new DDAMagSageParameters(
-					MetaPilotApp.WorkflowType.DDA_MAG_SAGE.getAnalysisType(), metaData, result, microDb, appendHostDb,
+					uk.ac.quadram.metapilot.workflow.WorkflowType.DDA_MAG_SAGE.getAnalysisType(), metaData, result, microDb, appendHostDb,
 					hostDB, "HCD-FTMS", // Default MS2 scan mode for Sage
 					threadCount);
 
@@ -1189,15 +1186,23 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 			analysisParams.setFixedModifications(fixedMods);
 			analysisParams.setVariableModifications(variableMods);
 
-			// Set experiment data if available
+			// Set experiment data if available - convert JavaFX rows to String arrays
 			if (ioPanel != null) {
 				ObservableList<ExperimentRow> fileRows = ioPanel.getExperimentData();
-				analysisParams.setExperimentData(new ArrayList<>(fileRows));
+				List<String[]> experimentArrays = new ArrayList<>();
+				for (ExperimentRow row : fileRows) {
+					experimentArrays.add(row.toArray());
+				}
+				analysisParams.setExperimentData(experimentArrays);
 			}
 
-			// Set metadata table data if available
+			// Set metadata table data if available - convert JavaFX rows to String arrays
 			if (metadataPanel != null) {
-				analysisParams.setMetadataTableData(new ArrayList<>(metadataPanel.getMetadataTableData()));
+				List<String[]> metadataArrays = new ArrayList<>();
+				for (var row : metadataPanel.getMetadataTableData()) {
+					metadataArrays.add(row.toArray());
+				}
+				analysisParams.setMetadataTableData(metadataArrays);
 			}
 
 			LOGGER.info("Successfully collected parameters from UI for saving (MAG Sage workflow)");
@@ -1324,7 +1329,7 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 
 			// Create DDAMagSageParameters
 			DDAMagSageParameters analysisParams = new DDAMagSageParameters(
-					MetaPilotApp.WorkflowType.DDA_MAG_SAGE.getAnalysisType(), metaData, result, microDb, appendHostDb,
+					uk.ac.quadram.metapilot.workflow.WorkflowType.DDA_MAG_SAGE.getAnalysisType(), metaData, result, microDb, appendHostDb,
 					hostDB, "HCD-FTMS", // Default MS2 scan mode for Sage
 					threadCount);
 
@@ -1414,8 +1419,12 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 			analysisParams.setFixedModifications(fixedMods);
 			analysisParams.setVariableModifications(variableMods);
 
-			// Set experiment data
-			analysisParams.setExperimentData(new ArrayList<>(fileRows));
+			// Set experiment data - convert JavaFX rows to String arrays
+			List<String[]> experimentArrays = new ArrayList<>();
+			for (ExperimentRow row : fileRows) {
+				experimentArrays.add(row.toArray());
+			}
+			analysisParams.setExperimentData(experimentArrays);
 
 			consolePanel.appendConsoleText("✓ Successfully collected parameters from UI\n");
 			LOGGER.info("Successfully collected parameters from UI for MAG Sage workflow");
@@ -1507,9 +1516,13 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 				applyParametersToUI(params);
 				LOGGER.info("Applied parameters to UI for DDA MAG Sage workflow");
 
-				// Also apply experiment data to the IO panel if available
+				// Also apply experiment data to the IO panel if available - convert String arrays back to JavaFX rows
 				if (params.getExperimentData() != null && !params.getExperimentData().isEmpty()) {
-					ioPanel.setExperimentData(params.getExperimentData());
+					List<ExperimentRow> experimentRows = new ArrayList<>();
+					for (String[] data : params.getExperimentData()) {
+						experimentRows.add(ExperimentRow.fromArray(data));
+					}
+					ioPanel.setExperimentData(experimentRows);
 					consolePanel.appendConsoleText(
 							"Applied " + params.getExperimentData().size() + " experiment rows to IO panel\n");
 					LOGGER.info("Applied {} experiment rows to IO panel", params.getExperimentData().size());
@@ -1733,10 +1746,14 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 				LOGGER.info("Applied {} variable modifications", params.getVariableModifications().size());
 			}
 
-			// Apply metadata table data if available
+			// Apply metadata table data if available - convert String arrays back to JavaFX rows
 			if (params.getMetadataTableData() != null && !params.getMetadataTableData().isEmpty()
 					&& metadataPanel != null) {
-				metadataPanel.setMetadataTableData(params.getMetadataTableData());
+				List<uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel.MetadataRow> metadataRows = new ArrayList<>();
+				for (String[] data : params.getMetadataTableData()) {
+					metadataRows.add(uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel.MetadataRow.fromArray(data));
+				}
+				metadataPanel.setMetadataTableData(metadataRows);
 				LOGGER.info("Applied {} metadata table rows", params.getMetadataTableData().size());
 			}
 

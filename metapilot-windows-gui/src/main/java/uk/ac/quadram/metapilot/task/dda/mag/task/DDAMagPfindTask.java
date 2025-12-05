@@ -64,14 +64,14 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 	private static final String taskName = "DDA MAG database search by pFind workflow";
 
 	public DDAMagPfindTask(DDAMagPfindParameters magPfindParams, MetaResourceParameters mrp, ProgressBar progressBar,
-			ProgressBar secondBar) {
+			ProgressBar secondBar, Label statusLabel) {
 		super(magPfindParams, mrp, progressBar, secondBar);
 
 		// Store the direct reference to DDAMagPfindParameters
 		this.magPfindParams = magPfindParams;
 
-		// Initialize status label from parameters
-		this.statusLabel = magPfindParams.getStatusLabel();
+		// Initialize status label from constructor parameter (passed directly from GUI)
+		this.statusLabel = statusLabel;
 
 		// Initialize the magDb field from parameters
 		MagDbItem selectedMagDb = magPfindParams.getMagDbItem();

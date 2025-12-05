@@ -1361,7 +1361,7 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
 
         // Create DDAIgcSageParameters using the correct constructor
         DDAIgcSageParameters params = new DDAIgcSageParameters(
-            MetaPilotApp.WorkflowType.DDA_IGC_SAGE.getAnalysisType(),
+            uk.ac.quadram.metapilot.workflow.WorkflowType.DDA_IGC_SAGE.getAnalysisType(),
             metaData,
             result,
             microDb,
@@ -1371,8 +1371,12 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
             threadCount
         );
         
-        // Set additional parameters that aren't in the constructor
-        params.setExperimentData(new ArrayList<>(fileRows));
+        // Set additional parameters that aren't in the constructor - Convert ExperimentRow to String[]
+        List<String[]> experimentDataArray = new ArrayList<>();
+        for (MetaPilotIOPanelFX.ExperimentRow row : fileRows) {
+            experimentDataArray.add(row.toArray());
+        }
+        params.setExperimentData(experimentDataArray);
         
         // Enzyme settings
         params.setEnzyme(enzyme);
@@ -1460,13 +1464,22 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
         if (isobaricTypeComboBox.getValue() != null) {
             params.setIsobaricType(isobaricTypeComboBox.getValue());
         }
-        params.setIsobaricTableData(new ArrayList<>(isobaricTableData));
+        // Convert JavaFX IsobaricLabelRow objects to String arrays
+        List<String[]> isobaricDataArray = new ArrayList<>();
+        for (IsobaricLabelingPanel.IsobaricLabelRow row : isobaricTableData) {
+            isobaricDataArray.add(row.toArray());
+        }
+        params.setIsobaricTableData(isobaricDataArray);
         
         // Taxonomic analysis - these methods may not exist in DDAIgcSageParameters
         // They would need to be added to the parameter class if needed
         
-        // Metadata table data
-        params.setMetadataTableData(new ArrayList<>(metadataTableData));
+        // Metadata table data - Convert JavaFX MetadataRow objects to String arrays
+        List<String[]> metadataDataArray = new ArrayList<>();
+        for (MetaPilotDdaIgcMaxQuantPanel.MetadataRow row : metadataTableData) {
+            metadataDataArray.add(row.toArray());
+        }
+        params.setMetadataTableData(metadataDataArray);
         
         consolePanel.appendConsoleText("✓ Successfully collected parameters from UI\n");
         LOGGER.info("Successfully collected parameters from UI for IGC Sage workflow");
@@ -1493,9 +1506,13 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
                 consolePanel.appendConsoleText("✓ Successfully loaded last used parameters\n");
                 LOGGER.info("Loaded last used parameters for DDA IGC Sage workflow");
                 
-                // Also apply experiment data to the IO panel if available
+                // Also apply experiment data to the IO panel if available - Convert String[] to ExperimentRow
                 if (params.getExperimentData() != null && !params.getExperimentData().isEmpty()) {
-                    ioPanel.getIoPanel().setExperimentData(params.getExperimentData());
+                    List<MetaPilotIOPanelFX.ExperimentRow> experimentRows = new ArrayList<>();
+                    for (String[] data : params.getExperimentData()) {
+                        experimentRows.add(MetaPilotIOPanelFX.ExperimentRow.fromArray(data));
+                    }
+                    ioPanel.getIoPanel().setExperimentData(experimentRows);
                     consolePanel.appendConsoleText("Applied " + params.getExperimentData().size() + " experiment rows to IO panel\n");
                     LOGGER.info("Applied {} experiment rows to IO panel", params.getExperimentData().size());
                 }
@@ -1700,10 +1717,12 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
             isobaricTypeComboBox.setValue(params.getIsobaricType());
         }
         
-        // Apply isobaric table data if available
+        // Apply isobaric table data if available - Convert String arrays back to JavaFX IsobaricLabelRow objects
         if (params.getIsobaricTableData() != null && !params.getIsobaricTableData().isEmpty()) {
             isobaricTableData.clear();
-            isobaricTableData.addAll(params.getIsobaricTableData());
+            for (String[] data : params.getIsobaricTableData()) {
+                isobaricTableData.add(IsobaricLabelingPanel.IsobaricLabelRow.fromArray(data));
+            }
         }
         
         // Apply taxonomic settings - these methods may not exist in DDAIgcSageParameters

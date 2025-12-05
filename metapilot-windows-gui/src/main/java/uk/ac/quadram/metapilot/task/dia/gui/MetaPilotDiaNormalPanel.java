@@ -1110,7 +1110,7 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
             
             // Create MetaBaseParameter with minimal data
 			MetaBaseParameter metaBasePar = new MetaBaseParameter(
-					uk.ac.quadram.metapilot.MetaPilotApp.WorkflowType.DIA_NORMAL.getAnalysisType(), // Workflow type
+					uk.ac.quadram.metapilot.workflow.WorkflowType.DIA_NORMAL.getAnalysisType(), // Workflow type
 					metaData, result,
 					selectedMagDb.getCurrentFile() != null ? selectedMagDb.getCurrentFile().getAbsolutePath() : "", // MicroDb
 																													// path

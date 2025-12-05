@@ -1361,7 +1361,7 @@ public class MetaPilotDiaRealTimePanel extends VBox {
             
             // Create MetaBaseParameter
 			MetaBaseParameter metaBasePar = new MetaBaseParameter(
-					uk.ac.quadram.metapilot.MetaPilotApp.WorkflowType.DIA_REALTIME.getAnalysisType(), // Workflow type
+					uk.ac.quadram.metapilot.workflow.WorkflowType.DIA_REALTIME.getAnalysisType(), // Workflow type
 					metaData, result,
 					selectedMagDb.getCurrentFile() != null ? selectedMagDb.getCurrentFile().getAbsolutePath() : "", // MicroDb
 																													// path

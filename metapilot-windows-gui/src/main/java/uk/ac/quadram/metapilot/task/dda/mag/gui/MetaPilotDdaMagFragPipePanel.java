@@ -65,6 +65,9 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
 
     private MetaResourceParameters resourceParams;
     
+    // Store FragpipeWorkflow to pass to task (not stored in parameters)
+    private uk.ac.quadram.metapilot.dbSearch.fragpipe.FragpipeWorkflow currentFragpipeWorkflow;
+    
     
     
     // Logger
@@ -656,14 +659,10 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
             Label statusLabel = new Label("Ready to start analysis...");
             consolePanel.appendConsoleText("✓ Progress bars and status label initialized\n");
             
-            // 5. Set status label in parameters
-            analysisParams.setStatusLabel(statusLabel);
-            consolePanel.appendConsoleText("✓ Status label set in parameters\n");
-            
-            // 6. Create and run DDAMagFragPipeTask with DDAMagFragPipeParameters directly
+            // 5. Create and run DDAMagFragPipeTask - pass statusLabel and workflow directly to task (not through parameters)
             consolePanel.appendConsoleText("Creating MAG FragPipe task...\n");
 			currentTask = new DDAMagFragPipeTask(analysisParams, resourceParams, consolePanel.getOverallProgressBar(),
-					consolePanel.getCurrentTaskProgressBar());
+					consolePanel.getCurrentTaskProgressBar(), statusLabel, this.currentFragpipeWorkflow);
             consolePanel.appendConsoleText("✓ Task created successfully\n");
             
             // 7. Set up task callbacks
@@ -837,7 +836,7 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
             
             // Create DDAMagFragPipeParameters with required constructor parameters
 			DDAMagFragPipeParameters analysisParams = new DDAMagFragPipeParameters(
-					MetaPilotApp.WorkflowType.DDA_MAG_FRAGPIPE.getAnalysisType(), metaData, result, microDb,
+					uk.ac.quadram.metapilot.workflow.WorkflowType.DDA_MAG_FRAGPIPE.getAnalysisType(), metaData, result, microDb,
 					appendHostDb, hostDB, msDataType, // Default MS2 scan mode for FragPipe
 					threadCount);
             LOGGER.info("DDAMagFragPipeParameters object created successfully");
@@ -869,12 +868,20 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
             // Set modifications (convert from FragPipe format to standard format)
             // Note: Modifications are set later in the workflow configuration section
             
-            // Set experiment data
-            analysisParams.setExperimentData(new ArrayList<>(fileRows));
+            // Set experiment data - convert JavaFX rows to String arrays
+            List<String[]> experimentArrays = new ArrayList<>();
+            for (MetaPilotIOPanelFX.ExperimentRow row : fileRows) {
+                experimentArrays.add(row.toArray());
+            }
+            analysisParams.setExperimentData(experimentArrays);
             
-            // Set metadata table data using reusable component
+            // Set metadata table data using reusable component - convert JavaFX rows to String arrays
             if (metadataPanel != null) {
-                analysisParams.setMetadataTableData(new ArrayList<>(metadataPanel.getMetadataTableData()));
+                List<String[]> metadataArrays = new ArrayList<>();
+                for (var row : metadataPanel.getMetadataTableData()) {
+                    metadataArrays.add(row.toArray());
+                }
+                analysisParams.setMetadataTableData(metadataArrays);
             }
             
             // Create and configure FragPipe workflow
@@ -930,8 +937,8 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
                                     analysisParams.setFixedModifications(fixedMods);
                                     analysisParams.setVariableModifications(variableMods);
                                     
-                                    // Set the configured workflow
-                                    analysisParams.setFragpipeWorkflow(fragpipeWorkflow);
+                                    // Store the configured workflow as member variable (will be passed to task separately)
+                                    this.currentFragpipeWorkflow = fragpipeWorkflow;
                                     
                                     LOGGER.info("Successfully configured FragPipe workflow: {}", workflow);
                                 } else {
@@ -1025,9 +1032,13 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
                 applyParametersToUI(params);
                 LOGGER.info("Applied parameters to UI for DDA MAG FragPipe workflow");
                 
-                // Also apply experiment data to the IO panel if available
+                // Also apply experiment data to the IO panel if available - convert String arrays back to JavaFX rows
                 if (params.getExperimentData() != null && !params.getExperimentData().isEmpty()) {
-                    ioPanel.setExperimentData(params.getExperimentData());
+                    List<MetaPilotIOPanelFX.ExperimentRow> experimentRows = new ArrayList<>();
+                    for (String[] data : params.getExperimentData()) {
+                        experimentRows.add(MetaPilotIOPanelFX.ExperimentRow.fromArray(data));
+                    }
+                    ioPanel.setExperimentData(experimentRows);
                     consolePanel.appendConsoleText("Applied " + params.getExperimentData().size() + " experiment rows to IO panel\n");
                     LOGGER.info("Applied {} experiment rows to IO panel", params.getExperimentData().size());
                 }
@@ -1195,9 +1206,13 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
         
         // Note: Quantitative mode is determined by workflow selection, no UI settings needed
 
-        // Apply metadata table data if available
+        // Apply metadata table data if available - convert String arrays back to JavaFX rows
         if (params.getMetadataTableData() != null && !params.getMetadataTableData().isEmpty() && metadataPanel != null) {
-            metadataPanel.setMetadataTableData(params.getMetadataTableData());
+            List<uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel.MetadataRow> metadataRows = new ArrayList<>();
+            for (String[] data : params.getMetadataTableData()) {
+                metadataRows.add(uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel.MetadataRow.fromArray(data));
+            }
+            metadataPanel.setMetadataTableData(metadataRows);
             LOGGER.info("Applied {} metadata table rows", params.getMetadataTableData().size());
         }
         
