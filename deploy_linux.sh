@@ -23,7 +23,7 @@ NC='\033[0m'
 
 # Configuration
 DEPLOY_DIR="${1:-/opt/metapilot}"
-JAR_FILE="metapilot-web/target/metapilot-web-1.0.0-beta.2.jar"
+JAR_FILE="metapilot-web/target/metapilot-web-1.0.0-beta.3.jar"
 SERVICE_USER="metapilot"
 SERVICE_NAME="metapilot-web"
 CONFIG_DIR="$DEPLOY_DIR/config"
@@ -111,7 +111,7 @@ After=network.target
 Type=simple
 User=$SERVICE_USER
 WorkingDirectory=$DEPLOY_DIR
-ExecStart=/usr/bin/java -Xms512m -Xmx4g -jar $DEPLOY_DIR/metapilot-web-1.0.0-beta.2.jar
+ExecStart=/usr/bin/java -Xms512m -Xmx4g -jar $DEPLOY_DIR/metapilot-web-1.0.0-beta.3.jar
 Restart=always
 RestartSec=10
 StandardOutput=append:$LOG_DIR/stdout.log
@@ -138,7 +138,7 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$DIR"
 
 echo "Starting MetaPilot Web Application..."
-java -Xms512m -Xmx4g -jar metapilot-web-1.0.0-beta.2.jar
+java -Xms512m -Xmx4g -jar metapilot-web-1.0.0-beta.3.jar
 
 EOF
 

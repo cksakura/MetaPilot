@@ -1077,6 +1077,38 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
         public String getCustomField3() { return customField3.get(); }
         public void setCustomField3(String value) { customField3.set(value); }
         public StringProperty customField3Property() { return customField3; }
+        
+        /**
+         * Convert this MetadataRow to a String array for parameter storage.
+         * Order: [sampleName, labelType, age, gender, condition, treatment, timePoint, customField1, customField2, customField3]
+         */
+        public String[] toArray() {
+            return new String[]{
+                getSampleName(), getLabelType(), getAge(), getGender(), getCondition(),
+                getTreatment(), getTimePoint(), getCustomField1(), getCustomField2(), getCustomField3()
+            };
+        }
+        
+        /**
+         * Create a MetadataRow from a String array.
+         * Expected order: [sampleName, labelType, age, gender, condition, treatment, timePoint, customField1, customField2, customField3]
+         */
+        public static MetadataRow fromArray(String[] data) {
+            if (data == null || data.length < 1) {
+                throw new IllegalArgumentException("Array must contain at least sampleName");
+            }
+            MetadataRow row = new MetadataRow(data[0]);
+            if (data.length >= 2) row.setLabelType(data[1]);
+            if (data.length >= 3) row.setAge(data[2]);
+            if (data.length >= 4) row.setGender(data[3]);
+            if (data.length >= 5) row.setCondition(data[4]);
+            if (data.length >= 6) row.setTreatment(data[5]);
+            if (data.length >= 7) row.setTimePoint(data[6]);
+            if (data.length >= 8) row.setCustomField1(data[7]);
+            if (data.length >= 9) row.setCustomField2(data[8]);
+            if (data.length >= 10) row.setCustomField3(data[9]);
+            return row;
+        }
     }
     
     private void loadEnzymesAndModifications() {
@@ -1619,6 +1651,24 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
         public String getPlus2() { return plus2.get(); }
         public void setPlus2(String value) { plus2.set(value); }
         public StringProperty plus2Property() { return plus2; }
+        
+        // Convert to String array for parameter storage
+        public String[] toArray() {
+            return new String[]{getLabelName(), getMinus2(), getMinus1(), getPlus1(), getPlus2()};
+        }
+        
+        // Create from String array for parameter loading
+        public static IsobaricLabelRow fromArray(String[] data) {
+            if (data == null || data.length != 5) {
+                throw new IllegalArgumentException("Invalid data array for IsobaricLabelRow");
+            }
+            IsobaricLabelRow row = new IsobaricLabelRow(data[0]);
+            row.setMinus2(data[1]);
+            row.setMinus1(data[2]);
+            row.setPlus1(data[3]);
+            row.setPlus2(data[4]);
+            return row;
+        }
     }
     
     private void updateMetadataTableFromIOPanel() {
@@ -1683,7 +1733,7 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
         
         // Create DDAIgcMaxQuantParameters using parameterized constructor
 		DDAIgcMaxQuantParameters params = new DDAIgcMaxQuantParameters(
-				MetaPilotApp.WorkflowType.DDA_IGC_MAXQUANT.getAnalysisType(), // analysisType
+				uk.ac.quadram.metapilot.workflow.WorkflowType.DDA_IGC_MAXQUANT.getAnalysisType(), // analysisType
 				metadata, // MetaData object
 				resultDir, // output directory (result)
 				microDb, // microbiome database (microDb)
@@ -1741,7 +1791,12 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
                 params.setIsobaricTag(null);
             }
         }
-        params.setIsobaricTableData(new ArrayList<>(isobaricTableData));
+        // Convert JavaFX IsobaricLabelRow objects to String arrays
+        List<String[]> isobaricDataArray = new ArrayList<>();
+        for (IsobaricLabelRow row : isobaricTableData) {
+            isobaricDataArray.add(row.toArray());
+        }
+        params.setIsobaricTableData(isobaricDataArray);
         
         // Set isobaric correction factors (double[][])
         if (!isobaricTableData.isEmpty()) {
@@ -1765,8 +1820,12 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
         
         // Taxonomic analysis
         
-        // Metadata
-        params.setMetadataTableData(new ArrayList<>(metadataTableData));
+        // Metadata - Convert JavaFX MetadataRow objects to String arrays
+        List<String[]> metadataDataArray = new ArrayList<>();
+        for (MetadataRow row : metadataTableData) {
+            metadataDataArray.add(row.toArray());
+        }
+        params.setMetadataTableData(metadataDataArray);
         
         consolePanel.appendConsoleText("✓ Successfully collected parameters from UI\n");
         LOGGER.info("Successfully collected parameters from UI for IGC MaxQuant workflow");
@@ -1926,17 +1985,22 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
         if (params.getIsobaricType() != null && isobaricTypeComboBox != null) {
             isobaricTypeComboBox.setValue(params.getIsobaricType());
         }
+        // Convert String arrays back to JavaFX IsobaricLabelRow objects
         if (params.getIsobaricTableData() != null && isobaricTableData != null) {
             isobaricTableData.clear();
-            isobaricTableData.addAll(params.getIsobaricTableData());
+            for (String[] data : params.getIsobaricTableData()) {
+                isobaricTableData.add(IsobaricLabelRow.fromArray(data));
+            }
         }
         
         // Apply taxonomic settings
         
-        // Apply metadata table data
+        // Apply metadata table data - Convert String arrays back to JavaFX MetadataRow objects
         if (params.getMetadataTableData() != null && metadataTableData != null) {
             metadataTableData.clear();
-            metadataTableData.addAll(params.getMetadataTableData());
+            for (String[] data : params.getMetadataTableData()) {
+                metadataTableData.add(MetadataRow.fromArray(data));
+            }
         }
         
         // Update parameter view and metadata table after applying parameters

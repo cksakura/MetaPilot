@@ -30,6 +30,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.io.File;
@@ -563,14 +564,10 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
             Label statusLabel = new Label("Ready to start analysis...");
             consolePanel.appendConsoleText("✓ Progress bars and status label initialized\n");
             
-            // 5. Set status label in parameters
-            analysisParams.setStatusLabel(statusLabel);
-            consolePanel.appendConsoleText("✓ Status label set in parameters\n");
-            
-            // 6. Create and run DDAMagPfindTask with DDAMagPfindParameters directly
+            // 5. Create and run DDAMagPfindTask - pass statusLabel directly to task (not through parameters)
             consolePanel.appendConsoleText("Creating MAG pFind task...\n");
 			currentTask = new DDAMagPfindTask(analysisParams, mrp, consolePanel.getOverallProgressBar(),
-					consolePanel.getCurrentTaskProgressBar());
+					consolePanel.getCurrentTaskProgressBar(), statusLabel);
             consolePanel.appendConsoleText("✓ Task created successfully\n");
             
             // 7. Set up task callbacks
@@ -934,7 +931,7 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
             // Create DDAMagPfindParameters with required constructor parameters
             LOGGER.info("Creating DDAMagPfindParameters object...");
             DDAMagPfindParameters analysisParams = new DDAMagPfindParameters(
-                MetaPilotApp.WorkflowType.DDA_MAG_PFIND.getAnalysisType(),
+                uk.ac.quadram.metapilot.workflow.WorkflowType.DDA_MAG_PFIND.getAnalysisType(),
                 metaData,
                 result,
                 microDb,
@@ -998,12 +995,20 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
             analysisParams.setMediumLabels(new ArrayList<>()); // TODO: Get from isotopic labeling panel
             analysisParams.setHeavyLabels(new ArrayList<>()); // TODO: Get from isotopic labeling panel
             
-            // Set experiment data
-            analysisParams.setExperimentData(new ArrayList<>(fileRows));
+            // Set experiment data - convert JavaFX rows to String arrays
+            List<String[]> experimentArrays = new ArrayList<>();
+            for (ExperimentRow row : fileRows) {
+                experimentArrays.add(row.toArray());
+            }
+            analysisParams.setExperimentData(experimentArrays);
             
-            // Set metadata table data
+            // Set metadata table data - convert JavaFX rows to String arrays
             if (metadataRows != null) {
-                analysisParams.setMetadataTableData(new ArrayList<>(metadataRows));
+                List<String[]> metadataArrays = new ArrayList<>();
+                for (var row : metadataRows) {
+                    metadataArrays.add(row.toArray());
+                }
+                analysisParams.setMetadataTableData(metadataArrays);
             }
             
             consolePanel.appendConsoleText("✓ Successfully collected parameters from UI\n");
@@ -1118,7 +1123,7 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
             JSONObject json = new JSONObject();
             
             // Header information
-            json.put("workflow", MetaPilotApp.WorkflowType.DDA_MAG_PFIND.getAnalysisType());
+            json.put("workflow", uk.ac.quadram.metapilot.workflow.WorkflowType.DDA_MAG_PFIND.getAnalysisType());
             json.put("version", "1.0");
             json.put("generated_at", new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()));
             
@@ -1202,9 +1207,13 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
                 consolePanel.appendConsoleText("✓ Successfully loaded last used parameters\n");
                 LOGGER.info("Loaded last used parameters for DDA MAG pFind workflow");
                 
-                // Also apply experiment data to the IO panel if available
+                // Also apply experiment data to the IO panel if available - convert String arrays back to JavaFX rows
                 if (params.getExperimentData() != null && !params.getExperimentData().isEmpty()) {
-                    ioPanel.setExperimentData(params.getExperimentData());
+                    List<ExperimentRow> experimentRows = new ArrayList<>();
+                    for (String[] data : params.getExperimentData()) {
+                        experimentRows.add(ExperimentRow.fromArray(data));
+                    }
+                    ioPanel.setExperimentData(experimentRows);
                     consolePanel.appendConsoleText("Applied " + params.getExperimentData().size() + " experiment rows to IO panel\n");
                     LOGGER.info("Applied {} experiment rows to IO panel", params.getExperimentData().size());
                 }
@@ -1354,15 +1363,23 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
             LOGGER.info("Applied isobaric type: {}", params.getIsobaricType());
         }
         
-        // Apply isobaric table data if available
+        // Apply isobaric table data if available - convert String arrays back to JavaFX rows
         if (params.getIsobaricTableData() != null && !params.getIsobaricTableData().isEmpty() && isobaricPanel != null) {
-            isobaricPanel.setIsobaricTableData(params.getIsobaricTableData());
+            List<uk.ac.quadram.metapilot.task.common.gui.IsobaricLabelingPanel.IsobaricLabelRow> isobaricRows = new ArrayList<>();
+            for (String[] data : params.getIsobaricTableData()) {
+                isobaricRows.add(uk.ac.quadram.metapilot.task.common.gui.IsobaricLabelingPanel.IsobaricLabelRow.fromArray(data));
+            }
+            isobaricPanel.setIsobaricTableData(isobaricRows);
             LOGGER.info("Applied {} isobaric table rows", params.getIsobaricTableData().size());
         }
         
-        // Apply metadata table data if available
+        // Apply metadata table data if available - convert String arrays back to JavaFX rows
         if (params.getMetadataTableData() != null && !params.getMetadataTableData().isEmpty() && metadataPanel != null) {
-            metadataPanel.setMetadataTableData(params.getMetadataTableData());
+            List<uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel.MetadataRow> metadataRows = new ArrayList<>();
+            for (String[] data : params.getMetadataTableData()) {
+                metadataRows.add(uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel.MetadataRow.fromArray(data));
+            }
+            metadataPanel.setMetadataTableData(metadataRows);
             LOGGER.info("Applied {} metadata table rows", params.getMetadataTableData().size());
         }
         

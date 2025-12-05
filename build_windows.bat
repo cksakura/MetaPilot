@@ -13,7 +13,7 @@ setlocal enabledelayedexpansion
 
 REM Configuration
 set PROJECT_NAME=MetaPilot
-set VERSION=1.0.0-beta.2
+set VERSION=1.0.0-beta.3
 set BUILD_PROFILE=windows-gui
 
 echo ================================================

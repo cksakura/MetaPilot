@@ -63,6 +63,7 @@ public class MetaPilotDdaIgcFragPipePanel extends AbstractWorkflowPanel<DDAIgcFr
 	// Data
 	private ObservableList<String> enzymes = FXCollections.observableArrayList();
 	private ObservableList<String> workflows = FXCollections.observableArrayList();
+	private FragpipeWorkflow fragpipeWorkflow; // Store the configured workflow
 
 	// Metadata configuration components
 	private TableView<MetaPilotDdaIgcMaxQuantPanel.MetadataRow> metadataTable;
@@ -853,7 +854,7 @@ public class MetaPilotDdaIgcFragPipePanel extends AbstractWorkflowPanel<DDAIgcFr
 			// Create and run the DDAIgcFragPipeTask
 			consolePanel.appendConsoleText("Creating IGC FragPipe task...\n");
 			currentTask = new DDAIgcFragPipeTask(analysisParams, mrp, consolePanel.getOverallProgressBar(),
-					consolePanel.getCurrentTaskProgressBar());
+					consolePanel.getCurrentTaskProgressBar(), fragpipeWorkflow);
 			consolePanel.appendConsoleText("✓ Task created successfully\n");
 
 			// Set up task callbacks
@@ -991,11 +992,15 @@ public class MetaPilotDdaIgcFragPipePanel extends AbstractWorkflowPanel<DDAIgcFr
 
 			// Create DDAIgcFragPipeParameters using the correct constructor
 			DDAIgcFragPipeParameters params = new DDAIgcFragPipeParameters(
-					MetaPilotApp.WorkflowType.DDA_IGC_FRAGPIPE.getAnalysisType(), metaData, result, microDb,
+					uk.ac.quadram.metapilot.workflow.WorkflowType.DDA_IGC_FRAGPIPE.getAnalysisType(), metaData, result, microDb,
 					appendHostDb, hostDb, msDataType, threadCount);
 
-			// Set additional parameters that aren't in the constructor
-			params.setExperimentData(new ArrayList<>(fileRows));
+			// Set additional parameters that aren't in the constructor - Convert ExperimentRow to String[]
+			List<String[]> experimentDataArray = new ArrayList<>();
+			for (MetaPilotIOPanelFX.ExperimentRow row : fileRows) {
+				experimentDataArray.add(row.toArray());
+			}
+			params.setExperimentData(experimentDataArray);
 
 			// Enzyme settings
 			params.setEnzyme(enzyme);
@@ -1064,8 +1069,8 @@ public class MetaPilotDdaIgcFragPipePanel extends AbstractWorkflowPanel<DDAIgcFr
 													modificationsPanel.getVariableModData());
 										}
 
-										// Set the configured workflow
-										params.setFragpipeWorkflow(fragpipeWorkflow);
+										// Store the configured workflow for task creation
+										this.fragpipeWorkflow = fragpipeWorkflow;
 										LOGGER.info("Successfully configured FragPipe workflow: {}", workflow);
 									} else {
 										LOGGER.warn("Failed to parse FragPipe workflow: {}", workflow);
@@ -1088,8 +1093,12 @@ public class MetaPilotDdaIgcFragPipePanel extends AbstractWorkflowPanel<DDAIgcFr
 
 			// Taxonomic analysis
 
-			// Metadata table data
-			params.setMetadataTableData(new ArrayList<>(metadataTableData));
+			// Metadata table data - Convert JavaFX MetadataRow objects to String arrays
+			List<String[]> metadataDataArray = new ArrayList<>();
+			for (MetaPilotDdaIgcMaxQuantPanel.MetadataRow row : metadataTableData) {
+				metadataDataArray.add(row.toArray());
+			}
+			params.setMetadataTableData(metadataDataArray);
 
 			consolePanel.appendConsoleText("✓ Successfully collected parameters from UI\n");
 			LOGGER.info("Successfully collected parameters from UI for IGC FragPipe workflow");
@@ -1144,9 +1153,13 @@ public class MetaPilotDdaIgcFragPipePanel extends AbstractWorkflowPanel<DDAIgcFr
 				consolePanel.appendConsoleText("✓ Successfully loaded last used parameters\n");
 				LOGGER.info("Loaded last used parameters for DDA IGC FragPipe workflow");
 
-				// Also apply experiment data to the IO panel if available
+				// Also apply experiment data to the IO panel if available - Convert String[] to ExperimentRow
 				if (params.getExperimentData() != null && !params.getExperimentData().isEmpty()) {
-					ioPanel.getIoPanel().setExperimentData(params.getExperimentData());
+					List<MetaPilotIOPanelFX.ExperimentRow> experimentRows = new ArrayList<>();
+					for (String[] data : params.getExperimentData()) {
+						experimentRows.add(MetaPilotIOPanelFX.ExperimentRow.fromArray(data));
+					}
+					ioPanel.getIoPanel().setExperimentData(experimentRows);
 					consolePanel.appendConsoleText(
 							"Applied " + params.getExperimentData().size() + " experiment rows to IO panel\n");
 					LOGGER.info("Applied {} experiment rows to IO panel", params.getExperimentData().size());

@@ -30,6 +30,7 @@ import org.apache.logging.log4j.core.config.builder.api.LayoutComponentBuilder;
 import org.apache.logging.log4j.core.config.builder.api.RootLoggerComponentBuilder;
 import org.apache.logging.log4j.core.config.builder.impl.BuiltConfiguration;
 
+import uk.ac.quadram.metapilot.workflow.WorkflowType;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagVersion;
 import uk.ac.quadram.metapilot.task.mag.MagDbConfigIO;
@@ -598,33 +599,6 @@ public class MetaPilotApp extends Application {
         return box;
     }
     
-    public enum WorkflowType {
-        // DDA IGC Workflows
-        DDA_IGC_MAXQUANT("DDA_IGC_MAXQUANT"),
-        DDA_IGC_PFIND("DDA_IGC_PFIND"),
-        DDA_IGC_FRAGPIPE("DDA_IGC_FRAGPIPE"),
-        DDA_IGC_SAGE("DDA_IGC_SAGE"),
-        
-        // DDA MAG Workflows
-        DDA_MAG_PFIND("DDA_MAG_PFIND"),
-        DDA_MAG_FRAGPIPE("DDA_MAG_FRAGPIPE"),
-        DDA_MAG_SAGE("DDA_MAG_SAGE"),
-        
-        // DIA Workflows
-        DIA_NORMAL("DIA_NORMAL"),
-        DIA_TARGET("DIA_TARGET"),
-        DIA_REALTIME("DIA_REALTIME");
-        
-        private final String analysisType;
-        
-        WorkflowType(String analysisType) {
-            this.analysisType = analysisType;
-        }
-        
-        public String getAnalysisType() {
-            return analysisType;
-        }
-    }
     
     private boolean checkRequiredResources(WorkflowType type) {
         switch (type) {

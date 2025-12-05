@@ -271,10 +271,10 @@ public class WorkflowService {
         
         // Otherwise, try common locations
         String[] possibleJars = {
-            "../metapilot-windows-gui/target/metapilot-windows-gui-1.0.0-beta.2-shaded.jar",
-            "../../metapilot-windows-gui/target/metapilot-windows-gui-1.0.0-beta.2-shaded.jar",
-            "./metapilot-windows-gui-1.0.0-beta.2-shaded.jar",
-            "../metapilot-windows-gui-1.0.0-beta.2-shaded.jar"
+            "../metapilot-windows-gui/target/metapilot-windows-gui-1.0.0-beta.3-shaded.jar",
+            "../../metapilot-windows-gui/target/metapilot-windows-gui-1.0.0-beta.3-shaded.jar",
+            "./metapilot-windows-gui-1.0.0-beta.3-shaded.jar",
+            "../metapilot-windows-gui-1.0.0-beta.3-shaded.jar"
         };
         
         for (String jarPath : possibleJars) {

@@ -276,5 +276,29 @@ public class IsobaricLabelingPanel extends VBox {
 		public StringProperty plus2Property() {
 			return plus2;
 		}
+		
+		/**
+		 * Convert this IsobaricLabelRow to a String array for parameter storage.
+		 * Order: [labelName, minus2, minus1, plus1, plus2]
+		 */
+		public String[] toArray() {
+			return new String[]{getLabelName(), getMinus2(), getMinus1(), getPlus1(), getPlus2()};
+		}
+		
+		/**
+		 * Create an IsobaricLabelRow from a String array.
+		 * Expected order: [labelName, minus2, minus1, plus1, plus2]
+		 */
+		public static IsobaricLabelRow fromArray(String[] data) {
+			if (data == null || data.length < 1) {
+				throw new IllegalArgumentException("Array must contain at least labelName");
+			}
+			IsobaricLabelRow row = new IsobaricLabelRow(data[0]);
+			if (data.length >= 2) row.setMinus2(data[1]);
+			if (data.length >= 3) row.setMinus1(data[2]);
+			if (data.length >= 4) row.setPlus1(data[3]);
+			if (data.length >= 5) row.setPlus2(data[4]);
+			return row;
+		}
 	}
 }

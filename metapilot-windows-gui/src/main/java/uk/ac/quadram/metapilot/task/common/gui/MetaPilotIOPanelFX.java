@@ -475,32 +475,176 @@ public class MetaPilotIOPanelFX extends VBox {
     }
 
     private void selectRawFiles() {
+        // Ask user whether to select files or .d folders
+        Alert choiceAlert = new Alert(Alert.AlertType.CONFIRMATION);
+        choiceAlert.setTitle("Select Raw Data");
+        choiceAlert.setHeaderText("What would you like to select?");
+        choiceAlert.setContentText("Choose your option:");
+        
+        ButtonType filesButton = new ButtonType("Files (.raw, .mzML, .wiff)");
+        ButtonType foldersButton = new ButtonType(".d Folders");
+        ButtonType cancelButton = new ButtonType("Cancel", ButtonBar.ButtonData.CANCEL_CLOSE);
+        
+        choiceAlert.getButtonTypes().setAll(filesButton, foldersButton, cancelButton);
+        
+        choiceAlert.showAndWait().ifPresent(response -> {
+            if (response == filesButton) {
+                selectFiles();
+            } else if (response == foldersButton) {
+                selectDFolders();
+            }
+        });
+    }
+    
+    private void selectFiles() {
         FileChooser fileChooser = new FileChooser();
         fileChooser.setTitle("Select Raw Files");
         fileChooser.getExtensionFilters().addAll(
-            new FileChooser.ExtensionFilter("Raw Files", "*.raw", "*.mzML", "*.wiff", "*.d"),
+            new FileChooser.ExtensionFilter("Raw Files", "*.raw", "*.mzML", "*.wiff"),
             new FileChooser.ExtensionFilter("All Files", "*.*")
         );
         List<File> files = fileChooser.showOpenMultipleDialog(getScene().getWindow());
         if (files != null) {
             for (File file : files) {
-                if (!fileSet.contains(file.getAbsolutePath())) {
-                    String path = file.getAbsolutePath();
-                    fileSet.add(path);
-                    
-                    // Set experiment name to filename without extension (like Swing)
-                    String name = file.getName();
-                    if (name.contains(".")) {
-                        name = name.substring(0, name.lastIndexOf("."));
-                    }
-                    
-                    experimentData.add(new ExperimentRow(path, name));
-                    
-                    // Set output directory to parent + "\\MetaPilot"
-                    outputDirField.setText(file.getParentFile().getAbsolutePath() + "\\MetaPilot");
-                }
+                addRawFileOrFolder(file);
             }
             updatePatternTable();
+        }
+    }
+    
+    private void selectDFolders() {
+        // Step 1: Ask user to select parent directory
+        DirectoryChooser directoryChooser = new DirectoryChooser();
+        directoryChooser.setTitle("Select Parent Directory Containing .d Folders");
+        File parentDir = directoryChooser.showDialog(getScene().getWindow());
+        
+        if (parentDir == null) {
+            return; // User cancelled
+        }
+        
+        // Step 2: Find all .d folders in the parent directory
+        File[] allFiles = parentDir.listFiles();
+        List<File> dFolders = new ArrayList<>();
+        
+        if (allFiles != null) {
+            for (File file : allFiles) {
+                if (file.isDirectory() && file.getName().toLowerCase().endsWith(".d")) {
+                    dFolders.add(file);
+                }
+            }
+        }
+        
+        // Step 3: Check if any .d folders were found
+        if (dFolders.isEmpty()) {
+            Alert noFoldersAlert = new Alert(Alert.AlertType.INFORMATION);
+            noFoldersAlert.setTitle("No .d Folders Found");
+            noFoldersAlert.setHeaderText("No .d folders in selected directory");
+            noFoldersAlert.setContentText("No folders ending with '.d' were found in:\n" + parentDir.getAbsolutePath());
+            noFoldersAlert.showAndWait();
+            return;
+        }
+        
+        // Step 4: Show dialog with checkboxes for all .d folders
+        Dialog<List<File>> selectionDialog = new Dialog<>();
+        selectionDialog.setTitle("Select .d Folders");
+        selectionDialog.setHeaderText("Found " + dFolders.size() + " .d folder(s) in:\n" + parentDir.getAbsolutePath());
+        
+        // Create content
+        VBox content = new VBox(10);
+        content.setPadding(new Insets(10));
+        
+        Label instructionLabel = new Label("Select the .d folders you want to add:");
+        instructionLabel.setStyle("-fx-font-weight: bold;");
+        
+        // Create scrollable list of checkboxes
+        VBox checkBoxContainer = new VBox(5);
+        List<CheckBox> checkBoxes = new ArrayList<>();
+        
+        for (File dFolder : dFolders) {
+            CheckBox checkBox = new CheckBox(dFolder.getName());
+            checkBox.setUserData(dFolder);
+            checkBoxes.add(checkBox);
+            checkBoxContainer.getChildren().add(checkBox);
+        }
+        
+        ScrollPane scrollPane = new ScrollPane(checkBoxContainer);
+        scrollPane.setFitToWidth(true);
+        scrollPane.setPrefHeight(Math.min(300, dFolders.size() * 30 + 20));
+        scrollPane.setStyle("-fx-border-color: #cccccc; -fx-border-radius: 3;");
+        
+        // Select All / Deselect All buttons
+        HBox selectButtonBox = new HBox(10);
+        Button selectAllButton = new Button("Select All");
+        Button deselectAllButton = new Button("Deselect All");
+        
+        selectAllButton.setOnAction(e -> {
+            for (CheckBox cb : checkBoxes) {
+                cb.setSelected(true);
+            }
+        });
+        
+        deselectAllButton.setOnAction(e -> {
+            for (CheckBox cb : checkBoxes) {
+                cb.setSelected(false);
+            }
+        });
+        
+        selectButtonBox.getChildren().addAll(selectAllButton, deselectAllButton);
+        
+        content.getChildren().addAll(instructionLabel, scrollPane, selectButtonBox);
+        selectionDialog.getDialogPane().setContent(content);
+        
+        // Add OK and Cancel buttons
+        ButtonType okButton = new ButtonType("Add Selected", ButtonBar.ButtonData.OK_DONE);
+        ButtonType cancelButton = new ButtonType("Cancel", ButtonBar.ButtonData.CANCEL_CLOSE);
+        selectionDialog.getDialogPane().getButtonTypes().addAll(okButton, cancelButton);
+        
+        // Set result converter
+        selectionDialog.setResultConverter(buttonType -> {
+            if (buttonType == okButton) {
+                List<File> selectedFolders = new ArrayList<>();
+                for (CheckBox cb : checkBoxes) {
+                    if (cb.isSelected()) {
+                        selectedFolders.add((File) cb.getUserData());
+                    }
+                }
+                return selectedFolders;
+            }
+            return null;
+        });
+        
+        // Show dialog and process results
+        selectionDialog.showAndWait().ifPresent(selectedFolders -> {
+            if (!selectedFolders.isEmpty()) {
+                for (File folder : selectedFolders) {
+                    addRawFileOrFolder(folder);
+                }
+                updatePatternTable();
+                
+                // Show confirmation
+                Alert confirmAlert = new Alert(Alert.AlertType.INFORMATION);
+                confirmAlert.setTitle("Folders Added");
+                confirmAlert.setHeaderText("Successfully added " + selectedFolders.size() + " .d folder(s)");
+                confirmAlert.showAndWait();
+            }
+        });
+    }
+    
+    private void addRawFileOrFolder(File file) {
+        if (!fileSet.contains(file.getAbsolutePath())) {
+            String path = file.getAbsolutePath();
+            fileSet.add(path);
+            
+            // Set experiment name to filename without extension (like Swing)
+            String name = file.getName();
+            if (name.contains(".")) {
+                name = name.substring(0, name.lastIndexOf("."));
+            }
+            
+            experimentData.add(new ExperimentRow(path, name));
+            
+            // Set output directory to parent + "\\MetaPilot"
+            outputDirField.setText(file.getParentFile().getAbsolutePath() + "\\MetaPilot");
         }
     }
 
@@ -626,6 +770,29 @@ public class MetaPilotIOPanelFX extends VBox {
             this.fraction.set(fraction == null ? "1" : fraction); 
         }
         public StringProperty fractionProperty() { return fraction; }
+        
+        /**
+         * Convert this ExperimentRow to a String array for parameter storage.
+         * Order: [filePath, experimentName, fraction]
+         */
+        public String[] toArray() {
+            return new String[]{getFilePath(), getExperimentName(), getFraction()};
+        }
+        
+        /**
+         * Create an ExperimentRow from a String array.
+         * Expected order: [filePath, experimentName, fraction]
+         */
+        public static ExperimentRow fromArray(String[] data) {
+            if (data == null || data.length < 2) {
+                throw new IllegalArgumentException("Array must contain at least filePath and experimentName");
+            }
+            ExperimentRow row = new ExperimentRow(data[0], data[1]);
+            if (data.length >= 3 && data[2] != null) {
+                row.setFraction(data[2]);
+            }
+            return row;
+        }
     }
     
     public static class PatternRow {

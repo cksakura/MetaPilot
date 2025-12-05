@@ -60,10 +60,12 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 	private FragPipeTask fragPipeTask;
 	private Thread spectraConvertThread;
 	private Thread mgfConvertThread;
+	private FragpipeWorkflow fragpipeWorkflow;
 
 	public DDAIgcFragPipeTask(DDAIgcFragPipeParameters metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
-			ProgressBar secondBar) {
+			ProgressBar secondBar, FragpipeWorkflow fragpipeWorkflow) {
 		super(metaPar, mrp, progressBar, secondBar);
+		this.fragpipeWorkflow = fragpipeWorkflow;
 
 		// Debug logging for metadata
 		logger.info("{}: Constructor called with parameters", taskName);
@@ -613,17 +615,16 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 		}
 
 		try {
-			// Get the workflow from parameters (collected from GUI)
+			// Get the workflow from constructor (passed from GUI)
 			DDAIgcFragPipeParameters fragPipeParams = (DDAIgcFragPipeParameters) metaPar;
-			FragpipeWorkflow workflow = fragPipeParams.getFragpipeWorkflow();
 
-			if (workflow == null) {
-				logger.error("FragPipe workflow is null in parameters - workflow must be configured in GUI");
+			if (fragpipeWorkflow == null) {
+				logger.error("FragPipe workflow is null - workflow must be configured in GUI");
 				return false;
 			}
 
 			// Set the database in the workflow
-			workflow.setDatabase(targetDecoyDbFile.getAbsolutePath());
+			fragpipeWorkflow.setDatabase(targetDecoyDbFile.getAbsolutePath());
 
 			// Create manifest file
 			File manifestFile = new File(combinedFile, "raws.fp-manifest");
@@ -647,7 +648,7 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 			if (!this.quan_pep_file.exists() || !this.quan_pro_file.exists()) {
 				File workflowFile = new File(combinedFile, "fragpipe.workflow");
 				try {
-					workflow.export(workflowFile);
+					fragpipeWorkflow.export(workflowFile);
 				} catch (IOException e) {
 					// TODO Auto-generated catch block
 					logger.error(getTaskName() + ": writing workflow file to " + workflowFile + " failed");

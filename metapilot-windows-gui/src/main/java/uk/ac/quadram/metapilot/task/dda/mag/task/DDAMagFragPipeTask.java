@@ -58,14 +58,15 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 	protected static final String taskName = "DDA MAG database search by FragPipe workflow";
 
 	public DDAMagFragPipeTask(DDAMagFragPipeParameters magFragPipeParams, MetaResourceParameters mrp, ProgressBar progressBar,
-			ProgressBar secondBar) {
+			ProgressBar secondBar, Label statusLabel, FragpipeWorkflow workflow) {
 		super(magFragPipeParams, mrp, progressBar, secondBar);
 
 		// Store the direct reference to DDAMagFragPipeParameters
 		this.magFragPipeParams = magFragPipeParams;
-		this.workflow = magFragPipeParams.getFragpipeWorkflow();
-		// Initialize status label - will be set by the UI panel
-		this.statusLabel = null; // Will be set by UI panel via setStatusLabel method
+		// Initialize workflow from constructor parameter (passed directly from GUI)
+		this.workflow = workflow;
+		// Initialize status label from constructor parameter (passed directly from GUI)
+		this.statusLabel = statusLabel;
 
 		// Initialize the magDb field from parameters
 		MagDbItem selectedMagDb = magFragPipeParams.getMagDbItem();
@@ -134,13 +135,6 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		}
 
 		this.fragPipeTask = new FragPipeTask(fragpipeExe.getAbsolutePath());
-	}
-
-	/**
-	 * Set the status label for UI updates
-	 */
-	public void setStatusLabel(Label statusLabel) {
-		this.statusLabel = statusLabel;
 	}
 
 	@Override
