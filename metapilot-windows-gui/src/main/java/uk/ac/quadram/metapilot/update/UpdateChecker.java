@@ -252,9 +252,12 @@ public class UpdateChecker {
     }
 
     public static String getCurrentVersion() {
+        // Prefer Implementation-Version from the shaded JAR manifest; fall back to the
+        // current project version if the manifest entry is missing during local runs.
         String v = Optional.ofNullable(UpdateChecker.class.getPackage())
-                .map(Package::getImplementationVersion).orElse(null);
-        return (v != null && !v.isBlank()) ? v : "1.0.0-beta.3";
+                .map(Package::getImplementationVersion)
+                .orElse(null);
+        return (v != null && !v.isBlank()) ? v : "1.0.0-beta.5";
     }
 
     private static class ReleaseInfo {
