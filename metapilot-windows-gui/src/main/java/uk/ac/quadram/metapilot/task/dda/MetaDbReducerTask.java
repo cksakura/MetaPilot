@@ -320,7 +320,7 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 				DBReducerTask task = new DBReducerTask(dbReducerExe);
 				task.setTotalThread(metaPar.getThreadCount());
 
-				task.searchMgf(mgfFilePaths, dbcFile.getAbsolutePath(), originalFasta, ms2Type, psmFdr,
+				task.searchMgf(mgfFilePaths, dbcFile.getAbsolutePath(), metaPar.getMicroDb(), ms2Type, psmFdr,
 						metaPar.getFixMods(), metaPar.getVariMods());
 				task.run(1, mgfFilePaths.length * 48);
 			}
@@ -370,9 +370,9 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 				PFindTask task = new PFindTask(pFindBin);
 				task.setTotalThread(metaPar.getThreadCount());
 
-				task.searchMgf(mgfFilePaths, dbcFile.getAbsolutePath(), originalFasta, ms2Type, false, false, psmFdr,
-						metaPar.getFixMods(), metaPar.getVariMods(), metaPar.getEnzyme(), metaPar.getMissCleavages(),
-						metaPar.getDigestMode(), metaPar.getIsobaricTag(), true);
+				task.searchMgf(mgfFilePaths, dbcFile.getAbsolutePath(), metaPar.getMicroDb(), ms2Type, false, false,
+						psmFdr, metaPar.getFixMods(), metaPar.getVariMods(), metaPar.getEnzyme(),
+						metaPar.getMissCleavages(), metaPar.getDigestMode(), metaPar.getIsobaricTag(), true);
 				task.run(1, mgfFilePaths.length * 48);
 			}
 
@@ -474,8 +474,8 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 							System.out.println(format.format(new Date()) + "\t" + taskName + ": first search of " + name
 									+ " in original database started...");
 
-							task.searchMgf(new String[] { this.mgfFiles[i] }, firstDir.getAbsolutePath(), originalFasta,
-									ms2Type, 0.01, metaPar.getFixMods(), metaPar.getVariMods());
+							task.searchMgf(new String[] { this.mgfFiles[i] }, firstDir.getAbsolutePath(),
+									metaPar.getMicroDb(), ms2Type, 0.01, metaPar.getFixMods(), metaPar.getVariMods());
 						}
 					}
 				}
@@ -512,13 +512,13 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 
 							if ((new File(this.pf2Files[i])).exists()) {
 								task.searchPF2(new String[] { this.pf2Files[i] }, firstDir.getAbsolutePath(),
-										originalFasta, ms2Type, false, false, 0.01, metaPar.getFixMods(),
+										metaPar.getMicroDb(), ms2Type, false, false, 0.01, metaPar.getFixMods(),
 										metaPar.getVariMods(), metaPar.getEnzyme(), metaPar.getMissCleavages(),
 										metaPar.getDigestMode(), metaPar.getIsobaricTag(), true);
 							} else {
 
 								task.searchMgf(new String[] { this.mgfFiles[i] }, firstDir.getAbsolutePath(),
-										originalFasta, ms2Type, false, false, 0.01, metaPar.getFixMods(),
+										metaPar.getMicroDb(), ms2Type, false, false, 0.01, metaPar.getFixMods(),
 										metaPar.getVariMods(), metaPar.getEnzyme(), metaPar.getMissCleavages(),
 										metaPar.getDigestMode(), metaPar.getIsobaricTag(), true);
 							}
@@ -575,7 +575,8 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 							+ ": error in reading the database file " + dbReducerFasta);
 				}
 			} else {
-				firstProCount = this.writeDatabase(originalFasta, firstFasta.getAbsolutePath(), false, pSpecResult);
+				firstProCount = this.writeDatabase(metaPar.getMicroDb(), firstFasta.getAbsolutePath(), false,
+						pSpecResult);
 			}
 
 			if (!firstFasta.exists() || firstFasta.length() == 0 || firstProCount == 0) {
@@ -761,7 +762,28 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 						}
 					}
 					reader.close();
+
+					if (metaPar.isAppendHostDb()) {
+						String hostDb = metaPar.getHostDB();
+						if ((new File(hostDb)).exists()) {
+							BufferedReader r1 = new BufferedReader(new FileReader(hostDb));
+							String l1 = null;
+							while ((l1 = r1.readLine()) != null) {
+								writer.println(l1);
+								if (l1.startsWith(">")) {
+									count++;
+								}
+							}
+							r1.close();
+						} else {
+							logger.error(taskName + ": host database didn't exist in " + hostDb);
+							System.err.println(format.format(new Date()) + "\t" + taskName
+									+ ": host database didn't exist in " + hostDb);
+						}
+					}
+
 					writer.close();
+
 				} catch (IOException e) {
 					logger.error(taskName + ": error in reading the DBReducer result file " + clusterResults[0], e);
 					System.err.println(format.format(new Date()) + "\t" + taskName
@@ -769,7 +791,7 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 				}
 				return count;
 			} else {
-				return writeDatabase(originalFasta, ssdbFile.getAbsolutePath(), false, clusterResults);
+				return writeDatabase(metaPar.getMicroDb(), ssdbFile.getAbsolutePath(), false, clusterResults);
 			}
 		} else {
 			if (this.useDBReducer) {
@@ -789,22 +811,46 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 					}
 				}
 
+				int count = 0;
+
 				try (PrintWriter writer = new PrintWriter(ssdbFile)) {
 					for (String ref : proMap.keySet()) {
 						writer.println(">" + ref);
 						writer.println(proMap.get(ref).getSequence());
 					}
+
+					if (metaPar.isAppendHostDb()) {
+						String hostDb = metaPar.getHostDB();
+						if ((new File(hostDb)).exists()) {
+							BufferedReader r1 = new BufferedReader(new FileReader(hostDb));
+							String l1 = null;
+							while ((l1 = r1.readLine()) != null) {
+								writer.println(l1);
+								if (l1.startsWith(">")) {
+									count++;
+								}
+							}
+							r1.close();
+						} else {
+							logger.error(taskName + ": host database didn't exist in " + hostDb);
+							System.err.println(format.format(new Date()) + "\t" + taskName
+									+ ": host database didn't exist in " + hostDb);
+						}
+					}
+
 					writer.close();
+
 				} catch (IOException e) {
 					// TODO Auto-generated catch block
 					logger.error(taskName + ": error in writing the protein sequences to " + ssdbFile, e);
 					System.err.println(format.format(new Date()) + "\t" + taskName
 							+ ": error in writing the protein sequences to " + ssdbFile);
 				}
+				count += proMap.size();
 
-				return proMap.size();
+				return count;
 			} else {
-				return writeDatabase(originalFasta, ssdbFile.getAbsolutePath(), true, clusterResults);
+				return writeDatabase(metaPar.getMicroDb(), ssdbFile.getAbsolutePath(), true, clusterResults);
 			}
 		}
 	}
@@ -1062,6 +1108,27 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 				}
 			}
 			fastaReader.close();
+
+			if (metaPar.isAppendHostDb()) {
+
+				String hostDb = metaPar.getHostDB();
+				if ((new File(hostDb)).exists()) {
+					BufferedReader r1 = new BufferedReader(new FileReader(hostDb));
+					String l1 = null;
+					while ((l1 = r1.readLine()) != null) {
+						writer.println(l1);
+						if (l1.startsWith(">")) {
+							count++;
+						}
+					}
+					r1.close();
+				} else {
+					logger.error(taskName + ": host database didn't exist in " + hostDb);
+					System.err.println(
+							format.format(new Date()) + "\t" + taskName + ": host database didn't exist in " + hostDb);
+				}
+			}
+
 			writer.close();
 
 		} catch (IOException e) {

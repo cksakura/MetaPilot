@@ -5,6 +5,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
@@ -14,9 +15,10 @@ import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.apache.commons.io.FileUtils;
-import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import javafx.application.Platform;
@@ -153,7 +155,7 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 	 */
 	private void initializeFileArrays() {
 		DDAIgcFragPipeParameters fragPipeParams = (DDAIgcFragPipeParameters) metaPar;
-		String[] rawFiles = fragPipeParams.getMetadata().getRawFiles();
+		this.rawFiles = fragPipeParams.getMetadata().getRawFiles();
 		this.mzMLFiles = new String[rawFiles.length];
 		this.mgfFiles = new String[rawFiles.length];
 		this.expNameMap = new HashMap<String, String>();
@@ -217,18 +219,21 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 
 		// Update progress after spectra conversion
 		updateProgress(20, 100);
-		updateMessage("Spectra conversion completed, starting MGF conversion...");
-
-		// Step 2: Convert mzML files to MGF format
-		boolean mgfConverted = convertMzMLToMgf();
-		if (!mgfConverted) {
-			logger.error(getTaskName() + ": error in MGF conversion workflow");
-			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in MGF conversion workflow");
-			return false;
+		
+		if(metaPar.isReduceDb()) {
+			
+			updateMessage("Spectra conversion completed, starting MGF conversion...");
+			// Step 2: Convert mzML files to MGF format
+			boolean mgfConverted = convertMzMLToMgf();
+			if (!mgfConverted) {
+				logger.error(getTaskName() + ": error in MGF conversion workflow");
+				System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in MGF conversion workflow");
+				return false;
+			}
 		}
 
 		// Update progress after MGF conversion
-		updateProgress(35, 100);
+		updateProgress(30, 100);
 		updateMessage("MGF conversion completed, starting database reduction...");
 
 		// Step 3: Database reduction using MetaDbReducerTask
@@ -257,7 +262,6 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 		logger.info(getTaskName() + ": sample specific database generation: finished");
 		System.out.println(
 				format.format(new Date()) + "\t" + getTaskName() + ": sample specific database generation: finished");
-
 		// Step 4: Database search with FragPipe
 		boolean identification = performIdentification();
 		if (!identification) {
@@ -283,6 +287,21 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 			return false;
 		}
 
+		logger.info(getTaskName() + ": Removing uncalibrated mzML files...");
+		for (int i = 0; i < rawFiles.length; i++) {
+			File mzMLFile = null;
+			if (rawFiles[i].endsWith(".raw") || rawFiles[i].endsWith(".RAW")) {
+				mzMLFile = new File(
+						rawFiles[i].substring(0, rawFiles[i].length() - ".raw".length()) + "_uncalibrated.mzML");
+			} else if (rawFiles[i].endsWith(".d") || rawFiles[i].endsWith(".D")) {
+				mzMLFile = new File(
+						rawFiles[i].substring(0, rawFiles[i].length() - ".d".length()) + "_uncalibrated.mzML");
+			}
+			if (mzMLFile != null && mzMLFile.exists()) {
+				FileUtils.deleteQuietly(mzMLFile);
+			}
+		}
+		
 		// Update progress to completion
 		updateProgress(100, 100);
 		updateMessage("Workflow completed successfully!");
@@ -481,6 +500,7 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 		// Submit MGF conversion tasks
 		for (int fileIndex : filesToConvert) {
 			executor.submit(() -> {
+				String rawFile = rawFiles[fileIndex];
 				String mzMLFile = mzMLFiles[fileIndex];
 				String mgfFile = mgfFiles[fileIndex];
 
@@ -488,7 +508,13 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 					logger.info("Converting mzML to MGF: {} -> {}", mzMLFile, mgfFile);
 					// MSConvertor.mzml2mgf returns void, so we need to check if the file was
 					// created
-					MSConvertor.mzml2mgf(msConvertExe.getAbsolutePath(), mzMLFile, spectraDirFile.getAbsolutePath());
+					if (rawFile.endsWith(".raw") || rawFile.endsWith(".RAW")) {
+						MSConvertor.rawMzml2mgf(msConvertExe.getAbsolutePath(), mzMLFile,
+								spectraDirFile.getAbsolutePath());
+					} else if (rawFile.endsWith(".d") || rawFile.endsWith(".D")) {
+						MSConvertor.tofMzml2mgf(msConvertExe.getAbsolutePath(), mzMLFile,
+								spectraDirFile.getAbsolutePath());
+					}
 
 					// Check if the MGF file was created in the spectra directory
 					File mzMLFileObj = new File(mzMLFile);
@@ -561,6 +587,15 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 			return false;
 		}
 
+		// Create search result directory
+		File searchResultDir = new File(metaPar.getResult(), "fragpipe_IGC_search");
+		if (!searchResultDir.exists()) {
+			searchResultDir.mkdirs();
+			logger.info("Created FragPipe search directory: {}", searchResultDir.getAbsolutePath());
+		}
+
+		// Set the database search result file
+		metaPar.setDbSearchResultFile(searchResultDir);
 		// Create FragPipe task
 		fragPipeTask = new FragPipeTask(fragpipeBat);
 
@@ -579,7 +614,7 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 
 		File targetDecoyDbFile = null;
 		if (currentDbFile.getName().equals("sample_specific_db.fasta")) {
-			targetDecoyDbFile = new File(currentDbFile.getParent(), "sample_specific_db.fasta_td.fasta");
+			targetDecoyDbFile = new File(currentDbFile.getParent(), "sample_specific_db.td.fasta");
 			try {
 				FastaManager.addDecoy(currentDbFile.getAbsolutePath(), targetDecoyDbFile.getAbsolutePath());
 			} catch (IOException e) {
@@ -587,8 +622,24 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 				logger.error("Error in writing the target-decoy database", e);
 				return false;
 			}
-		} else if (currentDbFile.getName().equals("sample_specific_db.fasta_td.fasta")) {
+		} else if (currentDbFile.getName().equals("sample_specific_db.td.fasta")) {
 			targetDecoyDbFile = currentDbFile;
+		} else {
+			try {
+				boolean containsDecoy = FastaManager.checkDecoy(currentDbFile.getAbsolutePath());
+				if(containsDecoy) {
+					targetDecoyDbFile = currentDbFile;
+				} else {
+					targetDecoyDbFile = new File(searchResultDir, "TD."+currentDbFile.getName());
+					FastaManager.addDecoy(currentDbFile.getAbsolutePath(), targetDecoyDbFile.getAbsolutePath());
+				}
+				
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				logger.error("Error in checking the target-decoy database " + currentDbFile.getAbsolutePath(), e);
+				return false;
+			}
+
 		}
 
 		if (targetDecoyDbFile == null || !targetDecoyDbFile.exists()) {
@@ -596,15 +647,6 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 			return false;
 		}
 
-		// Create search result directory
-		File searchResultDir = new File(metaPar.getResult(), "fragpipe_IGC_search");
-		if (!searchResultDir.exists()) {
-			searchResultDir.mkdirs();
-			logger.info("Created FragPipe search directory: {}", searchResultDir.getAbsolutePath());
-		}
-
-		// Set the database search result file
-		metaPar.setDbSearchResultFile(searchResultDir);
 
 		this.combinedFile = new File(searchResultDir, "combined");
 		if (!combinedFile.exists()) {
@@ -615,9 +657,7 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 		}
 
 		try {
-			// Get the workflow from constructor (passed from GUI)
-			DDAIgcFragPipeParameters fragPipeParams = (DDAIgcFragPipeParameters) metaPar;
-
+			
 			if (fragpipeWorkflow == null) {
 				logger.error("FragPipe workflow is null - workflow must be configured in GUI");
 				return false;
@@ -665,6 +705,94 @@ public class DDAIgcFragPipeTask extends MetaPilotIgcTask {
 				this.fragPipeTask.run(rawFiles.length * 24);
 			}
 
+
+			File[] mzMLFiles = new File[rawFiles.length];
+			for (int i = 0; i < rawFiles.length; i++) {
+				File mzMLFile = null;
+				if (rawFiles[i].endsWith(".raw") || rawFiles[i].endsWith(".RAW")) {
+					mzMLFile = new File(
+							rawFiles[i].substring(0, rawFiles[i].length() - ".raw".length()) + "_uncalibrated.mzML");
+				} else if (rawFiles[i].endsWith(".d") || rawFiles[i].endsWith(".D")) {
+					mzMLFile = new File(
+							rawFiles[i].substring(0, rawFiles[i].length() - ".d".length()) + "_uncalibrated.mzML");
+				}
+				if (mzMLFile != null && mzMLFile.exists()) {
+					FileUtils.deleteQuietly(mzMLFile);
+				}
+			}
+
+			File rtFile = new File(spectraDirFile, "rt.txt");
+			File ms2CountFile = new File(spectraDirFile, "ms2Count.txt");
+
+			if (!rtFile.exists() || rtFile.length() == 0 || !ms2CountFile.exists() || ms2CountFile.length() == 0) {
+
+				try {
+
+					PrintWriter rtWriter = new PrintWriter(rtFile);
+					PrintWriter ms2CountWriter = new PrintWriter(ms2CountFile);
+
+					rtWriter.println("FileName\tScannum\tRt");
+					ms2CountWriter.println("FileName\tMS2 count");
+
+					Pattern scanPattern = Pattern.compile("scan=(\\d+)");
+					Pattern rtPattern = Pattern.compile("name=\"scan start time\"\\s+value=\"([^\"]+)\"");
+
+					// Verify all files were converted successfully
+					for (int i = 0; i < mzMLFiles.length; i++) {
+						if (mzMLFiles[i] == null) {
+							logger.error("Failed to convert file: {}", rawFiles[i]);
+							rtWriter.close();
+							ms2CountWriter.close();
+
+							return false;
+						}
+
+						String fileName = mzMLFiles[i].getName();
+						fileName = fileName.substring(0, fileName.length() - "_uncalibrated.mzML".length());
+
+						int count = 0;
+						int scannum = 0;
+						boolean isMS2 = false;
+						BufferedReader reader = new BufferedReader(new FileReader(mzMLFiles[i]));
+						String line = null;
+						while ((line = reader.readLine()) != null) {
+							line = line.trim();
+							if (line.startsWith("<spectrum index=")) {
+								Matcher matcher = scanPattern.matcher(line);
+								if (matcher.find()) {
+									scannum = Integer.parseInt(matcher.group(1));
+								}
+								isMS2 = false;
+							} else if (line.endsWith("name=\"MSn spectrum\" value=\"\"/>")) {
+								count++;
+								isMS2 = true;
+							} else if (line.startsWith(
+									"<cvParam cvRef=\"MS\" accession=\"MS:1000016\" name=\"scan start time\"")) {
+								Matcher matcher = rtPattern.matcher(line);
+								double rt = -1;
+								if (matcher.find()) {
+									rt = Double.parseDouble(matcher.group(1));
+								}
+								if (isMS2) {
+									rtWriter.println(fileName + "\t" + scannum + "\t" + rt);
+								}
+							}
+						}
+						reader.close();
+						ms2CountWriter.println(fileName + "\t" + count);
+					}
+
+					rtWriter.close();
+					ms2CountWriter.close();
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					logger.error(getTaskName() + ": writing retention time " + rtFile + " failed");
+					System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": writing retention time "
+							+ rtFile + " failed");
+					return false;
+				}
+			}
+			
 			Platform.runLater(() -> secondBar.setProgress(0));
 
 			if (this.quan_pep_file.exists() && this.quan_pep_file.length() > 0 && this.quan_pro_file.exists()

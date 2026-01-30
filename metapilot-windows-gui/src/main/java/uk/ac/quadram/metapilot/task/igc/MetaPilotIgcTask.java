@@ -2078,7 +2078,7 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 			// Step 6: Apply protein-level Occam's razor on Uniprot proteins with ranking
 			// file output
 			File razorProteinFile = new File(parentTask.combinedFile, "razorProteins.tsv");
-			HashSet<String> finalProteinSet = parentTask.applyOccamsRazor(protein2PeptideMap, tempPepSet2, 0.99,
+			HashSet<String> finalProteinSet = parentTask.applyOccamsRazor(protein2PeptideMap, tempPepSet2, 1.00,
 					razorProteinFile);
 			logger.info(getTaskName() + ": Protein-level filtering selected " + finalProteinSet.size()
 					+ " Uniprot proteins");

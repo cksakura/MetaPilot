@@ -34,7 +34,6 @@ import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaTg;
-import uk.ac.quadram.metapilot.task.io.MetaTreeHandler;
 import uk.ac.quadram.metapilot.task.io.ReportManifestGenerator;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
@@ -1236,7 +1235,7 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 
 		MagFuncSearcher searcher = null;
 		try {
-			searcher = new MagFuncSearcher(metaPar.getMicroDb(), mrp.getToolPath(ToolType.FUNCDB));
+			searcher = new MagFuncSearcher(metaPar.getMicroDb(), mrp.getToolPath(ToolType.FUNCDB), magDb);
 
 		} catch (NumberFormatException | SQLException | IOException e) {
 			// TODO Auto-generated catch block

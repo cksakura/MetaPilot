@@ -4,7 +4,6 @@ import uk.ac.quadram.metapilot.task.io.pep.MetaPSM;
 
 public class SagePSM extends MetaPSM {
 
-	private int scan;
 	private double expMass;
 	private double calMass;
 	private double massPPM;
@@ -23,8 +22,7 @@ public class SagePSM extends MetaPSM {
 			double massPPM, double fragPPM, int charge, int miss, int specificity, double rt, double qValue,
 			double hyperscore, double disScore, String[] proteins, boolean isTarget, double peptideQ, double proteinQ,
 			double ms2Intensity) {
-		super(fileName, sequence, modSeq, charge, proteins, hyperscore, qValue);
-		this.scan = scan;
+		super(fileName, scan, sequence, modSeq, charge, proteins, hyperscore, qValue);
 		this.expMass = expMass;
 		this.calMass = calMass;
 		this.massPPM = massPPM;

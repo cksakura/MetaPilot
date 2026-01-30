@@ -11,7 +11,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "DDA_lib1"
+      "sample_name": "Xu_20151119_IBD_HM403_CO_151120170141"
     },
     {
       "treatment": "",
@@ -23,7 +23,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "DDA_lib2"
+      "sample_name": "Xu_20151119_IBD_HM415_CO"
     },
     {
       "treatment": "",
@@ -35,7 +35,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "DDA_lib3"
+      "sample_name": "Xu_20151119_IBD_HM454_CO"
     },
     {
       "treatment": "",
@@ -47,7 +47,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "DDA_lib4"
+      "sample_name": "Xu_20151119_IBD_HM455_CO_151205152342"
     },
     {
       "treatment": "",
@@ -59,7 +59,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "DDA_lib5"
+      "sample_name": "Xu_20151119_IBD_HM466_CO_151204032959"
     },
     {
       "treatment": "",
@@ -71,7 +71,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "DDA_lib6"
+      "sample_name": "Xu_20151119_IBD_HM467_CO_151204160652"
     },
     {
       "treatment": "",
@@ -83,7 +83,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "DDA_lib7"
+      "sample_name": "Xu_20151119_IBD_HM494_CO"
     },
     {
       "treatment": "",
@@ -95,271 +95,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "DDA_lib8"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "DDA_lib9"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "DDA_lib10"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "DDA_lib11"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "DDA_lib12"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "DDA_lib13"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "DDA_lib14"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "DDA_lib15"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "DDA_lib16"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "DDA_lib17"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "DDA_lib18"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "DDA_lib19"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "DDA_lib20"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "DDA_lib21"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "DDA_lib22"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "DDA_lib23"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "DDA_lib24"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "DDA_lib25"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "DDA_lib26"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "DDA_lib27"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "DDA_lib28"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "DDA_lib29"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "DDA_lib30"
+      "sample_name": "Xu_20151119_IBD_HM503_CO_151202195424"
     }
   ],
   "workflow": "DDA_MAG_PFIND",
@@ -367,128 +103,40 @@
     "mag_database_version": "v2.0.2",
     "host_database": "C:\\Users\\daz25hak\\MetaProAI\\database\\uniprotkb_Human_AND_reviewed_true_AND_m_2025_09_01.fasta",
     "mag_database": "human-gut",
-    "output_directory": "Z:\\PRIDE_dataset\\PXD051104\\MetaPilot_DDA_MPW",
+    "output_directory": "Z:\\PRIDE_dataset\\PXD003528_MetaPro_IQ\\MetaPilot",
     "append_host_db": true,
     "experiments": [
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib1.raw",
-        "experiment_name": "DDA_lib1"
+        "file_path": "Z:\\PRIDE_dataset\\PXD003528_MetaPro_IQ\\Xu_20151119_IBD_HM403_CO_151120170141.raw",
+        "experiment_name": "Xu_20151119_IBD_HM403_CO_151120170141"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib2.raw",
-        "experiment_name": "DDA_lib2"
+        "file_path": "Z:\\PRIDE_dataset\\PXD003528_MetaPro_IQ\\Xu_20151119_IBD_HM415_CO.raw",
+        "experiment_name": "Xu_20151119_IBD_HM415_CO"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib3.raw",
-        "experiment_name": "DDA_lib3"
+        "file_path": "Z:\\PRIDE_dataset\\PXD003528_MetaPro_IQ\\Xu_20151119_IBD_HM454_CO.raw",
+        "experiment_name": "Xu_20151119_IBD_HM454_CO"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib4.raw",
-        "experiment_name": "DDA_lib4"
+        "file_path": "Z:\\PRIDE_dataset\\PXD003528_MetaPro_IQ\\Xu_20151119_IBD_HM455_CO_151205152342.raw",
+        "experiment_name": "Xu_20151119_IBD_HM455_CO_151205152342"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib5.raw",
-        "experiment_name": "DDA_lib5"
+        "file_path": "Z:\\PRIDE_dataset\\PXD003528_MetaPro_IQ\\Xu_20151119_IBD_HM466_CO_151204032959.raw",
+        "experiment_name": "Xu_20151119_IBD_HM466_CO_151204032959"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib6.raw",
-        "experiment_name": "DDA_lib6"
+        "file_path": "Z:\\PRIDE_dataset\\PXD003528_MetaPro_IQ\\Xu_20151119_IBD_HM467_CO_151204160652.raw",
+        "experiment_name": "Xu_20151119_IBD_HM467_CO_151204160652"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib7.raw",
-        "experiment_name": "DDA_lib7"
+        "file_path": "Z:\\PRIDE_dataset\\PXD003528_MetaPro_IQ\\Xu_20151119_IBD_HM494_CO.raw",
+        "experiment_name": "Xu_20151119_IBD_HM494_CO"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib8.raw",
-        "experiment_name": "DDA_lib8"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib9.raw",
-        "experiment_name": "DDA_lib9"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib10.raw",
-        "experiment_name": "DDA_lib10"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib11.raw",
-        "experiment_name": "DDA_lib11"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib12.raw",
-        "experiment_name": "DDA_lib12"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib13.raw",
-        "experiment_name": "DDA_lib13"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib14.raw",
-        "experiment_name": "DDA_lib14"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib15.raw",
-        "experiment_name": "DDA_lib15"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib16.raw",
-        "experiment_name": "DDA_lib16"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib17.raw",
-        "experiment_name": "DDA_lib17"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib18.raw",
-        "experiment_name": "DDA_lib18"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib19.raw",
-        "experiment_name": "DDA_lib19"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib20.raw",
-        "experiment_name": "DDA_lib20"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib21.raw",
-        "experiment_name": "DDA_lib21"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib22.raw",
-        "experiment_name": "DDA_lib22"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib23.raw",
-        "experiment_name": "DDA_lib23"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib24.raw",
-        "experiment_name": "DDA_lib24"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib25.raw",
-        "experiment_name": "DDA_lib25"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib26.raw",
-        "experiment_name": "DDA_lib26"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib27.raw",
-        "experiment_name": "DDA_lib27"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib28.raw",
-        "experiment_name": "DDA_lib28"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib29.raw",
-        "experiment_name": "DDA_lib29"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\O20220929sunyy_MPW_DDA_60min_lib30.raw",
-        "experiment_name": "DDA_lib30"
+        "file_path": "Z:\\PRIDE_dataset\\PXD003528_MetaPro_IQ\\Xu_20151119_IBD_HM503_CO_151202195424.raw",
+        "experiment_name": "Xu_20151119_IBD_HM503_CO_151202195424"
       }
     ]
   },
@@ -497,12 +145,13 @@
     "missed_cleavages": 2,
     "digestion_mode": "Specific"
   },
-  "generated_at": "2025-10-23 11:14:55",
+  "generated_at": "2026-01-30 17:23:42",
   "additional_parameters": {
     "generate_sample_specific_db": false,
     "ms2_scan_mode": "HCD-FTMS",
     "spectra_clustering": false,
-    "threads": 20
+    "threads": 20,
+    "genome_selector_mode": "Marker4"
   },
   "description": "Last used parameters",
   "version": "1.0",

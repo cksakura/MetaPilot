@@ -66,6 +66,7 @@ import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProteinAnnoEggNog;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProteinXMLReader2;
 import uk.ac.quadram.metapilot.task.mag.HMGenomeHtmlWriter;
+import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.MagFuncSearcher;
 import uk.ac.quadram.metapilot.task.mag.MetaPilotMagTask;
 import uk.ac.quadram.metapilot.task.mag.MetaProteinAnnoMag;
@@ -3383,7 +3384,7 @@ public class MetaDiaTask extends MetaPilotMagTask {
 
 		MagFuncSearcher searcher = null;
 		try {
-			searcher = new MagFuncSearcher(metaPar.getMicroDb(), mrp.getToolPath(ToolType.FUNCDB));
+			searcher = new MagFuncSearcher(metaPar.getMicroDb(), mrp.getToolPath(ToolType.FUNCDB), magDb);
 
 		} catch (NumberFormatException | SQLException | IOException e) {
 			// TODO Auto-generated catch block
@@ -6202,7 +6203,7 @@ public class MetaDiaTask extends MetaPilotMagTask {
 	}
 
 	@SuppressWarnings({ "unused", "unchecked" })
-	private static void getTaxFuncFromPeptide(String in, String dbfile, String defDbPath) throws Exception {
+	private static void getTaxFuncFromPeptide(String in, String dbfile, String defDbPath, MagDbItem magDb) throws Exception {
 		HashMap<String, double[]> pepIntensityMap = new HashMap<String, double[]>();
 		/*
 		 * String[] title = null; try (BufferedReader reader = new BufferedReader(new
@@ -6526,7 +6527,7 @@ public class MetaDiaTask extends MetaPilotMagTask {
 		}
 		proteinWriter.close();
 
-		MagFuncSearcher searcher = new MagFuncSearcher(dbfile, defDbPath);
+		MagFuncSearcher searcher = new MagFuncSearcher(dbfile, defDbPath, magDb);
 		HashMap<String, String[]> genomeTaxaMap = searcher
 				.matchGenome(genomeIntensityMap.keySet().toArray(String[]::new));
 		System.out.println("Genome taxa\t" + genomeTaxaMap.size());

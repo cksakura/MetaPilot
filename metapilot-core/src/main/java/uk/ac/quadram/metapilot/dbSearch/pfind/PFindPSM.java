@@ -6,19 +6,15 @@ package uk.ac.quadram.metapilot.dbSearch.pfind;
 import java.util.HashMap;
 
 import uk.ac.quadram.metapilot.core.mod.PostTransModification;
+import uk.ac.quadram.metapilot.task.io.pep.MetaPSM;
 
 /**
  * @author Kai Cheng
  *
  */
-public class PFindPSM {
+public class PFindPSM extends MetaPSM {
 
-	private String fileName;
-	private int scan;
 	private double expMH;
-	private int charge;
-	private double qValue;
-	private String sequence;
 	private double calMH;
 	private double massShift;
 	private double rawScore;
@@ -26,7 +22,6 @@ public class PFindPSM {
 	private String mod;
 	private PostTransModification ptm;
 	private int specificity;
-	private String[] proteins;
 	private boolean isTarget;
 	private int miss;
 	private double fragMassShift;
@@ -35,12 +30,8 @@ public class PFindPSM {
 	public PFindPSM(String fileName, int scan, double expMH, int charge, double qValue, String sequence, double calMH,
 			double massShift, double rawScore, double finalScore, String mod, PostTransModification ptm,
 			int specificity, String[] proteins, boolean isTarget, int miss, double fragMassShift) {
-		this.fileName = fileName;
-		this.scan = scan;
+		super(fileName, scan, sequence, buildModSeq(sequence, mod), charge, proteins, finalScore, qValue);
 		this.expMH = expMH;
-		this.charge = charge;
-		this.qValue = qValue;
-		this.sequence = sequence;
 		this.calMH = calMH;
 		this.massShift = massShift;
 		this.rawScore = rawScore;
@@ -48,34 +39,48 @@ public class PFindPSM {
 		this.mod = mod;
 		this.ptm = ptm;
 		this.specificity = specificity;
-		this.proteins = proteins;
 		this.isTarget = isTarget;
 		this.miss = miss;
 		this.fragMassShift = fragMassShift;
 	}
 
-	public String getFileName() {
-		return fileName;
-	}
+	private static String buildModSeq(String sequence, String mod) {
+		if (sequence == null) {
+			return "";
+		}
+		if (mod == null || mod.trim().isEmpty()) {
+			return sequence;
+		}
 
-	public int getScan() {
-		return scan;
+		HashMap<Integer, String> modmap = new HashMap<>();
+		StringBuilder sb = new StringBuilder();
+		String[] mods = mod.split(";");
+		for (int i = 0; i < mods.length; i++) {
+			int id = mods[i].indexOf(",");
+			if (id > 0) {
+				int loc = Integer.parseInt(mods[i].substring(0, id));
+				String name = mods[i].substring(id + 1, mods[i].lastIndexOf("["));
+				modmap.put(loc, name);
+			}
+		}
+
+		for (int i = 0; i < sequence.length(); i++) {
+			if (modmap.containsKey(i)) {
+				sb.append("(").append(modmap.get(i)).append(")");
+			}
+			sb.append(sequence.charAt(i));
+		}
+		if (modmap.containsKey(sequence.length())) {
+			sb.append("(").append(modmap.get(sequence.length())).append(")");
+		}
+		if (modmap.containsKey(sequence.length() + 1)) {
+			sb.append("(").append(modmap.get(sequence.length() + 1)).append(")");
+		}
+		return sb.toString();
 	}
 
 	public double getExpMH() {
 		return expMH;
-	}
-
-	public int getCharge() {
-		return charge;
-	}
-
-	public double getqValue() {
-		return qValue;
-	}
-
-	public String getSequence() {
-		return sequence;
 	}
 
 	public double getCalMH() {
@@ -105,13 +110,9 @@ public class PFindPSM {
 	public int getSpecificity() {
 		return specificity;
 	}
-	
+
 	public void setProteins(String[] proteins) {
 		this.proteins = proteins;
-	}
-
-	public String[] getProteins() {
-		return proteins;
 	}
 
 	public String getProtein() {
@@ -130,6 +131,7 @@ public class PFindPSM {
 		return isTarget;
 	}
 
+	@Override
 	public int getMiss() {
 		return miss;
 	}
@@ -138,6 +140,7 @@ public class PFindPSM {
 		return fragMassShift;
 	}
 
+	@Override
 	public double getRt() {
 		return rt;
 	}
@@ -147,36 +150,7 @@ public class PFindPSM {
 	}
 
 	public String getModseq() {
-
-		if (mod.trim().length() == 0) {
-			return sequence;
-		}
-
-		HashMap<Integer, String> modmap = new HashMap<Integer, String>();
-		StringBuilder sb = new StringBuilder();
-		String[] mods = mod.split(";");
-		for (int i = 0; i < mods.length; i++) {
-			int id = mods[i].indexOf(",");
-			if (id > 0) {
-				int loc = Integer.parseInt(mods[i].substring(0, id));
-				String name = mods[i].substring(id + 1, mods[i].lastIndexOf("["));
-				modmap.put(loc, name);
-			}
-		}
-
-		for (int i = 0; i < sequence.length(); i++) {
-			if (modmap.containsKey(i)) {
-				sb.append("(").append(modmap.get(i)).append(")");
-			}
-			sb.append(sequence.charAt(i));
-		}
-		if (modmap.containsKey(sequence.length())) {
-			sb.append("(").append(modmap.get(sequence.length())).append(")");
-		}
-		if (modmap.containsKey(sequence.length() + 1)) {
-			sb.append("(").append(modmap.get(sequence.length() + 1)).append(")");
-		}
-		return sb.toString();
+		return buildModSeq(baseSequence, mod);
 	}
 
 	/**
@@ -187,7 +161,7 @@ public class PFindPSM {
 	public String getModseqNoIsoTags() {
 
 		if (mod.trim().length() == 0) {
-			return sequence;
+			return baseSequence;
 		}
 
 		HashMap<Integer, String> modmap = new HashMap<Integer, String>();
@@ -205,18 +179,34 @@ public class PFindPSM {
 			}
 		}
 
-		for (int i = 0; i < sequence.length(); i++) {
+		for (int i = 0; i < baseSequence.length(); i++) {
 			if (modmap.containsKey(i)) {
 				sb.append("[").append(modmap.get(i)).append("]");
 			}
-			sb.append(sequence.charAt(i));
+			sb.append(baseSequence.charAt(i));
 		}
-		if (modmap.containsKey(sequence.length())) {
-			sb.append("[").append(modmap.get(sequence.length())).append("]");
+		if (modmap.containsKey(baseSequence.length())) {
+			sb.append("[").append(modmap.get(baseSequence.length())).append("]");
 		}
-		if (modmap.containsKey(sequence.length() + 1)) {
-			sb.append("[").append(modmap.get(sequence.length() + 1)).append("]");
+		if (modmap.containsKey(baseSequence.length() + 1)) {
+			sb.append("[").append(modmap.get(baseSequence.length() + 1)).append("]");
 		}
 		return sb.toString();
 	}
+
+	@Override
+	public double getExpMass() {
+		return expMH;
+	}
+
+	@Override
+	public double getCalMass() {
+		return calMH;
+	}
+
+	@Override
+	public double getMassDiff() {
+		return massShift;
+	}
+
 }

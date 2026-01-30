@@ -86,6 +86,10 @@ public class FragpipeWorkflow {
 		valueMap.get("msfragger.allowed_missed_cleavage_1").setValue(String.valueOf(miss));
 	}
 
+	public String getCleavateAt() {
+		return valueMap.get("msfragger.search_enzyme_cut_1").value;
+	}
+	
 	public void setDatabase(String database) {
 		if (valueMap.containsKey("database.db-path")) {
 			valueMap.get("database.db-path").setValue(database);

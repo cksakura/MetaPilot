@@ -11,6 +11,8 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 
+import org.apache.commons.io.FileUtils;
+
 public class SagePsmReader {
 
 	private SagePSM[] psms;
@@ -170,6 +172,38 @@ public class SagePsmReader {
 	public SagePSM[] getPsms() {
 		return psms;
 	}
+	
+	public SagePSM[] getPsms(double qvalueThreshold) {
+		if (psms == null || psms.length == 0) {
+			return new SagePSM[0];
+		}
+		ArrayList<SagePSM> filtered = new ArrayList<>();
+		for (SagePSM psm : psms) {
+			if (psm == null) {
+				continue;
+			}
+			if (psm.getPeptideQ() < qvalueThreshold) {
+				filtered.add(psm);
+			}
+		}
+		return filtered.toArray(new SagePSM[filtered.size()]);
+	}
+	
+	public SagePSM[] getPsms(double specQvalueThreshold, double pepQvalueThreshold) {
+		if (psms == null || psms.length == 0) {
+			return new SagePSM[0];
+		}
+		ArrayList<SagePSM> filtered = new ArrayList<>();
+		for (SagePSM psm : psms) {
+			if (psm == null) {
+				continue;
+			}
+			if (psm.getqValue() < specQvalueThreshold && psm.getPeptideQ() < pepQvalueThreshold) {
+				filtered.add(psm);
+			}
+		}
+		return filtered.toArray(new SagePSM[filtered.size()]);
+	}
 
 	public HashMap<String, Integer> getMs2CountMap() {
 		return ms2CountMap;
@@ -267,11 +301,174 @@ public class SagePsmReader {
 		reader1.close();
 		return set1;
 	}
+	
+	public static void compare(String s1, String s2) {
+		SagePsmReader reader1 = new SagePsmReader(s1);
+		SagePSM[] psms1 = reader1.getPsms(0.01, 1.0);
+
+		SagePsmReader reader2 = new SagePsmReader(s2);
+		SagePSM[] psms2 = reader2.getPsms(0.01, 1.0);
+		System.out.println(psms1.length + "\t" + psms2.length);
+
+		HashMap<String, HashSet<String>> pepGenomeMap1 = new HashMap<String, HashSet<String>>();
+		for (SagePSM psm : psms1) {
+			if (psm.isTarget()) {
+				String seq = psm.getBaseSequence();
+				String[] proteins = psm.getProteins();
+				for (String pro : proteins) {
+					String genome = pro.substring(0, pro.indexOf("_"));
+					pepGenomeMap1.computeIfAbsent(seq, k -> new HashSet<>()).add(genome);
+				}
+			}
+		}
+
+		HashMap<String, HashSet<String>> pepGenomeMap2 = new HashMap<String, HashSet<String>>();
+		for (SagePSM psm : psms2) {
+			if (psm.isTarget()) {
+				String seq = psm.getBaseSequence();
+				String[] proteins = psm.getProteins();
+				for (String pro : proteins) {
+					String genome = pro.substring(0, pro.indexOf("_"));
+					pepGenomeMap2.computeIfAbsent(seq, k -> new HashSet<>()).add(genome);
+				}
+			}
+		}
+		HashSet<String> set = new HashSet<String>();
+		set.addAll(pepGenomeMap1.keySet());
+		set.addAll(pepGenomeMap2.keySet());
+		int common = pepGenomeMap1.size() + pepGenomeMap2.size() - set.size();
+		System.out.println(pepGenomeMap1.size() + "\t" + pepGenomeMap2.size());
+		System.out.println((pepGenomeMap1.size() - common) + "\t" + (pepGenomeMap2.size() - common));
+
+		HashMap<String, HashSet<String>> genomeMap = new HashMap<String, HashSet<String>>();
+		for (String key : pepGenomeMap2.keySet()) {
+			if (!pepGenomeMap1.containsKey(key)) {
+				HashSet<String> genomeSet = pepGenomeMap2.get(key);
+				for (String genome : genomeSet) {
+					genomeMap.computeIfAbsent(genome, k -> new HashSet<>()).add(key);
+				}
+			}
+		}
+		for (String genome : genomeMap.keySet()) {
+//			System.out.println(genome + "\t" + genomeMap.get(genome).size());
+		}
+
+		for (SagePSM psm : psms2) {
+			String seq = psm.getBaseSequence();
+			if (!pepGenomeMap1.containsKey(seq)) {
+//				System.out.println(seq+"\t"+psm.getScan());
+			}
+		}
+	}
+	
+	public static void fastaTest(String in) {
+		try (BufferedReader reader = new BufferedReader(new FileReader(in))) {
+			String line = null;
+			HashMap<String, HashSet<String>> genomeProMap = new HashMap<String, HashSet<String>>();
+			while ((line = reader.readLine()) != null) {
+				if (line.startsWith(">")) {
+					int id = line.indexOf(" ");
+					if (id > 1) {
+						String pro = line.substring(1, id);
+						String genome = pro.substring(0, pro.indexOf("_"));
+						genomeProMap.computeIfAbsent(genome, k -> new HashSet<>()).add(pro);
+					} else {
+						System.out.println(line);
+					}
+				}
+			}
+			reader.close();
+
+			for (String genome : genomeProMap.keySet()) {
+				System.out.println(genome + "\t" + genomeProMap.get(genome).size());
+			}
+
+		} catch (IOException e) {
+
+		}
+	}
+
 
 	public static void main(String[] args) {
 		// TODO Auto-generated method stub
-		SagePsmReader reader = new SagePsmReader("Z:\\Kai\\Raw_files\\run21\\test2\\sage\\results.sage.tsv");
-		System.out.println(reader.psms.length);
+		
+//		SagePsmReader.fastaTest("Z:\\PRIDE_dataset\\PXD006118_3mix_type\\Run1\\MetaPilot\\sage_MAG_search_09\\old\\combined\\combined.fasta");
+		
+		File[] folders = (new File("Z:\\PRIDE_dataset\\PXD012724_rapidAim1\\MetaPilot\\sage_MAG_search_rib"))
+				.listFiles();
+		
+		File folder = new File("Z:\\PRIDE_dataset\\PXD060335_campi2\\MetaPilot");
+		File f1 = new File(folder, "sage_MAG_search");
+		File f2 = new File(folder, "sage_MAG_search_rib");
+		String fileName = "20230815_CAMPI2_CEB_F_M3_R1_QE3_2ug_1D_DirectLoad_RP180grad";
+		
+		File sub1 = new File(f1, fileName);
+		File sub2 = new File(f2, fileName);
+		
+		File result1 = new File(sub1, "results.sage.tsv");
+		File result2 = new File(sub2, "results.sage.tsv");
+		
+//		SagePsmReader.compare(result1.getAbsolutePath(), result2.getAbsolutePath());
+		System.out.println();
+		
+		File hap1 = new File(sub1, "hap");
+		File hap2 = new File(sub2, "hap");
+		
+		File hapResult1 = new File(hap1, "results.sage.tsv");
+		File hapResult2 = new File(hap2, "results.sage.tsv");
+//		SagePsmReader.compare(hapResult1.getAbsolutePath(), hapResult2.getAbsolutePath());
+		
+//		SagePsmReader.compare("Z:\\PRIDE_dataset\\PXD004039\\MetaPilot\\sage_MAG_search\\Human_3\\hap\\marker4_highpep\\results.sage.tsv",
+//				"Z:\\PRIDE_dataset\\PXD004039\\MetaPilot\\sage_MAG_search\\Human_3\\hap\\marker4\\results.sage.tsv"
+//				);	
+		System.out.println();
+//		SagePsmReader.compare(
+//				"Z:\\PRIDE_dataset\\PXD004039\\MetaPilot\\sage_MAG_search\\Human_3\\hap\\rib\\results.sage.tsv",
+//				"Z:\\PRIDE_dataset\\PXD004039\\MetaPilot\\sage_MAG_search\\Human_3\\hap\\marker4\\results.sage.tsv");	
+		
+		for (int i = 0; i < folders.length; i++) {
+			File resultFolder = new File(folders[i], "results.sage.tsv");
+			if (resultFolder.exists()) {
+				SagePsmReader reader = new SagePsmReader(resultFolder);
+				System.out.println(folders[i].getName() + "\t" + reader.getPsms(0.01).length);
+//				FileUtils.deleteQuietly(resultFolder);
+			}
+			
+			File hapFile = new File(new File(folders[i], "hap"), "results.sage.tsv");
+			if (hapFile.exists()) {
+				SagePsmReader reader = new SagePsmReader(hapFile);
+				System.out.println(folders[i].getName() + "\t" + reader.getPsms(0.01).length);
+//				FileUtils.deleteQuietly(resultFolder);
+			}
+		}		
+		
+		
+		for (int i = 0; i < folders.length; i++) {
+			File resultFolder = new File(folders[i], "hap");
+			if (resultFolder.exists()) {
+				File fastaFile = new File(resultFolder, folders[i].getName() + ".fasta");
+				if (fastaFile.exists()) {
+//					FileUtils.deleteQuietly(fastaFile);
+					/*
+					try (BufferedReader reader = new BufferedReader(new FileReader(fastaFile))) {
+						String line = null;
+						int count = 0;
+						HashSet<String> set = new HashSet<String>();
+						while ((line = reader.readLine()) != null) {
+							if (line.startsWith(">")) {
+								count++;
+								String genome = line.substring(1, line.indexOf("_"));
+								set.add(genome);
+							}
+						}
+						System.out.println(folders[i].getName() + "\t" + count + "\t" + set.size());
+					} catch (IOException e) {
+
+					}
+					*/
+				}
+			}
+		}
 	}
 
 }

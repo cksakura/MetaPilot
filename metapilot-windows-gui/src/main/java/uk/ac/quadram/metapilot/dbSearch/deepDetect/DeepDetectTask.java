@@ -9,7 +9,6 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
-import java.lang.management.ManagementFactory;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -19,16 +18,11 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import javax.swing.JProgressBar;
-import javax.swing.JTextField;
-import javax.swing.SwingUtilities;
-
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import com.sun.management.OperatingSystemMXBean;
-
+import javafx.application.Platform;
 import javafx.scene.control.ProgressBar;
 import javafx.scene.control.TextField;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
@@ -51,7 +45,6 @@ public class DeepDetectTask extends MetaAbstractTask {
 	private DeepDetectParameter par;
 	private ExecutorService executor;
 	private int threads;
-	private JTextField timeLeft;
 	private TextField javafxTimeLeft;
 
 	private MagDbItem magdb;
@@ -78,42 +71,7 @@ public class DeepDetectTask extends MetaAbstractTask {
 		this.genomeSet = genomeSet;
 	}
 
-	public DeepDetectTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
-			DeepDetectParameter par, MagDbItem magdb, int threads, JTextField timeLeft, Logger logger) {
-		this(metaPar, mrp, progressBar, logger);
-		this.par = par;
-		this.magdb = magdb;
-		this.threads = threads;
-		this.executor = Executors.newFixedThreadPool(threads);
-		this.timeLeft = timeLeft;
-	}
-
-	public DeepDetectTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
-			DeepDetectParameter par, MagDbItem magdb, JProgressBar bar, JTextField timeLeft, Logger logger) {
-		this(metaPar, mrp, progressBar, logger);
-		this.par = par;
-		this.magdb = magdb;
-
-		long totalMemorySize = ((OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean())
-				.getTotalMemorySize() / 1024 / 1024 / 1024;
-		this.threads = (int) (totalMemorySize / 16);
-		this.executor = Executors.newFixedThreadPool(threads);
-		this.timeLeft = timeLeft;
-	}
-
-	public DeepDetectTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
-			DeepDetectParameter par, MagDbItem magdb, int threads, JProgressBar bar, JTextField timeLeft,
-			HashSet<String> genomeSet, Logger logger) {
-		this(metaPar, mrp, progressBar, logger);
-		this.par = par;
-		this.magdb = magdb;
-		this.threads = threads;
-		this.executor = Executors.newFixedThreadPool(threads);
-		this.timeLeft = timeLeft;
-		this.genomeSet = genomeSet;
-	}
-
-	// JavaFX version constructor
+	// JavaFX constructor (par, magdb, threads, time display)
 	public DeepDetectTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
 			DeepDetectParameter par, MagDbItem magdb, int threads, TextField javafxTimeLeft, Logger logger) {
 		this(metaPar, mrp, progressBar, logger);
@@ -131,17 +89,9 @@ public class DeepDetectTask extends MetaAbstractTask {
 		// TODO Auto-generated method stub
 
 		if (javafxTimeLeft != null) {
-			javafx.application.Platform.runLater(() -> {
+			Platform.runLater(() -> {
 				javafxTimeLeft.setText("Calculating...");
 				System.out.println(format.format(new Date()) + "\t" + "Peptide detectability predection started");
-			});
-		} else if (timeLeft != null) {
-			SwingUtilities.invokeLater(new Runnable() {
-				@Override
-				public void run() {
-					timeLeft.setText("Calculating...");
-					System.out.println(format.format(new Date()) + "\t" + "Peptide detectability predection started");
-				}
 			});
 		}
 
@@ -160,8 +110,14 @@ public class DeepDetectTask extends MetaAbstractTask {
 				if (genomeSet == null || (genomeSet != null && genomeSet.contains(name))) {
 					File predictedPepFile = new File(predictedFile, name + ".predicted.tsv");
 					if (!predictedPepFile.exists()) {
-
-						par.setInput(files[i]);
+						File inputToUse = files[i];
+						try {
+							inputToUse = ensureFastaHeadersHaveProteinName(files[i], predictedFile);
+						} catch (IOException e) {
+							LOGGER.error(taskName + ": error preparing FASTA for " + name, e);
+							return false;
+						}
+						par.setInput(inputToUse);
 						par.setOutput(predictedPepFile);
 
 						File batFile = new File(predictedFile, name + ".deepDetect.bat");
@@ -212,12 +168,8 @@ public class DeepDetectTask extends MetaAbstractTask {
 						BufferedReader inBr = new BufferedReader(new InputStreamReader(in));
 						String[] lines = new String[1];
 						while ((lines[0] = inBr.readLine()) != null) {
-							SwingUtilities.invokeLater(new Runnable() {
-								@Override
-								public void run() {
-									System.out.println(format.format(new Date()) + "\t" + lines[0]);
-								}
-							});
+							String line = lines[0];
+							Platform.runLater(() -> System.out.println(format.format(new Date()) + "\t" + line));
 						}
 
 						if (p.waitFor() != 0) {
@@ -237,19 +189,13 @@ public class DeepDetectTask extends MetaAbstractTask {
 						int runOneTask = (int) ((end - start) / 60000);
 						int restTime = (int) ((double) (totalGenomeCount - completed) * runOneTask / (double) threads);
 						if (javafxTimeLeft != null) {
-							javafx.application.Platform.runLater(() -> {
+							Platform.runLater(() -> {
 								if (restTime == 0) {
 									javafxTimeLeft.setText("About <1 minutes left");
 								} else {
 									javafxTimeLeft.setText("About " + restTime + " minutes left");
 								}
 							});
-						} else if (timeLeft != null) {
-							if (restTime == 0) {
-								timeLeft.setText("About <1 minutes left");
-							} else {
-								timeLeft.setText("About " + restTime + " minutes left");
-							}
 						}
 						String batName = batFile.getName();
 
@@ -338,7 +284,14 @@ public class DeepDetectTask extends MetaAbstractTask {
 							return false;
 						}
 
-						par.setInput(tempFastaFile);
+						File inputToUse = tempFastaFile;
+						try {
+							inputToUse = ensureFastaHeadersHaveProteinName(tempFastaFile, predictedFile);
+						} catch (IOException e) {
+							LOGGER.error(taskName + ": error preparing FASTA for " + name, e);
+							return false;
+						}
+						par.setInput(inputToUse);
 						par.setOutput(predictedPepFile);
 
 						File batFile = new File(predictedFile, name + ".deepDetect.bat");
@@ -385,12 +338,8 @@ public class DeepDetectTask extends MetaAbstractTask {
 									BufferedReader inBr = new BufferedReader(new InputStreamReader(in));
 									String[] lines = new String[1];
 									while ((lines[0] = inBr.readLine()) != null) {
-										SwingUtilities.invokeLater(new Runnable() {
-											@Override
-											public void run() {
-												System.out.println(format.format(new Date()) + "\t" + lines[0]);
-											}
-										});
+										String line = lines[0];
+										Platform.runLater(() -> System.out.println(format.format(new Date()) + "\t" + line));
 									}
 
 									if (p.waitFor() != 0) {
@@ -411,19 +360,13 @@ public class DeepDetectTask extends MetaAbstractTask {
 									int restTime = (int) ((double) (totalGenomeCount - completed) * runOneTask
 											/ (double) threads);
 									if (javafxTimeLeft != null) {
-										javafx.application.Platform.runLater(() -> {
+										Platform.runLater(() -> {
 											if (restTime == 0) {
 												javafxTimeLeft.setText("About <1 minutes left");
 											} else {
 												javafxTimeLeft.setText("About " + restTime + " minutes left");
 											}
 										});
-									} else if (timeLeft != null) {
-										if (restTime == 0) {
-											timeLeft.setText("About <1 minutes left");
-										} else {
-											timeLeft.setText("About " + restTime + " minutes left");
-										}
 									}
 
 								} catch (IOException | InterruptedException e) {
@@ -459,11 +402,7 @@ public class DeepDetectTask extends MetaAbstractTask {
 			updateMessage(totalGenomeCount + "/" + totalGenomeCount);
 
 			if (javafxTimeLeft != null) {
-				javafx.application.Platform.runLater(() -> {
-					javafxTimeLeft.setText("Task finished");
-				});
-			} else if (timeLeft != null) {
-				timeLeft.setText("Task finished");
+				Platform.runLater(() -> javafxTimeLeft.setText("Task finished"));
 			}
 
 			this.batFileList = new ArrayList<File>();
@@ -634,5 +573,147 @@ public class DeepDetectTask extends MetaAbstractTask {
 	protected Logger getLogger() {
 		// TODO Auto-generated method stub
 		return LOGGER;
+	}
+
+	/**
+	 * DeepDetect expects FASTA headers to contain a space (protein name after the accession).
+	 * If the input FASTA has headers without a space (e.g. ">MGYG000000001_123"), returns a
+	 * modified file where each such header becomes ">accession accession"; otherwise returns
+	 * the original file. The modified file is written next to outputDir.
+	 */
+	public static File ensureFastaHeadersHaveProteinName(File inputFile, File outputDir) throws IOException {
+		if (inputFile == null || !inputFile.exists()) {
+			return inputFile;
+		}
+		ArrayList<String> lines = new ArrayList<>();
+		boolean needModify = false;
+		try (BufferedReader reader = new BufferedReader(new FileReader(inputFile))) {
+			String line;
+			while ((line = reader.readLine()) != null) {
+				lines.add(line);
+				if (line.startsWith(">") && !line.substring(1).contains(" ")) {
+					needModify = true;
+				}
+			}
+		}
+		if (!needModify) {
+			return inputFile;
+		}
+		String baseName = inputFile.getName();
+		int lastDot = baseName.lastIndexOf('.');
+		String nameNoExt = lastDot > 0 ? baseName.substring(0, lastDot) : baseName;
+		File dir = outputDir != null && outputDir.exists() ? outputDir : inputFile.getParentFile();
+		if (dir == null) {
+			dir = new File(System.getProperty("java.io.tmpdir"));
+		}
+		File modifiedFile = new File(dir, nameNoExt + "_deepDetect_input.faa");
+		try (PrintWriter writer = new PrintWriter(modifiedFile)) {
+			for (String line : lines) {
+				if (line.startsWith(">") && !line.substring(1).contains(" ")) {
+					String accession = line.substring(1).trim();
+					writer.println(">" + accession + " " + accession);
+				} else {
+					writer.println(line);
+				}
+			}
+		}
+		LOGGER.info(taskName + ": created modified FASTA with protein names for DeepDetect: " + modifiedFile.getAbsolutePath());
+		return modifiedFile;
+	}
+
+	/**
+	 * Test method: runs DeepDetect once using only the exe file and
+	 * DeepDetectParameter. Does not create a DeepDetectTask. Writes a .bat file
+	 * and runs it via ExecutorService.
+	 *
+	 * @param deepDetectExe path to DeepDetect.exe (e.g. from MetaResourceParameters)
+	 * @param par           parameter with input and output files set
+	 * @param timeoutHours  max time to wait for the process
+	 * @return true if the process exited with 0, false otherwise or on error
+	 */
+	public static boolean testDeepDetect(File deepDetectExe, DeepDetectParameter par, int timeoutHours) {
+		if (deepDetectExe == null || !deepDetectExe.exists()) {
+			LOGGER.error(taskName + ": testDeepDetect - exe file not found: " + (deepDetectExe != null ? deepDetectExe.getAbsolutePath() : "null"));
+			return false;
+		}
+		if (par == null || par.getInput() == null || par.getOutput() == null) {
+			LOGGER.error(taskName + ": testDeepDetect - DeepDetectParameter must have input and output set");
+			return false;
+		}
+		File batDir = par.getOutput().getParentFile();
+		if (batDir == null || !batDir.exists()) {
+			batDir = par.getInput().getParentFile();
+		}
+		if (batDir == null || !batDir.exists()) {
+			batDir = new File(System.getProperty("java.io.tmpdir"));
+		}
+		try {
+			File modifiedInput = ensureFastaHeadersHaveProteinName(par.getInput(), batDir);
+			if (modifiedInput != par.getInput()) {
+				par.setInput(modifiedInput);
+			}
+		} catch (IOException e) {
+			LOGGER.error(taskName + ": testDeepDetect - error preparing FASTA for DeepDetect", e);
+			return false;
+		}
+		SimpleDateFormat fmt = new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss");
+		File batFile = new File(batDir, "deepDetect_test.bat");
+		try (PrintWriter batWriter = new PrintWriter(batFile)) {
+			batWriter.println("@echo off");
+			batWriter.println("cd /d \"" + deepDetectExe.getParent() + "\"");
+			batWriter.println(deepDetectExe.getName() + " " + par);
+			batWriter.print("exit");
+		} catch (FileNotFoundException e) {
+			LOGGER.error(taskName + ": testDeepDetect - error writing .bat file", e);
+			return false;
+		}
+		LOGGER.info(taskName + ": testDeepDetect - wrote " + batFile.getAbsolutePath());
+		System.out.println(fmt.format(new Date()) + "\t" + taskName + ": testDeepDetect - running " + batFile.getAbsolutePath());
+
+		ExecutorService executor = Executors.newFixedThreadPool(1);
+		AtomicInteger exitCode = new AtomicInteger(-1);
+		executor.submit(() -> {
+			try {
+				String[] args = { "cmd.exe", "/c", batFile.getAbsolutePath() };
+				ProcessBuilder pb = new ProcessBuilder(args);
+				Process p = pb.start();
+				BufferedInputStream in = new BufferedInputStream(p.getInputStream());
+				BufferedReader inBr = new BufferedReader(new InputStreamReader(in));
+				String line;
+				while ((line = inBr.readLine()) != null) {
+					System.out.println(fmt.format(new Date()) + "\t" + line);
+				}
+				exitCode.set(p.waitFor());
+				inBr.close();
+				in.close();
+			} catch (IOException | InterruptedException e) {
+				LOGGER.error(taskName + ": testDeepDetect - error running process", e);
+			}
+		});
+		try {
+			executor.shutdown();
+			boolean finished = executor.awaitTermination(Math.max(1, timeoutHours), TimeUnit.HOURS);
+			FileUtils.deleteQuietly(batFile);
+			if (!finished) {
+				LOGGER.warn(taskName + ": testDeepDetect - timed out after " + timeoutHours + " hour(s)");
+				return false;
+			}
+			boolean ok = (exitCode.get() == 0);
+			LOGGER.info(taskName + ": testDeepDetect - exit code " + exitCode.get() + ", success=" + ok);
+			return ok;
+		} catch (InterruptedException e) {
+			LOGGER.error(taskName + ": testDeepDetect - interrupted", e);
+			Thread.currentThread().interrupt();
+			FileUtils.deleteQuietly(batFile);
+			return false;
+		}
+	}
+	
+	public static void main(String[] args) {
+		DeepDetectParameter par = new DeepDetectParameter();
+		par.setInput(new File("Z:\\PRIDE_dataset\\PXD023217_campi\\GUT_DB2MG.faa"));
+		par.setOutput(new File("Z:\\PRIDE_dataset\\PXD023217_campi\\GUT_DB2MG.predicted.tsv"));
+		par.setMissCleavage(2);
+		testDeepDetect(new File("C:\\Users\\daz25hak\\MetaProAI\\Resources\\DeepDetect\\DeepDetect.exe"), par, 2);
 	}
 }

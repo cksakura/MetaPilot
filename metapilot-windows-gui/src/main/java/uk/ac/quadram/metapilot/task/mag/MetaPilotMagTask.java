@@ -127,7 +127,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 		this.rawFileNames = new String[rawFiles.length];
 		this.separateResultFolders = new File[rawFiles.length];
 		this.expNameMap = new HashMap<String, String>();
-		
+
 		for (int i = 0; i < rawFiles.length; i++) {
 			rawFileNames[i] = rawFiles[i].substring(rawFiles[i].lastIndexOf("\\") + 1, rawFiles[i].lastIndexOf("."));
 			this.separateResultFolders[i] = new File(metaPar.getDbSearchResultFile(), rawFileNames[i]);
@@ -138,7 +138,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 				logger.info("  Result directory already exists: {}", this.separateResultFolders[i].getAbsolutePath());
 			}
 			expNameMap.put(rawFileNames[i], quanExpNames[i]);
-			
+
 			File hapFile = new File(separateResultFolders[i], "hap");
 			if (!hapFile.exists()) {
 				hapFile.mkdirs();
@@ -292,16 +292,18 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 	protected HashMap<String, Double> refineGenomes(MetaPeptide[] quanPeps, String decoySymble) {
 
 		String revIdentifier = decoySymble + this.magDb.getIdentifier();
-		HashMap<String, Double> genomeIntensityMap = new HashMap<String, Double>();
-		double[] peptideIntensity = new double[quanPeps.length];
-		logger.info(getTaskName() + ": quanPeps: " + quanPeps.length);
+		HashMap<String, Double> genomeIntensityScoreMap = new HashMap<String, Double>();
+		double[] peptideIntensityScore = new double[quanPeps.length];
+
+		int[] pepCount = new int[2];
+
 		for (int i = 0; i < quanPeps.length; i++) {
 			double[] pepIntensity = quanPeps[i].getIntensity();
 			double totalIntensity = MathTool.getTotal(pepIntensity);
 			int[] idenType = quanPeps[i].getIdenType();
 			int idenCount = 0;
 			for (int j = 0; j < idenType.length; j++) {
-				if (idenType[j] == 0) {
+				if (idenType[j] == 1) {
 					idenCount++;
 				}
 			}
@@ -312,50 +314,61 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 
 			double[] indiPEP = quanPeps[i].getIndividualPEP();
 			for (int j = 0; j < pepIntensity.length; j++) {
-				if (idenType[j] == 0) {
+				if (idenType[j] == 1) {
 					if (indiPEP[j] == 0) {
-						peptideIntensity[i] += pepIntensity[j] * 1.0E7;
+						peptideIntensityScore[i] += pepIntensity[j] * 1.0E7;
 					} else {
-						peptideIntensity[i] += pepIntensity[j] / indiPEP[j];
+						peptideIntensityScore[i] += pepIntensity[j] / indiPEP[j];
 					}
 				}
 			}
 
 			String[] proteins = quanPeps[i].getProteins();
+			boolean isDecoy = false;
 			for (int j = 0; j < proteins.length; j++) {
 				if (proteins[j].startsWith(this.magDb.getIdentifier())) {
 					String genome = proteins[j].split("_")[0];
-					if (genomeIntensityMap.containsKey(genome)) {
-						genomeIntensityMap.put(genome, genomeIntensityMap.get(genome) + peptideIntensity[i]);
+					if (genomeIntensityScoreMap.containsKey(genome)) {
+						genomeIntensityScoreMap.put(genome,
+								genomeIntensityScoreMap.get(genome) + peptideIntensityScore[i]);
 					} else {
-						genomeIntensityMap.put(genome, peptideIntensity[i]);
+						genomeIntensityScoreMap.put(genome, peptideIntensityScore[i]);
 					}
 				} else if (proteins[j].startsWith(revIdentifier)) {
+					isDecoy = true;
 					String pro = this.magDb.getIdentifier() + proteins[j].substring(revIdentifier.length());
 					String genome = decoySymble + pro.split("_")[0];
 
-					if (genomeIntensityMap.containsKey(genome)) {
-						genomeIntensityMap.put(genome, genomeIntensityMap.get(genome) + peptideIntensity[i]);
+					if (genomeIntensityScoreMap.containsKey(genome)) {
+						genomeIntensityScoreMap.put(genome,
+								genomeIntensityScoreMap.get(genome) + peptideIntensityScore[i]);
 					} else {
-						genomeIntensityMap.put(genome, peptideIntensity[i]);
+						genomeIntensityScoreMap.put(genome, peptideIntensityScore[i]);
 					}
 				}
 			}
+			if (isDecoy) {
+				pepCount[1]++;
+			} else {
+				pepCount[0]++;
+			}
 		}
 
-		logger.info(getTaskName() + ": genome before filtering: " + genomeIntensityMap.size());
+		logger.info(getTaskName() + ": " + pepCount[0] + " target peptides and " + pepCount[1]
+				+ " decoy peptides were used to estimate the genome level FDR");
+		logger.info(getTaskName() + ": genome before filtering: " + genomeIntensityScoreMap.size());
 
 		HashMap<String, Double> razorGenomeIntenMap = new HashMap<String, Double>();
 		for (int i = 0; i < quanPeps.length; i++) {
-			if (peptideIntensity[i] > 0) {
+			if (peptideIntensityScore[i] > 0) {
 				String[] proteins = quanPeps[i].getProteins();
 				String razorGenome = "";
 				double razorGenomeIntensity = 0;
 				for (int j = 0; j < proteins.length; j++) {
 					if (proteins[j].startsWith(this.magDb.getIdentifier())) {
 						String genome = proteins[j].split("_")[0];
-						if (genomeIntensityMap.containsKey(genome)) {
-							double genomeIntensity = genomeIntensityMap.get(genome);
+						if (genomeIntensityScoreMap.containsKey(genome)) {
+							double genomeIntensity = genomeIntensityScoreMap.get(genome);
 							if (genomeIntensity > razorGenomeIntensity) {
 								razorGenome = genome;
 								razorGenomeIntensity = genomeIntensity;
@@ -365,8 +378,8 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 						String pro = this.magDb.getIdentifier() + proteins[j].substring(revIdentifier.length());
 						String genome = decoySymble + pro.split("_")[0];
 
-						if (genomeIntensityMap.containsKey(genome)) {
-							double genomeIntensity = genomeIntensityMap.get(genome);
+						if (genomeIntensityScoreMap.containsKey(genome)) {
+							double genomeIntensity = genomeIntensityScoreMap.get(genome);
 							if (genomeIntensity > razorGenomeIntensity) {
 								razorGenome = genome;
 								razorGenomeIntensity = genomeIntensity;
@@ -384,7 +397,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 		logger.info(getTaskName() + ": razor genome before filtering: " + razorGenomeIntenMap.size());
 
 		for (int i = 0; i < quanPeps.length; i++) {
-			if (peptideIntensity[i] > 0) {
+			if (peptideIntensityScore[i] > 0) {
 				String[] proteins = quanPeps[i].getProteins();
 
 				int count = 0;
@@ -408,13 +421,15 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 						if (proteins[j].startsWith(this.magDb.getIdentifier())) {
 							String genome = proteins[j].split("_")[0];
 							if (razorGenomeIntenMap.containsKey(genome)) {
-								razorGenomeIntenMap.put(genome, razorGenomeIntenMap.get(genome) + peptideIntensity[i]);
+								razorGenomeIntenMap.put(genome,
+										razorGenomeIntenMap.get(genome) + peptideIntensityScore[i]);
 							}
 						} else if (proteins[j].startsWith(revIdentifier)) {
 							String pro = this.magDb.getIdentifier() + proteins[j].substring(revIdentifier.length());
 							String genome = decoySymble + pro.split("_")[0];
 							if (razorGenomeIntenMap.containsKey(genome)) {
-								razorGenomeIntenMap.put(genome, razorGenomeIntenMap.get(genome) + peptideIntensity[i]);
+								razorGenomeIntenMap.put(genome,
+										razorGenomeIntenMap.get(genome) + peptideIntensityScore[i]);
 							}
 						}
 					}
@@ -466,7 +481,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 				}
 			}
 			logger.info(getTaskName() + ": refined decoy genome:" + revLogIntensities.length);
-			logger.info(Arrays.toString(revLogIntensities));
+			logger.info(getTaskName() + ": decoy genome Log(Intensity):" + Arrays.toString(revLogIntensities));
 
 			if (revLogIntensities.length == 0) {
 				logger.info(getTaskName() + ": the number of decoy genome was not sufficient for the t-test, "
@@ -651,7 +666,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 
 		MagFuncSearcher searcher = null;
 		try {
-			searcher = new MagFuncSearcher(metaPar.getMicroDb(), mrp.getToolPath(ToolType.FUNCDB));
+			searcher = new MagFuncSearcher(metaPar.getMicroDb(), mrp.getToolPath(ToolType.FUNCDB), magDb);
 
 		} catch (NumberFormatException | SQLException | IOException e) {
 			// TODO Auto-generated catch block
@@ -1043,7 +1058,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 
 			MagFuncSearcher searcher = null;
 			try {
-				searcher = new MagFuncSearcher(metaPar.getMicroDb(), mrp.getToolPath(ToolType.FUNCDB), genome);
+				searcher = new MagFuncSearcher(metaPar.getMicroDb(), mrp.getToolPath(ToolType.FUNCDB), magDb, genome);
 
 			} catch (NumberFormatException | SQLException | IOException e) {
 				// TODO Auto-generated catch block
@@ -1624,7 +1639,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 
 		MagFuncSearcher searcher = null;
 		try {
-			searcher = new MagFuncSearcher(metaPar.getMicroDb(), mrp.getToolPath(ToolType.FUNCDB));
+			searcher = new MagFuncSearcher(metaPar.getMicroDb(), mrp.getToolPath(ToolType.FUNCDB), magDb);
 		} catch (NumberFormatException | SQLException | IOException e) {
 			logger.error(taskName + ": error in genome analysis, task failed", e);
 			System.err.println(format.format(new Date()) + "\t" + taskName + ": error in genome analysis, task failed");
@@ -2137,11 +2152,13 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 		private String quanMode;
 		private String[] intensityTitle;
 		private String taskName;
+		private String decoySymbol;
 		private MetaPilotMagTask parentTask;
 
 		public DDAMagPostAnalysisTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
 				MetaPeptide[] quanPeps, MetaPSM[] psms, HashMap<String, Integer> fileIdMap, ArrayList<String> fileList,
-				String quanMode, String[] intensityTitle, String taskName, MetaPilotMagTask parentTask) {
+				String quanMode, String[] intensityTitle, String taskName, String decoySymbol,
+				MetaPilotMagTask parentTask) {
 			super(metaPar, mrp, progressBar, parentTask.getLogger());
 			this.quanPeps = quanPeps;
 			this.psms = psms;
@@ -2150,6 +2167,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			this.quanMode = quanMode;
 			this.intensityTitle = intensityTitle;
 			this.taskName = taskName;
+			this.decoySymbol = decoySymbol;
 			this.parentTask = parentTask;
 		}
 
@@ -2173,15 +2191,18 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			HashMap<String, Integer> psmCountMap = new HashMap<String, Integer>();
 
 			int[] filePsmCount = new int[fileIdMap.size()];
+			HashSet<Integer>[] fileScanSets = new HashSet[fileIdMap.size()];
 			HashSet<String>[] fileSequenceSets = new HashSet[fileIdMap.size()];
 			for (int i = 0; i < fileSequenceSets.length; i++) {
 				fileSequenceSets[i] = new HashSet<String>();
+				fileScanSets[i] = new HashSet<Integer>();
 			}
 
 			// Process PSMs and build maps
 			for (MetaPSM psm : psms) {
 				String sequence = psm.getBaseSequence();
 				String fileName = psm.getFileName();
+				int scannum = psm.getScan();
 				String modseq = psm.getModSeq();
 				int charge = psm.getCharge();
 				double PEP = psm.getPEP();
@@ -2200,6 +2221,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 				}
 
 				filePsmCount[fileId]++;
+				fileScanSets[fileId].add(scannum);
 				fileSequenceSets[fileId].add(sequence);
 
 				// Build charge map
@@ -2256,6 +2278,16 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 				}
 			}
 
+			// For identification rate: use unique scan count per file so one spectrum counts once.
+			// If scannum was not read correctly, all PSMs may have the same default scannum — then use raw PSM count.
+			for (int i = 0; i < fileIdMap.size(); i++) {
+				if (fileScanSets[i].size() == 1 && filePsmCount[i] > 1) {
+					// Same scannum for all PSMs — likely not read correctly, keep raw PSM count
+				} else {
+					filePsmCount[i] = fileScanSets[i].size();
+				}
+			}
+
 			// Set individual PEP values for peptides
 			for (int i = 0; i < quanPeps.length; i++) {
 				String seq = quanPeps[i].getModSeq();
@@ -2273,7 +2305,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			updateProgress(0.15, 1.0);
 
 			// Refine genomes and proteins
-			HashMap<String, Double> genomeScoreMap = parentTask.refineGenomes(quanPeps);
+			HashMap<String, Double> genomeScoreMap = parentTask.refineGenomes(quanPeps, decoySymbol);
 			String[] razorProteins = parentTask.refineProteins(quanPeps, genomeScoreMap);
 
 			// Update progress: Genome and protein refinement complete

@@ -55,7 +55,7 @@
       }
     ]
   },
-  "generated_at": "2025-12-04 12:15:21",
+  "generated_at": "2026-01-30 15:59:24",
   "description": "Last used parameters",
   "basic_parameters": {
     "ms2_scan_mode": "DIA",
@@ -68,7 +68,7 @@
     "self_model_search": false,
     "models": [],
     "use_model": false,
-    "libraries": ["Pekka"]
+    "libraries": []
   },
   "version": "1.0"
 }

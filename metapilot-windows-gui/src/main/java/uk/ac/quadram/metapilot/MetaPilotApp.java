@@ -783,7 +783,7 @@ public class MetaPilotApp extends Application {
                     pFindMagStage.setTitle("DDA MAG pFind Workflow");
 
                     // Create the pFind panel
-                    MetaPilotDdaMagPfindPanel pFindMagPanel = new MetaPilotDdaMagPfindPanel(items);
+                    MetaPilotDdaMagPfindPanel pFindMagPanel = new MetaPilotDdaMagPfindPanel(items, resourceParams);
 
                     // Create a scene with the panel
                     Scene pFindMagScene = new Scene(pFindMagPanel);
@@ -1208,7 +1208,7 @@ public class MetaPilotApp extends Application {
         Stage pFindMagStage = new Stage();
         pFindMagStage.setTitle("DDA MAG pFind Workflow");
         
-        MetaPilotDdaMagPfindPanel pFindMagPanel = new MetaPilotDdaMagPfindPanel(items);
+        MetaPilotDdaMagPfindPanel pFindMagPanel = new MetaPilotDdaMagPfindPanel(items, resourceParams);
         
         Scene pFindMagScene = new Scene(pFindMagPanel);
         try {

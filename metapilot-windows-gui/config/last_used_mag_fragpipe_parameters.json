@@ -1,18 +1,22 @@
 {
   "workflow": "DDA_MAG_FRAGPIPE",
   "input_output": {
-    "host_database": "C:\\Users\\daz25hak\\MetaProAI\\database\\uniprotkb_Human_AND_reviewed_true_AND_m_2025_09_01.fasta",
+    "host_database": "",
     "mag_database": "human-gut",
-    "output_directory": "Z:\\PRIDE_dataset\\PXD051104\\MPW_DDA\\MetaPilot",
-    "append_host_db": true,
+    "output_directory": "Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\12mix\\DDA\\MetaPilot",
+    "append_host_db": false,
     "experiments": [
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MPW_DDA\\N20220923sunyy_MPW_dda_lib6_Slot2-6_1_15527.d",
-        "experiment_name": "N20220923sunyy_MPW_dda_lib6_Slot2-6_1_15527"
+        "file_path": "Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\12mix\\DDA\\170412_12mix_DDA_library_stock_2_2.raw",
+        "experiment_name": "DDA_2"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD051104\\MPW_DDA\\N20220923sunyy_MPW_dda_lib7_Slot2-7_1_15528.d",
-        "experiment_name": "N20220923sunyy_MPW_dda_lib7_Slot2-7_1_15528"
+        "file_path": "Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\12mix\\DDA\\170412_12mix_DDA_library_stock_2_3.raw",
+        "experiment_name": "DDA_3"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\12mix\\DDA\\170412_12mix_DDA_library_stock_2_4.raw",
+        "experiment_name": "DDA_4"
       }
     ]
   },
@@ -21,7 +25,7 @@
     "missed_cleavages": 2,
     "digestion_mode": "Specific"
   },
-  "generated_at": "2025-12-05 07:36:04",
+  "generated_at": "2025-12-10 15:33:50",
   "fragpipe_workflow_configured": true,
   "additional_parameters": {
     "generate_sample_specific_db": true,

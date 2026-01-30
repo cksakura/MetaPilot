@@ -7,7 +7,7 @@ public class DeepDetectParameter {
 	private File input;
 	private File output;
 	private String protease = "Trypsin";
-	private int missCleavage = 1;
+	private int missCleavage = 2;
 	private int minLength = 7;
 	private int maxLength = 30;
 	

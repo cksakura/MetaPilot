@@ -11,11 +11,12 @@ public class SagePeptide extends MetaPeptide {
 	private ArrayList<SagePSM> psmlist;
 
 	public SagePeptide(String sequence, String modSeq, String[] proteins, double[] intensity, int[] idenType,
-			double qvalue, double score) {
+			double qvalue, double score, boolean isDecoy) {
 		super(sequence, modSeq, proteins, intensity, idenType);
 		this.PEP = qvalue;
 		this.score = score;
 		this.psmlist = new ArrayList<SagePSM>();
+		this.isDecoy = isDecoy;
 	}
 
 	public void addPSM(SagePSM psm) {

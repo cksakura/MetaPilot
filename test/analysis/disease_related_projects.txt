@@ -1,0 +1,50 @@
+Disease-Related Projects
+============================================================
+
+PXD008675	Gut Microbial Ecosystem Multiomics in Inflammatory Bowel Disease
+PXD031457	Integrated multi-omics highlights alterations of gut microbiome functions in prodromal and idiopathic Parkinson’s disease
+PXD012413	Type 1 Diabetes: Urinary Proteomics and Protein Network Analysis Support Perturbation of Lysosomal Function.
+PXD031579	Alterations of oral microbiota and impact on the gut microbiome in type 1 diabetes mellitus revealed by multi-omic analysis
+PXD017390	Human gut microbiome cultured over time responsed differently to drug stimulation
+PXD034617	Reanalysis of dataset PXD003791: “MuSt multiomics - Integrated multi-omics of the human gut microbiome in a case study of familial type 1 diabetes”
+PXD006384	Metaproteomics of colonic microbiota unveils discrete protein functions among colitic mice and control groups
+PXD047410	High-throughput screening of effects of 90 xenobiotics on the Simplified Human Gut Microbiota Model (SIHUMIx): A Metaproteomic and Metabolomic Study
+PXD003791	MuSt multiomics -  Integrated multi-omics of the human gut microbiome in a case study of familial type 1 diabetes
+PXD016298	Small proteins in a simplified human gut microbiome
+PXD048273	Chemical mixture effects on the simplified human intestinal microbiota (SIHUMIx): Assessing Bisphenols and PFAS at environmentally realistic concentrations
+PXD028857	Evaluate gut microbiome biobanking
+PXD014864	Deciphering Differential Gut Bacterial Drug Metabolism with Activity-Based Protein Profiling
+PXD051792	Ultra-sensitive metaproteomics (uMetaP) redefines the “dark” metaproteome, enables single-bacterium resolution, and discovers hidden functions in the gut microbiome
+PXD037268	Microbiome biomarkers for Improved  Screening of Anal Cance
+PXD009437	Human intestine LC-MSMS -  Transcriptional and proteomic analysis revealed a synergistic effect of aflatoxin M1 and ochratoxin A mycotoxins on intestinal epithelial integrity of differentiated human Caco-2 cells
+PXD062206	Extensive PFAS accumulation by human gut bacteria
+PXD015934	Effect of berberine analogues on functional profiles of human gut microbiomes
+PXD069517	Fecal metaproteome profiles of celiac disease patients with poly-autoimmunity
+PXD047510	Gut microbiome-derived bacterial extracellular vesicles in patients with solid tumours
+PXD065166	Bariatric surgery fecal metaproteomics
+PXD037271	CRC proteomic analysis by LC MS/MS
+PXD046818	Metaproteomic portrait of the healthy human gut microbiota
+PXD055767	Impact of Brilliant blue FCF on Human Gut Microbiota: Structural and Functional Alterations in a Simplified Model System
+PXD057701	Simultaneous metagenome-informed metaproteomics of the human gut microbiome, host and dietary exposome uncover functional interactomes in health & IBD
+PXD013427	Lysine acetylation of microbiome
+PXD042946	Metaproteomic assessment of gut microbial and host functional perturbations in Helicobacter pylori-infected patients subjected to an antimicrobial protocol
+PXD058570	Simultaneous metagenome-informed metaproteomics of the human gut microbiome, host and dietary exposome uncover functional interactomes in health & IBD
+PXD004039	Sequence database choice significantly affects taxonomic and functional metaproteomic results in gut microbiota studies
+PXD008870	Intestinal metaproteomics reveals host-microbiota interactions in subjects at risk for type 1 diabetes
+PXD014482	Initial storage impacts taxonomic profile in metaproteomics study of human stool
+PXD025887	Specific Gut Microbial Enzymes Drive Colitis Promotion by Triclosan
+PXD035981	Metabolic pathways of human microbiota co-utilization of fibres and colonic mucins
+PXD036037	Metabolic pathways of human microbiota co-utilization of fibres and colonic mucins
+PXD011515	InfectERA: Challenges in clinical metaproteomics highlighted by the analysis of acute leukemia patients with gut colonization by multidrug-resistant Enterobacteriaceae
+PXD037923	In-vitro culture of single gut bacterial strains with added sugars
+PXD029284	Metaproteomic analysis of gut microbiota from 30 samples of cystic fibrosis infants
+PXD030708	MetaNovo : an open-source pipeline for probabilistic peptide discovery in complex metaproteomic datasets
+PXD048778	Investigation of the human-gut-kidney axis by fecal proteomics, highlights molecular mechanisms affected in the later stages of CKD
+PXD020902	Fecal metaproteomics reveals reduced gut inflammation and changed microbial metabolism following lifestyle-induced weight loss
+PXD017467	Colon cancer luminal contents metaproteomics
+PXD005780	Relating human gut metagenome and metaproteome
+PXD007959	Extracellular vesicles isolated from the descending colon of pediatric patients with inflammatory bowel disease and control patients
+PXD013452	treatment-naïve type 2 diabetics metaproteomics
+PXD003528	Human MLI metaproteome -  MetaPro-IQ: a universal metaproteomic approach to studying human and mouse gut microbiota
+PXD020005	Searching for the small unknowns - Discovery of novel sProteins in a simplified human intestinal microbiome
+PXD055204	Fecal metaproteomics of ketogenic diet - case study

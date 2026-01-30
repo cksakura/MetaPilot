@@ -11,6 +11,9 @@ import org.apache.commons.io.FileUtils;
 
 public class MagDbItem {
 
+	public static final String MARKER2 = "Marker2";
+	public static final String MARKER4 = "Marker4";
+
 	private String catalogueID;
 	private String identifier;
 	private MagVersion version;
@@ -264,6 +267,9 @@ public class MagDbItem {
 	public void setUsedVersion(MagVersion usedVersion) {
 		this.usedVersion = usedVersion;
 		this.currentFile = new File(repositoryFile, usedVersion.getCatalogueVersion());
+		if (!this.currentFile.exists()) {
+			this.currentFile = repositoryFile;
+		}
 	}
 
 	public File getRepositoryFile() {
@@ -307,6 +313,10 @@ public class MagDbItem {
 	}
 
 	public File getHapFastaFile() {
+		return getRibElonFastaFile();
+	}
+
+	public File getRibElonFastaFile() {
 		if (repositoryFile == null || !repositoryFile.exists()) {
 			return null;
 		}
@@ -314,7 +324,33 @@ public class MagDbItem {
 			return null;
 		}
 
-		return new File(currentFile, "rib_elon.fasta");
+		File marker2File = new File(currentFile, "Marker2.fasta");
+		if (!marker2File.exists()) {
+			File ribFile = new File(currentFile, "rib_elon.fasta");
+			if (ribFile.exists()) {
+				ribFile.renameTo(marker2File);
+			}
+		}
+
+		return marker2File;
+	}
+
+	public File getMarkerHighPepFastaFile() {
+		if (repositoryFile == null || !repositoryFile.exists()) {
+			return null;
+		}
+		if (currentFile == null || !currentFile.exists()) {
+			return null;
+		}
+
+		return new File(currentFile, "Marker4_highpep.fasta");
+	}
+
+	public File getHapFastaFile(String selectorMode) {
+		if (MARKER4.equalsIgnoreCase(selectorMode)) {
+			return getMarkerHighPepFastaFile();
+		}
+		return getRibElonFastaFile();
 	}
 	
 	public File getHapFastaHdfFile() {
@@ -325,7 +361,7 @@ public class MagDbItem {
 			return null;
 		}
 
-		return new File(currentFile, "rib_elon.hdf");
+		return new File(currentFile, "Marker2.hdf");
 	}
 
 	public File getHapFastaTDFile() {
@@ -337,7 +373,7 @@ public class MagDbItem {
 			return null;
 		}
 
-		return new File(currentFile, "rib_elon_td.fasta");
+		return new File(currentFile, "Marker2_td.fasta");
 	}
 
 	public File getOriginalDbFolder() {
@@ -349,6 +385,28 @@ public class MagDbItem {
 		}
 
 		return new File(currentFile, usedVersion.getDbName());
+	}
+	
+	public File getOriginalFuncFolder() {
+		if (repositoryFile == null || !repositoryFile.exists()) {
+			return null;
+		}
+		if (usedVersion == null) {
+			return null;
+		}
+
+		return new File(currentFile, usedVersion.getFuncName());
+	}
+	
+	public File getOriginalTaxaFile() {
+		if (repositoryFile == null || !repositoryFile.exists()) {
+			return null;
+		}
+		if (usedVersion == null) {
+			return null;
+		}
+
+		return new File(currentFile, usedVersion.getTaxName());
 	}
 	
 	public class MagPepLib {

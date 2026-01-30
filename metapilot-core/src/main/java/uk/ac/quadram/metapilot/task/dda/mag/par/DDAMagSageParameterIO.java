@@ -122,6 +122,7 @@ public class DDAMagSageParameterIO extends BaseParameterIO {
 				JSONObject additionalParams = json.getJSONObject("additional_parameters");
 				params.setReduceDb(additionalParams.optBoolean("generate_sample_specific_db", true));
 				params.setSpectraCluster(additionalParams.optBoolean("spectra_clustering", false));
+			params.setRepresentativeLevel(additionalParams.optString("representative_level", "GENUS"));
 			}
 
 			// Load Sage-specific important parameters
@@ -320,6 +321,7 @@ public class DDAMagSageParameterIO extends BaseParameterIO {
 			additionalParams.put("threads", params.getThreadCount());
 			additionalParams.put("generate_sample_specific_db", params.isReduceDb());
 			additionalParams.put("spectra_clustering", params.isSpectraCluster());
+		additionalParams.put("representative_level", params.getRepresentativeLevel());
 			json.put("additional_parameters", additionalParams);
 			LOGGER.info("Added additional parameters - threads: {}", params.getThreadCount());
 

@@ -25,63 +25,37 @@ import uk.ac.quadram.metapilot.core.tools.ResumableDownloadTaskJavaFX;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 
 /**
- * JavaFX-Compatible MGnify Genome Database FTP Download and Management System
+ * MGnify Genome Database FTP Download and Management System (JavaFX).
  * 
  * <h2>Purpose</h2>
- * This JavaFX-compatible version provides the same comprehensive functionality as MGYGFtpTask
- * for downloading, updating, and managing MGnify (formerly EBI Metagenomics) genome databases.
- * It extends javafx.concurrent.Task for seamless integration with JavaFX applications and
- * progress monitoring systems.
+ * Downloads, updates, and manages MGnify (formerly EBI Metagenomics) genome databases.
+ * Extends javafx.concurrent.Task for integration with JavaFX progress and UI.
  * 
- * <h2>Key Differences from Original MGYGFtpTask</h2>
- * <ul>
- *   <li><strong>Threading Model:</strong> Uses JavaFX Task instead of SwingWorker</li>
- *   <li><strong>Progress Reporting:</strong> Native JavaFX progress property binding</li>
- *   <li><strong>UI Thread Safety:</strong> Automatic Platform.runLater() for UI updates</li>
- *   <li><strong>Property Binding:</strong> Observable properties for real-time UI updates</li>
- * </ul>
- * 
- * <h2>JavaFX Integration Features</h2>
+ * <h2>JavaFX Integration</h2>
  * <ul>
  *   <li><strong>Progress Property:</strong> Bindable to JavaFX ProgressBar</li>
  *   <li><strong>Message Property:</strong> Real-time status updates</li>
  *   <li><strong>Value Property:</strong> Task result as Observable</li>
- *   <li><strong>State Property:</strong> Task state monitoring (READY, RUNNING, SUCCEEDED, etc.)</li>
+ *   <li><strong>State Property:</strong> Task state (READY, RUNNING, SUCCEEDED, etc.)</li>
  * </ul>
  * 
- * <h2>Usage with JavaFX Components</h2>
+ * <h2>Usage</h2>
  * <pre>{@code
- *   // Create task
  *   MGYGFtpTaskJavaFX task = new MGYGFtpTaskJavaFX();
- *   
- *   // Bind to JavaFX ProgressBar
  *   progressBar.progressProperty().bind(task.progressProperty());
- *   
- *   // Bind to status label
  *   statusLabel.textProperty().bind(task.messageProperty());
- *   
- *   // Execute on background thread
- *   Thread thread = new Thread(task);
- *   thread.setDaemon(true);
- *   thread.start();
+ *   new Thread(task).setDaemon(true).start();
  * }</pre>
  * 
- * <h2>Maintained Functionality</h2>
- * <p>All core functionality from the original MGYGFtpTask is preserved:</p>
+ * <h2>Functionality</h2>
  * <ul>
  *   <li>Repository discovery and catalog enumeration</li>
  *   <li>Version detection and metadata extraction</li>
  *   <li>Full catalog and selective downloads</li>
  *   <li>Resumable and multi-threaded downloads</li>
  *   <li>Version comparison and incremental updates</li>
- *   <li>Error handling and network resilience</li>
  * </ul>
  * 
- * @author Kai Cheng - Quadram Institute Bioscience
- * @version 2.0
- * @since 2.0
- * 
- * @see uk.ac.quadram.metapilot.core.MGYG.MGYGFtpTask
  * @see uk.ac.quadram.metapilot.task.mag.MagDbItem
  * @see javafx.concurrent.Task
  */
@@ -96,7 +70,7 @@ public class MGYGFtpTaskJavaFX extends Task<Boolean> {
 
 	private MagDbItem item;
 	private MagDbItem[] repositoryItems;
-	
+
 	private long missLength = 146;
 	private int waitHours = 4;
 	
@@ -564,10 +538,14 @@ public class MGYGFtpTaskJavaFX extends Task<Boolean> {
 				System.out.println(
 						format.format(new Date()) + "\t" + taskName + ": extracting high abundant proteins...");
 
-				File hapFile = new File(dbFile, "rib_elon.fasta");
-				HapExtractor extractor = new HapExtractor(true);
-				extractor.extract(originalDbFile, hapFile);
+				HapExtractor extractor = new HapExtractor();
 				
+				File marker2File = new File(dbFile, "Marker2.fasta");
+				extractor.extractTwoMarkers(originalDbFile, marker2File);
+				
+				File marker4File = new File(dbFile, "Marker4.fasta");
+				extractor.extractFourCategories(originalDbFile, marker4File);
+
 				updateProgress(95, 100);
 				
 				item.setAvailable();

@@ -48,6 +48,7 @@ public class DDAMagSageParameters extends MetaBaseParameter {
 	// MAG-specific fields
 	private String magDbCatalogueId = "";
 	private String magDbVersion = "";
+	private String representativeLevel = "GENUS";
 
 	// Isotopic labeling
 	private List<String> lightLabels = new ArrayList<>();
@@ -142,6 +143,7 @@ public class DDAMagSageParameters extends MetaBaseParameter {
 		integration = "Sum";
 		spectralAngle = 0.6;
 		lfqPpmTolerance = 5.0;
+		representativeLevel = "GENUS";
 	}
 
 	// Constructor for creating from GUI parameters
@@ -192,6 +194,19 @@ public class DDAMagSageParameters extends MetaBaseParameter {
 		integration = "Sum";
 		spectralAngle = 0.6;
 		lfqPpmTolerance = 5.0;
+		representativeLevel = "GENUS";
+	}
+
+	public String getRepresentativeLevel() {
+		return representativeLevel;
+	}
+
+	public void setRepresentativeLevel(String representativeLevel) {
+		if (representativeLevel == null || representativeLevel.trim().isEmpty()) {
+			this.representativeLevel = "GENUS";
+		} else {
+			this.representativeLevel = representativeLevel.trim().toUpperCase();
+		}
 	}
 
 	// Getters and setters for inherited functionality

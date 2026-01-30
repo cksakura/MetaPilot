@@ -162,7 +162,7 @@ public class SageTask {
 				}
 			}
 			database.put("variable_mods", variableModsObj);
-			database.put("decoy_tag", "rev_");
+			database.put("decoy_tag", "REV_");
 			database.put("generate_decoys", true);
 			database.put("fasta", db);
 			
@@ -341,7 +341,7 @@ public class SageTask {
 				}
 			}
 			database.put("variable_mods", variableModsObj);
-			database.put("decoy_tag", "rev_");
+			database.put("decoy_tag", "REV_");
 			database.put("generate_decoys", true);
 			database.put("fasta", db);
 			
@@ -550,7 +550,7 @@ public class SageTask {
 				}
 			}
 			database.put("variable_mods", variableModsObj);
-			database.put("decoy_tag", "rev_");
+			database.put("decoy_tag", "REV_");
 			database.put("generate_decoys", true);
 			database.put("fasta", db);
 			
@@ -719,7 +719,7 @@ public class SageTask {
 				}
 			}
 			database.put("variable_mods", variableModsObj);
-			database.put("decoy_tag", "rev_");
+			database.put("decoy_tag", "REV_");
 			database.put("generate_decoys", true);
 			database.put("fasta", db);
 			
@@ -868,7 +868,7 @@ public class SageTask {
 	/**
 	 * Get enzyme cleavage sites based on enzyme name
 	 */
-	private String getEnzymeCleavageSites(String enzyme) {
+	public String getEnzymeCleavageSites(String enzyme) {
 		if (enzyme == null)
 			return "KR";
 
@@ -914,7 +914,7 @@ public class SageTask {
 	/**
 	 * Get enzyme restriction sites based on enzyme name
 	 */
-	private String getEnzymeRestriction(String enzyme) {
+	public String getEnzymeRestriction(String enzyme) {
 		if (enzyme == null)
 			return "P";
 

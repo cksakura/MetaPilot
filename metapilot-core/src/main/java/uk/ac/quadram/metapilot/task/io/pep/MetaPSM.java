@@ -7,6 +7,7 @@ package uk.ac.quadram.metapilot.task.io.pep;
 public abstract class MetaPSM {
 
 	protected String fileName;
+	protected int scan;
 	protected String baseSequence;
 	protected String fullSequence;
 	protected int charge;
@@ -17,9 +18,10 @@ public abstract class MetaPSM {
 	/**
 	 * Constructor for MetaPSM
 	 */
-	public MetaPSM(String fileName, String baseSequence, String fullSequence, int charge, String[] proteins,
+	public MetaPSM(String fileName, int scan, String baseSequence, String fullSequence, int charge, String[] proteins,
 			double score, double pep) {
 		this.fileName = fileName;
+		this.scan = scan;
 		this.baseSequence = baseSequence;
 		this.fullSequence = fullSequence;
 		this.charge = charge;
@@ -42,6 +44,10 @@ public abstract class MetaPSM {
 	// Common getter methods
 	public String getFileName() {
 		return fileName;
+	}
+
+	public int getScan() {
+		return scan;
 	}
 
 	public String getBaseSequence() {

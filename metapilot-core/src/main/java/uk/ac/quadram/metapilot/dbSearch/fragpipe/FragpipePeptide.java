@@ -17,7 +17,7 @@ public class FragpipePeptide extends MetaPeptide {
 	}
 
 	public FragpipePeptide(String sequence, String modSeq, int length, int[] charges, int missCleavage, double mass,
-			double score, double PEP, String[] proteins, double[] intensity, int[] spCount, int[] idenType) {
+			double score, double PEP, String[] proteins, double[] intensity, int[] spCount, int[] idenType, boolean isDecoy) {
 		super(sequence, length, charges, missCleavage, mass, score, intensity);
 		// TODO Auto-generated constructor stub
 		this.PEP = PEP;
@@ -25,6 +25,7 @@ public class FragpipePeptide extends MetaPeptide {
 		this.proteins = proteins;
 		this.ms2Counts = spCount;
 		this.idenType = idenType;
+		this.isDecoy = isDecoy;
 	}
 
 	public String getProteinString() {

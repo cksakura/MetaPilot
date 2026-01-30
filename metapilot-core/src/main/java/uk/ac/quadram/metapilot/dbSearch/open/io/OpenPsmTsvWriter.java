@@ -72,7 +72,9 @@ public class OpenPsmTsvWriter {
 				sb.append(title[i]).append("\t");
 			}
 		} else if (type == pFindFormat) {
-			for (int i = 0; i < 7; i++) {
+			sb.append(title[0]).append("\t");
+			sb.append("Scan number").append("\t");
+			for (int i = 1; i < 7; i++) {
 				sb.append(title[i]).append("\t");
 			}
 			sb.append("Score").append("\t");
@@ -225,6 +227,7 @@ public class OpenPsmTsvWriter {
 		}
 
 		sb.append(fileName).append("\t");
+		sb.append(openpsm.getScan()).append("\t");
 		sb.append(openpsm.getSequence()).append("\t");
 		sb.append(openpsm.getModseq()).append("\t");
 

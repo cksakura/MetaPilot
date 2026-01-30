@@ -11,6 +11,7 @@ import org.apache.logging.log4j.LogManager;
 
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.task.par.BaseParameterIO;
+import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 
 /**
  * Parameter I/O operations for DDA MAG pFind workflow
@@ -107,6 +108,7 @@ public class DDAMagPfindParameterIO extends BaseParameterIO {
 			JSONObject additionalParams = new JSONObject();
 			additionalParams.put("threads", params.getThreadCount());
 			additionalParams.put("ms2_scan_mode", params.getMs2ScanMode());
+			additionalParams.put("genome_selector_mode", params.getGenomeSelectorMode());
 			additionalParams.put("generate_sample_specific_db", params.isReduceDb());
 			additionalParams.put("spectra_clustering", params.isSpectraCluster());
 			json.put("additional_parameters", additionalParams);
@@ -237,6 +239,7 @@ public class DDAMagPfindParameterIO extends BaseParameterIO {
 				JSONObject additionalParams = json.getJSONObject("additional_parameters");
 				params.setThreadCount(additionalParams.optInt("threads", Runtime.getRuntime().availableProcessors()));
 				params.setMs2ScanMode(additionalParams.optString("ms2_scan_mode", "FTMS"));
+				params.setGenomeSelectorMode(additionalParams.optString("genome_selector_mode", MagDbItem.MARKER2));
 				params.setReduceDb(additionalParams.optBoolean("generate_sample_specific_db", true));
 				params.setSpectraCluster(additionalParams.optBoolean("spectra_clustering", true));
 			}

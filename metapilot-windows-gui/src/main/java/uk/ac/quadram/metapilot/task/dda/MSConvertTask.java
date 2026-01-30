@@ -23,7 +23,8 @@ public class MSConvertTask extends MetaAbstractTask {
 
 	private static final String taskName = "pFind spectrum convert workflow";
 
-	public MSConvertTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar, Logger logger) {
+	public MSConvertTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
+			Logger logger) {
 		super(metaPar, mrp, progressBar, logger);
 		// TODO Auto-generated constructor stub
 	}
@@ -85,7 +86,7 @@ public class MSConvertTask extends MetaAbstractTask {
 							// TODO Auto-generated method stub
 
 							if (rawi.endsWith(".mzml") || rawi.endsWith(".mzML")) {
-								MSConvertor.mzml2mgf(msconvertFile.getAbsolutePath(), rawi,
+								MSConvertor.rawMzml2mgf(msconvertFile.getAbsolutePath(), rawi,
 										spectraDirFile.getAbsolutePath());
 							} else if (rawi.endsWith(".d") || rawi.endsWith(".D")) {
 								MSConvertor.d2mgf(msconvertFile.getAbsolutePath(), rawi,

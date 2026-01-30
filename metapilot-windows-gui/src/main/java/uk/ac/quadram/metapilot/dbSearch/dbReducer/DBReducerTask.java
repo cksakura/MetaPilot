@@ -45,7 +45,7 @@ public class DBReducerTask extends PFindTask {
 			writer.println(dbreducerFile.getAbsolutePath().split("\\\\")[0]);
 			writer.println("cd " + dbreducerFile.getAbsolutePath());
 
-			File dbReducerCfg = new File(dbreducerFile.getAbsolutePath() + ".cfg");
+			File dbReducerCfg = new File(dbreducerFile.getAbsolutePath(), "DBReducer.cfg");
 			if (!dbReducerCfg.exists()) {
 				LOGGER.error(taskName + ": DBReducer parameter file DBReducer.cfg was not found in "
 						+ dbreducerFile.getParentFile().getParent());
@@ -97,7 +97,7 @@ public class DBReducerTask extends PFindTask {
 			writer.println(dbreducerFile.getAbsolutePath().split("\\\\")[0]);
 			writer.println("cd " + dbreducerFile.getAbsolutePath());
 
-			File dbReducerCfg = new File(dbreducerFile.getAbsolutePath() + ".cfg");
+			File dbReducerCfg = new File(dbreducerFile.getAbsolutePath(), "DBReducer.cfg");
 			if (!dbReducerCfg.exists()) {
 				LOGGER.error(taskName + ": DBReducer parameter file DBReducer.cfg was not found in "
 						+ dbreducerFile.getParentFile().getParent());

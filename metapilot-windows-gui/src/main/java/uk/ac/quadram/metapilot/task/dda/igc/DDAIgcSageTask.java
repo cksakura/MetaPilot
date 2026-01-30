@@ -149,45 +149,45 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
     /**
      * Initialize file arrays and experiment name mapping
      */
-    private void initializeFileArrays() {
-        DDAIgcSageParameters sageParams = (DDAIgcSageParameters) metaPar;
-        String[] rawFiles = sageParams.getMetadata().getRawFiles();
-        this.mzMLFiles = new String[rawFiles.length];
-        this.mgfFiles = new String[rawFiles.length];
-        this.expNameMap = new HashMap<String, String>();
-        this.spectraDirFile = sageParams.getSpectraFile();
-        
-        for (int i = 0; i < rawFiles.length; i++) {
-            File rawi = new File(rawFiles[i]);
-            this.rawDir = rawi.getParentFile();
-            String fileName = rawi.getName();
-            String baseName = fileName;
-            
-            // Handle different file formats
-            if (fileName.toLowerCase().endsWith(".mzml")) {
-                // File is already in mzML format, use original path directly
-                mzMLFiles[i] = rawFiles[i];
-            } else if (fileName.toLowerCase().endsWith(".raw")) {
-                // File is in .raw format
-                baseName = fileName.substring(0, fileName.length() - ".raw".length());
-                File mzMLFile = new File(spectraDirFile, baseName + ".mzML");
-                mzMLFiles[i] = mzMLFile.getAbsolutePath();
-            } else if (fileName.toLowerCase().endsWith(".d")) {
-                // File is in .d format
-                baseName = fileName.substring(0, fileName.length() - ".d".length());
-                File mzMLFile = new File(spectraDirFile, baseName + ".mzML");
-                mzMLFiles[i] = mzMLFile.getAbsolutePath();
-            } else {
-                // Unknown format, assume it needs conversion and use the original name
-                File mzMLFile = new File(spectraDirFile, baseName + ".mzML");
-                mzMLFiles[i] = mzMLFile.getAbsolutePath();
-            }
-            
-            // Set corresponding MGF file path
-            File mgfFile = new File(spectraDirFile, baseName + ".mgf");
-            mgfFiles[i] = mgfFile.getAbsolutePath();
-        }
-    }
+	private void initializeFileArrays() {
+		DDAIgcSageParameters sageParams = (DDAIgcSageParameters) metaPar;
+		this.rawFiles = sageParams.getMetadata().getRawFiles();
+		this.mzMLFiles = new String[rawFiles.length];
+		this.mgfFiles = new String[rawFiles.length];
+		this.expNameMap = new HashMap<String, String>();
+		this.spectraDirFile = sageParams.getSpectraFile();
+
+		for (int i = 0; i < rawFiles.length; i++) {
+			File rawi = new File(rawFiles[i]);
+			this.rawDir = rawi.getParentFile();
+			String fileName = rawi.getName();
+			String baseName = fileName;
+
+			// Handle different file formats
+			if (fileName.toLowerCase().endsWith(".mzml")) {
+				// File is already in mzML format, use original path directly
+				mzMLFiles[i] = rawFiles[i];
+			} else if (fileName.toLowerCase().endsWith(".raw")) {
+				// File is in .raw format
+				baseName = fileName.substring(0, fileName.length() - ".raw".length());
+				File mzMLFile = new File(spectraDirFile, baseName + ".mzML");
+				mzMLFiles[i] = mzMLFile.getAbsolutePath();
+			} else if (fileName.toLowerCase().endsWith(".d")) {
+				// File is in .d format
+				baseName = fileName.substring(0, fileName.length() - ".d".length());
+				File mzMLFile = new File(spectraDirFile, baseName + ".mzML");
+				mzMLFiles[i] = mzMLFile.getAbsolutePath();
+			} else {
+				// Unknown format, assume it needs conversion and use the original name
+				File mzMLFile = new File(spectraDirFile, baseName + ".mzML");
+				mzMLFiles[i] = mzMLFile.getAbsolutePath();
+			}
+
+			// Set corresponding MGF file path
+			File mgfFile = new File(spectraDirFile, baseName + ".mgf");
+			mgfFiles[i] = mgfFile.getAbsolutePath();
+		}
+	}
 
     @Override
     protected Boolean call() throws Exception {
@@ -214,45 +214,50 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
 
         // Update progress after spectra conversion
         updateProgress(20, 100);
-        updateMessage("Spectra conversion completed, starting MGF conversion...");
+        
+		if (metaPar.isReduceDb()) {
+			
+			updateMessage("Spectra conversion completed, starting MGF conversion...");
+			// Step 2: Convert mzML files to MGF format
+			boolean mgfConverted = convertMzMLToMgf();
+			if (!mgfConverted) {
+				logger.error(getTaskName() + ": error in MGF conversion workflow");
+				System.err.println(
+						format.format(new Date()) + "\t" + getTaskName() + ": error in MGF conversion workflow");
+				return false;
+			}
+		}
+		// Update progress after MGF conversion
+		updateProgress(30, 100);
+		updateMessage("MGF conversion completed, starting database reduction...");
 
-        // Step 2: Convert mzML files to MGF format
-        boolean mgfConverted = convertMzMLToMgf();
-        if (!mgfConverted) {
-            logger.error(getTaskName() + ": error in MGF conversion workflow");
-            System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in MGF conversion workflow");
-            return false;
-        }
+		// Step 3: Database reduction using MetaDbReducerTask
+		dbReducerTask = new MetaDbReducerTask(metaPar, mrp, secondBar, logger);
+		logger.info("{}: MetaDbReducerTask created, executing...", taskName);
+		dbReducerTask.execute();
+		try {
+			boolean dbReduced = dbReducerTask.get(); // Wait for completion and get result
+			if (!dbReduced) {
+				logger.error(getTaskName() + ": error in sample-specific database generation");
+				System.err.println(format.format(new Date()) + "\t" + getTaskName()
+						+ ": error in sample-specific database generation");
+				return false;
+			}
+		} catch (InterruptedException | ExecutionException e) {
+			logger.error(getTaskName() + ": error in sample-specific database generation", e);
+			System.err.println(format.format(new Date()) + "\t" + getTaskName()
+					+ ": error in sample-specific database generation: " + e.getMessage());
+			return false;
+		}
 
-        // Update progress after MGF conversion
-        updateProgress(35, 100);
-        updateMessage("MGF conversion completed, starting database reduction...");
+		// Update progress after database reduction
+		updateProgress(50, 100);
+		updateMessage("Database reduction completed, starting identification...");
 
-        // Step 3: Database reduction using MetaDbReducerTask
-        dbReducerTask = new MetaDbReducerTask(metaPar, mrp, secondBar, logger);
-        logger.info("{}: MetaDbReducerTask created, executing...", taskName);
-        dbReducerTask.execute();
-        try {
-            boolean dbReduced = dbReducerTask.get(); // Wait for completion and get result
-            if (!dbReduced) {
-                logger.error(getTaskName() + ": error in sample-specific database generation");
-                System.err.println(format.format(new Date()) + "\t" + getTaskName()
-                        + ": error in sample-specific database generation");
-                return false;
-            }
-        } catch (InterruptedException | ExecutionException e) {
-            logger.error(getTaskName() + ": error in sample-specific database generation", e);
-            System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in sample-specific database generation: " + e.getMessage());
-            return false;
-        }
-
-        // Update progress after database reduction
-        updateProgress(50, 100);
-        updateMessage("Database reduction completed, starting identification...");
-
-        logger.info(getTaskName() + ": sample specific database generation: finished");
-        System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": sample specific database generation: finished");
-
+		logger.info(getTaskName() + ": sample specific database generation: finished");
+		System.out.println(format.format(new Date()) + "\t" + getTaskName()
+				+ ": sample specific database generation: finished");
+	
         // Step 4: Database search with Sage
         boolean identification = performIdentification();
         if (!identification) {
@@ -534,14 +539,22 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
         // Submit MGF conversion tasks
         for (int fileIndex : filesToConvert) {
             executor.submit(() -> {
+            	String rawFile = rawFiles[fileIndex];
                 String mzMLFile = mzMLFiles[fileIndex];
                 String mgfFile = mgfFiles[fileIndex];
                 
                 try {
-                    logger.info("Converting mzML to MGF: {} -> {}", mzMLFile, mgfFile);
-                    // MSConvertor.mzml2mgf returns void, so we need to check if the file was created
-                    MSConvertor.mzml2mgf(msConvertExe.getAbsolutePath(), mzMLFile, spectraDirFile.getAbsolutePath());
-                    
+					logger.info("Converting mzML to MGF: {} -> {}", mzMLFile, mgfFile);
+					// MSConvertor.mzml2mgf returns void, so we need to check if the file was
+					// created
+					if (rawFile.endsWith(".raw") || rawFile.endsWith(".RAW")) {
+						MSConvertor.rawMzml2mgf(msConvertExe.getAbsolutePath(), mzMLFile,
+								spectraDirFile.getAbsolutePath());
+					} else if (rawFile.endsWith(".d") || rawFile.endsWith(".D")) {
+						MSConvertor.tofMzml2mgf(msConvertExe.getAbsolutePath(), mzMLFile,
+								spectraDirFile.getAbsolutePath());
+					}
+
                     // Check if the MGF file was created in the spectra directory
                     File mzMLFileObj = new File(mzMLFile);
                     String baseName = mzMLFileObj.getName();
@@ -661,7 +674,7 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
 				logger.info("[{}] searching combined database started", getTaskName());
 
 				logger.info("Starting Sage execution");
-				sageTask.run(separateResultFolders.length * 12);
+				sageTask.run(mzMLFiles.length * 12);
 
 			} else {
 				logger.info("[{}] Sage search result already exists in {}", getTaskName(),
@@ -734,15 +747,15 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
             
             if (success) {
                 logger.info(getTaskName() + ": Post-analysis completed successfully");
-                return true;
-                } else {
+                	return true;
+            } else {
                 logger.error(getTaskName() + ": Post-analysis task failed");
-            return false;
-        }
+                return false;
+            }
         } catch (InterruptedException e) {
             logger.error(getTaskName() + ": Post-analysis task was interrupted", e);
             Thread.currentThread().interrupt();
-        return false;
+            return false;
         } catch (ExecutionException e) {
             logger.error(getTaskName() + ": Post-analysis task failed with exception", e);
             return false;
