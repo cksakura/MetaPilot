@@ -35,10 +35,10 @@ public class FragPipePSM extends MetaPSM {
      * @param qValue        Q-value
      * @param proteins      Protein identifiers
      */
-    public FragPipePSM(String fileName, String spectrum, String sequence, String modSeq, String mod, int charge,
+    public FragPipePSM(String fileName, int scan, String spectrum, String sequence, String modSeq, String mod, int charge,
             double expMass, double calMass, double massDiff, int miss, double rt, double score,
 			double probability, double qValue, String[] proteins) {
-		super(fileName, sequence, modSeq, charge, proteins, score, qValue);
+		super(fileName, scan, sequence, modSeq, charge, proteins, score, qValue);
 		this.spectrum = spectrum;
 		this.mod = mod;
 		this.expMass = expMass;

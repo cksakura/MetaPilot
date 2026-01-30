@@ -190,6 +190,67 @@ public class PFindTask {
 	}
 
 	/**
+	 * Extract spectra using xtract_raw.exe and pParse.exe only (no pParse2Plus).
+	 * Same as {@link #extract(String, String...)} but never uses pParse2Plus regardless of config.
+	 *
+	 * @param spectraDir output directory for spectra
+	 * @param extractRaws raw file paths to extract
+	 */
+	public void extractWithoutPParse2Plus(String spectraDir, String... extractRaws) {
+		this.extractWithoutPParse2Plus(1, spectraDir, extractRaws);
+	}
+
+	/**
+	 * Extract spectra using xtract_raw.exe and pParse.exe only (no pParse2Plus).
+	 * Same as {@link #extract(int, String, String...)} but never uses pParse2Plus regardless of config.
+	 *
+	 * @param co_elute    0, output single precursor for single scan; 1, output all co-eluted precursors
+	 * @param spectraDir output directory for spectra
+	 * @param extractRaws raw file paths to extract
+	 */
+	public void extractWithoutPParse2Plus(int co_elute, String spectraDir, String... extractRaws) {
+		LOGGER.info(taskName + ": extract spectra from raw file (without pParse2Plus)");
+		System.out.println(format.format(new Date()) + "\t" + taskName + ": extract spectra from raw file (without pParse2Plus)");
+
+		for (String raw : extractRaws) {
+			File rawFile = new File(raw);
+			String rawName = rawFile.getName().substring(0, rawFile.getName().length() - ".raw".length());
+
+			File batFile = new File(spectraDir, rawName + ".pParse.bat");
+			PrintWriter writer = null;
+			try {
+				writer = new PrintWriter(batFile);
+			} catch (FileNotFoundException e) {
+				LOGGER.error(taskName + ": extract spectra failed", e);
+				System.err.println(format.format(new Date()) + "\t" + taskName + ": extract spectra failed");
+				return;
+			}
+
+			writer.println(pFindBin.getAbsolutePath().split("\\\\")[0]);
+			writer.println("cd " + pFindBin);
+			String cmd = xtract + " " + xtract_par + " \"" + spectraDir + "\" \"" + raw + "\"";
+			writer.println(cmd);
+
+			PFindConfig config = new PFindConfig(pFindBin);
+			File conf = null;
+			try {
+				conf = config.extractSingle(co_elute, spectraDir, raw, rawName);
+			} catch (IOException e) {
+				LOGGER.error(taskName + ": error in configuration, extract spectra failed", e);
+				System.err.println(format.format(new Date()) + "\t" + taskName
+						+ ": error in configuration, extract spectra failed");
+			}
+
+			if (conf != null) {
+				writer.println(pParser + " " + conf);
+			}
+			writer.close();
+
+			this.pfindTaskMap.put(batFile.getAbsolutePath(), false);
+		}
+	}
+
+	/**
 	 * 
 	 * @param spectraDir
 	 * @param rawName

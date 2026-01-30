@@ -1,0 +1,34 @@
+=== Peptide Mapping Statistics ===
+
+Input Statistics:
+  Total peptides in file: 83429
+  Peptides with MGYG proteins: 78432
+  Peptides with valid intensities: 74621
+
+Protein Filtering:
+  Decoy proteins skipped (REV): 413
+  Host proteins skipped (sp): 8371
+  Other proteins skipped: 0
+
+Genome Mapping:
+  Peptides mapped to genomes: 58976
+  Total genomes found: 4744
+
+Peptide Detectability:
+  Unique peptides (1 genome): 10716
+  Low specificity (2-5 genomes): 17211
+  Medium specificity (6-20 genomes): 15250
+  High specificity (>20 genomes): 15799
+  Unique peptide percentage: 18.17%
+
+Razor Selection:
+  Peptides used in razor: 58976
+  Genomes selected by razor: 501
+
+Abundance Calculation:
+  Peptides used in abundance calculation (all): 65200
+  Distinct peptides used in abundance calculation: 16272
+  Distinct peptide percentage: 24.96%
+
+Coverage:
+  Peptide coverage: 78.15% (65200 / 83429)

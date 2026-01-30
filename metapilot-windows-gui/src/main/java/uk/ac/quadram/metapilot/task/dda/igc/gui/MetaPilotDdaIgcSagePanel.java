@@ -27,7 +27,6 @@ import uk.ac.quadram.metapilot.resources.MetaResourceIO;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.common.gui.AbstractWorkflowPanel;
 import uk.ac.quadram.metapilot.task.par.MetaData;
-import uk.ac.quadram.metapilot.MetaPilotApp;
 import java.util.ArrayList;
 import java.util.List;
 import org.apache.logging.log4j.LogManager;

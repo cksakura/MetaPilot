@@ -6,34 +6,38 @@
     "min_peptide_length": 7,
     "max_peptide_length": 50,
     "max_variable_modifications": 2,
-    "search_type": "Open Search",
+    "search_type": "Closed Search",
     "decoys_enabled": true,
-    "precursor_tolerance_min": -500,
+    "precursor_tolerance_min": -20,
     "decoys_tag": "rev_",
     "generate_decoys": true,
     "fragment_tolerance_unit": "ppm",
-    "precursor_tolerance_unit": "Da",
-    "precursor_tolerance_max": 150,
+    "precursor_tolerance_unit": "ppm",
+    "precursor_tolerance_max": 20,
     "max_q": 0.01
   },
   "workflow": "DDA_MAG_SAGE",
   "input_output": {
-    "host_database": "C:\\Users\\daz25hak\\MetaProAI\\database\\uniprotkb_Human_AND_reviewed_true_AND_m_2025_09_01.fasta",
+    "host_database": "",
     "mag_database": "C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-gut\\v2.0.2",
-    "output_directory": "Z:\\PRIDE_dataset\\PXD008738\\8mix\\DDA\\MetaPilot",
-    "append_host_db": true,
+    "output_directory": "Z:\\PRIDE_dataset\\PXD004039\\MetaPilot",
+    "append_host_db": false,
     "experiments": [
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD008738\\8mix\\DDA\\160822_8Mix_DDA_6ul_01.raw",
-        "experiment_name": "8Mix_DDA_01"
+        "file_path": "Z:\\PRIDE_dataset\\PXD004039\\Human_0.raw",
+        "experiment_name": "Human_0"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD008738\\8mix\\DDA\\160822_8Mix_DDA_6ul_02.raw",
-        "experiment_name": "8Mix_DDA_02"
+        "file_path": "Z:\\PRIDE_dataset\\PXD004039\\Human_1.raw",
+        "experiment_name": "Human_1"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD008738\\8mix\\DDA\\160822_8Mix_DDA_6ul_03.raw",
-        "experiment_name": "8Mix_DDA_03"
+        "file_path": "Z:\\PRIDE_dataset\\PXD004039\\Human_2.raw",
+        "experiment_name": "Human_2"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD004039\\Human_3.raw",
+        "experiment_name": "Human_3"
       }
     ]
   },
@@ -42,11 +46,12 @@
     "missed_cleavages": 2,
     "digestion_mode": "Specific"
   },
-  "generated_at": "2025-12-04 15:59:28",
+  "generated_at": "2026-01-23 13:31:46",
   "additional_parameters": {
     "generate_sample_specific_db": true,
     "spectra_clustering": false,
-    "threads": 20
+    "threads": 20,
+    "representative_level": "GENUS"
   },
   "description": "Last used parameters",
   "version": "1.0",

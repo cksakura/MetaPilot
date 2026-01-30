@@ -22,7 +22,6 @@ import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceIO;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX.ExperimentRow;
-import uk.ac.quadram.metapilot.MetaPilotApp;
 import javafx.application.Platform;
 import java.io.BufferedReader;
 import java.io.InputStream;

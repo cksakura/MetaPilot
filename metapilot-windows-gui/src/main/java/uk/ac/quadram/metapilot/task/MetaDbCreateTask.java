@@ -24,7 +24,6 @@ public abstract class MetaDbCreateTask extends MetaAbstractTask {
 
 	protected File dbcFile;
 	protected File ssdbFile;
-	protected String originalFasta;
 	protected File[] clusterResults;
 
 	protected String taskName = "Sample specific database generation";
@@ -40,7 +39,41 @@ public abstract class MetaDbCreateTask extends MetaAbstractTask {
 		updateProgress(0, 100);
 		updateMessage("Starting database creation...");
 
-		// Removed invalid method setPromptText from ProgressBar
+		if (!metaPar.isReduceDb()) {
+			if (metaPar.isAppendHostDb()) {
+				File combinedFile = new File(metaPar.getResult(), "combined_db.fasta");
+				if (combinedFile.exists() && combinedFile.length() == 0) {
+					FileUtils.deleteQuietly(combinedFile);
+				}
+
+				if (!combinedFile.exists()) {
+					String microDb = metaPar.getMicroDb();
+					String hostDb = metaPar.getHostDB();
+
+					PrintWriter writer = new PrintWriter(combinedFile);
+
+					BufferedReader r0 = new BufferedReader(new FileReader(microDb));
+					String l0 = null;
+					while ((l0 = r0.readLine()) != null) {
+						writer.println(l0);
+					}
+					r0.close();
+
+					BufferedReader r1 = new BufferedReader(new FileReader(hostDb));
+					String l1 = null;
+					while ((l1 = r1.readLine()) != null) {
+						writer.println(l1);
+					}
+					r1.close();
+
+					writer.close();
+				}
+
+				metaPar.setCurrentDb(combinedFile.getAbsolutePath());
+			}
+
+			return true;
+		}
 
 		logger.info(taskName + ": start");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": start");
@@ -86,50 +119,7 @@ public abstract class MetaDbCreateTask extends MetaAbstractTask {
 
 		// Update progress before database combination
 		updateProgress(10, 100);
-		updateMessage("Preparing protein databases...");
-
-		if (metaPar.isAppendHostDb()) {
-
-			File combinedFile = new File(dbcFile, "combined_db.fasta");
-			if (combinedFile.exists() && combinedFile.length() == 0) {
-
-				FileUtils.deleteQuietly(combinedFile);
-			}
-
-			if (!combinedFile.exists()) {
-				String microDb = metaPar.getMicroDb();
-				String hostDb = metaPar.getHostDB();
-
-				PrintWriter writer = new PrintWriter(combinedFile);
-
-				BufferedReader r0 = new BufferedReader(new FileReader(microDb));
-				String l0 = null;
-				while ((l0 = r0.readLine()) != null) {
-					writer.println(l0);
-				}
-				r0.close();
-
-				BufferedReader r1 = new BufferedReader(new FileReader(hostDb));
-				String l1 = null;
-				while ((l1 = r1.readLine()) != null) {
-					writer.println(l1);
-				}
-				r1.close();
-
-				writer.close();
-			}
-
-			metaPar.setCurrentDb(combinedFile.getAbsolutePath());
-			originalFasta = combinedFile.getAbsolutePath();
-
-		} else {
-			metaPar.setCurrentDb(metaPar.getMicroDb());
-			originalFasta = metaPar.getMicroDb();
-		}
-
-		// Update progress after database preparation
-		updateProgress(15, 100);
-		updateMessage("Protein databases prepared, starting analysis...");
+		updateMessage("Starting analysis...");
 
 		int proCount = 0;
 
@@ -141,12 +131,12 @@ public abstract class MetaDbCreateTask extends MetaAbstractTask {
 			cluster();
 
 			// Update progress after clustering
-			updateProgress(25, 100);
+			updateProgress(40, 100);
 			updateMessage("Clustering completed, searching clustered spectra...");
 			clusterResults = clusterSearch();
 
 			// Update progress before database writing
-			updateProgress(30, 100);
+			updateProgress(90, 100);
 			updateMessage("Writing sample-specific database...");
 			proCount = writeDatabase(true);
 
@@ -158,7 +148,7 @@ public abstract class MetaDbCreateTask extends MetaAbstractTask {
 			clusterResults = metaProIQ();
 
 			// Update progress before database writing
-			updateProgress(30, 100);
+			updateProgress(90, 100);
 			updateMessage("Writing sample-specific database...");
 			proCount = writeDatabase(false);
 		}

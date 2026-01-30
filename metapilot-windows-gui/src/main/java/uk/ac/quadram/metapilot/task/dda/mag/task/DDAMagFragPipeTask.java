@@ -14,10 +14,13 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.concurrent.ExecutionException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.Logger;
 
+import uk.ac.quadram.metapilot.core.prodb.DecoyShuffler;
 import uk.ac.quadram.metapilot.core.prodb.FastaManager;
 import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragPipeTask;
 import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragPipePSM;
@@ -33,6 +36,7 @@ import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.MetaPilotMagTask;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagFragPipeParameters;
+import uk.ac.quadram.metapilot.task.io.pep.AbstractMetaPeptideReader;
 import javafx.scene.control.Label;
 
 public class DDAMagFragPipeTask extends MetaPilotMagTask {
@@ -393,6 +397,21 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 			updateMessage(getTaskName() + ": Failed - Report generation error");
 			Platform.runLater(() -> secondBar.setProgress(0.0)); // Stop the indeterminate progress
 			return false;
+		}
+		
+		logger.info("Step 7: Removing uncalibrated mzML files...");
+		for (int i = 0; i < rawFiles.length; i++) {
+			File mzMLFile = null;
+			if (rawFiles[i].endsWith(".raw") || rawFiles[i].endsWith(".RAW")) {
+				mzMLFile = new File(
+						rawFiles[i].substring(0, rawFiles[i].length() - ".raw".length()) + "_uncalibrated.mzML");
+			} else if (rawFiles[i].endsWith(".d") || rawFiles[i].endsWith(".D")) {
+				mzMLFile = new File(
+						rawFiles[i].substring(0, rawFiles[i].length() - ".d".length()) + "_uncalibrated.mzML");
+			}
+			if (mzMLFile != null && mzMLFile.exists()) {
+				FileUtils.deleteQuietly(mzMLFile);
+			}
 		}
 
 		// Update progress for completion
@@ -974,7 +993,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 					writer.println(seq);
 
 					String shuffleProName = ">shuf_" + proName.substring(1);
-					String shuffle = FastaManager.generateTrypticShuffledSequence(seq);
+					String shuffle = DecoyShuffler.generateShuffledDecoy(seq, workflow.getCleavateAt(), 42);
 					writer.println(shuffleProName);
 					writer.println(shuffle);
 
@@ -1026,6 +1045,9 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 					hostReader.close();
 				}
 				writer.close();
+
+				workflow.setDatabase(combinedFastaFile.getAbsolutePath());
+
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
 				logger.error(getTaskName() + ": error in writing the combined fasta file " + combinedFastaFile);
@@ -1093,6 +1115,93 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 					format.format(new Date()) + "\t" + getTaskName() + ": peptide and protein identification failed");
 		}
 
+		File[] mzMLFiles = new File[rawFiles.length];
+		for (int i = 0; i < rawFiles.length; i++) {
+			File mzMLFile = null;
+			if (rawFiles[i].endsWith(".raw") || rawFiles[i].endsWith(".RAW")) {
+				mzMLFile = new File(
+						rawFiles[i].substring(0, rawFiles[i].length() - ".raw".length()) + "_uncalibrated.mzML");
+			} else if (rawFiles[i].endsWith(".d") || rawFiles[i].endsWith(".D")) {
+				mzMLFile = new File(
+						rawFiles[i].substring(0, rawFiles[i].length() - ".d".length()) + "_uncalibrated.mzML");
+			}
+			if (mzMLFile != null && mzMLFile.exists()) {
+				FileUtils.deleteQuietly(mzMLFile);
+			}
+		}
+
+		File rtFile = new File(spectraDirFile, "rt.txt");
+		File ms2CountFile = new File(spectraDirFile, "ms2Count.txt");
+
+		if (!rtFile.exists() || rtFile.length() == 0 || !ms2CountFile.exists() || ms2CountFile.length() == 0) {
+
+			try {
+
+				PrintWriter rtWriter = new PrintWriter(rtFile);
+				PrintWriter ms2CountWriter = new PrintWriter(ms2CountFile);
+
+				rtWriter.println("FileName\tScannum\tRt");
+				ms2CountWriter.println("FileName\tMS2 count");
+
+				Pattern scanPattern = Pattern.compile("scan=(\\d+)");
+				Pattern rtPattern = Pattern.compile("name=\"scan start time\"\\s+value=\"([^\"]+)\"");
+
+				// Verify all files were converted successfully
+				for (int i = 0; i < mzMLFiles.length; i++) {
+					if (mzMLFiles[i] == null) {
+						logger.error("Failed to convert file: {}", rawFiles[i]);
+						rtWriter.close();
+						ms2CountWriter.close();
+
+						return false;
+					}
+
+					String fileName = mzMLFiles[i].getName();
+					fileName = fileName.substring(0, fileName.length() - "_uncalibrated.mzML".length());
+
+					int count = 0;
+					int scannum = 0;
+					boolean isMS2 = false;
+					BufferedReader reader = new BufferedReader(new FileReader(mzMLFiles[i]));
+					String line = null;
+					while ((line = reader.readLine()) != null) {
+						line = line.trim();
+						if (line.startsWith("<spectrum index=")) {
+							Matcher matcher = scanPattern.matcher(line);
+							if (matcher.find()) {
+								scannum = Integer.parseInt(matcher.group(1));
+							}
+							isMS2 = false;
+						} else if (line.endsWith("name=\"MSn spectrum\" value=\"\"/>")) {
+							count++;
+							isMS2 = true;
+						} else if (line.startsWith(
+								"<cvParam cvRef=\"MS\" accession=\"MS:1000016\" name=\"scan start time\"")) {
+							Matcher matcher = rtPattern.matcher(line);
+							double rt = -1;
+							if (matcher.find()) {
+								rt = Double.parseDouble(matcher.group(1));
+							}
+							if (isMS2) {
+								rtWriter.println(fileName + "\t" + scannum + "\t" + rt);
+							}
+						}
+					}
+					reader.close();
+					ms2CountWriter.println(fileName + "\t" + count);
+				}
+
+				rtWriter.close();
+				ms2CountWriter.close();
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				logger.error(getTaskName() + ": writing retention time " + rtFile + " failed");
+				System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": writing retention time "
+						+ rtFile + " failed");
+				return false;
+			}
+		}
+
 		return true;
 	}
 
@@ -1130,7 +1239,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		} else {*/
 			File[] files = combinedFile.listFiles();
 			for (int i = 0; i < files.length; i++) {
-				if (files[i].isDirectory() && (new File(files[i], "peptide.tsv")).exists()) {
+				if (files[i].isDirectory() && !files[i].getName().equals("combined") && (new File(files[i], "peptide.tsv")).exists()) {
 					fileIdMap.put(files[i].getName(), fileIdMap.size());
 					fileList.add(files[i].getName());
 				}
@@ -1146,8 +1255,9 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 		logger.info(getTaskName() + ": " + quanPeps.length + " peptides and " + psms.length + " PSMs were obtained");
 
 		// Create and execute the post-analysis task directly
-		DDAMagPostAnalysisTask postAnalysisTask = new DDAMagPostAnalysisTask(
-			metaPar, mrp, secondBar, quanPeps, psms, fileIdMap, fileList, MetaConstants.labelFree, intensityTitles, getTaskName(), this);
+		DDAMagPostAnalysisTask postAnalysisTask = new DDAMagPostAnalysisTask(metaPar, mrp, secondBar, quanPeps, psms,
+				fileIdMap, fileList, MetaConstants.labelFree, intensityTitles, getTaskName(),
+				AbstractMetaPeptideReader.SHUF, this);
 		
 		// Execute the task and wait for completion
 		Thread taskThread = new Thread(postAnalysisTask);

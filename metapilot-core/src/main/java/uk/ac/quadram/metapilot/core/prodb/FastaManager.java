@@ -102,6 +102,26 @@ public class FastaManager {
 		}
 		writer.close();
 	}
+	
+	public static boolean checkDecoy(String in) throws IOException {
+		int targetCount = 0;
+		int decoyCount = 0;
+		BufferedReader reader = new BufferedReader(new FileReader(in));
+		String line = null;
+		while ((line = reader.readLine()) != null) {
+			if (line.startsWith(">")) {
+				if (line.startsWith(">REV_") || line.startsWith(">rev_")) {
+					decoyCount++;
+				} else {
+					targetCount++;
+				}
+			}
+		}
+
+		reader.close();
+
+		return targetCount == decoyCount;
+	}
 
 	public static void addDecoy(String in, String out) throws IOException {
 		BufferedReader reader = new BufferedReader(new FileReader(in));

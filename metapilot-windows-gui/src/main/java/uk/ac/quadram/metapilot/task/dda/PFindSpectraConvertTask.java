@@ -196,6 +196,83 @@ public class PFindSpectraConvertTask extends MetaAbstractTask {
 				updateMessage(getTaskName() + ": Timeout - Generated " + completedFiles.get() + "/" + totalFiles
 						+ " MGF files");
 			}
+
+			// Check which extracted raws still have no valid pf2; retry those with
+			// extractWithoutPParse2Plus
+			ArrayList<String> unconvertedRawList = new ArrayList<String>();
+			for (String rawPath : extractRawList) {
+				File rawFile = new File(rawPath);
+				String rawName = rawFile.getName();
+				rawName = rawName.substring(0, rawName.lastIndexOf("."));
+				File pf2 = new File(spectraDirFile, rawName + suffix + ".pf2");
+				if (!pf2.exists() || pf2.length() == 0) {
+					unconvertedRawList.add(rawPath);
+					logger.info("No valid pf2 for " + rawPath + ", will retry with extractWithoutPParse2Plus");
+				}
+			}
+			if (!unconvertedRawList.isEmpty()) {
+				logger.info("Retrying " + unconvertedRawList.size()
+						+ " unconverted file(s) with extractWithoutPParse2Plus");
+				updateMessage(getTaskName() + ": Retrying " + unconvertedRawList.size()
+						+ " file(s) with legacy extract (no pParse2Plus)...");
+				startWatchServiceLoop();
+				String[] unconvertedRaws = unconvertedRawList.toArray(new String[unconvertedRawList.size()]);
+				pFindTask.extractWithoutPParse2Plus(spectraDirFile.getAbsolutePath(), unconvertedRaws);
+				pFindTask.run(unconvertedRaws.length);
+				waitedSeconds = 0;
+				while (completedFiles.get() < totalFiles && waitedSeconds < timeoutSeconds) {
+					try {
+						Thread.sleep(1000);
+						waitedSeconds++;
+						if (waitedSeconds % 10 == 0) {
+							logger.info("Waiting for PF2 after retry... (" + completedFiles.get() + "/" + totalFiles
+									+ " completed, " + waitedSeconds + "s elapsed)");
+						}
+					} catch (InterruptedException e) {
+						logger.warn("Wait interrupted");
+						Thread.currentThread().interrupt();
+						break;
+					}
+				}
+				stopWatchService();
+				if (completedFiles.get() >= totalFiles) {
+					logger.info("All spectra files generated after retry with extractWithoutPParse2Plus");
+				} else {
+					logger.warn("Still missing some files after retry: " + completedFiles.get() + "/" + totalFiles);
+				}
+			}
+
+			// Final check: if any spectra are still missing, log everything and return false
+			ArrayList<String> stillMissingRawList = new ArrayList<String>();
+			for (int i = 0; i < rawFiles.length; i++) {
+				File pf2 = new File(spectraDirFile, rawFileNames[i] + suffix + ".pf2");
+				if (!pf2.exists() || pf2.length() == 0) {
+					stillMissingRawList.add(rawFiles[i]);
+				}
+			}
+			if (!stillMissingRawList.isEmpty()) {
+				logger.error(getTaskName() + ": " + stillMissingRawList.size() + " raw file(s) still have no valid PF2 spectra after extract and retry");
+				logger.error("Spectra directory: " + spectraDirFile.getAbsolutePath());
+				logger.error("Total raw files: " + rawFiles.length + ", missing: " + stillMissingRawList.size());
+				logger.error("Raw file(s) that may have a problem:");
+				for (String rawPath : stillMissingRawList) {
+					File rawFile = new File(rawPath);
+					String rn = rawFile.getName();
+					rn = rn.substring(0, rn.lastIndexOf("."));
+					File expectedPf2 = new File(spectraDirFile, rn + suffix + ".pf2");
+					File expectedMs2 = new File(spectraDirFile, rn + ".ms2");
+					logger.error("  - Raw: " + rawPath);
+					logger.error("    Expected PF2: " + expectedPf2.getAbsolutePath() + " (exists: " + expectedPf2.exists() + ", size: " + (expectedPf2.exists() ? expectedPf2.length() : 0) + ")");
+					logger.error("    Expected MS2:  " + expectedMs2.getAbsolutePath() + " (exists: " + expectedMs2.exists() + ", size: " + (expectedMs2.exists() ? expectedMs2.length() : 0) + ")");
+				}
+				System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": SPECTRA CONVERSION FAILED - " + stillMissingRawList.size() + " raw file(s) have no valid PF2. See log for details.");
+				System.err.println(getTaskName() + ": Raw file(s) that may have a problem:");
+				for (String rawPath : stillMissingRawList) {
+					System.err.println("  - " + rawPath);
+				}
+				updateMessage(getTaskName() + ": Failed - " + stillMissingRawList.size() + " raw file(s) have no valid spectra (see log)");
+				return false;
+			}
 		} else {
 			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": spectra files have been found in "
 					+ spectraDirFile);

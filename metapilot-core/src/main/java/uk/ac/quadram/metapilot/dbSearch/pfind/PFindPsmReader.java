@@ -15,6 +15,8 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 
+import org.apache.commons.io.FileUtils;
+
 import uk.ac.quadram.metapilot.core.mod.PostTransModification;
 
 /**
@@ -160,7 +162,7 @@ public class PFindPsmReader {
 						continue;
 					}
 					if (qValue > 0.01) {
-						break;
+						continue;
 					}
 
 					double calMH = Double.parseDouble(cs[calMHID]);
@@ -173,17 +175,23 @@ public class PFindPsmReader {
 					String[] proteins = cs[proteinID].split("/");
 
 					// for short peptides (generally 6 aminoacids), they can belong to both target and decoy proteins
-					if (isTarget) {
-						ArrayList<String> proList = new ArrayList<String>();
-						for (int i = 0; i < proteins.length; i++) {
-							if (!proteins[i].startsWith(REV)) {
-								proList.add(proteins[i]);
-							}
+					ArrayList<String> decoyList = new ArrayList<String>();
+					ArrayList<String> targetList = new ArrayList<String>();
+					for (int i = 0; i < proteins.length; i++) {
+						if (proteins[i].startsWith(REV)) {
+							decoyList.add(proteins[i]);
+						} else {
+							targetList.add(proteins[i]);
 						}
-						if (proList.size() == 0) {
+					}
+					if (decoyList.size() > 0) {
+						isTarget = false;
+						proteins = decoyList.toArray(new String[decoyList.size()]);
+					} else if (isTarget) {
+						if (targetList.size() == 0) {
 							continue;
 						}
-						proteins = proList.toArray(new String[proList.size()]);
+						proteins = targetList.toArray(new String[targetList.size()]);
 					}
 
 					int miss = Integer.parseInt(cs[missID]);
@@ -879,30 +887,457 @@ public class PFindPsmReader {
 		return set1;
 	}
 	
-	@SuppressWarnings("unused")
-	private static void compare(String s1, String s2) {
+	public static void compareFolder(String s1, String s2) {
+		HashMap<String, String> map1 = new HashMap<String, String>();
+		File[] files1 = (new File(s1)).listFiles();
+		for (int i = 0; i < files1.length; i++) {
+			File resultFolder = new File(files1[i], "marker4");
+			File resultFile = new File(files1[i], "pFind-Filtered.spectra");
+			if (resultFile.exists()) {
+				map1.put(files1[i].getName(), resultFile.getAbsolutePath());
+			}
+		}
+		System.out.println(map1.size());
+
+		HashMap<String, String> map2 = new HashMap<String, String>();
+		File[] files2 = (new File(s2)).listFiles();
+		for (int i = 0; i < files2.length; i++) {
+//			File resultFolder = new File(files2[i], "marker4");
+			File resultFile = new File(files2[i], "pFind-Filtered.spectra");
+			if (resultFile.exists()) {
+				map2.put(files2[i].getName(), resultFile.getAbsolutePath());
+			}
+		}
+		System.out.println(map2.size());
+
+		for (String key : map1.keySet()) {
+			if (map2.containsKey(key)) {
+				System.out.println(key);
+				compare(map1.get(key), map2.get(key));
+				System.out.println();
+
+				File fasta1 = new File(s1 + "\\" + key + "\\hap\\" + key + ".fasta");
+				File fasta2 = new File(s2 + "\\" + key + "\\hap\\" + key + ".fasta");
+
+				compareFasta(fasta1.getAbsolutePath(), fasta2.getAbsolutePath());
+				System.out.println();
+			}
+		}
+		System.out.println();
+	}
+	
+	public static void compareFasta(String s1, String s2) {
+		try {
+			HashSet<String> genomeSet1 = new HashSet<String>();
+			HashSet<String> proSet1 = new HashSet<String>();
+			BufferedReader reader1 = new BufferedReader(new FileReader(s1));
+			String line = null;
+			while ((line = reader1.readLine()) != null) {
+				if (line.startsWith(">MGYG")) {
+					String pro = line.substring(1, line.indexOf(" "));
+					String genome = pro.substring(0, pro.indexOf("_"));
+					genomeSet1.add(genome);
+					proSet1.add(pro);
+				}
+			}
+			reader1.close();
+
+			HashSet<String> genomeSet2 = new HashSet<String>();
+			HashSet<String> proSet2 = new HashSet<String>();
+			BufferedReader reader2 = new BufferedReader(new FileReader(s2));
+			while ((line = reader2.readLine()) != null) {
+				if (line.startsWith(">MGYG")) {
+					String pro = line.substring(1, line.indexOf(" "));
+					String genome = pro.substring(0, pro.indexOf("_"));
+					genomeSet2.add(genome);
+					proSet2.add(pro);
+				}
+			}
+			reader2.close();
+
+			HashSet<String> allGenomeSet = new HashSet<String>();
+			HashSet<String> allProSet = new HashSet<String>();
+			allGenomeSet.addAll(genomeSet1);
+			allGenomeSet.addAll(genomeSet2);
+			allProSet.addAll(proSet1);
+			allProSet.addAll(proSet2);
+
+			System.out.println(genomeSet1.size() + "\t" + genomeSet2.size() + "\t" + allGenomeSet.size());
+			System.out.println(proSet1.size() + "\t" + proSet2.size() + "\t" + allProSet.size());
+
+		} catch (IOException e) {
+
+		}
+	}
+
+	public static void compare(String s1, String s2) {
 		PFindPsmReader reader1 = new PFindPsmReader(s1);
 		PFindPSM[] psms1 = reader1.getPsms();
-		HashSet<String> set = new HashSet<String>();
-		for (int i = 0; i < psms1.length; i++) {
-			set.add(psms1[i].getScan() + "\t" + psms1[i].getSequence());
-		}
 
 		PFindPsmReader reader2 = new PFindPsmReader(s2);
 		PFindPSM[] psms2 = reader2.getPsms();
+		System.out.println(psms1.length + "\t" + psms2.length);
 
-		int count = 0;
-		int count2 = 0;
-		String name = (new File(s1)).getParentFile().getName();
-		System.out.println(name);
-
-		for (int i = 0; i < psms2.length; i++) {
-			if (psms2[i].getFileName().equals(name)) {
-				count2++;
-				if (set.contains(psms2[i].getScan() + "\t" + psms2[i].getSequence()))
-					count++;
+		HashMap<String, HashSet<String>> pepGenomeMap1 = new HashMap<String, HashSet<String>>();
+		for (PFindPSM psm : psms1) {
+			if (psm.isTarget()) {
+				String seq = psm.getSequence();
+				String[] proteins = psm.getProteins();
+				for (String pro : proteins) {
+					String genome = pro.substring(0, pro.indexOf("_"));
+					pepGenomeMap1.computeIfAbsent(seq, k -> new HashSet<>()).add(genome);
+				}
 			}
 		}
-		System.out.println(psms1.length + "\t" + set.size() + "\t" + count + "\t" + count2);
+
+		HashMap<String, HashSet<String>> pepGenomeMap2 = new HashMap<String, HashSet<String>>();
+		for (PFindPSM psm : psms2) {
+			if (psm.isTarget()) {
+				String seq = psm.getSequence();
+				String[] proteins = psm.getProteins();
+				for (String pro : proteins) {
+					String genome = pro.substring(0, pro.indexOf("_"));
+					pepGenomeMap2.computeIfAbsent(seq, k -> new HashSet<>()).add(genome);
+				}
+			}
+		}
+		HashSet<String> set = new HashSet<String>();
+		set.addAll(pepGenomeMap1.keySet());
+		set.addAll(pepGenomeMap2.keySet());
+		int common = pepGenomeMap1.size() + pepGenomeMap2.size() - set.size();
+		System.out.println(pepGenomeMap1.size() + "\t" + pepGenomeMap2.size());
+		System.out.println((pepGenomeMap1.size() - common) + "\t" + (pepGenomeMap2.size() - common));
+
+		HashMap<String, HashSet<String>> genomeMap = new HashMap<String, HashSet<String>>();
+		for (String key : pepGenomeMap2.keySet()) {
+			if (!pepGenomeMap1.containsKey(key)) {
+				HashSet<String> genomeSet = pepGenomeMap2.get(key);
+				for (String genome : genomeSet) {
+					genomeMap.computeIfAbsent(genome, k -> new HashSet<>()).add(key);
+				}
+			}
+		}
+		for (String genome : genomeMap.keySet()) {
+//			System.out.println(genome + "\t" + genomeMap.get(genome).size());
+		}
+
+		for (PFindPSM psm : psms2) {
+			String seq = psm.getSequence();
+			if (!pepGenomeMap1.containsKey(seq)) {
+//				System.out.println(seq+"\t"+psm.getScan());
+			}
+		}
+	}
+	
+	public static void copyCfg(String in) {
+		File[] files = (new File(in)).listFiles();
+		for (int i = 0; i < files.length; i++) {
+			File hapFile = new File(files[i], "hap");
+			if (hapFile.exists()) {
+				File marker4HapFile = new File(files[i], "marker4_85");
+//				marker4HapFile.mkdir();
+
+				try {
+					BufferedReader reader = new BufferedReader(new FileReader(new File(hapFile, "pFind.cfg")));
+					PrintWriter writer = new PrintWriter(new File(marker4HapFile, "pFind.cfg"));
+//					File fastaFile = new File("C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-gut\\v2.0.2\\4markers_highpep.fasta");
+					File fastaFile = new File(marker4HapFile, files[i].getName()+".fasta");
+					String line = null;
+					while ((line = reader.readLine()) != null) {
+						if (line.startsWith("fastapath")) {
+							writer.println("fastapath=" + fastaFile.getAbsolutePath());
+						} else if (line.startsWith("outputpath")) {
+							writer.println("outputpath=" + files[i].getAbsolutePath());
+						} else if (line.startsWith("open=")) {
+							writer.println("open=1");
+						} else {
+							writer.println(line);
+						}
+					}
+					reader.close();
+					writer.close();
+					
+					writer = new PrintWriter(new File(marker4HapFile, "pFind.bat"));
+					writer.println("C:");
+					writer.println("cd C:\\Users\\daz25hak\\MetaProAI\\Resources\\DBReducer\\pFind3\\bin");
+					writer.println("searcher.exe "+(new File(marker4HapFile, "pFind.cfg")).getAbsolutePath());
+					writer.close();
+					
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			}
+		}
+	}
+	
+	public static void copyCfgFasta(String in, String fastaDb) {
+		File[] files = (new File(in)).listFiles();
+		for (int i = 0; i < files.length; i++) {
+			File marker4HapFile = new File(files[i], "hap");
+			if (marker4HapFile.exists()) {
+				
+				try {
+
+					BufferedReader selectReader = new BufferedReader(
+							new FileReader(new File(marker4HapFile, "strict_selected.tsv")));
+					File fastaFile = new File(marker4HapFile, files[i].getName() + ".fasta");
+//					if (!fastaFile.exists()) {
+						PrintWriter selectWriter = new PrintWriter(fastaFile);
+
+						HashSet<String> genomeSet = new HashSet<>();
+						String line = selectReader.readLine(); // header
+						while ((line = selectReader.readLine()) != null) {
+							line = line.trim();
+							if (line.isEmpty() || line.startsWith("#")) {
+								break;
+							}
+							String[] parts = line.split("\t");
+							if (parts.length > 0 && !parts[0].trim().isEmpty()) {
+								genomeSet.add(parts[0].trim());
+							}
+						}
+						selectReader.close();
+						System.out.println(files[i].getName() + "\t" + genomeSet.size());
+
+						for (String genome : genomeSet) {
+							File genomeDbFile = new File(fastaDb, genome + ".faa");
+							if (!genomeDbFile.exists()) {
+								genomeDbFile = new File(fastaDb, genome + ".fasta");
+							}
+							if (genomeDbFile.exists()) {
+								BufferedReader reader = new BufferedReader(new FileReader(genomeDbFile));
+								while ((line = reader.readLine()) != null) {
+									selectWriter.println(line);
+								}
+								reader.close();
+							}
+						}
+						selectWriter.close();
+
+						BufferedReader reader = new BufferedReader(
+								new FileReader(new File(marker4HapFile, "pFind.cfg")));
+						PrintWriter writer = new PrintWriter(new File(files[i], "pFind.cfg"));
+						while ((line = reader.readLine()) != null) {
+							if (line.startsWith("fastapath")) {
+								writer.println("fastapath=" + fastaFile.getAbsolutePath());
+							} else if (line.startsWith("outputpath")) {
+								writer.println("outputpath=" + files[i].getAbsolutePath());
+							} else {
+								writer.println(line);
+							}
+						}
+						reader.close();
+						writer.close();
+
+						writer = new PrintWriter(new File(files[i], "pFind.bat"));
+						writer.println("C:");
+						writer.println("cd C:\\Users\\daz25hak\\MetaProAI\\Resources\\DBReducer\\pFind3\\bin");
+						writer.println("searcher.exe " + (new File(files[i], "pFind.cfg")).getAbsolutePath());
+						writer.close();
+//					}
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			}
+		}
+	}
+	
+	public static void getGenomeContribution(String in) {
+		try {
+			File[] files = (new File(in)).listFiles();
+			for (int i = 0; i < files.length; i++) {
+				HashMap<String, Integer> map = new HashMap<String, Integer>();
+				File marker4HapFile = new File(files[i], "hap");
+				if (marker4HapFile.exists()) {
+					int count = 0;
+					File selectFile = new File(marker4HapFile, "selected.tsv");
+					BufferedReader reader = new BufferedReader(new FileReader(selectFile));
+					String line = reader.readLine();
+					while ((line = reader.readLine()) != null) {
+						if (line.startsWith("#")) {
+							break;
+						} else {
+							String[] cs = line.split("\t");
+							if (cs.length == 2) {
+								map.put(cs[0], count++);
+							}
+						}
+					}
+					reader.close();
+				}
+				File marker4File = new File(files[i], "marker4");
+				HashMap<String, Integer> map2 = new HashMap<String, Integer>();
+				if (marker4File.exists()) {
+					File psmFile = new File(marker4File, "pFind-Filtered.spectra");
+					if (psmFile.exists()) {
+						PFindPsmReader reader = new PFindPsmReader(psmFile);
+						PFindPSM[] psms = reader.getPsms();
+						for (PFindPSM psm : psms) {
+							String[] pros = psm.getProteins();
+							if (pros.length == 1 && pros[0].startsWith("MGYG")) {
+								String genome = pros[0].substring(0, pros[0].indexOf("_"));
+								if (map2.containsKey(genome)) {
+									map2.put(genome, map2.get(genome) + 1);
+								} else {
+									map2.put(genome, 1);
+								}
+							}
+						}
+					}
+				}
+
+				File testFile = new File(marker4File, "testgenome.tsv");
+				PrintWriter writer = new PrintWriter(testFile);
+				for (String genome : map.keySet()) {
+					if (map2.containsKey(genome)) {
+						writer.println(genome + "\t" + map.get(genome) + "\t" + map2.get(genome));
+					}
+				}
+				writer.close();
+			}
+
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+	
+	private static void compareTwoFile(String s1, String s2) {
+		try {
+			BufferedReader reader1 = new BufferedReader(new FileReader(s1));
+			String line1 = null;
+
+			BufferedReader reader2 = new BufferedReader(new FileReader(s2));
+			String line2 = null;
+
+			while (true) {
+				line1 = reader1.readLine();
+				line2 = reader2.readLine();
+				if (line1 == null || line2 == null) {
+					break;
+				}
+				
+				if(!line1.equals(line2)) {
+					System.out.println(line1);
+					System.out.println(line2);
+					System.out.println();
+				}
+			}
+
+			reader1.close();
+			reader2.close();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+	
+	private static void getGenomeProteins(String in, String out, String eggnog) {
+
+		try {
+			HashMap<String, HashSet<String>> map = new HashMap<String, HashSet<String>>();
+			BufferedReader reader = new BufferedReader(new FileReader(in));
+
+			String line = reader.readLine();
+			while ((line = reader.readLine()) != null) {
+				String[] cs = line.split(",");
+				String genome = cs[0].substring(0, cs[0].indexOf("_"));
+				map.computeIfAbsent(genome, k -> new HashSet<>()).add(cs[0]);
+			}
+			reader.close();
+			System.out.println(map.size());
+
+			PrintWriter writer = new PrintWriter(out);
+			boolean hasTitle = false;
+			for (String genome : map.keySet()) {
+				File file = new File(eggnog, genome + "_eggNOG.tsv");
+				if (file.exists()) {
+					HashSet<String> set = map.get(genome);
+					System.out.println(genome+"\t"+set);
+					
+					reader = new BufferedReader(new FileReader(file));
+					line = reader.readLine();
+					if (!hasTitle) {
+						writer.println(line);
+						hasTitle = true;
+					}
+					while ((line = reader.readLine()) != null) {
+						String[] cs = line.split("\t");
+						if (set.contains(cs[0])) {
+							writer.println(line);
+						}
+					}
+					reader.close();
+				}
+			}
+			writer.close();
+
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+	
+	private static void combineGenome(String in) {
+		try {
+			PrintWriter writer = new PrintWriter(new File(in, "combinedGenomes.tsv"));
+			writer.println("File name\tRank\tGenome");
+			File[] files = (new File(in)).listFiles();
+			for (int i = 0; i < files.length; i++) {
+				String name = files[i].getName();
+				File hapFile = new File(files[i], "marker4_all");
+				File genomeFile = new File(hapFile, "selected.tsv");
+				if (genomeFile.exists()) {
+					int count = 0;
+					BufferedReader reader = new BufferedReader(new FileReader(genomeFile));
+					String line = reader.readLine();
+					while ((line = reader.readLine()) != null) {
+						String[] cs = line.split("\t");
+						if(cs[0].startsWith("MGYG")) {
+							writer.println(name + "\t" + (count++) + "\t" + cs[0]);
+						}
+						
+//						if (cs[4].equals("1.0")) {
+//							break;
+//						}
+					}
+					reader.close();
+				}
+			}
+			writer.close();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+	
+	public static void main(String[] args) {
+		// TODO Auto-generated method stub
+
+		String folder = "Z:\\PRIDE_dataset\\PXD012724_rapidAim1\\MetaPilot\\";
+		String file = "\\Leyuan_20170610_V1_ATRV\\hap\\pFind-Filtered.spectra";
+//		PFindPsmReader.compare(folder + "pfind_MAG_search" + file, folder + "pfind_MAG_search_rib" + file);
+		System.out.println();
+		file = "\\Leyuan_20170610_V1_AZTH\\hap\\pFind-Filtered.spectra";
+//		PFindPsmReader.compare(folder + "pfind_MAG_search" + file, folder + "pfind_MAG_search_rib" + file);
+		System.out.println();
+		file = "\\Leyuan_20170610_V1_BRBR\\hap\\pFind-Filtered.spectra";
+//		PFindPsmReader.compare(folder + "pfind_MAG_search" + file, folder + "pfind_MAG_search_rib" + file);
+//		PFindPsmReader.copyCfg("Z:\\PRIDE_dataset\\PXD023217_campi\\MetaPilot\\pfind_MAG_search_marker4_85");
+//		PFindPsmReader.copyCfgFasta("Z:\\PRIDE_dataset\\PXD012724_rapidAim1\\MetaPilot\\pfind_MAG_search",
+//				"C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-gut\\v2.0.2\\original_db");
+//		PFindPsmReader.getGenomeContribution("Z:\\PRIDE_dataset\\PXD006118_3mix_type\\Run1\\MetaPilot\\pfind_MAG_search");
+//		PFindPsmReader.compareFasta("Z:\\PRIDE_dataset\\PXD007819_xu_IBD\\MetaPilot\\pfind_MAG_search\\Xu_201606_HM406_TI\\hap"
+//				+ "\\Xu_201606_HM406_TI.fasta", "Z:\\PRIDE_dataset\\PXD007819_xu_IBD\\sample_specific_db.fasta");
+//		PFindPsmReader.compareFolder("Z:\\PRIDE_dataset\\PXD069517\\MetaPilot\\pfind_MAG_search", 
+//				"Z:\\PRIDE_dataset\\PXD069517\\MetaPilot\\pfind_MAG_search_rib");
+//		PFindPsmReader.compareTwoFile("Z:\\PRIDE_dataset\\PXD023217_campi\\SIHUMIx\\MetaPilot\\pfind_MAG_search\\S03\\marker4_70\\S03.fasta", 
+//				"Z:\\PRIDE_dataset\\PXD023217_campi\\SIHUMIx\\MetaPilot\\pfind_MAG_search_rib\\S03\\hap\\S03.fasta");
+//		PFindPsmReader.getGenomeProteins("C:\\Users\\daz25hak\\Documents\\data\\outputs\\Proteins_candidates.csv",
+//				"C:\\Users\\daz25hak\\Documents\\data\\outputs\\Proteins_candidates_functions.tsv",
+//				"C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-gut\\v2.0.2\\eggNOG");
+		PFindPsmReader.combineGenome("Z:\\PRIDE_dataset\\PXD023217_campi\\SIHUMIx\\MetaPilot\\pfind_MAG_search");
 	}
 }

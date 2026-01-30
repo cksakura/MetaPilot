@@ -12,6 +12,7 @@ import java.io.File;
 public abstract class AbstractMetaPeptideReader {
 
 	private File file;
+	public static String SHUF = "shuf_";
 
 	public AbstractMetaPeptideReader(String in) {
 		this(new File(in));

@@ -22,17 +22,21 @@ public class MagFuncSearcher extends IGCFuncSqliteSearcher {
 	 * https://gtdb.ecogenomic.org/
 	 */
 	private String genome;
+	private MagDbItem usedMagDbItem;
 
-	public MagFuncSearcher(String dbpath, String defDbPath) throws SQLException, NumberFormatException, IOException {
+	public MagFuncSearcher(String dbpath, String defDbPath, MagDbItem usedMagDbItem)
+			throws SQLException, NumberFormatException, IOException {
 		super(dbpath, defDbPath);
 		// TODO Auto-generated constructor stub
+		this.usedMagDbItem = usedMagDbItem;
 	}
 
-	public MagFuncSearcher(String dbpath, String defDbPath, String genome)
+	public MagFuncSearcher(String dbpath, String defDbPath, MagDbItem usedMagDbItem, String genome)
 			throws SQLException, NumberFormatException, IOException {
 		super(dbpath, defDbPath);
 		// TODO Auto-generated constructor stub
 		this.genome = genome;
+		this.usedMagDbItem = usedMagDbItem;
 	}
 
 	public HashMap<String, String[]> matchGenome(String[] genomes) throws IOException {
@@ -47,7 +51,7 @@ public class MagFuncSearcher extends IGCFuncSqliteSearcher {
 		}
 		gtdbNcbiReader.close();
 
-		File genomeTaxaFile = new File(this.dbPath, "genomes-all_metadata.tsv");
+		File genomeTaxaFile = usedMagDbItem.getOriginalTaxaFile();
 		HashMap<String, String[]> genomeTaxaMap = new HashMap<String, String[]>();
 		for (int i = 0; i < genomes.length; i++) {
 			genomeTaxaMap.put(genomes[i], new String[ProDbConfig.genome2TaxaGTDBNCBITitle.length]);
@@ -111,7 +115,7 @@ public class MagFuncSearcher extends IGCFuncSqliteSearcher {
 							default:
 								break;
 							}
-							
+
 							break;
 						}
 					}
@@ -172,7 +176,7 @@ public class MagFuncSearcher extends IGCFuncSqliteSearcher {
 								default:
 									break;
 								}
-								
+
 								break;
 							}
 						}
@@ -221,8 +225,8 @@ public class MagFuncSearcher extends IGCFuncSqliteSearcher {
 		HashSet<String> goSet = new HashSet<String>();
 		HashSet<String> ecSet = new HashSet<String>();
 
-		File originalDbFolder = new File(this.dbPath, "original_db");
-		File eggnogFolder = new File(this.dbPath, "eggNOG");
+		File originalDbFolder = usedMagDbItem.getOriginalDbFolder();
+		File eggnogFolder = usedMagDbItem.getOriginalFuncFolder();
 
 		HashMap<String, MetaProtein> proMap = new HashMap<String, MetaProtein>();
 		for (MetaProtein mp : metapros) {

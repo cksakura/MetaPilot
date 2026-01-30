@@ -33,6 +33,7 @@ public class FlashLfqPsmReader {
 			String[] title = line.split("\t");
 
 			int fileNameId = -1;
+			int scanId = -1;
 			int baseSequenceId = -1;
 			int fullSequenceId = -1;
 			int expMassId = -1;
@@ -48,6 +49,8 @@ public class FlashLfqPsmReader {
 			for (int i = 0; i < title.length; i++) {
 				if (title[i].equals("File Name")) {
 					fileNameId = i;
+				} else if (title[i].equals("Scan number")) {
+					scanId = i;
 				} else if (title[i].equals("Base Sequence")) {
 					baseSequenceId = i;
 				} else if (title[i].equals("Full Sequence")) {
@@ -75,7 +78,7 @@ public class FlashLfqPsmReader {
 
 			while ((line = reader.readLine()) != null) {
 				String[] cs = line.split("\t");
-				FlashLfqPsm psm = new FlashLfqPsm(cs[fileNameId], cs[baseSequenceId], cs[fullSequenceId],
+				FlashLfqPsm psm = new FlashLfqPsm(cs[fileNameId], Integer.parseInt(cs[scanId]), cs[baseSequenceId], cs[fullSequenceId],
 						Double.parseDouble(cs[expMassId]), Double.parseDouble(cs[rtId]), Integer.parseInt(cs[chargeId]),
 						cs[proteinsId].split(";"), Double.parseDouble(cs[scoreId]), Double.parseDouble(cs[PEPId]),
 						Double.parseDouble(cs[calMassId]), Double.parseDouble(cs[massDiffId]),

@@ -9,12 +9,11 @@ import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
-import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -26,7 +25,7 @@ import org.apache.logging.log4j.Logger;
 
 import uk.ac.quadram.metapilot.dbSearch.sage.SageTask;
 import uk.ac.quadram.metapilot.quant.flashLFQ.FlashLfqTask;
-import uk.ac.quadram.metapilot.core.prodb.FastaManager;
+import uk.ac.quadram.metapilot.core.prodb.DecoyShuffler;
 import uk.ac.quadram.metapilot.dbSearch.sage.SagePeptide;
 import uk.ac.quadram.metapilot.dbSearch.sage.SagePSM;
 import uk.ac.quadram.metapilot.dbSearch.sage.SageResultReader;
@@ -38,7 +37,10 @@ import javafx.application.Platform;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.task.mag.MetaPilotMagTask;
+import uk.ac.quadram.metapilot.task.mag.MarkerGenomeSelector;
+import uk.ac.quadram.metapilot.task.mag.MarkerGenomeSelector.RepresentativeLevel;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagSageParameters;
+import uk.ac.quadram.metapilot.task.io.pep.AbstractMetaPeptideReader;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.spectra.io.MSConvertor;
 
@@ -316,7 +318,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		// Step 3: Protein Extraction from HAP Results
 		logger.info("Step 3: Starting protein extraction from HAP results...");
 		updateProgress(40, 100);
-		boolean extract = this.fastaExtract4Iterator();
+		boolean extract = this.fastaExtract4MarkerSelector();
 		if (!extract) {
 			logger.error(getTaskName() + ": error in protein extraction");
 			return false;
@@ -753,6 +755,106 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 			File hapGenomeFile = new File(hapFile, "hap_genomes.tsv");
 			HashSet<String> genomeSet = applyOccamsRazor(genomeMap, pepSet, psmCoverThreshold, hapGenomeFile);
 
+			if (genomeSet.size() == 0) {
+				logger.info("No genomes were found from {}", separateResultFolders[i].getName());
+			}
+
+			try (PrintWriter writer = new PrintWriter(dbFile)) {
+				File dbFolder = this.magDb.getOriginalDbFolder();
+				for (String genome : genomeSet) {
+					File genomeDbFile = new File(dbFolder, genome + ".faa");
+					if (!genomeDbFile.exists()) {
+						genomeDbFile = new File(dbFolder, genome + ".fasta");
+					}
+					if (genomeDbFile.exists()) {
+						try (BufferedReader reader = new BufferedReader(new FileReader(genomeDbFile))) {
+							String line;
+							while ((line = reader.readLine()) != null) {
+								writer.println(line);
+							}
+						}
+					}
+				}
+			} catch (IOException e) {
+				logger.error("Error writing sample-specific database to {}", dbFile.getAbsolutePath(), e);
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Extract protein sequences from HAP search results using MarkerGenomeSelector
+	 */
+	protected boolean fastaExtract4MarkerSelector() {
+		logger.info("Starting FASTA extraction (marker selector) for {} result folders", separateResultFolders.length);
+
+		File currentFile = magDb.getCurrentFile();
+		File markerFasta = new File(currentFile, "4markers.fasta");
+		if (markerFasta == null || !markerFasta.exists()) {
+			logger.error("Marker FASTA file was not found: {}", markerFasta != null ? markerFasta.getAbsolutePath() : "null");
+			return false;
+		}
+
+		File genomesTaxaTsv = new File(currentFile, "genomes-taxa.tsv");
+		if (genomesTaxaTsv == null || !genomesTaxaTsv.exists()) {
+			logger.error("Genomes taxa TSV was not found: {}", genomesTaxaTsv != null ? genomesTaxaTsv.getAbsolutePath() : "null");
+			return false;
+		}
+
+		MarkerGenomeSelector selector = new MarkerGenomeSelector();
+		int stepThreshold = 1;
+		int maximumSelected = 300;
+		double coverage = 0.85;
+
+		for (int i = 0; i < this.separateResultFolders.length; i++) {
+			File hapFile = new File(separateResultFolders[i], "hap");
+			File dbFile = new File(hapFile, separateResultFolders[i].getName() + ".fasta");
+
+			if (dbFile.exists() && dbFile.length() > 0) {
+				logger.info("Sample-specific database for {} already exists", separateResultFolders[i].getName());
+				continue;
+			}
+
+			File spectraFile = new File(hapFile, "results.sage.tsv");
+			if (!spectraFile.exists() || spectraFile.length() == 0) {
+				logger.error("Sage search result was not found from {}", spectraFile.getAbsolutePath());
+				return false;
+			}
+
+			File evidenceFile = new File(hapFile, "marker_genome_evidence.tsv");
+			File rankedFile = new File(hapFile, "marker_genome_ranked.tsv");
+			File selectedFile = new File(hapFile, "marker_genome_selected.tsv");
+
+			selector.peptideTestWithStrategy(spectraFile.getAbsolutePath(), markerFasta, genomesTaxaTsv,
+					evidenceFile.getAbsolutePath(), rankedFile.getAbsolutePath(), selectedFile.getAbsolutePath(), coverage,
+					stepThreshold, maximumSelected);
+
+			HashSet<String> genomeSet = new HashSet<>();
+			try (BufferedReader reader = new BufferedReader(new FileReader(selectedFile))) {
+				String line = reader.readLine(); // header
+				while ((line = reader.readLine()) != null) {
+					line = line.trim();
+					if (line.isEmpty() || line.startsWith("#")) {
+						break;
+					}
+					String[] parts = line.split("\t");
+					if (parts.length > 0 && !parts[0].trim().isEmpty()) {
+						genomeSet.add(parts[0].trim());
+					}
+				}
+			} catch (IOException e) {
+				logger.error("Error reading marker selected genomes from {}", selectedFile.getAbsolutePath(), e);
+				return false;
+			}
+
+			logger.info("Marker selector for {} - Selected {} genomes", separateResultFolders[i].getName(), genomeSet.size());
+
+			if (genomeSet.isEmpty()) {
+				logger.info("No genomes were found from {}", separateResultFolders[i].getName());
+			}
+
 			try (PrintWriter writer = new PrintWriter(dbFile)) {
 				File dbFolder = this.magDb.getOriginalDbFolder();
 				for (String genome : genomeSet) {
@@ -795,7 +897,6 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 				File db = new File(hapFile, separateResultFolders[i].getName() + ".fasta");
 				if (!db.exists()) {
 					logger.error("[{}] sample-specific database {} was not found", getTaskName(), db);
-
 					logger.error(getTaskName() + ": sample-specific database" + db + " was not found");
 					return false;
 				}
@@ -859,8 +960,12 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 
 			File resultFile = new File(separateResultFolders[i], "results.sage.tsv");
 			if (!resultFile.exists() || resultFile.length() == 0) {
-				logger.error("Sage search result was not found in {}", separateResultFolders[i].getAbsolutePath());
-				return false;
+				
+				File db = new File(hapFile, separateResultFolders[i].getName() + ".fasta");
+				if(db.length()>0) {
+					logger.error("Sage search result was not found in {}", separateResultFolders[i].getAbsolutePath());
+					return false;
+				}
 			}
 		}
 
@@ -874,129 +979,266 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 	 * Combine search results from all samples
 	 */
 	protected boolean combineResults() {
-		HashSet<String> totalPsmSet = new HashSet<String>();
-		HashMap<String, HashSet<String>> genomeMap = new HashMap<String, HashSet<String>>();
+		combinedFile = new File(magSageParams.getDbSearchResultFile(), "combined");
+		if (!combinedFile.exists()) {
+			combinedFile.mkdirs();
+		}
+		
+		File combinedFastaFile = new File(combinedFile, "combined.fasta");
+		if (!combinedFastaFile.exists() || combinedFastaFile.length() == 0) {
+			
+			File combinedResultTsv = new File(combinedFile, "combined_results.sage.tsv");
+			HashSet<String> totalProteinSet = new HashSet<String>();
+			if(!combinedResultTsv.exists()) {
+				try (PrintWriter writer = new PrintWriter(combinedResultTsv)) {
+					boolean wroteHeader = false;
+					for (int i = 0; i < separateResultFolders.length; i++) {
+						File pepResultFile = new File(separateResultFolders[i], "results.sage.tsv");
+						if (!pepResultFile.exists() || pepResultFile.length() == 0) {
+							File fastaFile = new File(new File(separateResultFolders[i], "hap"),
+									separateResultFolders[i].getName() + ".fasta");
+							if (fastaFile.length() == 0) {
+								logger.info("No proteins found from {}, skip...", separateResultFolders[i].getName());
+							}
+							continue;
+						}
+						try (BufferedReader combineTsvReader = new BufferedReader(new FileReader(pepResultFile))) {
+							String line = combineTsvReader.readLine();
+							if (line == null) {
+								continue;
+							}
 
-		// Parse individual Sage result files from each sample
-		for (int i = 0; i < separateResultFolders.length; i++) {
-			File pepResultFile = new File(separateResultFolders[i], "results.sage.tsv");
-			try {
-				BufferedReader combineTsvReader = new BufferedReader(new FileReader(pepResultFile));
+							String[] title = line.split("\t");
+							int proid = -1;
+							int qvalueid = -1;
+							for (int j = 0; j < title.length; j++) {
+								if (title[j].equals("proteins")) {
+									proid = j;
+								} else if (title[j].equals("spectrum_q")) {
+									qvalueid = j;
+								}
+							}
+							if (!wroteHeader) {
+								writer.println(line);
+								wroteHeader = true;
+							}
+							while ((line = combineTsvReader.readLine()) != null) {
+								String[] cs = line.split("\t");
+								if (Double.parseDouble(cs[qvalueid]) > 0.01 || cs[proid].contains("REV_")
+										|| cs[proid].contains("rev_")) {
+									continue;
+								}
+								writer.println(line);
+								String[] pros = cs[proid].split(";");
+								for (int j = 0; j < pros.length; j++) {
+									totalProteinSet.add(pros[j]);
+								}
+							}
+						}
+					}
+				} catch (IOException e) {
+					logger.error(getTaskName() + ": error in writing combined results file " + combinedResultTsv, e);
+					return false;
+				}
+			} else {
+				try (BufferedReader combineTsvReader = new BufferedReader(new FileReader(combinedResultTsv))) {
+					String line = combineTsvReader.readLine();
+					String[] title = line.split("\t");
+					int proid = -1;
+					int qvalueid = -1;
+					for (int j = 0; j < title.length; j++) {
+						if (title[j].equals("proteins")) {
+							proid = j;
+						} else if (title[j].equals("spectrum_q")) {
+							qvalueid = j;
+						}
+					}
+					while ((line = combineTsvReader.readLine()) != null) {
+						String[] cs = line.split("\t");
+						if (Double.parseDouble(cs[qvalueid]) > 0.01 || cs[proid].contains("REV_")
+								|| cs[proid].contains("rev_")) {
+							continue;
+						}
+						String[] pros = cs[proid].split(";");
+						for (int j = 0; j < pros.length; j++) {
+							totalProteinSet.add(pros[j]);
+						}
+					}
+				} catch (IOException e) {
+					logger.error(getTaskName() + ": error in reading combined results file " + combinedResultTsv, e);
+					return false;
+				}
+			}
+			
+			logger.info("Before filtering: {} proteins were found from the separate search result", totalProteinSet.size());
+			
+			// Create combined database
+			File currentFile = magDb.getCurrentFile();
+			File markerFasta = new File(currentFile, "4markers.fasta");
+			if (markerFasta == null || !markerFasta.exists()) {
+				logger.error("Marker FASTA file was not found: {}",
+						markerFasta != null ? markerFasta.getAbsolutePath() : "null");
+				return false;
+			}
+
+			File genomesTaxaTsv = new File(currentFile, "genomes-taxa.tsv");
+			if (genomesTaxaTsv == null || !genomesTaxaTsv.exists()) {
+				logger.error("Genomes taxa TSV was not found: {}",
+						genomesTaxaTsv != null ? genomesTaxaTsv.getAbsolutePath() : "null");
+				return false;
+			}
+
+			File evidenceFile = new File(combinedFile, "marker_genome_evidence.tsv");
+			File rankedFile = new File(combinedFile, "marker_genome_ranked.tsv");
+			File selectedFile = new File(combinedFile, "marker_genome_selected.tsv");
+
+			MarkerGenomeSelector selector = new MarkerGenomeSelector();
+			selector.setRepresentativeLevel("CLASS");
+			int stepThreshold = 1;
+			double coverage = 0.9;
+			int maximumSelected = 1000;
+			selector.peptideTestWithStrategy(combinedResultTsv.getAbsolutePath(), markerFasta, genomesTaxaTsv,
+					evidenceFile.getAbsolutePath(), rankedFile.getAbsolutePath(), selectedFile.getAbsolutePath(),
+					coverage, stepThreshold, maximumSelected);
+
+			HashSet<String> genomeSet = new HashSet<>();
+			try (BufferedReader reader = new BufferedReader(new FileReader(selectedFile))) {
+				String line = reader.readLine(); // header
+				while ((line = reader.readLine()) != null) {
+					line = line.trim();
+					if (line.isEmpty() || line.startsWith("#")) {
+						break;
+					}
+					String[] parts = line.split("\t");
+					if (parts.length > 0 && !parts[0].trim().isEmpty()) {
+						genomeSet.add(parts[0].trim());
+					}
+				}
+			} catch (IOException e) {
+				logger.error("Error reading marker selected genomes from {}", selectedFile.getAbsolutePath(), e);
+				return false;
+			}
+			
+			logger.info("MarkerGenomeSelector select {} genomes", genomeSet.size());
+			
+			
+			HashMap<String, HashSet<String>> genomePepMap = new HashMap<String, HashSet<String>>();
+			HashMap<String, HashSet<String>> proPepMap = new HashMap<String, HashSet<String>>();
+			HashSet<String> pepSet = new HashSet<String>();
+			
+			try (BufferedReader combineTsvReader = new BufferedReader(new FileReader(combinedResultTsv))) {
 				String line = combineTsvReader.readLine();
 				String[] title = line.split("\t");
 				int proid = -1;
 				int pepid = -1;
-				int qvalueid = -1;
 				for (int j = 0; j < title.length; j++) {
 					if (title[j].equals("proteins")) {
 						proid = j;
 					} else if (title[j].equals("peptide")) {
 						pepid = j;
-					} else if (title[j].equals("spectrum_q")) {
-						qvalueid = j;
 					}
 				}
 				while ((line = combineTsvReader.readLine()) != null) {
 					String[] cs = line.split("\t");
-					if (Double.parseDouble(cs[qvalueid]) > 0.01 || cs[proid].contains("REV_")
-							|| cs[proid].contains("rev_")) {
-						continue;
-					}
 					String[] pros = cs[proid].split(";");
-
 					for (int j = 0; j < pros.length; j++) {
-						if (genomeMap.containsKey(pros[j])) {
-							genomeMap.get(pros[j]).add(cs[pepid]);
-						} else {
-							HashSet<String> set = new HashSet<String>();
-							set.add(cs[pepid]);
-							genomeMap.put(pros[j], set);
+						int loc = pros[j].indexOf("_");
+						if (loc > 0) {
+							String genome = pros[j].substring(0, pros[j].indexOf("_"));
+							if (genomeSet.contains(genome)) {
+								genomePepMap.computeIfAbsent(genome, k -> new HashSet<>()).add(cs[pepid]);
+								proPepMap.computeIfAbsent(pros[j], k -> new HashSet<>()).add(cs[pepid]);
+								pepSet.add(cs[pepid]);
+							}
 						}
-						totalPsmSet.add(cs[pepid]);
 					}
 				}
-				combineTsvReader.close();
 			} catch (IOException e) {
-				logger.error(getTaskName() + ": error in reading database search result file " + pepResultFile, e);
-				System.err.println(format.format(new Date()) + "\t" + getTaskName()
-						+ ": error in reading database search result file " + pepResultFile);
+				logger.error(getTaskName() + ": error in reading combined results file " + combinedResultTsv, e);
+				return false;
+			}			
+			
+			File razorGenomeFile = new File(combinedFile, "razorGenomes.tsv");
+			HashSet<String> selecteGenomeSet = this.applyOccamsRazor(genomePepMap, pepSet, 0.99, razorGenomeFile);
+			Iterator<String> it = proPepMap.keySet().iterator();
+			while (it.hasNext()) {
+				String pro = it.next();
+				String genome = pro.substring(0, pro.indexOf("_"));
+				if (!selecteGenomeSet.contains(genome)) {
+					it.remove();
+				}
 			}
-		}
 
-		combinedFile = new File(magSageParams.getDbSearchResultFile(), "combined");
-		if (!combinedFile.exists()) {
-			combinedFile.mkdirs();
-		}
-		// Create combined database
-		File combinedFastaFile = new File(combinedFile, "combined.fasta");
-		if (!combinedFastaFile.exists() || combinedFastaFile.length() == 0) {
-			File hapGenomeFile = new File(combinedFile, "razorProteins.tsv");
-			HashSet<String> proteinSet = applyOccamsRazor(genomeMap, totalPsmSet, 1.0, hapGenomeFile);
+			File razorProFile = new File(combinedFile, "razorProteins.tsv");
+			HashSet<String> selecteProSet = this.applyOccamsRazor(proPepMap, pepSet, 1.0, razorProFile);
 
+			HashSet<String> containSet = new HashSet<String>();
 			try (PrintWriter writer = new PrintWriter(combinedFastaFile)) {
-				Random random = new Random();
 				for (int i = 0; i < separateResultFolders.length; i++) {
 					File hapFile = new File(separateResultFolders[i], "hap");
 					File dbFile = new File(hapFile, separateResultFolders[i].getName() + ".fasta");
 					try (BufferedReader reader = new BufferedReader(new FileReader(dbFile))) {
 						String line = null;
+						String proName = "";
 						boolean use = false;
-						String shufName = "";
-						List<Character> sequenceChars = new ArrayList<Character>();
+						StringBuilder sb = new StringBuilder();
 						while ((line = reader.readLine()) != null) {
 							if (line.startsWith(">")) {
-								if (sequenceChars.size() > 0) {
-									Collections.shuffle(sequenceChars, random);
 
-									StringBuilder shuffledSequence = new StringBuilder(sequenceChars.size());
-									for (Character c : sequenceChars) {
-										shuffledSequence.append(c);
-									}
-									writer.println(shufName);
-									writer.println(shuffledSequence);
-
-									sequenceChars = new ArrayList<Character>();
+								if (sb.length() > 0) {
+									String shuffleProName = ">shuf_" + proName;
+									String shuffle = DecoyShuffler.generateShuffledDecoy(sb.toString(),
+											this.sageTask.getEnzymeCleavageSites(this.magSageParams.getEnzyme()), 42);
+									writer.println(shuffleProName);
+									writer.println(shuffle);
+									sb = new StringBuilder();
 								}
 
-								String proName = line.substring(1, line.indexOf(" "));
-								if (proteinSet.contains(proName)) {
+								proName = line.substring(1, line.indexOf(" "));
+								if (selecteProSet.contains(proName) && !containSet.contains(proName)) {
 									use = true;
 									writer.println(line);
-									proteinSet.remove(proName);
-
-									shufName = ">" + FastaManager.shuffle + line.substring(1);
+									containSet.add(proName);
 								} else {
 									use = false;
 								}
+
 							} else {
 								if (use) {
 									writer.println(line);
-									for (int j = 0; j < line.length(); j++) {
-										sequenceChars.add(line.charAt(j));
-									}
+									sb.append(line);
 								}
 							}
 						}
-						reader.close();
 
-						if (sequenceChars.size() > 0) {
-							Collections.shuffle(sequenceChars, random);
-
-							StringBuilder shuffledSequence = new StringBuilder(sequenceChars.size());
-							for (Character c : sequenceChars) {
-								shuffledSequence.append(c);
-							}
-							writer.println(shufName);
-							writer.println(shuffledSequence);
+						if (sb.length() > 0) {
+							String shuffleProName = ">shuf_" + proName;
+							String shuffle = DecoyShuffler.generateShuffledDecoy(sb.toString(),
+									this.sageTask.getEnzymeCleavageSites(this.magSageParams.getEnzyme()), 42);
+							writer.println(shuffleProName);
+							writer.println(shuffle);
 						}
 
+						reader.close();
 					} catch (IOException e) {
 						logger.error(getTaskName() + ": error in reading database file " + dbFile, e);
 						System.err.println(format.format(new Date()) + "\t" + getTaskName()
 								+ ": error in reading database file " + dbFile);
 					}
 				}
+
+				if (metaPar.isAppendHostDb()) {
+					BufferedReader hostReader = new BufferedReader(new FileReader(this.metaPar.getHostDB()));
+					String line = null;
+					while ((line = hostReader.readLine()) != null) {
+						writer.println(line);
+					}
+					hostReader.close();
+				}
 				writer.close();
+
+				magSageParams.setCurrentDb(combinedFastaFile.getAbsolutePath());
+
 			} catch (IOException e) {
 				logger.error(getTaskName() + ": error in writing the combined database file to " + combinedFastaFile,
 						e);
@@ -1010,8 +1252,6 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		File quanResultFile = new File(combinedFile, "lfq.tsv");
 
 		if (!pepResultFile.exists() && !quanResultFile.exists()) {
-			magSageParams.setCurrentDb(combinedFastaFile.getAbsolutePath());
-
 			// Run Sage search against combined database
 			try {
 				sageTask.searchMzML(mzMLFiles, combinedFile.getAbsolutePath(), combinedFastaFile.getAbsolutePath(),
@@ -1075,7 +1315,8 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		} else {
 			File[] files = magSageParams.getDbSearchResultFile().listFiles();
 			for (int i = 0; i < files.length; i++) {
-				if (files[i].isDirectory() && (new File(files[i], "results.sage.tsv")).exists()) {
+				if (files[i].isDirectory() && !files[i].getName().equals("combined")
+						&& (new File(files[i], "hap")).exists()) {
 					fileIdMap.put(files[i].getName(), fileIdMap.size());
 					fileList.add(files[i].getName());
 				}
@@ -1104,7 +1345,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 
 		// Create and execute the post-analysis task directly
 		DDAMagPostAnalysisTask postAnalysisTask = new DDAMagPostAnalysisTask(metaPar, mrp, secondBar, quanPeps, psms,
-				fileIdMap, fileList, quanMode, intensityTitle, getTaskName(), this);
+				fileIdMap, fileList, quanMode, intensityTitle, getTaskName(), AbstractMetaPeptideReader.SHUF, this);
 
 		// Execute the task and wait for completion
 		Thread taskThread = new Thread(postAnalysisTask);
@@ -1136,5 +1377,84 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 	protected String getVersion() {
 		// TODO Auto-generated method stub
 		return null;
+	}
+	public static void getGenomeCountFromFasta(String in) {
+		HashSet<String> genomeSet = new HashSet<String>();
+		try (BufferedReader reader = new BufferedReader(new FileReader(in))) {
+			String line = null;
+			while ((line = reader.readLine()) != null) {
+				if (line.startsWith(">MGYG")) {
+					String genomeName = line.substring(1, line.indexOf("_"));
+					genomeSet.add(genomeName);
+				}
+			}
+			reader.close();
+		} catch (IOException e) {
+		}
+		System.out.println(genomeSet.size());
+	}
+	
+	public static void comparePep(String in1, String in2, String out) {
+		HashSet<String> s2 = new HashSet<String>();
+		try (BufferedReader reader = new BufferedReader(new FileReader(in2))) {
+			String line = reader.readLine();
+			while ((line = reader.readLine()) != null) {
+				String[] cs = line.split("\t");
+				s2.add(cs[0]);
+			}
+			reader.close();
+		} catch (IOException e) {
+		}
+		
+		HashMap<String, HashSet<String>> genomePepMap1 = new HashMap<String, HashSet<String>>();
+		HashMap<String, HashSet<String>> genomePepMap2 = new HashMap<String, HashSet<String>>();
+		HashSet<String> s1 = new HashSet<String>();
+		try (BufferedReader reader = new BufferedReader(new FileReader(in1))) {
+			PrintWriter writer = new PrintWriter(out);
+			String line = reader.readLine();
+			writer.println(line);
+			while ((line = reader.readLine()) != null) {
+				String[] cs = line.split("\t");
+				s1.add(cs[0]);
+				if(!s2.contains(cs[0])) {
+					writer.println(line);
+					String[] pros = cs[2].split(";");
+					for(int i=0;i<pros.length;i++) {
+						String genome = pros[i].substring(0, pros[i].indexOf("_"));
+						genomePepMap1.computeIfAbsent(genome, k -> new HashSet<>()).add(cs[0]);
+					}
+				} else {
+					String[] pros = cs[2].split(";");
+					for(int i=0;i<pros.length;i++) {
+						String genome = pros[i].substring(0, pros[i].indexOf("_"));
+						genomePepMap2.computeIfAbsent(genome, k -> new HashSet<>()).add(cs[0]);
+					}
+				}
+			}
+			reader.close();
+			writer.close();
+		} catch (IOException e) {
+		}
+		
+		HashSet<String> allset = new HashSet<String>();
+		allset.addAll(s1);
+		allset.addAll(s2);
+		int common = s1.size() + s2.size() - allset.size();
+		System.out.println(s1.size() + "\t" + s2.size() + "\t" + allset.size() + "\t" + (s1.size() - common) + "\t"
+				+ (s2.size() - common));
+		
+		for (String genome : genomePepMap1.keySet()) {
+			if (!genomePepMap2.containsKey(genome)) {
+				System.out.println(genome + "\t" + genomePepMap1.get(genome).size());
+			}
+		}
+	}
+	
+	public static void main(String[] args) {
+//		getGenomeCountFromFasta("Z:\\PRIDE_dataset\\PXD006118_3mix_type\\Run5\\MetaPilot\\sage_MAG_search\\combined\\combined.fasta");
+//		getGenomeCountFromFasta("Z:\\PRIDE_dataset\\PXD006118_3mix_type\\Run1\\MetaPilot\\sage_MAG_search_rib\\Run1_C3_1952ng\\hap\\Run1_C3_1952ng.fasta");
+		comparePep("Z:\\PRIDE_dataset\\PXD006118_3mix_type\\Run1\\MetaPilot\\sage_MAG_search\\combined\\lfq.tsv", 
+				"Z:\\PRIDE_dataset\\PXD006118_3mix_type\\Run1\\refdb\\Run1_lfq.tsv", 
+				"Z:\\PRIDE_dataset\\PXD006118_3mix_type\\Run1\\MetaPilot\\sage_MAG_search\\combined\\wrong.tsv");
 	}
 }

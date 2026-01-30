@@ -10,7 +10,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "240318_01"
+      "sample_name": "Run4_C1"
     },
     {
       "treatment": "",
@@ -22,7 +22,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "240409_01"
+      "sample_name": "Run4_C2"
     },
     {
       "treatment": "",
@@ -34,7 +34,115 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "240412_01"
+      "sample_name": "Run4_C3"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "Run4_C4"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "Run4_P1"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "Run4_P2"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "Run4_P3"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "Run4_P4"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "Run4_U1"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "Run4_U2"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "Run4_U3"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "Run4_U4"
     }
   ],
   "sage_parameters": {
@@ -43,11 +151,11 @@
     "min_peptide_length": 7,
     "isobaric_type": "",
     "heavy_labels": [],
-    "ms2_scan_mode": "HCD-ITMS",
+    "ms2_scan_mode": "HCD-FTMS",
     "max_peptide_length": 50,
     "max_variable_modifications": 2,
     "decoys_enabled": true,
-    "precursor_tolerance_min": -20,
+    "precursor_tolerance_min": -10,
     "generate_decoys": true,
     "isobaric_table": [],
     "digestion_mode": "Specific",
@@ -56,7 +164,7 @@
       "Acetylation:protein n-term:42.0106"
     ],
     "enzyme": "Trypsin",
-    "fragment_tolerance": 50,
+    "fragment_tolerance": 10,
     "spectra_clustering": false,
     "min_peak_intensity": 0,
     "combine_label": false,
@@ -65,35 +173,71 @@
     "fragment_tolerance_unit": "ppm",
     "precursor_tolerance_unit": "ppm",
     "medium_labels": [],
-    "precursor_tolerance_max": 20,
+    "precursor_tolerance_max": 10,
     "thread_count": 24,
-    "reduce_database": true,
+    "reduce_database": false,
     "max_q": 0.01,
     "fixed_modifications": ["C:57.02146"],
     "write_checkpoint": false
   },
   "workflow": "DDA_IGC_SAGE",
   "input_output": {
-    "host_database": "C:\\Users\\daz25hak\\MetaProAI\\database\\uniprotkb_Human_AND_reviewed_true_AND_m_2025_09_01.fasta",
-    "microbiome_database": "C:\\Users\\daz25hak\\MetaProAI\\database\\760MetaHit_139HMP_368PKU_511Bac.uniq.pep.fasta",
-    "output_directory": "Z:\\BEV_Simon\\MetaPilot",
-    "append_host_db": true,
+    "host_database": "",
+    "microbiome_database": "C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-gut\\v2.0.2\\4markers.fasta",
+    "output_directory": "Z:\\PRIDE_dataset\\PXD006118_3mix_type\\Run4\\MetaPilot",
+    "append_host_db": false,
     "experiments": [
       {
-        "file_path": "Z:\\BEV_Simon\\240318_01.raw",
-        "experiment_name": "240318_01"
+        "file_path": "Z:\\PRIDE_dataset\\PXD006118_3mix_type\\Run4\\Run4_C1_2000ng.raw",
+        "experiment_name": "Run4_C1"
       },
       {
-        "file_path": "Z:\\BEV_Simon\\240409_01.raw",
-        "experiment_name": "240409_01"
+        "file_path": "Z:\\PRIDE_dataset\\PXD006118_3mix_type\\Run4\\Run4_C2_2000ng.raw",
+        "experiment_name": "Run4_C2"
       },
       {
-        "file_path": "Z:\\BEV_Simon\\240412_01.raw",
-        "experiment_name": "240412_01"
+        "file_path": "Z:\\PRIDE_dataset\\PXD006118_3mix_type\\Run4\\Run4_C3_2000ng.raw",
+        "experiment_name": "Run4_C3"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD006118_3mix_type\\Run4\\Run4_C4_2000ng.raw",
+        "experiment_name": "Run4_C4"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD006118_3mix_type\\Run4\\Run4_P1_2000ng.raw",
+        "experiment_name": "Run4_P1"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD006118_3mix_type\\Run4\\Run4_P2_2000ng.raw",
+        "experiment_name": "Run4_P2"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD006118_3mix_type\\Run4\\Run4_P3_2000ng.raw",
+        "experiment_name": "Run4_P3"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD006118_3mix_type\\Run4\\Run4_P4_2000ng.raw",
+        "experiment_name": "Run4_P4"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD006118_3mix_type\\Run4\\Run4_U1_4500ng.raw",
+        "experiment_name": "Run4_U1"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD006118_3mix_type\\Run4\\Run4_U2_4600ng.raw",
+        "experiment_name": "Run4_U2"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD006118_3mix_type\\Run4\\Run4_U3_4000ng.raw",
+        "experiment_name": "Run4_U3"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD006118_3mix_type\\Run4\\Run4_U4_5300ng.raw",
+        "experiment_name": "Run4_U4"
       }
     ]
   },
-  "created": "2025-11-14 15:33:14",
+  "created": "2025-12-18 08:36:20",
   "description": "Last used parameters",
   "version": "1.0.0",
   "parameter_type": "DDAIgcSageParameters"

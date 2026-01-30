@@ -8,6 +8,9 @@ tests/
 # Common build outputs
 *.class
 
+# Eclipse/IDE project settings (can cause git index issues)
+.settings/
+
 # Python caches in resources
 **/__pycache__/
 *.pyc

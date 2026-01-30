@@ -112,8 +112,17 @@ public class SageResultReader extends AbstractMetaPeptideReader {
 							}
 						}
 					}
+
+					boolean isDecoy = false;
+					for (String pro : proteins) {
+						if (pro.startsWith(SHUF)) {
+							isDecoy = true;
+							break;
+						}
+					}
+
 					SagePeptide peptide = new SagePeptide(sequence, modseq, proteins, intensity, idenType,
-							Double.parseDouble(cs[qvalueId]), Double.parseDouble(cs[scoreId]));
+							Double.parseDouble(cs[qvalueId]), Double.parseDouble(cs[scoreId]), isDecoy);
 					HashSet<Integer> chargeSet = new HashSet<Integer>();
 
 					for (int i = 0; i < psmList.size(); i++) {

@@ -14,6 +14,7 @@ import uk.ac.quadram.metapilot.core.MGYG.db.ProDbConfig;
 import uk.ac.quadram.metapilot.core.taxonomy.TaxonomyRanks;
 import uk.ac.quadram.metapilot.core.tools.ResourceLoader;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
+import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.MagFuncSearcher;
 import uk.ac.quadram.metapilot.task.mag.MetaProteinAnnoMag;
 
@@ -22,9 +23,9 @@ public class MagLocalFuncSearcher extends MagFuncSearcher {
 	private File eggnogFile;
 	private File genomeTaxaFile;
 
-	public MagLocalFuncSearcher(String dbpath, String defDbPath, String genomeTaxa)
+	public MagLocalFuncSearcher(String dbpath, String defDbPath, String genomeTaxa, MagDbItem usedMagDbItem)
 			throws SQLException, NumberFormatException, IOException {
-		super(dbpath, defDbPath);
+		super(dbpath, defDbPath, usedMagDbItem);
 		// TODO Auto-generated constructor stub
 		this.eggnogFile = new File(dbpath);
 		this.genomeTaxaFile = new File(genomeTaxa);

@@ -17,28 +17,37 @@ import uk.ac.quadram.metapilot.task.common.gui.MetadataConfigurationPanel;
 import uk.ac.quadram.metapilot.task.common.gui.IsobaricLabelingPanel;
 import uk.ac.quadram.metapilot.task.common.gui.MagDatabaseSettingsPanel;
 import uk.ac.quadram.metapilot.task.common.gui.PFindModificationPanel;
+import uk.ac.quadram.metapilot.core.MGYG.HapExtractor;
+import uk.ac.quadram.metapilot.dbSearch.deepDetect.DeepDetectParameter;
+import uk.ac.quadram.metapilot.dbSearch.deepDetect.DeepDetectTask;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.resources.MetaResourceIO;
+import uk.ac.quadram.metapilot.task.mag.MarkerGenomeSelector;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX.ExperimentRow;
-import uk.ac.quadram.metapilot.MetaPilotApp;
 import javafx.application.Platform;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.PrintWriter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.io.File;
+import java.io.FileReader;
 import java.io.FileWriter;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.HashMap;
+
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagPfindParameters;
@@ -66,6 +75,9 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
     // Additional parameters
     private ComboBox<Integer> threadsComboBox;
     private ComboBox<String> ms2ScanModeComboBox;
+    private ComboBox<String> genomeSelectorComboBox;
+    private ProgressBar genomeSelectorProgressBar;
+    private Label genomeSelectorStatusLabel;
     private CheckBox generateSampleSpecificDBCheckBox;
     private CheckBox spectraClusteringCheckBox;
 
@@ -75,15 +87,16 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
     // Data
     private ObservableList<String> enzymes = FXCollections.observableArrayList();
     
-
+    private MetaResourceParameters resourceParams;
     
-    public MetaPilotDdaMagPfindPanel(MagDbItem[] magDbItems) {
+    public MetaPilotDdaMagPfindPanel(MagDbItem[] magDbItems, MetaResourceParameters resourceParams) {
         // Call parent constructor first
         super();
         
         // Initialize parameter IO instance
-        parameterIO = new DDAMagPfindParameterIO();
-        
+		parameterIO = new DDAMagPfindParameterIO();
+		this.resourceParams = resourceParams;
+		
         System.out.println("DEBUG: MetaPilotDdaMagPfindPanel() constructor started");
         try {
             loadEnzymesFromIni();
@@ -437,62 +450,332 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
         return section;
     }
     
-    private VBox createAdditionalParametersSection() {
-        VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #f0f8ff; -fx-background-radius: 5;");
-        
-        Label titleLabel = createSectionTitle("Additional Parameters");
-        
-        GridPane paramGrid = new GridPane();
-        paramGrid.setHgap(15);
-        paramGrid.setVgap(8);
-        
-        ColumnConstraints col1 = new ColumnConstraints();
-        col1.setMinWidth(150);
-        col1.setHgrow(Priority.ALWAYS);
-        ColumnConstraints col2 = new ColumnConstraints();
-        col2.setMinWidth(150);
-        col2.setHgrow(Priority.ALWAYS);
-        paramGrid.getColumnConstraints().addAll(col1, col2);
-        
-        Label threadsLabel = new Label("Threads:");
-        threadsLabel.setStyle("-fx-font-weight: bold;");
-        threadsComboBox = new ComboBox<>();
-        threadsComboBox.setMinWidth(100);
-        threadsComboBox.setPrefWidth(100);
-        threadsComboBox.setMaxWidth(Double.MAX_VALUE);
-        
-        // Populate with thread count options (1 to available processors)
-        ObservableList<Integer> threadOptions = FXCollections.observableArrayList();
-        for (int i = 1; i <= Runtime.getRuntime().availableProcessors(); i++) {
-            threadOptions.add(i);
-        }
-        threadsComboBox.setItems(threadOptions);
-        threadsComboBox.setValue(4); // Default value
-        threadsComboBox.valueProperty().addListener((obs, oldVal, newVal) -> updateParameterView());
-        
-        VBox threadsBox = new VBox(5);
-        threadsBox.getChildren().addAll(threadsLabel, threadsComboBox);
-        
-        Label ms2Label = new Label("MS2 Scan Mode:");
-        ms2Label.setStyle("-fx-font-weight: bold;");
-        ms2ScanModeComboBox = new ComboBox<>(FXCollections.observableArrayList("HCD-FTMS", "HCD-ITMS", "CID-FTMS", "CID-ITMS"));
-        ms2ScanModeComboBox.setValue("HCD-FTMS");
-        ms2ScanModeComboBox.setMinWidth(100);
-        ms2ScanModeComboBox.setPrefWidth(120);
-        ms2ScanModeComboBox.setMaxWidth(Double.MAX_VALUE);
-        ms2ScanModeComboBox.setOnAction(e -> updateParameterView());
-        
-        VBox ms2Box = new VBox(5);
-        ms2Box.getChildren().addAll(ms2Label, ms2ScanModeComboBox);
-        
-        paramGrid.add(threadsBox, 0, 0);
-        paramGrid.add(ms2Box, 1, 0);
+	private VBox createAdditionalParametersSection() {
+		VBox section = new VBox(10);
+		section.setPadding(new Insets(10));
+		section.setStyle("-fx-background-color: #f0f8ff; -fx-background-radius: 5;");
 
-        section.getChildren().addAll(titleLabel, paramGrid);
-        return section;
-    }
+		Label titleLabel = createSectionTitle("Additional Parameters");
+
+		GridPane paramGrid = new GridPane();
+		paramGrid.setHgap(15);
+		paramGrid.setVgap(8);
+
+		ColumnConstraints col1 = new ColumnConstraints();
+		col1.setMinWidth(150);
+		col1.setHgrow(Priority.ALWAYS);
+		ColumnConstraints col2 = new ColumnConstraints();
+		col2.setMinWidth(150);
+		col2.setHgrow(Priority.ALWAYS);
+		paramGrid.getColumnConstraints().addAll(col1, col2);
+
+		Label threadsLabel = new Label("Threads:");
+		threadsLabel.setStyle("-fx-font-weight: bold;");
+		threadsComboBox = new ComboBox<>();
+		threadsComboBox.setMinWidth(100);
+		threadsComboBox.setPrefWidth(100);
+		threadsComboBox.setMaxWidth(Double.MAX_VALUE);
+
+		// Populate with thread count options (1 to available processors)
+		ObservableList<Integer> threadOptions = FXCollections.observableArrayList();
+		for (int i = 1; i <= Runtime.getRuntime().availableProcessors(); i++) {
+			threadOptions.add(i);
+		}
+		threadsComboBox.setItems(threadOptions);
+		threadsComboBox.setValue(4); // Default value
+		threadsComboBox.valueProperty().addListener((obs, oldVal, newVal) -> updateParameterView());
+
+		VBox threadsBox = new VBox(5);
+		threadsBox.getChildren().addAll(threadsLabel, threadsComboBox);
+
+		Label ms2Label = new Label("MS2 Scan Mode:");
+		ms2Label.setStyle("-fx-font-weight: bold;");
+		ms2ScanModeComboBox = new ComboBox<>(
+				FXCollections.observableArrayList("HCD-FTMS", "HCD-ITMS", "CID-FTMS", "CID-ITMS"));
+		ms2ScanModeComboBox.setValue("HCD-FTMS");
+		ms2ScanModeComboBox.setMinWidth(100);
+		ms2ScanModeComboBox.setPrefWidth(120);
+		ms2ScanModeComboBox.setMaxWidth(Double.MAX_VALUE);
+		ms2ScanModeComboBox.setOnAction(e -> updateParameterView());
+
+		VBox ms2Box = new VBox(5);
+		ms2Box.getChildren().addAll(ms2Label, ms2ScanModeComboBox);
+
+		paramGrid.add(threadsBox, 0, 0);
+		paramGrid.add(ms2Box, 1, 0);
+
+		Label genomeSelectorLabel = new Label("Genome Selection:");
+		genomeSelectorLabel.setStyle("-fx-font-weight: bold;");
+		genomeSelectorComboBox = new ComboBox<>(
+				FXCollections.observableArrayList(MagDbItem.MARKER2, MagDbItem.MARKER4));
+		genomeSelectorComboBox.setMinWidth(140);
+		genomeSelectorComboBox.setPrefWidth(160);
+		genomeSelectorComboBox.setMaxWidth(Double.MAX_VALUE);
+		genomeSelectorComboBox.setValue(MagDbItem.MARKER2);
+		genomeSelectorComboBox.setPromptText("Genome selection workflow");
+		genomeSelectorComboBox.setOnAction(e -> {
+			updateParameterView();
+			if (!MagDbItem.MARKER4.equals(genomeSelectorComboBox.getValue())) {
+				genomeSelectorProgressBar.setVisible(false);
+				genomeSelectorProgressBar.setProgress(0);
+				if (genomeSelectorStatusLabel != null)
+					genomeSelectorStatusLabel.setText("");
+				return;
+			}
+			// Quick check: do required files already exist?
+			if (marker4RequiredFilesExist()) {
+				if (genomeSelectorStatusLabel != null)
+					genomeSelectorStatusLabel.setText("Available");
+				genomeSelectorProgressBar.setVisible(false);
+				genomeSelectorProgressBar.setProgress(0);
+				return;
+			}
+			// Files missing: show status and ask user if they want to generate now
+			if (genomeSelectorStatusLabel != null)
+				genomeSelectorStatusLabel.setText("Not available");
+			Alert confirmAlert = new Alert(AlertType.CONFIRMATION);
+			confirmAlert.setTitle("Marker4 files missing");
+			confirmAlert.setHeaderText("Generate required files for 4-markers?");
+			confirmAlert
+					.setContentText("Marker4 (Marker4_highpep) requires Marker4_highpep.fasta and genomes-taxa.tsv. "
+							+ "These files are missing for the selected MAG database.\n\n"
+							+ "Generate them now? This may take some time (DeepDetect prediction).");
+			confirmAlert.getButtonTypes().setAll(ButtonType.YES, ButtonType.NO);
+			Optional<ButtonType> result = confirmAlert.showAndWait();
+			if (result.isEmpty() || result.get() != ButtonType.YES) {
+				genomeSelectorComboBox.setValue(MagDbItem.MARKER2);
+				updateParameterView();
+				if (genomeSelectorStatusLabel != null)
+					genomeSelectorStatusLabel.setText("");
+				return;
+			}
+			// User chose Yes: start generation, show progress bar and status
+			if (genomeSelectorStatusLabel != null)
+				genomeSelectorStatusLabel.setText("Generating...");
+			genomeSelectorProgressBar.setVisible(true);
+			genomeSelectorProgressBar.setProgress(ProgressBar.INDETERMINATE_PROGRESS);
+			generateMarker4FilesIfNeeded(this::onMarker4GenerationComplete);
+		});
+		VBox genomeSelectorBox = new VBox(5);
+		genomeSelectorBox.getChildren().addAll(genomeSelectorLabel, genomeSelectorComboBox);
+
+		genomeSelectorProgressBar = new ProgressBar(0);
+		genomeSelectorProgressBar.setVisible(false);
+		genomeSelectorProgressBar.setPrefWidth(200);
+		genomeSelectorProgressBar.setMaxWidth(Double.MAX_VALUE);
+		genomeSelectorStatusLabel = new Label();
+		genomeSelectorStatusLabel.setMinHeight(Label.USE_PREF_SIZE);
+		genomeSelectorStatusLabel.setStyle("-fx-text-fill: gray;");
+		Label progressLabel = new Label("Availability:");
+		progressLabel.setStyle("-fx-font-weight: bold;");
+		VBox progressBox = new VBox(5);
+		progressBox.getChildren().addAll(progressLabel, genomeSelectorProgressBar, genomeSelectorStatusLabel);
+
+		paramGrid.add(genomeSelectorBox, 0, 1);
+		paramGrid.add(progressBox, 1, 1);
+
+		section.getChildren().addAll(titleLabel, paramGrid);
+		return section;
+	}
+
+    /**
+     * Quick check (on current thread): do 4markers_highpep.fasta and genomes-taxa.tsv exist for the selected MAG DB?
+     */
+	private boolean marker4RequiredFilesExist() {
+		if (magDatabasePanel == null)
+			return false;
+		MagDbItem selectedDb = magDatabasePanel.getSelectedMagDatabase();
+		if (selectedDb == null)
+			return false;
+		File currentFile = selectedDb.getCurrentFile();
+		if (currentFile == null)
+			return false;
+		File markersHighpepFile = new File(currentFile, "Marker4_highpep.fasta");
+		File genomeTaxaFile = new File(currentFile, "genomes-taxa.tsv");
+		return markersHighpepFile.exists() && genomeTaxaFile.exists();
+	}
+
+    /**
+     * Generates marker4 required files in a background thread (4markers_highpep.fasta and genomes-taxa.tsv).
+     * Call this only after user confirmed "Generate now?". Calls onComplete with true/false when done.
+     */
+	protected void generateMarker4FilesIfNeeded(Consumer<Boolean> onComplete) {
+		new Thread(() -> {
+			boolean available = false;
+			try {
+				if (magDatabasePanel == null) {
+					Platform.runLater(() -> onComplete.accept(false));
+					return;
+				}
+				MagDbItem selectedDb = magDatabasePanel.getSelectedMagDatabase();
+				if (selectedDb == null) {
+					Platform.runLater(() -> onComplete.accept(false));
+					return;
+				}
+				File currentFile = selectedDb.getCurrentFile();
+				if (currentFile == null) {
+					Platform.runLater(() -> onComplete.accept(false));
+					return;
+				}
+				File markersHighpepFile = new File(currentFile, "Marker4_highpep.fasta");
+				if (!markersHighpepFile.exists()) {
+					ensure4markersHighpepFasta(selectedDb, markersHighpepFile);
+				}
+				File genomeTaxaFile = new File(currentFile, "genomes-taxa.tsv");
+				if (!genomeTaxaFile.exists()) {
+					ensureGenomesTaxaFile(selectedDb, genomeTaxaFile);
+				}
+				available = markersHighpepFile.exists() && genomeTaxaFile.exists();
+			} catch (Exception e) {
+				LOGGER.warn("Marker4 file generation failed", e);
+				available = false;
+			}
+			boolean result = available;
+			Platform.runLater(() -> onComplete.accept(result));
+		}).start();
+	}
+
+	/** Default peptide detectability threshold for 4markers_highpep (peptides above this are kept). */
+	private static final double DEFAULT_DETECTABILITY_THRESHOLD = 0.8;
+
+	/**
+	 * Generates 4markers_highpep.fasta when missing: (1) extract 4-markers proteins from original DB
+	 * into 4markers.fasta, (2) run DeepDetect to predict peptide detectability → 4markers.predicted.tsv,
+	 * (3) select high-detectability peptides (threshold {@value #DEFAULT_DETECTABILITY_THRESHOLD}) and
+	 * write 4markers_highpep.fasta for search.
+	 */
+	private void ensure4markersHighpepFasta(MagDbItem selectedDb, File markersHighpepFile) {
+		File currentDir = markersHighpepFile.getParentFile();
+		File originalDbFolder = selectedDb.getOriginalDbFolder();
+		if (originalDbFolder == null || !originalDbFolder.exists()) {
+			LOGGER.debug("Cannot generate 4markers_highpep.fasta: original DB folder not available");
+			return;
+		}
+		try {
+			// Step 1: Extract 4-markers protein FASTA from original DB (not used for search
+			// directly)
+			File fourMarkersFasta = new File(currentDir, "Marker4.fasta");
+			if (!fourMarkersFasta.exists()) {
+				HapExtractor extractor = new HapExtractor();
+				extractor.extractFourCategories(originalDbFolder, fourMarkersFasta);
+			}
+			if (!fourMarkersFasta.exists()) {
+				LOGGER.warn("4markers.fasta was not created");
+				return;
+			}
+
+			// Step 2: Predict peptide detectability with DeepDetect
+			File predictedTsv = new File(currentDir, "Marker4.predicted.tsv");
+			if (!predictedTsv.exists()) {
+				MetaResourceParameters mrp = resourceParams != null ? resourceParams
+						: new MetaResourceIO().loadParameters();
+				if (mrp == null) {
+					LOGGER.warn("Cannot run DeepDetect: resource parameters not available");
+					return;
+				}
+				String exePath = mrp.getToolPath(ToolType.DEEPDETECT);
+				File deepDetectExe = exePath != null && !exePath.isEmpty() ? new File(exePath) : null;
+				if (deepDetectExe == null || !deepDetectExe.exists()) {
+					LOGGER.warn("DeepDetect executable not found; cannot generate 4markers.predicted.tsv");
+					return;
+				}
+				DeepDetectParameter par = new DeepDetectParameter();
+				par.setInput(fourMarkersFasta);
+				par.setOutput(predictedTsv);
+				int timeoutHours = 4;
+				boolean ok = DeepDetectTask.testDeepDetect(deepDetectExe, par, timeoutHours);
+				if (!ok || !predictedTsv.exists()) {
+					LOGGER.warn("DeepDetect did not produce 4markers.predicted.tsv");
+					return;
+				}
+			}
+
+			// Step 3: Select high-detectability peptides and write 4markers_highpep.fasta
+			MarkerGenomeSelector.exportPeptideFasta(predictedTsv.getAbsolutePath(),
+					markersHighpepFile.getAbsolutePath(), DEFAULT_DETECTABILITY_THRESHOLD);
+
+			if (markersHighpepFile.exists()) {
+				LOGGER.info("Generated 4markers_highpep.fasta for selected MAG database: {}",
+						markersHighpepFile.getAbsolutePath());
+			} else {
+				LOGGER.warn("4markers_highpep.fasta was not written (no peptides above threshold?)");
+			}
+		} catch (IOException e) {
+			LOGGER.warn("Failed to generate 4markers_highpep.fasta", e);
+		}
+	}
+
+	/**
+	 * Derives genomes-taxa.tsv from the MAG DB original taxa file if present (Species_rep, Lineage columns).
+	 */
+	private void ensureGenomesTaxaFile(MagDbItem selectedDb, File genomeTaxaFile) {
+		File genomeAllFile = selectedDb.getOriginalTaxaFile();
+		if (genomeAllFile == null || !genomeAllFile.exists()) {
+			return;
+		}
+		try (BufferedReader reader = new BufferedReader(new FileReader(genomeAllFile))) {
+			String headerLine = reader.readLine();
+			if (headerLine == null) {
+				return;
+			}
+			String[] title = headerLine.split("\t");
+			int repId = -1;
+			int lineageId = -1;
+			for (int i = 0; i < title.length; i++) {
+				if ("Species_rep".equals(title[i])) {
+					repId = i;
+				} else if ("Lineage".equals(title[i])) {
+					lineageId = i;
+				}
+			}
+			if (repId < 0 || lineageId < 0) {
+				return;
+			}
+			HashMap<String, String> map = new HashMap<>();
+			String line;
+			while ((line = reader.readLine()) != null) {
+				String[] cs = line.split("\t");
+				if (cs.length > Math.max(repId, lineageId) && !map.containsKey(cs[repId])) {
+					map.put(cs[repId], cs[lineageId]);
+				}
+			}
+			try (PrintWriter writer = new PrintWriter(genomeTaxaFile)) {
+				writer.println("Genome\tLineage");
+				for (String key : map.keySet()) {
+					writer.println(key + "\t" + map.get(key));
+				}
+			}
+		} catch (IOException e) {
+			LOGGER.debug("Could not derive genomes-taxa.tsv from original taxa file", e);
+		}
+	}
+
+    /**
+     * Called when marker4 file generation completes. Hides the progress bar; updates status label;
+     * shows success or failure dialog; if failed, reverts the ComboBox to marker2.
+     */
+	protected void onMarker4GenerationComplete(Boolean available) {
+		if (genomeSelectorProgressBar != null) {
+			genomeSelectorProgressBar.setVisible(false);
+			genomeSelectorProgressBar.setProgress(0);
+		}
+		if (Boolean.TRUE.equals(available)) {
+			if (genomeSelectorStatusLabel != null)
+				genomeSelectorStatusLabel.setText("Available");
+			new Alert(AlertType.INFORMATION,
+					"Generation completed successfully.\n\n4-markers (4markers_highpep) is now available for the selected MAG database.")
+					.showAndWait();
+		} else {
+			if (genomeSelectorStatusLabel != null)
+				genomeSelectorStatusLabel.setText("Failed");
+			new Alert(AlertType.WARNING, "Generation failed or was cancelled.\n\nReverting to 2-markers (rib_elon).")
+					.showAndWait();
+			genomeSelectorComboBox.setValue(MagDbItem.MARKER2);
+			updateParameterView();
+			if (genomeSelectorStatusLabel != null)
+				genomeSelectorStatusLabel.setText("");
+		}
+	}
     
     
     @Override
@@ -762,6 +1045,9 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
         if (ms2ScanModeComboBox != null) {
             sb.append("  MS2 Scan Mode: ").append(ms2ScanModeComboBox.getValue()).append("\n");
         }
+        if (genomeSelectorComboBox != null) {
+            sb.append("  Genome Selection: ").append(genomeSelectorComboBox.getValue()).append("\n");
+        }
         if (generateSampleSpecificDBCheckBox != null) {
             sb.append("  Generate Sample-specific DB: ").append(generateSampleSpecificDBCheckBox.isSelected()).append("\n");
         }
@@ -799,229 +1085,237 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
      * Collect all parameters from the UI into a parameters object
      */
     @Override
-    protected DDAMagPfindParameters collectParametersFromUI() {
-        try {
-            consolePanel.appendConsoleText("Collecting parameters from UI...\n");
-            LOGGER.info("Starting parameter collection from UI for MAG pFind workflow");
-            
-            // Validate inputs first
-            consolePanel.appendConsoleText("Validating UI inputs...\n");
-            LOGGER.info("Validating UI inputs...");
-            if (!validateInputs()) {
-                consolePanel.appendConsoleText("ERROR: Input validation failed\n");
-                LOGGER.error("Input validation failed");
-                return null;
-            }
-            consolePanel.appendConsoleText("✓ Input validation passed\n");
-            LOGGER.info("Input validation passed");
-            
-            // Collect experiment data from ioPanel
-            consolePanel.appendConsoleText("Collecting experiment data from IO panel...\n");
-            LOGGER.info("Collecting experiment data from IO panel...");
-            ObservableList<ExperimentRow> fileRows = ioPanel.getExperimentData();
-            consolePanel.appendConsoleText("Found " + fileRows.size() + " experiment rows\n");
-            LOGGER.info("Found {} experiment rows", fileRows.size());
-            
-            if (fileRows.isEmpty()) {
-                LOGGER.error("No experiment data found in IO panel");
-                return null;
-            }
-            
-            String[] rawFiles = new String[fileRows.size()];
-            String[] expNames = new String[fileRows.size()];
-            int[] fractions = new int[fileRows.size()];
-            int[] replicates = new int[fileRows.size()];
-            
-            for (int i = 0; i < fileRows.size(); i++) {
-                ExperimentRow row = fileRows.get(i);
-                rawFiles[i] = row.getFilePath();
-                expNames[i] = row.getExperimentName();
-                // Get fraction from the IO panel, default to 1 if invalid
-                try {
-                    fractions[i] = Integer.parseInt(row.getFraction());
-                    if (fractions[i] <= 0) {
-                        fractions[i] = 1; // Ensure positive fraction
-                    }
-                } catch (NumberFormatException e) {
-                    fractions[i] = 1; // Default to 1 if not a valid integer
-                }
-                replicates[i] = 1; // Default replicate
-                LOGGER.debug("Experiment {}: file={}, name={}, fraction={}", i, rawFiles[i], expNames[i], fractions[i]);
-            }
-            
-            // Create MetaData object
-            LOGGER.info("Creating MetaData object...");
-            MetaData metaData = new MetaData(rawFiles, expNames, fractions, replicates);
-            LOGGER.info("MetaData created successfully with {} raw files", rawFiles.length);
-            
-            // Collect basic parameters
-            LOGGER.info("Collecting basic parameters...");
-            String result = ioPanel.getOutputDirectory();
-            LOGGER.info("Output directory: {}", result);
-            
-            MagDbItem selectedMagDb = magDatabasePanel.getSelectedMagDatabase();
-            String microDb = selectedMagDb != null ? selectedMagDb.getCatalogueID() : "";
-            LOGGER.info("Selected MAG database: {}", microDb);
-            
-            boolean appendHostDb = magDatabasePanel.isAppendHostDb();
-            LOGGER.info("Append host DB: {}", appendHostDb);
-            
-            String hostDB = appendHostDb ? magDatabasePanel.getHostDatabase() : "";
-            LOGGER.info("Host database: {}", hostDB);
-            
-            String enzyme = enzymeComboBox.getValue() != null ? enzymeComboBox.getValue() : "Trypsin";
-            LOGGER.info("Enzyme: {}", enzyme);
-            
-            int missCleavages = missedCleavagesSpinner.getValue() != null ? missedCleavagesSpinner.getValue() : 2;
-            LOGGER.info("Missed cleavages: {}", missCleavages);
-            
-            String digestMode = digestionModeComboBox.getValue() != null ? digestionModeComboBox.getValue() : "Specific";
-            LOGGER.info("Digestion mode: {}", digestMode);
-            
-            int threadCount = threadsComboBox.getValue() != null ? threadsComboBox.getValue() : 4;
-            LOGGER.info("Thread count: {}", threadCount);
-            
-            String ms2ScanMode = ms2ScanModeComboBox.getValue() != null ? ms2ScanModeComboBox.getValue() : "HCD-FTMS";
-            LOGGER.info("MS2 scan mode: {}", ms2ScanMode);
-            
-            boolean reduceDb = generateSampleSpecificDBCheckBox != null ? generateSampleSpecificDBCheckBox.isSelected() : false;
-            LOGGER.info("Generate sample-specific DB: {}", reduceDb);
-            
-            boolean spectraCluster = spectraClusteringCheckBox != null ? spectraClusteringCheckBox.isSelected() : false;
-            LOGGER.info("Spectra clustering: {}", spectraCluster);
-            
-            // Collect isobaric labeling information
-            LOGGER.info("Collecting isobaric labeling information...");
-            String[] labelTitles = new String[0];
-            if (quantModeGroup != null && quantModeGroup.getSelectedToggle() != null) {
-                RadioButton selected = (RadioButton) quantModeGroup.getSelectedToggle();
-                LOGGER.info("Quantitative mode: {}", selected.getText());
-                
-                if (selected.getText().contains("Isobaric") && isobaricPanel != null && isobaricPanel.hasLabels()) {
-                    ObservableList<IsobaricLabelingPanel.IsobaricLabelRow> isoLabels = isobaricPanel.getIsobaricTableData();
-                    labelTitles = new String[isoLabels.size()];
-                    for (int i = 0; i < isoLabels.size(); i++) {
-                        labelTitles[i] = isoLabels.get(i).getLabelName();
-                    }
-                    LOGGER.info("Found {} isobaric labels", labelTitles.length);
-                }
-            }
-            
-            // Set label titles in metadata
-            metaData.setLabelTitle(labelTitles);
-            
-            // Collect metadata information
-            LOGGER.info("Collecting metadata information...");
-            ObservableList<MetaPilotDdaIgcMaxQuantPanel.MetadataRow> metadataRows = metadataPanel != null ? metadataPanel.getMetadataTableData() : null;
-            int metaTypeCount = metadataPanel != null ? metadataPanel.getMetadataColumnCount() : 0;
-            LOGGER.info("Metadata rows: {}, columns: {}", metadataRows != null ? metadataRows.size() : 0, metaTypeCount);
-            
-            String[][] metaInfo = new String[metadataRows != null ? metadataRows.size() : 0][Math.max(3, metaTypeCount)];
-            if (metadataRows != null) {
-                for (int i = 0; i < metadataRows.size(); i++) {
-                    MetaPilotDdaIgcMaxQuantPanel.MetadataRow row = metadataRows.get(i);
-                    metaInfo[i][0] = row.getAge() != null ? row.getAge() : "";
-                    metaInfo[i][1] = row.getGender() != null ? row.getGender() : "";
-                    metaInfo[i][2] = row.getCondition() != null ? row.getCondition() : "";
-                    // Add more metadata fields as needed
-                }
-            }
-            metaData.setMetaInfo(metaInfo);
-            
-            // Create DDAMagPfindParameters with required constructor parameters
-            LOGGER.info("Creating DDAMagPfindParameters object...");
-            DDAMagPfindParameters analysisParams = new DDAMagPfindParameters(
-                uk.ac.quadram.metapilot.workflow.WorkflowType.DDA_MAG_PFIND.getAnalysisType(),
-                metaData,
-                result,
-                microDb,
-                appendHostDb,
-                hostDB,
-                ms2ScanMode,
-                threadCount
-            );
-            LOGGER.info("DDAMagPfindParameters object created successfully");
-            
-            // Set additional parameters
-            LOGGER.info("Setting additional parameters...");
-            analysisParams.setEnzyme(enzyme);
-            analysisParams.setMissCleavages(missCleavages);
-            analysisParams.setDigestMode(digestMode);
-            analysisParams.setReduceDb(reduceDb);
-            analysisParams.setSpectraCluster(spectraCluster);
-            
-            // Get MAG database version
-            String magDbVersion = "";
-            if (selectedMagDb != null && selectedMagDb.getVersionList() != null && !selectedMagDb.getVersionList().isEmpty()) {
-                magDbVersion = selectedMagDb.getVersionList().get(0).getCatalogueVersion();
-            }
-            LOGGER.info("MAG database version: {}", magDbVersion);
-            
-            // Set MAG-specific fields
-            analysisParams.setMagDbCatalogueId(microDb);
-            analysisParams.setMagDbVersion(magDbVersion);
-            
-            // Set the used version on the MagDbItem
-            MagVersion selectedVersion = magDatabasePanel.getSelectedMagVersion();
-            if (selectedVersion != null && selectedMagDb != null) {
-                selectedMagDb.setUsedVersion(selectedVersion);
-                LOGGER.info("Set used version on MagDbItem: {}", selectedVersion.getCatalogueVersion());
-            }
-            
-            analysisParams.setMagDbItem(selectedMagDb); // Store the complete MagDbItem
-            
-            // Get quantitative mode
-            String quanMode = "Label-Free";
-            if (quantModeGroup != null && quantModeGroup.getSelectedToggle() != null) {
-                RadioButton selected = (RadioButton) quantModeGroup.getSelectedToggle();
-                quanMode = selected.getText();
-            }
-            LOGGER.info("Quantitative mode: {}", quanMode);
-            
-            // Set modifications
-            analysisParams.setFixedModifications(new ArrayList<>(pfindModificationsPanel.getFixedModifications()));
-            analysisParams.setVariableModifications(new ArrayList<>(pfindModificationsPanel.getVariableModifications()));
-            LOGGER.info("Modifications set - Fixed: {}, Variable: {}", 
-                pfindModificationsPanel.getFixedModifications().size(), pfindModificationsPanel.getVariableModifications().size());
-            
-            // Set quantitative mode
-            analysisParams.setQuantitativeMode(quanMode);
-            
-            // Set isobaric labeling
-            analysisParams.setIsobaricType(quanMode.contains("Isobaric") ? quanMode : "");
-            
-            // Set isotopic labeling
-            analysisParams.setLightLabels(new ArrayList<>()); // TODO: Get from isotopic labeling panel
-            analysisParams.setMediumLabels(new ArrayList<>()); // TODO: Get from isotopic labeling panel
-            analysisParams.setHeavyLabels(new ArrayList<>()); // TODO: Get from isotopic labeling panel
-            
-            // Set experiment data - convert JavaFX rows to String arrays
-            List<String[]> experimentArrays = new ArrayList<>();
-            for (ExperimentRow row : fileRows) {
-                experimentArrays.add(row.toArray());
-            }
-            analysisParams.setExperimentData(experimentArrays);
-            
-            // Set metadata table data - convert JavaFX rows to String arrays
-            if (metadataRows != null) {
-                List<String[]> metadataArrays = new ArrayList<>();
-                for (var row : metadataRows) {
-                    metadataArrays.add(row.toArray());
-                }
-                analysisParams.setMetadataTableData(metadataArrays);
-            }
-            
-            consolePanel.appendConsoleText("✓ Successfully collected parameters from UI\n");
-            LOGGER.info("Successfully collected parameters from UI for MAG pFind workflow");
-            return analysisParams;
-            
-        } catch (Exception e) {
-            String errorMsg = "ERROR: Failed to collect parameters from UI: " + e.getMessage();
-            consolePanel.appendConsoleText(errorMsg + "\n");
-            LOGGER.error("Failed to collect parameters from UI: " + e.getMessage(), e);
-            return null;
-        }
-    }
+	protected DDAMagPfindParameters collectParametersFromUI() {
+		try {
+			consolePanel.appendConsoleText("Collecting parameters from UI...\n");
+			LOGGER.info("Starting parameter collection from UI for MAG pFind workflow");
+
+			// Validate inputs first
+			consolePanel.appendConsoleText("Validating UI inputs...\n");
+			LOGGER.info("Validating UI inputs...");
+			if (!validateInputs()) {
+				consolePanel.appendConsoleText("ERROR: Input validation failed\n");
+				LOGGER.error("Input validation failed");
+				return null;
+			}
+			consolePanel.appendConsoleText("✓ Input validation passed\n");
+			LOGGER.info("Input validation passed");
+
+			// Collect experiment data from ioPanel
+			consolePanel.appendConsoleText("Collecting experiment data from IO panel...\n");
+			LOGGER.info("Collecting experiment data from IO panel...");
+			ObservableList<ExperimentRow> fileRows = ioPanel.getExperimentData();
+			consolePanel.appendConsoleText("Found " + fileRows.size() + " experiment rows\n");
+			LOGGER.info("Found {} experiment rows", fileRows.size());
+
+			if (fileRows.isEmpty()) {
+				LOGGER.error("No experiment data found in IO panel");
+				return null;
+			}
+
+			String[] rawFiles = new String[fileRows.size()];
+			String[] expNames = new String[fileRows.size()];
+			int[] fractions = new int[fileRows.size()];
+			int[] replicates = new int[fileRows.size()];
+
+			for (int i = 0; i < fileRows.size(); i++) {
+				ExperimentRow row = fileRows.get(i);
+				rawFiles[i] = row.getFilePath();
+				expNames[i] = row.getExperimentName();
+				// Get fraction from the IO panel, default to 1 if invalid
+				try {
+					fractions[i] = Integer.parseInt(row.getFraction());
+					if (fractions[i] <= 0) {
+						fractions[i] = 1; // Ensure positive fraction
+					}
+				} catch (NumberFormatException e) {
+					fractions[i] = 1; // Default to 1 if not a valid integer
+				}
+				replicates[i] = 1; // Default replicate
+				LOGGER.debug("Experiment {}: file={}, name={}, fraction={}", i, rawFiles[i], expNames[i], fractions[i]);
+			}
+
+			// Create MetaData object
+			LOGGER.info("Creating MetaData object...");
+			MetaData metaData = new MetaData(rawFiles, expNames, fractions, replicates);
+			LOGGER.info("MetaData created successfully with {} raw files", rawFiles.length);
+
+			// Collect basic parameters
+			LOGGER.info("Collecting basic parameters...");
+			String result = ioPanel.getOutputDirectory();
+			LOGGER.info("Output directory: {}", result);
+
+			MagDbItem selectedMagDb = magDatabasePanel.getSelectedMagDatabase();
+			String microDb = selectedMagDb != null ? selectedMagDb.getCatalogueID() : "";
+			LOGGER.info("Selected MAG database: {}", microDb);
+
+			boolean appendHostDb = magDatabasePanel.isAppendHostDb();
+			LOGGER.info("Append host DB: {}", appendHostDb);
+
+			String hostDB = appendHostDb ? magDatabasePanel.getHostDatabase() : "";
+			LOGGER.info("Host database: {}", hostDB);
+
+			String enzyme = enzymeComboBox.getValue() != null ? enzymeComboBox.getValue() : "Trypsin";
+			LOGGER.info("Enzyme: {}", enzyme);
+
+			int missCleavages = missedCleavagesSpinner.getValue() != null ? missedCleavagesSpinner.getValue() : 2;
+			LOGGER.info("Missed cleavages: {}", missCleavages);
+
+			String digestMode = digestionModeComboBox.getValue() != null ? digestionModeComboBox.getValue()
+					: "Specific";
+			LOGGER.info("Digestion mode: {}", digestMode);
+
+			int threadCount = threadsComboBox.getValue() != null ? threadsComboBox.getValue() : 4;
+			LOGGER.info("Thread count: {}", threadCount);
+
+			String ms2ScanMode = ms2ScanModeComboBox.getValue() != null ? ms2ScanModeComboBox.getValue() : "HCD-FTMS";
+			LOGGER.info("MS2 scan mode: {}", ms2ScanMode);
+
+			boolean reduceDb = generateSampleSpecificDBCheckBox != null ? generateSampleSpecificDBCheckBox.isSelected()
+					: false;
+			LOGGER.info("Generate sample-specific DB: {}", reduceDb);
+
+			boolean spectraCluster = spectraClusteringCheckBox != null ? spectraClusteringCheckBox.isSelected() : false;
+			LOGGER.info("Spectra clustering: {}", spectraCluster);
+
+			// Collect isobaric labeling information
+			LOGGER.info("Collecting isobaric labeling information...");
+			String[] labelTitles = new String[0];
+			if (quantModeGroup != null && quantModeGroup.getSelectedToggle() != null) {
+				RadioButton selected = (RadioButton) quantModeGroup.getSelectedToggle();
+				LOGGER.info("Quantitative mode: {}", selected.getText());
+
+				if (selected.getText().contains("Isobaric") && isobaricPanel != null && isobaricPanel.hasLabels()) {
+					ObservableList<IsobaricLabelingPanel.IsobaricLabelRow> isoLabels = isobaricPanel
+							.getIsobaricTableData();
+					labelTitles = new String[isoLabels.size()];
+					for (int i = 0; i < isoLabels.size(); i++) {
+						labelTitles[i] = isoLabels.get(i).getLabelName();
+					}
+					LOGGER.info("Found {} isobaric labels", labelTitles.length);
+				}
+			}
+
+			// Set label titles in metadata
+			metaData.setLabelTitle(labelTitles);
+
+			// Collect metadata information
+			LOGGER.info("Collecting metadata information...");
+			ObservableList<MetaPilotDdaIgcMaxQuantPanel.MetadataRow> metadataRows = metadataPanel != null
+					? metadataPanel.getMetadataTableData()
+					: null;
+			int metaTypeCount = metadataPanel != null ? metadataPanel.getMetadataColumnCount() : 0;
+			LOGGER.info("Metadata rows: {}, columns: {}", metadataRows != null ? metadataRows.size() : 0,
+					metaTypeCount);
+
+			String[][] metaInfo = new String[metadataRows != null ? metadataRows.size() : 0][Math.max(3,
+					metaTypeCount)];
+			if (metadataRows != null) {
+				for (int i = 0; i < metadataRows.size(); i++) {
+					MetaPilotDdaIgcMaxQuantPanel.MetadataRow row = metadataRows.get(i);
+					metaInfo[i][0] = row.getAge() != null ? row.getAge() : "";
+					metaInfo[i][1] = row.getGender() != null ? row.getGender() : "";
+					metaInfo[i][2] = row.getCondition() != null ? row.getCondition() : "";
+					// Add more metadata fields as needed
+				}
+			}
+			metaData.setMetaInfo(metaInfo);
+
+			// Create DDAMagPfindParameters with required constructor parameters
+			LOGGER.info("Creating DDAMagPfindParameters object...");
+			DDAMagPfindParameters analysisParams = new DDAMagPfindParameters(
+					uk.ac.quadram.metapilot.workflow.WorkflowType.DDA_MAG_PFIND.getAnalysisType(), metaData, result,
+					microDb, appendHostDb, hostDB, ms2ScanMode, threadCount);
+			LOGGER.info("DDAMagPfindParameters object created successfully");
+
+			// Set additional parameters
+			LOGGER.info("Setting additional parameters...");
+			analysisParams.setEnzyme(enzyme);
+			analysisParams.setMissCleavages(missCleavages);
+			analysisParams.setDigestMode(digestMode);
+			analysisParams.setReduceDb(reduceDb);
+			analysisParams.setSpectraCluster(spectraCluster);
+			String genomeSelectorMode = genomeSelectorComboBox != null && genomeSelectorComboBox.getValue() != null
+					? genomeSelectorComboBox.getValue()
+					: MagDbItem.MARKER2;
+			analysisParams.setGenomeSelectorMode(genomeSelectorMode);
+			LOGGER.info("Genome selection: {}", genomeSelectorMode);
+
+			// Get MAG database version
+			String magDbVersion = "";
+			if (selectedMagDb != null && selectedMagDb.getVersionList() != null
+					&& !selectedMagDb.getVersionList().isEmpty()) {
+				magDbVersion = selectedMagDb.getVersionList().get(0).getCatalogueVersion();
+			}
+			LOGGER.info("MAG database version: {}", magDbVersion);
+
+			// Set MAG-specific fields
+			analysisParams.setMagDbCatalogueId(microDb);
+			analysisParams.setMagDbVersion(magDbVersion);
+
+			// Set the used version on the MagDbItem
+			MagVersion selectedVersion = magDatabasePanel.getSelectedMagVersion();
+			if (selectedVersion != null && selectedMagDb != null) {
+				selectedMagDb.setUsedVersion(selectedVersion);
+				LOGGER.info("Set used version on MagDbItem: {}", selectedVersion.getCatalogueVersion());
+			}
+
+			analysisParams.setMagDbItem(selectedMagDb); // Store the complete MagDbItem
+
+			// Get quantitative mode
+			String quanMode = "Label-Free";
+			if (quantModeGroup != null && quantModeGroup.getSelectedToggle() != null) {
+				RadioButton selected = (RadioButton) quantModeGroup.getSelectedToggle();
+				quanMode = selected.getText();
+			}
+			LOGGER.info("Quantitative mode: {}", quanMode);
+
+			// Set modifications
+			analysisParams.setFixedModifications(new ArrayList<>(pfindModificationsPanel.getFixedModifications()));
+			analysisParams
+					.setVariableModifications(new ArrayList<>(pfindModificationsPanel.getVariableModifications()));
+			LOGGER.info("Modifications set - Fixed: {}, Variable: {}",
+					pfindModificationsPanel.getFixedModifications().size(),
+					pfindModificationsPanel.getVariableModifications().size());
+
+			// Set quantitative mode
+			analysisParams.setQuantitativeMode(quanMode);
+
+			// Set isobaric labeling
+			analysisParams.setIsobaricType(quanMode.contains("Isobaric") ? quanMode : "");
+
+			// Set isotopic labeling
+			analysisParams.setLightLabels(new ArrayList<>()); // TODO: Get from isotopic labeling panel
+			analysisParams.setMediumLabels(new ArrayList<>()); // TODO: Get from isotopic labeling panel
+			analysisParams.setHeavyLabels(new ArrayList<>()); // TODO: Get from isotopic labeling panel
+
+			// Set experiment data - convert JavaFX rows to String arrays
+			List<String[]> experimentArrays = new ArrayList<>();
+			for (ExperimentRow row : fileRows) {
+				experimentArrays.add(row.toArray());
+			}
+			analysisParams.setExperimentData(experimentArrays);
+
+			// Set metadata table data - convert JavaFX rows to String arrays
+			if (metadataRows != null) {
+				List<String[]> metadataArrays = new ArrayList<>();
+				for (var row : metadataRows) {
+					metadataArrays.add(row.toArray());
+				}
+				analysisParams.setMetadataTableData(metadataArrays);
+			}
+
+			consolePanel.appendConsoleText("✓ Successfully collected parameters from UI\n");
+			LOGGER.info("Successfully collected parameters from UI for MAG pFind workflow");
+			return analysisParams;
+
+		} catch (Exception e) {
+			String errorMsg = "ERROR: Failed to collect parameters from UI: " + e.getMessage();
+			consolePanel.appendConsoleText(errorMsg + "\n");
+			LOGGER.error("Failed to collect parameters from UI: " + e.getMessage(), e);
+			return null;
+		}
+	}
     
     /**
      * Convert digestion mode string to integer representation
@@ -1298,6 +1592,9 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
         }
         if (spectraClusteringCheckBox != null) {
             spectraClusteringCheckBox.setSelected(params.isSpectraCluster());
+        }
+        if (params.getGenomeSelectorMode() != null && genomeSelectorComboBox != null) {
+            genomeSelectorComboBox.setValue(params.getGenomeSelectorMode());
         }
         
         // Apply database settings using reusable component

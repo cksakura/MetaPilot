@@ -27,9 +27,13 @@ echo [OK] Java found
 
 REM Check Maven
 echo Checking Maven...
-mvn -version >nul 2>&1
-if errorlevel 1 (
+call mvn -version >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
     echo ERROR: Maven is not installed or not in PATH
+    echo.
+    echo Please ensure Maven is installed and added to your PATH.
+    echo You can download Maven from: https://maven.apache.org/download.cgi
+    echo.
     pause
     exit /b 1
 )
@@ -50,6 +54,7 @@ call mvn clean package -am -DskipTests -pl metapilot-windows-gui
 if errorlevel 1 (
     echo.
     echo ERROR: Build failed
+    echo Please check the error messages above.
     pause
     exit /b 1
 )
@@ -61,7 +66,7 @@ echo ================================================
 echo.
 
 REM Check for the JAR file
-set JAR_FILE=metapilot-windows-gui\target\metapilot-windows-gui-1.0.0-beta.5-shaded.jar
+set JAR_FILE=metapilot-windows-gui\target\metapilot-windows-gui-1.0.0-beta.6-shaded.jar
 if exist "%JAR_FILE%" (
     echo [OK] JAR file created successfully!
     echo.

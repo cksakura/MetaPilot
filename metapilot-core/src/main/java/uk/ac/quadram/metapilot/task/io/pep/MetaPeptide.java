@@ -37,8 +37,9 @@ public abstract class MetaPeptide {
 	protected String[] proteins;
 
 	protected int[] charges;
+	protected boolean isDecoy;
 
-	public static String[] idenTypeStrings = { "MS/MS", "MBR", "unmatched" };
+	public static String[] idenTypeStrings = { "unmatched", "MS/MS", "MBR" };
 
 	public MetaPeptide(String sequence) {
 		this.sequence = sequence;
@@ -78,6 +79,14 @@ public abstract class MetaPeptide {
 		this.mass = mass;
 		this.score = score;
 		this.intensity = intensity;
+	}
+
+	public boolean isDecoy() {
+		return isDecoy;
+	}
+
+	public void setDecoy(boolean isDecoy) {
+		this.isDecoy = isDecoy;
 	}
 
 	public void setProteins(String[] proteins) {

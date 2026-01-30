@@ -147,8 +147,12 @@ public class PFindConfig {
 	}
 
 	public void setCoreThread(int cores, int thread) {
-		this.findMap.get("multip").setValue(String.valueOf(cores));
-		this.findMap.get("thread").setValue(String.valueOf(thread));
+		if (this.findMap.containsKey("multip")) {
+			this.findMap.get("multip").setValue(String.valueOf(cores));
+		}
+		if (this.findMap.containsKey("thread")) {
+			this.findMap.get("thread").setValue(String.valueOf(thread));
+		}
 	}
 
 	public File config(String result, String[] raws, String db, String ms2Type, boolean isMgf, boolean isOpenSearch) {
@@ -171,37 +175,85 @@ public class PFindConfig {
 		this.writeTask(new File(pFindTask, "pFindTask.tsk"));
 
 		if (isOpenSearch) {
-			this.findMap.get("open").setValue("1");
-			this.findMap.get("fixmod").setValue("");
-			this.findMap.get("selectmod").setValue("");
+			if (this.findMap.containsKey("open")) {
+				this.findMap.get("open").setValue("1");
+			}
+			if (this.findMap.containsKey("fixmod")) {
+				this.findMap.get("fixmod").setValue("");
+			}
+			if (this.findMap.containsKey("selectmod")) {
+				this.findMap.get("selectmod").setValue("");
+			}
 		} else {
-			this.findMap.get("open").setValue("0");
-			this.findMap.get("fixmod").setValue("Carbamidomethyl[C];");
-			this.findMap.get("selectmod").setValue("Acetyl[ProteinN-term];Oxidation[M];");
+			if (this.findMap.containsKey("open")) {
+				this.findMap.get("open").setValue("0");
+			}
+			if (this.findMap.containsKey("fixmod")) {
+				this.findMap.get("fixmod").setValue("Carbamidomethyl[C];");
+			}
+			if (this.findMap.containsKey("selectmod")) {
+				this.findMap.get("selectmod").setValue("Acetyl[ProteinN-term];Oxidation[M];");
+			}
 		}
 
-		this.findMap.get("mstol").setValue("10");
-		this.findMap.get("mstolppm").setValue("1");
+		if (this.findMap.containsKey("mstol")) {
+			this.findMap.get("mstol").setValue("10");
+		}
+		if (this.findMap.containsKey("mstolppm")) {
+			this.findMap.get("mstolppm").setValue("1");
+		}
 
-		this.parseMap.get("ipv_file").setValue(new File(pFindBin, "IPV.txt").getAbsolutePath());
-		this.parseMap.get("trainingset").setValue(new File(pFindBin, "TrainingSet.txt").getAbsolutePath());
+		if (this.parseMap != null && this.parseMap.containsKey("ipv_file")) {
+			this.parseMap.get("ipv_file").setValue(new File(pFindBin, "IPV.txt").getAbsolutePath());
+		}
+		if (this.parseMap != null && this.parseMap.containsKey("trainingset")) {
+			this.parseMap.get("trainingset").setValue(new File(pFindBin, "TrainingSet.txt").getAbsolutePath());
+		}
 
-		this.findMap.get("activation_type").setValue(ms2Type);
-		this.findMap.get("modpath").setValue(new File(pFindBin, "modification.ini").getAbsolutePath());
-		this.findMap.get("aapath").setValue(new File(pFindBin, "aa.ini").getAbsolutePath());
-		this.findMap.get("fastapath").setValue(db);
-		this.findMap.get("outputpath").setValue(pFindResult.getAbsolutePath());
-		this.findMap.get("outputname").setValue("pFindTask");
+		if (this.findMap.containsKey("activation_type")) {
+			this.findMap.get("activation_type").setValue(ms2Type);
+		}
+		if (this.findMap.containsKey("modpath")) {
+			this.findMap.get("modpath").setValue(new File(pFindBin, "modification.ini").getAbsolutePath());
+		}
+		if (this.findMap.containsKey("aapath")) {
+			this.findMap.get("aapath").setValue(new File(pFindBin, "aa.ini").getAbsolutePath());
+		}
+		if (this.findMap.containsKey("fastapath")) {
+			this.findMap.get("fastapath").setValue(db);
+		}
+		if (this.findMap.containsKey("outputpath")) {
+			this.findMap.get("outputpath").setValue(pFindResult.getAbsolutePath());
+		}
+		if (this.findMap.containsKey("outputname")) {
+			this.findMap.get("outputname").setValue("pFindTask");
+		}
 
-		this.quantMap.get("PATH_INI_ELEMENT").setValue(new File(pFindBin, "element.ini").getAbsolutePath());
-		this.quantMap.get("PATH_INI_MODIFICATION").setValue(new File(pFindBin, "modification.ini").getAbsolutePath());
-		this.quantMap.get("PATH_INI_RESIDUE").setValue(new File(pFindBin, "aa.ini").getAbsolutePath());
-		this.quantMap.get("PATH_BIN").setValue(pFindBin.getAbsolutePath());
-		this.quantMap.get("PATH_FASTA").setValue(db + ";");
-		this.quantMap.get("DIR_EXPORT").setValue(pFindResult.getAbsolutePath() + ";");
+		if (this.quantMap != null && this.quantMap.containsKey("PATH_INI_ELEMENT")) {
+			this.quantMap.get("PATH_INI_ELEMENT").setValue(new File(pFindBin, "element.ini").getAbsolutePath());
+		}
+		if (this.quantMap != null && this.quantMap.containsKey("PATH_INI_MODIFICATION")) {
+			this.quantMap.get("PATH_INI_MODIFICATION").setValue(new File(pFindBin, "modification.ini").getAbsolutePath());
+		}
+		if (this.quantMap != null && this.quantMap.containsKey("PATH_INI_RESIDUE")) {
+			this.quantMap.get("PATH_INI_RESIDUE").setValue(new File(pFindBin, "aa.ini").getAbsolutePath());
+		}
+		if (this.quantMap != null && this.quantMap.containsKey("PATH_BIN")) {
+			this.quantMap.get("PATH_BIN").setValue(pFindBin.getAbsolutePath());
+		}
+		if (this.quantMap != null && this.quantMap.containsKey("PATH_FASTA")) {
+			this.quantMap.get("PATH_FASTA").setValue(db + ";");
+		}
+		if (this.quantMap != null && this.quantMap.containsKey("DIR_EXPORT")) {
+			this.quantMap.get("DIR_EXPORT").setValue(pFindResult.getAbsolutePath() + ";");
+		}
 
-		this.parseMap.get("datanum").setValue(String.valueOf(raws.length));
-		this.findMap.get("msmsnum").setValue(String.valueOf(raws.length));
+		if (this.parseMap != null && this.parseMap.containsKey("datanum")) {
+			this.parseMap.get("datanum").setValue(String.valueOf(raws.length));
+		}
+		if (this.findMap.containsKey("msmsnum")) {
+			this.findMap.get("msmsnum").setValue(String.valueOf(raws.length));
+		}
 
 		if (isMgf) {
 
@@ -210,7 +262,9 @@ public class PFindConfig {
 				findRawSb.append("\n");
 				findRawSb.append("msmspath").append(i + 1).append("=").append(raws[i]);
 			}
-			this.findMap.get("msmspath1").setValue(findRawSb.toString());
+			if (this.findMap.containsKey("msmspath1")) {
+				this.findMap.get("msmspath1").setValue(findRawSb.toString());
+			}
 			try {
 				this.pFindCfg = new File(pFindPara, "pFind.cfg");
 				this.export(pFindCfg, findMap);
@@ -225,20 +279,36 @@ public class PFindConfig {
 
 			if (ms2Type.equals(MetaConstants.HCD_FTMS)) {
 				suffix = "_HCDFT.pf2";
-				this.findMap.get("msmstol").setValue("10");
-				this.findMap.get("msmstolppm").setValue("1");
+				if (this.findMap.containsKey("msmstol")) {
+					this.findMap.get("msmstol").setValue("10");
+				}
+				if (this.findMap.containsKey("msmstolppm")) {
+					this.findMap.get("msmstolppm").setValue("1");
+				}
 			} else if (ms2Type.equals(MetaConstants.HCD_ITMS)) {
 				suffix = "_HCDIT.pf2";
-				this.findMap.get("msmstol").setValue("1");
-				this.findMap.get("msmstolppm").setValue("0");
+				if (this.findMap.containsKey("msmstol")) {
+					this.findMap.get("msmstol").setValue("1");
+				}
+				if (this.findMap.containsKey("msmstolppm")) {
+					this.findMap.get("msmstolppm").setValue("0");
+				}
 			} else if (ms2Type.equals(MetaConstants.CID_FTMS)) {
 				suffix = "_CIDFT.pf2";
-				this.findMap.get("msmstol").setValue("10");
-				this.findMap.get("msmstolppm").setValue("1");
+				if (this.findMap.containsKey("msmstol")) {
+					this.findMap.get("msmstol").setValue("10");
+				}
+				if (this.findMap.containsKey("msmstolppm")) {
+					this.findMap.get("msmstolppm").setValue("1");
+				}
 			} else if (ms2Type.equals(MetaConstants.CID_ITMS)) {
 				suffix = "_CIDIT.pf2";
-				this.findMap.get("msmstol").setValue("1");
-				this.findMap.get("msmstolppm").setValue("0");
+				if (this.findMap.containsKey("msmstol")) {
+					this.findMap.get("msmstol").setValue("1");
+				}
+				if (this.findMap.containsKey("msmstolppm")) {
+					this.findMap.get("msmstolppm").setValue("0");
+				}
 			}
 
 			StringBuilder parseRawSb = new StringBuilder(raws[0]);
@@ -257,9 +327,15 @@ public class PFindConfig {
 				quantRawSb.append(raws[i].substring(0, raws[i].lastIndexOf(".")) + "pf1");
 			}
 
-			this.parseMap.get("datapath1").setValue(parseRawSb.toString());
-			this.findMap.get("msmspath1").setValue(findRawSb.toString());
-			this.quantMap.get("PATH_MS1").setValue(quantRawSb.toString() + "|;");
+			if (this.parseMap != null && this.parseMap.containsKey("datapath1")) {
+				this.parseMap.get("datapath1").setValue(parseRawSb.toString());
+			}
+			if (this.findMap.containsKey("msmspath1")) {
+				this.findMap.get("msmspath1").setValue(findRawSb.toString());
+			}
+			if (this.quantMap != null && this.quantMap.containsKey("PATH_MS1")) {
+				this.quantMap.get("PATH_MS1").setValue(quantRawSb.toString() + "|;");
+			}
 
 			try {
 				this.pFindCfg = new File(pFindPara, "pFind.cfg");
@@ -303,12 +379,24 @@ public class PFindConfig {
 		File parent = rawFile.getParentFile();
 		String name = rawFile.getName();
 
-		this.parseMap.get("co-elute").setValue("1");
-		this.parseMap.get("ipv_file").setValue(new File(pFindBin, "IPV.txt").getAbsolutePath());
-		this.parseMap.get("trainingset").setValue(new File(pFindBin, "TrainingSet.txt").getAbsolutePath());
-		this.parseMap.get("datanum").setValue("1");
-		this.parseMap.get("datapath1").setValue(raw);
-		this.parseMap.get("input_format").setValue("raw");
+		if (this.parseMap != null && this.parseMap.containsKey("co-elute")) {
+			this.parseMap.get("co-elute").setValue("1");
+		}
+		if (this.parseMap != null && this.parseMap.containsKey("ipv_file")) {
+			this.parseMap.get("ipv_file").setValue(new File(pFindBin, "IPV.txt").getAbsolutePath());
+		}
+		if (this.parseMap != null && this.parseMap.containsKey("trainingset")) {
+			this.parseMap.get("trainingset").setValue(new File(pFindBin, "TrainingSet.txt").getAbsolutePath());
+		}
+		if (this.parseMap != null && this.parseMap.containsKey("datanum")) {
+			this.parseMap.get("datanum").setValue("1");
+		}
+		if (this.parseMap != null && this.parseMap.containsKey("datapath1")) {
+			this.parseMap.get("datapath1").setValue(raw);
+		}
+		if (this.parseMap != null && this.parseMap.containsKey("input_format")) {
+			this.parseMap.get("input_format").setValue("raw");
+		}
 
 		try {
 			this.pParseCfg = new File(parent, name.substring(0, name.lastIndexOf(".")) + ".pParse.cfg");
@@ -332,10 +420,18 @@ public class PFindConfig {
 		File rawFile = new File(extractRaws[0]);
 		File parent = rawFile.getParentFile();
 
-		this.parseMap.get("co-elute").setValue(String.valueOf(co_elute));
-		this.parseMap.get("ipv_file").setValue(new File(pFindBin, "IPV.txt").getAbsolutePath());
-		this.parseMap.get("trainingset").setValue(new File(pFindBin, "TrainingSet.txt").getAbsolutePath());
-		this.parseMap.get("datanum").setValue(String.valueOf(extractRaws.length));
+		if (this.parseMap != null && this.parseMap.containsKey("co-elute")) {
+			this.parseMap.get("co-elute").setValue(String.valueOf(co_elute));
+		}
+		if (this.parseMap != null && this.parseMap.containsKey("ipv_file")) {
+			this.parseMap.get("ipv_file").setValue(new File(pFindBin, "IPV.txt").getAbsolutePath());
+		}
+		if (this.parseMap != null && this.parseMap.containsKey("trainingset")) {
+			this.parseMap.get("trainingset").setValue(new File(pFindBin, "TrainingSet.txt").getAbsolutePath());
+		}
+		if (this.parseMap != null && this.parseMap.containsKey("datanum")) {
+			this.parseMap.get("datanum").setValue(String.valueOf(extractRaws.length));
+		}
 
 		if (extractRaws.length > 0) {
 			StringBuilder sb = new StringBuilder(extractRaws[0]);
@@ -346,10 +442,14 @@ public class PFindConfig {
 				sb.append(extractRaws[i]);
 			}
 
-			this.parseMap.get("datapath1").setValue(sb.toString());
+			if (this.parseMap != null && this.parseMap.containsKey("datapath1")) {
+				this.parseMap.get("datapath1").setValue(sb.toString());
+			}
 		}
 
-		this.parseMap.get("input_format").setValue("raw");
+		if (this.parseMap != null && this.parseMap.containsKey("input_format")) {
+			this.parseMap.get("input_format").setValue("raw");
+		}
 
 		this.pParseCfg = new File(parent, "ms2Spctra.pParse.cfg");
 		this.export(pParseCfg, parseMap);
@@ -367,10 +467,18 @@ public class PFindConfig {
 	 */
 	public File extract(int co_elute, String spectraDir, String... extractRaws) throws IOException {
 
-		this.parseMap.get("co-elute").setValue(String.valueOf(co_elute));
-		this.parseMap.get("ipv_file").setValue(new File(pFindBin, "IPV.txt").getAbsolutePath());
-		this.parseMap.get("trainingset").setValue(new File(pFindBin, "TrainingSet.txt").getAbsolutePath());
-		this.parseMap.get("datanum").setValue(String.valueOf(extractRaws.length));
+		if (this.parseMap != null && this.parseMap.containsKey("co-elute")) {
+			this.parseMap.get("co-elute").setValue(String.valueOf(co_elute));
+		}
+		if (this.parseMap != null && this.parseMap.containsKey("ipv_file")) {
+			this.parseMap.get("ipv_file").setValue(new File(pFindBin, "IPV.txt").getAbsolutePath());
+		}
+		if (this.parseMap != null && this.parseMap.containsKey("trainingset")) {
+			this.parseMap.get("trainingset").setValue(new File(pFindBin, "TrainingSet.txt").getAbsolutePath());
+		}
+		if (this.parseMap != null && this.parseMap.containsKey("datanum")) {
+			this.parseMap.get("datanum").setValue(String.valueOf(extractRaws.length));
+		}
 
 		if (extractRaws.length > 0) {
 			StringBuilder sb = new StringBuilder(extractRaws[0]);
@@ -381,10 +489,14 @@ public class PFindConfig {
 				sb.append(extractRaws[i]);
 			}
 
-			this.parseMap.get("datapath1").setValue(sb.toString());
+			if (this.parseMap != null && this.parseMap.containsKey("datapath1")) {
+				this.parseMap.get("datapath1").setValue(sb.toString());
+			}
 		}
 
-		this.parseMap.get("input_format").setValue("raw");
+		if (this.parseMap != null && this.parseMap.containsKey("input_format")) {
+			this.parseMap.get("input_format").setValue("raw");
+		}
 
 		this.pParseCfg = new File(spectraDir, "ms2Spctra.pParse.cfg");
 		this.export(pParseCfg, parseMap);
@@ -403,16 +515,32 @@ public class PFindConfig {
 	 */
 	public File extractSingle(int co_elute, String spectraDir, String extractRaw, String rawName) throws IOException {
 
-		this.parseMap.get("co-elute").setValue(String.valueOf(co_elute));
-		this.parseMap.get("ipv_file").setValue(new File(pFindBin, "IPV.txt").getAbsolutePath());
-		this.parseMap.get("trainingset").setValue(new File(pFindBin, "TrainingSet.txt").getAbsolutePath());
-		this.parseMap.get("datanum").setValue("1");
-		this.parseMap.get("datapath1").setValue(extractRaw);
+		if (this.parseMap != null && this.parseMap.containsKey("co-elute")) {
+			this.parseMap.get("co-elute").setValue(String.valueOf(co_elute));
+		}
+		if (this.parseMap != null && this.parseMap.containsKey("ipv_file")) {
+			this.parseMap.get("ipv_file").setValue(new File(pFindBin, "IPV.txt").getAbsolutePath());
+		}
+		if (this.parseMap != null && this.parseMap.containsKey("trainingset")) {
+			this.parseMap.get("trainingset").setValue(new File(pFindBin, "TrainingSet.txt").getAbsolutePath());
+		}
+		if (this.parseMap != null && this.parseMap.containsKey("datanum")) {
+			this.parseMap.get("datanum").setValue("1");
+		}
+		if (this.parseMap != null && this.parseMap.containsKey("datapath1")) {
+			this.parseMap.get("datapath1").setValue(extractRaw);
+		}
 
-		this.parseMap.get("outputpath").setValue(spectraDir);
+		if (this.parseMap != null && this.parseMap.containsKey("outputpath")) {
+			this.parseMap.get("outputpath").setValue(spectraDir);
+		}
 
-		this.parseMap.get("input_format").setValue("raw");
-		this.parseMap.get("output_mgf").setValue("0");
+		if (this.parseMap != null && this.parseMap.containsKey("input_format")) {
+			this.parseMap.get("input_format").setValue("raw");
+		}
+		if (this.parseMap != null && this.parseMap.containsKey("output_mgf")) {
+			this.parseMap.get("output_mgf").setValue("0");
+		}
 
 		this.pParseCfg = new File(spectraDir, rawName + ".pParse.cfg");
 		this.export(pParseCfg, parseMap);
@@ -442,57 +570,115 @@ public class PFindConfig {
 		}
 
 		if (isOpenSearch) {
-			this.findMap.get("open").setValue("1");
-			this.findMap.get("fixmod").setValue("");
-			this.findMap.get("selectmod").setValue("");
-			this.findMap.get("digest").setValue("3");
+			if (this.findMap.containsKey("open")) {
+				this.findMap.get("open").setValue("1");
+			}
+			if (this.findMap.containsKey("fixmod")) {
+				this.findMap.get("fixmod").setValue("");
+			}
+			if (this.findMap.containsKey("selectmod")) {
+				this.findMap.get("selectmod").setValue("");
+			}
+			if (this.findMap.containsKey("digest")) {
+				this.findMap.get("digest").setValue("3");
+			}
 		} else {
-			this.findMap.get("open").setValue("0");
-			this.findMap.get("fixmod").setValue("Carbamidomethyl[C];");
-			this.findMap.get("selectmod").setValue("Acetyl[ProteinN-term];Oxidation[M];");
-			this.findMap.get("digest").setValue("3");
+			if (this.findMap.containsKey("open")) {
+				this.findMap.get("open").setValue("0");
+			}
+			if (this.findMap.containsKey("fixmod")) {
+				this.findMap.get("fixmod").setValue("Carbamidomethyl[C];");
+			}
+			if (this.findMap.containsKey("selectmod")) {
+				this.findMap.get("selectmod").setValue("Acetyl[ProteinN-term];Oxidation[M];");
+			}
+			if (this.findMap.containsKey("digest")) {
+				this.findMap.get("digest").setValue("3");
+			}
 		}
 
 		if (isAutoRev) {
-			this.findMap.get("auto_rev").setValue("1");
+			if (this.findMap.containsKey("auto_rev")) {
+				this.findMap.get("auto_rev").setValue("1");
+			}
 		} else {
-			this.findMap.get("auto_rev").setValue("0");
+			if (this.findMap.containsKey("auto_rev")) {
+				this.findMap.get("auto_rev").setValue("0");
+			}
 		}
 
-		this.findMap.get("mstol").setValue("10");
-		this.findMap.get("mstolppm").setValue("1");
+		if (this.findMap.containsKey("mstol")) {
+			this.findMap.get("mstol").setValue("10");
+		}
+		if (this.findMap.containsKey("mstolppm")) {
+			this.findMap.get("mstolppm").setValue("1");
+		}
 
-		this.findMap.get("activation_type").setValue(ms2Type);
-		this.findMap.get("modpath").setValue(new File(pFindBin, "modification.ini").getAbsolutePath());
-		this.findMap.get("aapath").setValue(new File(pFindBin, "aa.ini").getAbsolutePath());
-		this.findMap.get("fastapath").setValue(db);
-		this.findMap.get("outputpath").setValue(resultFile.getAbsolutePath());
-		this.findMap.get("outputname").setValue("pFindTask");
+		if (this.findMap.containsKey("activation_type")) {
+			this.findMap.get("activation_type").setValue(ms2Type);
+		}
+		if (this.findMap.containsKey("modpath")) {
+			this.findMap.get("modpath").setValue(new File(pFindBin, "modification.ini").getAbsolutePath());
+		}
+		if (this.findMap.containsKey("aapath")) {
+			this.findMap.get("aapath").setValue(new File(pFindBin, "aa.ini").getAbsolutePath());
+		}
+		if (this.findMap.containsKey("fastapath")) {
+			this.findMap.get("fastapath").setValue(db);
+		}
+		if (this.findMap.containsKey("outputpath")) {
+			this.findMap.get("outputpath").setValue(resultFile.getAbsolutePath());
+		}
+		if (this.findMap.containsKey("outputname")) {
+			this.findMap.get("outputname").setValue("pFindTask");
+		}
 
-		this.findMap.get("msmstype").setValue("PF2");
-		this.findMap.get("msmsnum").setValue("1");
+		if (this.findMap.containsKey("msmstype")) {
+			this.findMap.get("msmstype").setValue("PF2");
+		}
+		if (this.findMap.containsKey("msmsnum")) {
+			this.findMap.get("msmsnum").setValue("1");
+		}
 
 		String suffix = "";
 
 		if (ms2Type.equals("HCD-FTMS")) {
 			suffix = "_HCDFT.pf2";
-			this.findMap.get("msmstol").setValue("10");
-			this.findMap.get("msmstolppm").setValue("1");
+			if (this.findMap.containsKey("msmstol")) {
+				this.findMap.get("msmstol").setValue("10");
+			}
+			if (this.findMap.containsKey("msmstolppm")) {
+				this.findMap.get("msmstolppm").setValue("1");
+			}
 		} else if (ms2Type.equals("HCD-ITMS")) {
 			suffix = "_HCDIT.pf2";
-			this.findMap.get("msmstol").setValue("1");
-			this.findMap.get("msmstolppm").setValue("0");
+			if (this.findMap.containsKey("msmstol")) {
+				this.findMap.get("msmstol").setValue("1");
+			}
+			if (this.findMap.containsKey("msmstolppm")) {
+				this.findMap.get("msmstolppm").setValue("0");
+			}
 		} else if (ms2Type.equals("CID-ITMS")) {
 			suffix = "_CIDFT.pf2";
-			this.findMap.get("msmstol").setValue("10");
-			this.findMap.get("msmstolppm").setValue("1");
+			if (this.findMap.containsKey("msmstol")) {
+				this.findMap.get("msmstol").setValue("10");
+			}
+			if (this.findMap.containsKey("msmstolppm")) {
+				this.findMap.get("msmstolppm").setValue("1");
+			}
 		} else if (ms2Type.equals("CID-ITMS")) {
 			suffix = "_CIDIT.pf2";
-			this.findMap.get("msmstol").setValue("1");
-			this.findMap.get("msmstolppm").setValue("0");
+			if (this.findMap.containsKey("msmstol")) {
+				this.findMap.get("msmstol").setValue("1");
+			}
+			if (this.findMap.containsKey("msmstolppm")) {
+				this.findMap.get("msmstolppm").setValue("0");
+			}
 		}
 
-		this.findMap.get("msmspath1").setValue(name + suffix);
+		if (this.findMap.containsKey("msmspath1")) {
+			this.findMap.get("msmspath1").setValue(name + suffix);
+		}
 
 		try {
 			this.pFindCfg = new File(parent, name + ".pFind.cfg");
@@ -509,62 +695,120 @@ public class PFindConfig {
 			boolean isAutoRev, double psmFdr) {
 
 		if (isOpenSearch) {
-			this.findMap.get("open").setValue("1");
-			this.findMap.get("fixmod").setValue("");
-			this.findMap.get("selectmod").setValue("");
-			this.findMap.get("digest").setValue("3");
+			if (this.findMap.containsKey("open")) {
+				this.findMap.get("open").setValue("1");
+			}
+			if (this.findMap.containsKey("fixmod")) {
+				this.findMap.get("fixmod").setValue("");
+			}
+			if (this.findMap.containsKey("selectmod")) {
+				this.findMap.get("selectmod").setValue("");
+			}
+			if (this.findMap.containsKey("digest")) {
+				this.findMap.get("digest").setValue("3");
+			}
 		} else {
-			this.findMap.get("open").setValue("0");
-			this.findMap.get("fixmod").setValue("Carbamidomethyl[C];");
-			this.findMap.get("selectmod").setValue("Acetyl[ProteinN-term];Oxidation[M];");
-			this.findMap.get("digest").setValue("3");
+			if (this.findMap.containsKey("open")) {
+				this.findMap.get("open").setValue("0");
+			}
+			if (this.findMap.containsKey("fixmod")) {
+				this.findMap.get("fixmod").setValue("Carbamidomethyl[C];");
+			}
+			if (this.findMap.containsKey("selectmod")) {
+				this.findMap.get("selectmod").setValue("Acetyl[ProteinN-term];Oxidation[M];");
+			}
+			if (this.findMap.containsKey("digest")) {
+				this.findMap.get("digest").setValue("3");
+			}
 		}
 
 		if (isAutoRev) {
-			this.findMap.get("auto_rev").setValue("1");
+			if (this.findMap.containsKey("auto_rev")) {
+				this.findMap.get("auto_rev").setValue("1");
+			}
 		} else {
-			this.findMap.get("auto_rev").setValue("0");
+			if (this.findMap.containsKey("auto_rev")) {
+				this.findMap.get("auto_rev").setValue("0");
+			}
 		}
 
-		this.findMap.get("psm_fdr").setValue(String.valueOf(psmFdr));
+		if (this.findMap.containsKey("psm_fdr")) {
+			this.findMap.get("psm_fdr").setValue(String.valueOf(psmFdr));
+		}
 
-		this.findMap.get("mstol").setValue("10");
-		this.findMap.get("mstolppm").setValue("1");
+		if (this.findMap.containsKey("mstol")) {
+			this.findMap.get("mstol").setValue("10");
+		}
+		if (this.findMap.containsKey("mstolppm")) {
+			this.findMap.get("mstolppm").setValue("1");
+		}
 
-		this.findMap.get("activation_type").setValue(ms2Type);
-		this.findMap.get("modpath").setValue(new File(pFindBin, "modification.ini").getAbsolutePath());
-		this.findMap.get("aapath").setValue(new File(pFindBin, "aa.ini").getAbsolutePath());
-		this.findMap.get("fastapath").setValue(db);
+		if (this.findMap.containsKey("activation_type")) {
+			this.findMap.get("activation_type").setValue(ms2Type);
+		}
+		if (this.findMap.containsKey("modpath")) {
+			this.findMap.get("modpath").setValue(new File(pFindBin, "modification.ini").getAbsolutePath());
+		}
+		if (this.findMap.containsKey("aapath")) {
+			this.findMap.get("aapath").setValue(new File(pFindBin, "aa.ini").getAbsolutePath());
+		}
+		if (this.findMap.containsKey("fastapath")) {
+			this.findMap.get("fastapath").setValue(db);
+		}
 
 		String name = (new File(db)).getName();
 		name = name.substring(0, name.length() - ".fasta".length());
 		File resultFile = new File(result);
 		resultFile.mkdir();
 
-		this.findMap.get("outputpath").setValue(result);
-		this.findMap.get("outputname").setValue("pFindTask");
+		if (this.findMap.containsKey("outputpath")) {
+			this.findMap.get("outputpath").setValue(result);
+		}
+		if (this.findMap.containsKey("outputname")) {
+			this.findMap.get("outputname").setValue("pFindTask");
+		}
 
-		this.findMap.get("msmstype").setValue("PF2");
-		this.findMap.get("msmsnum").setValue(String.valueOf(raws.length));
+		if (this.findMap.containsKey("msmstype")) {
+			this.findMap.get("msmstype").setValue("PF2");
+		}
+		if (this.findMap.containsKey("msmsnum")) {
+			this.findMap.get("msmsnum").setValue(String.valueOf(raws.length));
+		}
 
 		String suffix = "";
 
 		if (ms2Type.equals("HCD-FTMS")) {
 			suffix = "_HCDFT.pf2";
-			this.findMap.get("msmstol").setValue("10");
-			this.findMap.get("msmstolppm").setValue("1");
+			if (this.findMap.containsKey("msmstol")) {
+				this.findMap.get("msmstol").setValue("10");
+			}
+			if (this.findMap.containsKey("msmstolppm")) {
+				this.findMap.get("msmstolppm").setValue("1");
+			}
 		} else if (ms2Type.equals("HCD-ITMS")) {
 			suffix = "_HCDIT.pf2";
-			this.findMap.get("msmstol").setValue("1");
-			this.findMap.get("msmstolppm").setValue("0");
+			if (this.findMap.containsKey("msmstol")) {
+				this.findMap.get("msmstol").setValue("1");
+			}
+			if (this.findMap.containsKey("msmstolppm")) {
+				this.findMap.get("msmstolppm").setValue("0");
+			}
 		} else if (ms2Type.equals("CID-ITMS")) {
 			suffix = "_CIDFT.pf2";
-			this.findMap.get("msmstol").setValue("10");
-			this.findMap.get("msmstolppm").setValue("1");
+			if (this.findMap.containsKey("msmstol")) {
+				this.findMap.get("msmstol").setValue("10");
+			}
+			if (this.findMap.containsKey("msmstolppm")) {
+				this.findMap.get("msmstolppm").setValue("1");
+			}
 		} else if (ms2Type.equals("CID-ITMS")) {
 			suffix = "_CIDIT.pf2";
-			this.findMap.get("msmstol").setValue("1");
-			this.findMap.get("msmstolppm").setValue("0");
+			if (this.findMap.containsKey("msmstol")) {
+				this.findMap.get("msmstol").setValue("1");
+			}
+			if (this.findMap.containsKey("msmstolppm")) {
+				this.findMap.get("msmstolppm").setValue("0");
+			}
 		}
 
 		StringBuilder findRawSb = new StringBuilder(raws[0].substring(0, raws[0].lastIndexOf(".")) + suffix);
@@ -575,7 +819,9 @@ public class PFindConfig {
 					.append(raws[i].substring(0, raws[i].lastIndexOf(".")) + suffix);
 		}
 
-		this.findMap.get("msmspath1").setValue(findRawSb.toString());
+		if (this.findMap.containsKey("msmspath1")) {
+			this.findMap.get("msmspath1").setValue(findRawSb.toString());
+		}
 
 		try {
 			this.pFindCfg = new File(resultFile, "pFind.cfg");
@@ -627,71 +873,131 @@ public class PFindConfig {
 			varisb.deleteCharAt(varisb.length() - 1);
 		}
 
-		this.findMap.get("fixmod").setValue(fixsb.toString());
-		this.findMap.get("selectmod").setValue(varisb.toString());
-
-		if (isOpenSearch) {
-			this.findMap.get("open").setValue("1");
-		} else {
-			this.findMap.get("open").setValue("0");
+		if (this.findMap.containsKey("fixmod")) {
+			this.findMap.get("fixmod").setValue(fixsb.toString());
+		}
+		if (this.findMap.containsKey("selectmod")) {
+			this.findMap.get("selectmod").setValue(varisb.toString());
 		}
 
-		this.findMap.get("max_clv_sites").setValue(String.valueOf(missCleavages));
+		if (isOpenSearch) {
+			if (this.findMap.containsKey("open")) {
+				this.findMap.get("open").setValue("1");
+			}
+		} else {
+			if (this.findMap.containsKey("open")) {
+				this.findMap.get("open").setValue("0");
+			}
+		}
+
+		if (this.findMap.containsKey("max_clv_sites")) {
+			this.findMap.get("max_clv_sites").setValue(String.valueOf(missCleavages));
+		}
 
 		switch (digestType) {
 		case 0:
-			this.findMap.get("digest").setValue("3");
+			if (this.findMap.containsKey("digest")) {
+				this.findMap.get("digest").setValue("3");
+			}
 			break;
 		case 3:
-			this.findMap.get("digest").setValue("1");
+			if (this.findMap.containsKey("digest")) {
+				this.findMap.get("digest").setValue("1");
+			}
 			break;
 		case 4:
-			this.findMap.get("digest").setValue("0");
+			if (this.findMap.containsKey("digest")) {
+				this.findMap.get("digest").setValue("0");
+			}
 			break;
 		default:
-			this.findMap.get("digest").setValue("3");
+			if (this.findMap.containsKey("digest")) {
+				this.findMap.get("digest").setValue("3");
+			}
 			break;
 		}
 
 		if (isAutoRev) {
-			this.findMap.get("auto_rev").setValue("1");
+			if (this.findMap.containsKey("auto_rev")) {
+				this.findMap.get("auto_rev").setValue("1");
+			}
 		} else {
-			this.findMap.get("auto_rev").setValue("0");
+			if (this.findMap.containsKey("auto_rev")) {
+				this.findMap.get("auto_rev").setValue("0");
+			}
 		}
 
-		this.findMap.get("psm_fdr").setValue(String.valueOf(psmFdr));
+		if (this.findMap.containsKey("psm_fdr")) {
+			this.findMap.get("psm_fdr").setValue(String.valueOf(psmFdr));
+		}
 
-		this.findMap.get("mstol").setValue("10");
-		this.findMap.get("mstolppm").setValue("1");
+		if (this.findMap.containsKey("mstol")) {
+			this.findMap.get("mstol").setValue("10");
+		}
+		if (this.findMap.containsKey("mstolppm")) {
+			this.findMap.get("mstolppm").setValue("1");
+		}
 
-		this.findMap.get("activation_type").setValue(ms2Type);
-		this.findMap.get("modpath").setValue(new File(pFindBin, "modification.ini").getAbsolutePath());
-		this.findMap.get("aapath").setValue(new File(pFindBin, "aa.ini").getAbsolutePath());
-		this.findMap.get("fastapath").setValue(db);
-		this.findMap.get("outputpath").setValue(result);
-		this.findMap.get("outputname").setValue("pFindTask");
+		if (this.findMap.containsKey("activation_type")) {
+			this.findMap.get("activation_type").setValue(ms2Type);
+		}
+		if (this.findMap.containsKey("modpath")) {
+			this.findMap.get("modpath").setValue(new File(pFindBin, "modification.ini").getAbsolutePath());
+		}
+		if (this.findMap.containsKey("aapath")) {
+			this.findMap.get("aapath").setValue(new File(pFindBin, "aa.ini").getAbsolutePath());
+		}
+		if (this.findMap.containsKey("fastapath")) {
+			this.findMap.get("fastapath").setValue(db);
+		}
+		if (this.findMap.containsKey("outputpath")) {
+			this.findMap.get("outputpath").setValue(result);
+		}
+		if (this.findMap.containsKey("outputname")) {
+			this.findMap.get("outputname").setValue("pFindTask");
+		}
 
-		this.findMap.get("msmstype").setValue("PF2");
-		this.findMap.get("msmsnum").setValue(String.valueOf(raws.length));
+		if (this.findMap.containsKey("msmstype")) {
+			this.findMap.get("msmstype").setValue("PF2");
+		}
+		if (this.findMap.containsKey("msmsnum")) {
+			this.findMap.get("msmsnum").setValue(String.valueOf(raws.length));
+		}
 
 		String suffix = "";
 
 		if (ms2Type.equals(MetaConstants.HCD_FTMS)) {
 			suffix = "_HCDFT.pf2";
-			this.findMap.get("msmstol").setValue("10");
-			this.findMap.get("msmstolppm").setValue("1");
+			if (this.findMap.containsKey("msmstol")) {
+				this.findMap.get("msmstol").setValue("10");
+			}
+			if (this.findMap.containsKey("msmstolppm")) {
+				this.findMap.get("msmstolppm").setValue("1");
+			}
 		} else if (ms2Type.equals(MetaConstants.HCD_ITMS)) {
 			suffix = "_HCDIT.pf2";
-			this.findMap.get("msmstol").setValue("1");
-			this.findMap.get("msmstolppm").setValue("0");
+			if (this.findMap.containsKey("msmstol")) {
+				this.findMap.get("msmstol").setValue("1");
+			}
+			if (this.findMap.containsKey("msmstolppm")) {
+				this.findMap.get("msmstolppm").setValue("0");
+			}
 		} else if (ms2Type.equals(MetaConstants.CID_FTMS)) {
 			suffix = "_CIDFT.pf2";
-			this.findMap.get("msmstol").setValue("10");
-			this.findMap.get("msmstolppm").setValue("1");
+			if (this.findMap.containsKey("msmstol")) {
+				this.findMap.get("msmstol").setValue("10");
+			}
+			if (this.findMap.containsKey("msmstolppm")) {
+				this.findMap.get("msmstolppm").setValue("1");
+			}
 		} else if (ms2Type.equals(MetaConstants.CID_ITMS)) {
 			suffix = "_CIDIT.pf2";
-			this.findMap.get("msmstol").setValue("1");
-			this.findMap.get("msmstolppm").setValue("0");
+			if (this.findMap.containsKey("msmstol")) {
+				this.findMap.get("msmstol").setValue("1");
+			}
+			if (this.findMap.containsKey("msmstolppm")) {
+				this.findMap.get("msmstolppm").setValue("0");
+			}
 		}
 
 		StringBuilder findRawSb = new StringBuilder(raws[0].substring(0, raws[0].lastIndexOf(".")) + suffix);
@@ -702,7 +1008,9 @@ public class PFindConfig {
 					.append(raws[i].substring(0, raws[i].lastIndexOf(".")) + suffix);
 		}
 
-		this.findMap.get("msmspath1").setValue(findRawSb.toString());
+		if (this.findMap.containsKey("msmspath1")) {
+			this.findMap.get("msmspath1").setValue(findRawSb.toString());
+		}
 
 		try {
 			this.pFindCfg = new File(result, "pFind.cfg");
@@ -760,66 +1068,128 @@ public class PFindConfig {
 			varisb.deleteCharAt(varisb.length() - 1);
 		}
 
-		this.findMap.get("fixmod").setValue(fixsb.toString());
-		this.findMap.get("selectmod").setValue(varisb.toString());
+		if (this.findMap.containsKey("fixmod")) {
+			this.findMap.get("fixmod").setValue(fixsb.toString());
+		}
+		if (this.findMap.containsKey("selectmod")) {
+			this.findMap.get("selectmod").setValue(varisb.toString());
+		}
 
 		if (isOpenSearch) {
-			this.findMap.get("open").setValue("1");
+			if (this.findMap.containsKey("open")) {
+				this.findMap.get("open").setValue("1");
+			}
 		} else {
-			this.findMap.get("open").setValue("0");
+			if (this.findMap.containsKey("open")) {
+				this.findMap.get("open").setValue("0");
+			}
 		}
-		this.findMap.get("len_lower").setValue("6");
+		if (this.findMap.containsKey("len_lower")) {
+			this.findMap.get("len_lower").setValue("6");
+		}
 
-		this.findMap.get("max_clv_sites").setValue(String.valueOf(missCleavages));
+		if (this.findMap.containsKey("max_clv_sites")) {
+			this.findMap.get("max_clv_sites").setValue(String.valueOf(missCleavages));
+		}
 
 		switch (digestType) {
 		case 0:
-			this.findMap.get("digest").setValue("3");
+			if (this.findMap.containsKey("digest")) {
+				this.findMap.get("digest").setValue("3");
+			}
 			break;
 		case 3:
-			this.findMap.get("digest").setValue("1");
+			if (this.findMap.containsKey("digest")) {
+				this.findMap.get("digest").setValue("1");
+			}
 			break;
 		case 4:
-			this.findMap.get("digest").setValue("0");
+			if (this.findMap.containsKey("digest")) {
+				this.findMap.get("digest").setValue("0");
+			}
 			break;
 		default:
-			this.findMap.get("digest").setValue("3");
+			if (this.findMap.containsKey("digest")) {
+				this.findMap.get("digest").setValue("3");
+			}
 			break;
 		}
 
 		if (isAutoRev) {
-			this.findMap.get("auto_rev").setValue("1");
+			if (this.findMap.containsKey("auto_rev")) {
+				this.findMap.get("auto_rev").setValue("1");
+			}
 		} else {
-			this.findMap.get("auto_rev").setValue("0");
+			if (this.findMap.containsKey("auto_rev")) {
+				this.findMap.get("auto_rev").setValue("0");
+			}
 		}
 
-		this.findMap.get("psm_fdr").setValue(String.valueOf(psmFdr));
+		if (this.findMap.containsKey("psm_fdr")) {
+			this.findMap.get("psm_fdr").setValue(String.valueOf(psmFdr));
+		}
 
-		this.findMap.get("mstol").setValue("10");
-		this.findMap.get("mstolppm").setValue("1");
+		if (this.findMap.containsKey("mstol")) {
+			this.findMap.get("mstol").setValue("10");
+		}
+		if (this.findMap.containsKey("mstolppm")) {
+			this.findMap.get("mstolppm").setValue("1");
+		}
 
-		this.findMap.get("activation_type").setValue(ms2Type);
-		this.findMap.get("modpath").setValue(new File(pFindBin, "modification.ini").getAbsolutePath());
-		this.findMap.get("aapath").setValue(new File(pFindBin, "aa.ini").getAbsolutePath());
-		this.findMap.get("fastapath").setValue(db);
-		this.findMap.get("outputpath").setValue(result);
-		this.findMap.get("outputname").setValue("pFindTask");
+		if (this.findMap.containsKey("activation_type")) {
+			this.findMap.get("activation_type").setValue(ms2Type);
+		}
+		if (this.findMap.containsKey("modpath")) {
+			this.findMap.get("modpath").setValue(new File(pFindBin, "modification.ini").getAbsolutePath());
+		}
+		if (this.findMap.containsKey("aapath")) {
+			this.findMap.get("aapath").setValue(new File(pFindBin, "aa.ini").getAbsolutePath());
+		}
+		if (this.findMap.containsKey("fastapath")) {
+			this.findMap.get("fastapath").setValue(db);
+		}
+		if (this.findMap.containsKey("outputpath")) {
+			this.findMap.get("outputpath").setValue(result);
+		}
+		if (this.findMap.containsKey("outputname")) {
+			this.findMap.get("outputname").setValue("pFindTask");
+		}
 
-		this.findMap.get("msmstype").setValue("PF2");
-		this.findMap.get("msmsnum").setValue(String.valueOf(raws.length));
+		if (this.findMap.containsKey("msmstype")) {
+			this.findMap.get("msmstype").setValue("PF2");
+		}
+		if (this.findMap.containsKey("msmsnum")) {
+			this.findMap.get("msmsnum").setValue(String.valueOf(raws.length));
+		}
 
 		if (ms2Type.equals(MetaConstants.HCD_FTMS)) {
-			this.findMap.get("msmstol").setValue("10");
-			this.findMap.get("msmstolppm").setValue("1");
+			if (this.findMap.containsKey("msmstol")) {
+				this.findMap.get("msmstol").setValue("10");
+			}
+			if (this.findMap.containsKey("msmstolppm")) {
+				this.findMap.get("msmstolppm").setValue("1");
+			}
 		} else if (ms2Type.equals(MetaConstants.HCD_ITMS)) {
-			this.findMap.get("msmstol").setValue("1");
-			this.findMap.get("msmstolppm").setValue("0");
+			if (this.findMap.containsKey("msmstol")) {
+				this.findMap.get("msmstol").setValue("1");
+			}
+			if (this.findMap.containsKey("msmstolppm")) {
+				this.findMap.get("msmstolppm").setValue("0");
+			}
 		} else if (ms2Type.equals(MetaConstants.CID_FTMS)) {
-			this.findMap.get("msmstol").setValue("10");
-			this.findMap.get("msmstolppm").setValue("1");
+			if (this.findMap.containsKey("msmstol")) {
+				this.findMap.get("msmstol").setValue("10");
+			}
+			if (this.findMap.containsKey("msmstolppm")) {
+				this.findMap.get("msmstolppm").setValue("1");
+			}
 		} else if (ms2Type.equals(MetaConstants.CID_ITMS)) {
-			this.findMap.get("msmstol").setValue("1");
-			this.findMap.get("msmstolppm").setValue("0");
+			if (this.findMap.containsKey("msmstol")) {
+				this.findMap.get("msmstol").setValue("1");
+			}
+			if (this.findMap.containsKey("msmstolppm")) {
+				this.findMap.get("msmstolppm").setValue("0");
+			}
 		}
 
 		StringBuilder findRawSb = new StringBuilder(raws[0]);
@@ -829,7 +1199,9 @@ public class PFindConfig {
 			findRawSb.append("msmspath").append(i + 1).append("=").append(raws[i]);
 		}
 
-		this.findMap.get("msmspath1").setValue(findRawSb.toString());
+		if (this.findMap.containsKey("msmspath1")) {
+			this.findMap.get("msmspath1").setValue(findRawSb.toString());
+		}
 
 		try {
 			this.pFindCfg = new File(result, "pFind.cfg");
@@ -864,37 +1236,81 @@ public class PFindConfig {
 		}
 
 		if (isOpenSearch) {
-			this.findMap.get("open").setValue("1");
-			this.findMap.get("fixmod").setValue("");
-			this.findMap.get("selectmod").setValue("");
-			this.findMap.get("digest").setValue("3");
+			if (this.findMap.containsKey("open")) {
+				this.findMap.get("open").setValue("1");
+			}
+			if (this.findMap.containsKey("fixmod")) {
+				this.findMap.get("fixmod").setValue("");
+			}
+			if (this.findMap.containsKey("selectmod")) {
+				this.findMap.get("selectmod").setValue("");
+			}
+			if (this.findMap.containsKey("digest")) {
+				this.findMap.get("digest").setValue("3");
+			}
 		} else {
-			this.findMap.get("open").setValue("0");
-			this.findMap.get("fixmod").setValue("Carbamidomethyl[C];");
-			this.findMap.get("selectmod").setValue("Acetyl[ProteinN-term];Oxidation[M];");
-			this.findMap.get("digest").setValue("3");
+			if (this.findMap.containsKey("open")) {
+				this.findMap.get("open").setValue("0");
+			}
+			if (this.findMap.containsKey("fixmod")) {
+				this.findMap.get("fixmod").setValue("Carbamidomethyl[C];");
+			}
+			if (this.findMap.containsKey("selectmod")) {
+				this.findMap.get("selectmod").setValue("Acetyl[ProteinN-term];Oxidation[M];");
+			}
+			if (this.findMap.containsKey("digest")) {
+				this.findMap.get("digest").setValue("3");
+			}
 		}
-		this.findMap.get("len_lower").setValue("6");
+		if (this.findMap.containsKey("len_lower")) {
+			this.findMap.get("len_lower").setValue("6");
+		}
 		
 		if (isAutoRev) {
-			this.findMap.get("auto_rev").setValue("1");
+			if (this.findMap.containsKey("auto_rev")) {
+				this.findMap.get("auto_rev").setValue("1");
+			}
 		} else {
-			this.findMap.get("auto_rev").setValue("0");
+			if (this.findMap.containsKey("auto_rev")) {
+				this.findMap.get("auto_rev").setValue("0");
+			}
 		}
 
-		this.findMap.get("mstol").setValue("10");
-		this.findMap.get("mstolppm").setValue("1");
+		if (this.findMap.containsKey("mstol")) {
+			this.findMap.get("mstol").setValue("10");
+		}
+		if (this.findMap.containsKey("mstolppm")) {
+			this.findMap.get("mstolppm").setValue("1");
+		}
 
-		this.findMap.get("activation_type").setValue(ms2Type);
-		this.findMap.get("modpath").setValue(new File(pFindBin, "modification.ini").getAbsolutePath());
-		this.findMap.get("aapath").setValue(new File(pFindBin, "aa.ini").getAbsolutePath());
-		this.findMap.get("fastapath").setValue(db);
-		this.findMap.get("outputpath").setValue(resultFile.getAbsolutePath());
-		this.findMap.get("outputname").setValue("pFindTask");
+		if (this.findMap.containsKey("activation_type")) {
+			this.findMap.get("activation_type").setValue(ms2Type);
+		}
+		if (this.findMap.containsKey("modpath")) {
+			this.findMap.get("modpath").setValue(new File(pFindBin, "modification.ini").getAbsolutePath());
+		}
+		if (this.findMap.containsKey("aapath")) {
+			this.findMap.get("aapath").setValue(new File(pFindBin, "aa.ini").getAbsolutePath());
+		}
+		if (this.findMap.containsKey("fastapath")) {
+			this.findMap.get("fastapath").setValue(db);
+		}
+		if (this.findMap.containsKey("outputpath")) {
+			this.findMap.get("outputpath").setValue(resultFile.getAbsolutePath());
+		}
+		if (this.findMap.containsKey("outputname")) {
+			this.findMap.get("outputname").setValue("pFindTask");
+		}
 
-		this.findMap.get("msmstype").setValue("MGF");
-		this.findMap.get("msmsnum").setValue("1");
-		this.findMap.get("msmspath1").setValue(mgf);
+		if (this.findMap.containsKey("msmstype")) {
+			this.findMap.get("msmstype").setValue("MGF");
+		}
+		if (this.findMap.containsKey("msmsnum")) {
+			this.findMap.get("msmsnum").setValue("1");
+		}
+		if (this.findMap.containsKey("msmspath1")) {
+			this.findMap.get("msmspath1").setValue(mgf);
+		}
 
 		try {
 			this.pFindCfg = new File(parent, name + ".pFind.cfg");
@@ -911,38 +1327,82 @@ public class PFindConfig {
 			boolean isAutoRev, double psmFdr) {
 
 		if (isOpenSearch) {
-			this.findMap.get("open").setValue("1");
-			this.findMap.get("fixmod").setValue("");
-			this.findMap.get("selectmod").setValue("");
-			this.findMap.get("digest").setValue("3");
+			if (this.findMap.containsKey("open")) {
+				this.findMap.get("open").setValue("1");
+			}
+			if (this.findMap.containsKey("fixmod")) {
+				this.findMap.get("fixmod").setValue("");
+			}
+			if (this.findMap.containsKey("selectmod")) {
+				this.findMap.get("selectmod").setValue("");
+			}
+			if (this.findMap.containsKey("digest")) {
+				this.findMap.get("digest").setValue("3");
+			}
 		} else {
-			this.findMap.get("open").setValue("0");
-			this.findMap.get("fixmod").setValue("Carbamidomethyl[C];");
-			this.findMap.get("selectmod").setValue("Acetyl[ProteinN-term];Oxidation[M];");
-			this.findMap.get("digest").setValue("3");
+			if (this.findMap.containsKey("open")) {
+				this.findMap.get("open").setValue("0");
+			}
+			if (this.findMap.containsKey("fixmod")) {
+				this.findMap.get("fixmod").setValue("Carbamidomethyl[C];");
+			}
+			if (this.findMap.containsKey("selectmod")) {
+				this.findMap.get("selectmod").setValue("Acetyl[ProteinN-term];Oxidation[M];");
+			}
+			if (this.findMap.containsKey("digest")) {
+				this.findMap.get("digest").setValue("3");
+			}
 		}
-		this.findMap.get("len_lower").setValue("6");
+		if (this.findMap.containsKey("len_lower")) {
+			this.findMap.get("len_lower").setValue("6");
+		}
 		
 		if (isAutoRev) {
-			this.findMap.get("auto_rev").setValue("1");
+			if (this.findMap.containsKey("auto_rev")) {
+				this.findMap.get("auto_rev").setValue("1");
+			}
 		} else {
-			this.findMap.get("auto_rev").setValue("0");
+			if (this.findMap.containsKey("auto_rev")) {
+				this.findMap.get("auto_rev").setValue("0");
+			}
 		}
 
-		this.findMap.get("psm_fdr").setValue(String.valueOf(psmFdr));
+		if (this.findMap.containsKey("psm_fdr")) {
+			this.findMap.get("psm_fdr").setValue(String.valueOf(psmFdr));
+		}
 
-		this.findMap.get("mstol").setValue("10");
-		this.findMap.get("mstolppm").setValue("1");
+		if (this.findMap.containsKey("mstol")) {
+			this.findMap.get("mstol").setValue("10");
+		}
+		if (this.findMap.containsKey("mstolppm")) {
+			this.findMap.get("mstolppm").setValue("1");
+		}
 
-		this.findMap.get("activation_type").setValue(ms2Type);
-		this.findMap.get("modpath").setValue(new File(pFindBin, "modification.ini").getAbsolutePath());
-		this.findMap.get("aapath").setValue(new File(pFindBin, "aa.ini").getAbsolutePath());
-		this.findMap.get("fastapath").setValue(db);
-		this.findMap.get("outputpath").setValue(result);
-		this.findMap.get("outputname").setValue("pFindTask");
+		if (this.findMap.containsKey("activation_type")) {
+			this.findMap.get("activation_type").setValue(ms2Type);
+		}
+		if (this.findMap.containsKey("modpath")) {
+			this.findMap.get("modpath").setValue(new File(pFindBin, "modification.ini").getAbsolutePath());
+		}
+		if (this.findMap.containsKey("aapath")) {
+			this.findMap.get("aapath").setValue(new File(pFindBin, "aa.ini").getAbsolutePath());
+		}
+		if (this.findMap.containsKey("fastapath")) {
+			this.findMap.get("fastapath").setValue(db);
+		}
+		if (this.findMap.containsKey("outputpath")) {
+			this.findMap.get("outputpath").setValue(result);
+		}
+		if (this.findMap.containsKey("outputname")) {
+			this.findMap.get("outputname").setValue("pFindTask");
+		}
 
-		this.findMap.get("msmstype").setValue("MGF");
-		this.findMap.get("msmsnum").setValue(String.valueOf(mgfs.length));
+		if (this.findMap.containsKey("msmstype")) {
+			this.findMap.get("msmstype").setValue("MGF");
+		}
+		if (this.findMap.containsKey("msmsnum")) {
+			this.findMap.get("msmsnum").setValue(String.valueOf(mgfs.length));
+		}
 
 		StringBuilder findRawSb = new StringBuilder(mgfs[0]);
 
@@ -951,7 +1411,9 @@ public class PFindConfig {
 			findRawSb.append("msmspath").append(i + 1).append("=").append(mgfs[i]);
 		}
 
-		this.findMap.get("msmspath1").setValue(findRawSb.toString());
+		if (this.findMap.containsKey("msmspath1")) {
+			this.findMap.get("msmspath1").setValue(findRawSb.toString());
+		}
 
 		try {
 			this.pFindCfg = new File(result, "pFind.cfg");
@@ -1005,52 +1467,98 @@ public class PFindConfig {
 			varisb.deleteCharAt(varisb.length() - 1);
 		}
 
-		this.findMap.get("fixmod").setValue(fixsb.toString());
-		this.findMap.get("selectmod").setValue(varisb.toString());
+		if (this.findMap.containsKey("fixmod")) {
+			this.findMap.get("fixmod").setValue(fixsb.toString());
+		}
+		if (this.findMap.containsKey("selectmod")) {
+			this.findMap.get("selectmod").setValue(varisb.toString());
+		}
 
 		if (isOpenSearch) {
-			this.findMap.get("open").setValue("1");
+			if (this.findMap.containsKey("open")) {
+				this.findMap.get("open").setValue("1");
+			}
 		} else {
-			this.findMap.get("open").setValue("0");
+			if (this.findMap.containsKey("open")) {
+				this.findMap.get("open").setValue("0");
+			}
 		}
-		this.findMap.get("len_lower").setValue("6");
-		this.findMap.get("max_clv_sites").setValue(String.valueOf(missCleavages));
+		if (this.findMap.containsKey("len_lower")) {
+			this.findMap.get("len_lower").setValue("6");
+		}
+		if (this.findMap.containsKey("max_clv_sites")) {
+			this.findMap.get("max_clv_sites").setValue(String.valueOf(missCleavages));
+		}
 
 		switch (digestType) {
 		case 0:
-			this.findMap.get("digest").setValue("3");
+			if (this.findMap.containsKey("digest")) {
+				this.findMap.get("digest").setValue("3");
+			}
 			break;
 		case 3:
-			this.findMap.get("digest").setValue("1");
+			if (this.findMap.containsKey("digest")) {
+				this.findMap.get("digest").setValue("1");
+			}
 			break;
 		case 4:
-			this.findMap.get("digest").setValue("0");
+			if (this.findMap.containsKey("digest")) {
+				this.findMap.get("digest").setValue("0");
+			}
 			break;
 		default:
-			this.findMap.get("digest").setValue("3");
+			if (this.findMap.containsKey("digest")) {
+				this.findMap.get("digest").setValue("3");
+			}
 			break;
 		}
 
 		if (isAutoRev) {
-			this.findMap.get("auto_rev").setValue("1");
+			if (this.findMap.containsKey("auto_rev")) {
+				this.findMap.get("auto_rev").setValue("1");
+			}
 		} else {
-			this.findMap.get("auto_rev").setValue("0");
+			if (this.findMap.containsKey("auto_rev")) {
+				this.findMap.get("auto_rev").setValue("0");
+			}
 		}
 
-		this.findMap.get("psm_fdr").setValue(String.valueOf(psmFdr));
+		if (this.findMap.containsKey("psm_fdr")) {
+			this.findMap.get("psm_fdr").setValue(String.valueOf(psmFdr));
+		}
 
-		this.findMap.get("mstol").setValue("10");
-		this.findMap.get("mstolppm").setValue("1");
+		if (this.findMap.containsKey("mstol")) {
+			this.findMap.get("mstol").setValue("10");
+		}
+		if (this.findMap.containsKey("mstolppm")) {
+			this.findMap.get("mstolppm").setValue("1");
+		}
 
-		this.findMap.get("activation_type").setValue(ms2Type);
-		this.findMap.get("modpath").setValue(new File(pFindBin, "modification.ini").getAbsolutePath());
-		this.findMap.get("aapath").setValue(new File(pFindBin, "aa.ini").getAbsolutePath());
-		this.findMap.get("fastapath").setValue(db);
-		this.findMap.get("outputpath").setValue(result);
-		this.findMap.get("outputname").setValue("pFindTask");
+		if (this.findMap.containsKey("activation_type")) {
+			this.findMap.get("activation_type").setValue(ms2Type);
+		}
+		if (this.findMap.containsKey("modpath")) {
+			this.findMap.get("modpath").setValue(new File(pFindBin, "modification.ini").getAbsolutePath());
+		}
+		if (this.findMap.containsKey("aapath")) {
+			this.findMap.get("aapath").setValue(new File(pFindBin, "aa.ini").getAbsolutePath());
+		}
+		if (this.findMap.containsKey("fastapath")) {
+			this.findMap.get("fastapath").setValue(db);
+		}
+		if (this.findMap.containsKey("outputpath")) {
+			this.findMap.get("outputpath").setValue(result);
+		}
+		if (this.findMap.containsKey("outputname")) {
+			this.findMap.get("outputname").setValue("pFindTask");
+		}
 
-		this.findMap.get("msmstype").setValue("MGF");
-		this.findMap.get("msmsnum").setValue(String.valueOf(mgfs.length));
+		if (this.findMap.containsKey("msmstype")) {
+			this.findMap.get("msmstype").setValue("MGF");
+		}
+		if (this.findMap.containsKey("msmsnum")) {
+			this.findMap.get("msmsnum").setValue(String.valueOf(mgfs.length));
+		}
 
 		StringBuilder findRawSb = new StringBuilder(mgfs[0]);
 
@@ -1059,7 +1567,9 @@ public class PFindConfig {
 			findRawSb.append("msmspath").append(i + 1).append("=").append(mgfs[i]);
 		}
 
-		this.findMap.get("msmspath1").setValue(findRawSb.toString());
+		if (this.findMap.containsKey("msmspath1")) {
+			this.findMap.get("msmspath1").setValue(findRawSb.toString());
+		}
 
 		try {
 			this.pFindCfg = new File(result, "pFind.cfg");
@@ -1091,45 +1601,95 @@ public class PFindConfig {
 
 		this.writeTask(new File(pFindTask, "pFindTask.tsk"));
 
-		this.parseMap.get("ipv_file").setValue(new File(pFindBin, "IPV.txt").getAbsolutePath());
-		this.parseMap.get("trainingset").setValue(new File(pFindBin, "TrainingSet.txt").getAbsolutePath());
+		if (this.parseMap != null && this.parseMap.containsKey("ipv_file")) {
+			this.parseMap.get("ipv_file").setValue(new File(pFindBin, "IPV.txt").getAbsolutePath());
+		}
+		if (this.parseMap != null && this.parseMap.containsKey("trainingset")) {
+			this.parseMap.get("trainingset").setValue(new File(pFindBin, "TrainingSet.txt").getAbsolutePath());
+		}
 
-		this.findMap.get("len_lower").setValue("6");
-		this.findMap.get("activation_type").setValue(ms2Type);
-		this.findMap.get("modpath").setValue(new File(pFindBin, "modification.ini").getAbsolutePath());
-		this.findMap.get("aapath").setValue(new File(pFindBin, "aa.ini").getAbsolutePath());
-		this.findMap.get("fastapath").setValue(fasta);
-		this.findMap.get("outputpath").setValue(pFindResult.getAbsolutePath());
-		this.findMap.get("outputname").setValue("pFindTask");
+		if (this.findMap.containsKey("len_lower")) {
+			this.findMap.get("len_lower").setValue("6");
+		}
+		if (this.findMap.containsKey("activation_type")) {
+			this.findMap.get("activation_type").setValue(ms2Type);
+		}
+		if (this.findMap.containsKey("modpath")) {
+			this.findMap.get("modpath").setValue(new File(pFindBin, "modification.ini").getAbsolutePath());
+		}
+		if (this.findMap.containsKey("aapath")) {
+			this.findMap.get("aapath").setValue(new File(pFindBin, "aa.ini").getAbsolutePath());
+		}
+		if (this.findMap.containsKey("fastapath")) {
+			this.findMap.get("fastapath").setValue(fasta);
+		}
+		if (this.findMap.containsKey("outputpath")) {
+			this.findMap.get("outputpath").setValue(pFindResult.getAbsolutePath());
+		}
+		if (this.findMap.containsKey("outputname")) {
+			this.findMap.get("outputname").setValue("pFindTask");
+		}
 
-		this.quantMap.get("PATH_INI_ELEMENT").setValue(new File(pFindBin, "element.ini").getAbsolutePath());
-		this.quantMap.get("PATH_INI_MODIFICATION").setValue(new File(pFindBin, "modification.ini").getAbsolutePath());
-		this.quantMap.get("PATH_INI_RESIDUE").setValue(new File(pFindBin, "aa.ini").getAbsolutePath());
-		this.quantMap.get("PATH_BIN").setValue(pFindBin.getAbsolutePath());
-		this.quantMap.get("PATH_FASTA").setValue(fasta + ";");
-		this.quantMap.get("DIR_EXPORT").setValue(pFindResult.getAbsolutePath() + ";");
+		if (this.quantMap != null && this.quantMap.containsKey("PATH_INI_ELEMENT")) {
+			this.quantMap.get("PATH_INI_ELEMENT").setValue(new File(pFindBin, "element.ini").getAbsolutePath());
+		}
+		if (this.quantMap != null && this.quantMap.containsKey("PATH_INI_MODIFICATION")) {
+			this.quantMap.get("PATH_INI_MODIFICATION").setValue(new File(pFindBin, "modification.ini").getAbsolutePath());
+		}
+		if (this.quantMap != null && this.quantMap.containsKey("PATH_INI_RESIDUE")) {
+			this.quantMap.get("PATH_INI_RESIDUE").setValue(new File(pFindBin, "aa.ini").getAbsolutePath());
+		}
+		if (this.quantMap != null && this.quantMap.containsKey("PATH_BIN")) {
+			this.quantMap.get("PATH_BIN").setValue(pFindBin.getAbsolutePath());
+		}
+		if (this.quantMap != null && this.quantMap.containsKey("PATH_FASTA")) {
+			this.quantMap.get("PATH_FASTA").setValue(fasta + ";");
+		}
+		if (this.quantMap != null && this.quantMap.containsKey("DIR_EXPORT")) {
+			this.quantMap.get("DIR_EXPORT").setValue(pFindResult.getAbsolutePath() + ";");
+		}
 
-		this.parseMap.get("datanum").setValue(String.valueOf(raws.length));
-		this.findMap.get("msmsnum").setValue(String.valueOf(raws.length));
+		if (this.parseMap != null && this.parseMap.containsKey("datanum")) {
+			this.parseMap.get("datanum").setValue(String.valueOf(raws.length));
+		}
+		if (this.findMap.containsKey("msmsnum")) {
+			this.findMap.get("msmsnum").setValue(String.valueOf(raws.length));
+		}
 
 		String suffix = "";
 
 		if (ms2Type.equals(MetaConstants.HCD_FTMS)) {
 			suffix = "_HCDFT.pf2";
-			this.findMap.get("msmstol").setValue("10");
-			this.findMap.get("msmstolppm").setValue("1");
+			if (this.findMap.containsKey("msmstol")) {
+				this.findMap.get("msmstol").setValue("10");
+			}
+			if (this.findMap.containsKey("msmstolppm")) {
+				this.findMap.get("msmstolppm").setValue("1");
+			}
 		} else if (ms2Type.equals(MetaConstants.HCD_ITMS)) {
 			suffix = "_HCDIT.pf2";
-			this.findMap.get("msmstol").setValue("1");
-			this.findMap.get("msmstolppm").setValue("0");
+			if (this.findMap.containsKey("msmstol")) {
+				this.findMap.get("msmstol").setValue("1");
+			}
+			if (this.findMap.containsKey("msmstolppm")) {
+				this.findMap.get("msmstolppm").setValue("0");
+			}
 		} else if (ms2Type.equals(MetaConstants.CID_FTMS)) {
 			suffix = "_CIDFT.pf2";
-			this.findMap.get("msmstol").setValue("10");
-			this.findMap.get("msmstolppm").setValue("1");
+			if (this.findMap.containsKey("msmstol")) {
+				this.findMap.get("msmstol").setValue("10");
+			}
+			if (this.findMap.containsKey("msmstolppm")) {
+				this.findMap.get("msmstolppm").setValue("1");
+			}
 		} else if (ms2Type.equals(MetaConstants.CID_ITMS)) {
 			suffix = "_CIDIT.pf2";
-			this.findMap.get("msmstol").setValue("1");
-			this.findMap.get("msmstolppm").setValue("0");
+			if (this.findMap.containsKey("msmstol")) {
+				this.findMap.get("msmstol").setValue("1");
+			}
+			if (this.findMap.containsKey("msmstolppm")) {
+				this.findMap.get("msmstolppm").setValue("0");
+			}
 		}
 		StringBuilder parseRawSb = new StringBuilder(raws[0]);
 		StringBuilder findRawSb = new StringBuilder(raws[0].substring(0, raws[0].lastIndexOf(".")) + suffix);
@@ -1147,9 +1707,15 @@ public class PFindConfig {
 			quantRawSb.append(raws[i].substring(0, raws[i].lastIndexOf(".")) + "pf1");
 		}
 
-		this.parseMap.get("datapath1").setValue(parseRawSb.toString());
-		this.findMap.get("msmspath1").setValue(findRawSb.toString());
-		this.quantMap.get("PATH_MS1").setValue(quantRawSb.toString() + "|;");
+		if (this.parseMap != null && this.parseMap.containsKey("datapath1")) {
+			this.parseMap.get("datapath1").setValue(parseRawSb.toString());
+		}
+		if (this.findMap.containsKey("msmspath1")) {
+			this.findMap.get("msmspath1").setValue(findRawSb.toString());
+		}
+		if (this.quantMap != null && this.quantMap.containsKey("PATH_MS1")) {
+			this.quantMap.get("PATH_MS1").setValue(quantRawSb.toString() + "|;");
+		}
 
 		try {
 			this.pFindCfg = new File(pFindPara, "pFind.cfg");

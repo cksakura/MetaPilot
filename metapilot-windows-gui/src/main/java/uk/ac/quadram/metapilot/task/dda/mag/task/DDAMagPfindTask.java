@@ -6,6 +6,7 @@ import java.io.FileFilter;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.lang.management.ManagementFactory;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
@@ -13,6 +14,8 @@ import java.util.HashSet;
 import java.util.concurrent.ExecutionException;
 
 import org.apache.logging.log4j.Logger;
+
+import com.sun.management.OperatingSystemMXBean;
 
 import uk.ac.quadram.metapilot.core.mod.IsobaricTag;
 import uk.ac.quadram.metapilot.dbSearch.dbReducer.DBReducerTask;
@@ -38,6 +41,7 @@ import uk.ac.quadram.metapilot.task.mag.MetaPilotMagTask;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagPfindParameters;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
+import uk.ac.quadram.metapilot.task.mag.MarkerGenomeSelector;
 
 public class DDAMagPfindTask extends MetaPilotMagTask {
 
@@ -72,7 +76,7 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 
 		// Initialize status label from constructor parameter (passed directly from GUI)
 		this.statusLabel = statusLabel;
-
+		
 		// Initialize the magDb field from parameters
 		MagDbItem selectedMagDb = magPfindParams.getMagDbItem();
 		if (selectedMagDb != null) {
@@ -83,7 +87,7 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 							: "unknown");
 
 			// Validate that the MAG database has the required files
-			File hapFastaFile = selectedMagDb.getHapFastaFile();
+			File hapFastaFile = selectedMagDb.getHapFastaFile(magPfindParams.getGenomeSelectorMode());
 			if (hapFastaFile == null || !hapFastaFile.exists()) {
 				logger.error("MAG database HAP FASTA file is null or does not exist: {}",
 						hapFastaFile != null ? hapFastaFile.getAbsolutePath() : "null");
@@ -92,6 +96,7 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 				throw new IllegalArgumentException("MAG database HAP FASTA file is required and must exist");
 			}
 			logger.info("MAG database HAP FASTA file validated: {}", hapFastaFile.getAbsolutePath());
+			logger.info("Genome selector mode: {}", magPfindParams.getGenomeSelectorMode());
 			
 			File currentDbFile = selectedMagDb.getCurrentFile();
 			if (currentDbFile == null || !currentDbFile.exists()) {
@@ -155,10 +160,22 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 
 		if (dbReducerExe.getName().equals("DBReducer.exe") && dbReducerExe.exists()
 				&& magPfindParams.getMs2ScanMode().equals(MetaConstants.HCD_FTMS)) {
-			useDBReducer = true;
+//			useDBReducer = true;
 		}
 	}
 
+	protected void setTaskCount() {
+		long totalMemorySize = ((OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean())
+				.getTotalMemorySize() / 1024 / 1024 / 1024;
+		this.maxTaskCount = (int) (totalMemorySize / 5);
+		if (this.maxTaskCount == 0) {
+			this.maxTaskCount = 1;
+		}
+
+		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": the number of max memory is "
+				+ totalMemorySize + " GB, the max number of tasks is set as " + maxTaskCount);
+	}
+	
 	@Override
 	public void forceStop() {
 		logger.info(getTaskName() + ": Force stop requested");
@@ -328,7 +345,7 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 		System.out.println(
 				format.format(new Date()) + "\t" + getTaskName() + ": extracting proteins from the HAP result started");
 
-		boolean extract = this.fastaExtract4Iterator();
+		boolean extract = isMarkerSelectorMode() ? this.fastaExtract4MarkerSelector() : this.fastaExtract4Iterator();
 
 		if (extract) {
 			logger.info("Step 3: Protein extraction from HAP results completed successfully");
@@ -382,7 +399,16 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 		System.out.println(
 				format.format(new Date()) + "\t" + getTaskName() + ": combining separate search results started");
 
-		boolean combine = this.combineResults();
+		boolean combine = false;
+		if (isMarkerSelectorMode()) {
+			combine = this.combineResultsMarkerSelector();
+			if (!combine) {
+				logger.error(getTaskName() + ": error in combining marker selector PSMs");
+				return false;
+			}
+		} else {
+			combine = this.combineResults();
+		}
 
 		if (combine) {
 			logger.info("Step 5: Combining separate search results completed successfully");
@@ -510,7 +536,7 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 		// Get thread configuration
 		int threadCount = magPfindParams.getThreadCount();
 
-		File hapFastaFile = this.magDb.getHapFastaFile();
+		File hapFastaFile = this.magDb.getHapFastaFile(magPfindParams.getGenomeSelectorMode());
 		if (hapFastaFile == null || !hapFastaFile.exists()) {
 			logger.error("HAP FASTA file is null or does not exist for MAG database: {}", this.magDb.getCatalogueID());
 			return false;
@@ -604,8 +630,8 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 
 						logger.info("  Searching file {} with pFind", i + 1);
 						pFindTask.searchPF2(new String[] { pf2.getAbsolutePath() }, hapFile.getAbsolutePath(),
-								hapFastaFile.getAbsolutePath(), ms2Type, magPfindParams.isOpenSearch(), true,
-								mosp.getOpenPsmFDR(), magPfindParams.getFixedModifications().toArray(new String[0]),
+								hapFastaFile.getAbsolutePath(), ms2Type, false, true, mosp.getOpenPsmFDR(),
+								magPfindParams.getFixedModifications().toArray(new String[0]),
 								magPfindParams.getVariableModifications().toArray(new String[0]),
 								magPfindParams.getEnzyme(), magPfindParams.getMissCleavages(),
 								magPfindParams.getDigestMode(), magPfindParams.getIsobaricTag());
@@ -764,6 +790,107 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 		}
 
 		logger.info("FASTA extraction completed successfully for all {} folders", separateResultFolders.length);
+
+		return true;
+	}
+
+	/**
+	 * Extract protein sequences from HAP search results using MarkerGenomeSelector
+	 */
+	protected boolean fastaExtract4MarkerSelector() {
+		logger.info("Starting FASTA extraction (marker selector) for {} result folders", separateResultFolders.length);
+
+		File currentFile = magDb.getCurrentFile();
+		File markerFasta = new File(currentFile, "4markers.fasta");
+		if (markerFasta == null || !markerFasta.exists()) {
+			logger.error("Marker FASTA file was not found: {}", markerFasta != null ? markerFasta.getAbsolutePath() : "null");
+			return false;
+		}
+
+		File genomesTaxaTsv = new File(currentFile, "genomes-taxa.tsv");
+		if (genomesTaxaTsv == null || !genomesTaxaTsv.exists()) {
+			logger.error("Genomes taxa TSV was not found: {}", genomesTaxaTsv != null ? genomesTaxaTsv.getAbsolutePath() : "null");
+			return false;
+		}
+
+		MarkerGenomeSelector selector = new MarkerGenomeSelector();
+		int stepThreshold = 1;
+		int maximumSelected = 300;
+		double coverage = 0.85;
+
+		for (int i = 0; i < this.separateResultFolders.length; i++) {
+			File hapFile = new File(separateResultFolders[i], "hap");
+			File dbFile = new File(hapFile, separateResultFolders[i].getName() + ".fasta");
+
+			if (dbFile.exists() && dbFile.length() > 0) {
+				logger.info("Sample-specific database for {} already exists", separateResultFolders[i].getName());
+				continue;
+			}
+
+			File spectraFile = new File(hapFile, "pFind-Filtered.spectra");
+			if (!spectraFile.exists() || spectraFile.length() == 0) {
+				logger.error("pFind search result was not found from {}", spectraFile.getAbsolutePath());
+				return false;
+			}
+
+			PFindPsmReader psmReader = new PFindPsmReader(spectraFile);
+			PFindPSM[] psms = psmReader.getPsms();
+
+			File evidenceFile = new File(hapFile, "marker_genome_evidence.tsv");
+			File rankedFile = new File(hapFile, "marker_genome_ranked.tsv");
+			File selectedFile = new File(hapFile, "marker_genome_selected.tsv");
+
+			selector.peptideTestWithStrategy(psms, markerFasta, genomesTaxaTsv,
+					evidenceFile.getAbsolutePath(), rankedFile.getAbsolutePath(), selectedFile.getAbsolutePath(), coverage,
+					stepThreshold, maximumSelected);
+
+			HashSet<String> genomeSet = new HashSet<>();
+			if (selectedFile.exists()) {
+				try (BufferedReader reader = new BufferedReader(new FileReader(selectedFile))) {
+					String line = reader.readLine(); // header
+					while ((line = reader.readLine()) != null) {
+						line = line.trim();
+						if (line.isEmpty() || line.startsWith("#")) {
+							break;
+						}
+						String[] parts = line.split("\t");
+						if (parts.length > 0 && !parts[0].trim().isEmpty()) {
+							genomeSet.add(parts[0].trim());
+						}
+					}
+				} catch (IOException e) {
+					logger.error("Error reading marker selected genomes from {}", selectedFile.getAbsolutePath(), e);
+					return false;
+				}
+			}
+			
+			logger.info("Marker selector for {} - Selected {} genomes", separateResultFolders[i].getName(), genomeSet.size());
+
+			if (genomeSet.isEmpty()) {
+				logger.info("No genomes were found from {}", separateResultFolders[i].getName());
+			}
+
+			try (PrintWriter writer = new PrintWriter(dbFile)) {
+				File dbFolder = this.magDb.getOriginalDbFolder();
+				for (String genome : genomeSet) {
+					File genomeDbFile = new File(dbFolder, genome + ".faa");
+					if (!genomeDbFile.exists()) {
+						genomeDbFile = new File(dbFolder, genome + ".fasta");
+					}
+					if (genomeDbFile.exists()) {
+						try (BufferedReader reader = new BufferedReader(new FileReader(genomeDbFile))) {
+							String line;
+							while ((line = reader.readLine()) != null) {
+								writer.println(line);
+							}
+						}
+					}
+				}
+			} catch (IOException e) {
+				logger.error("Error writing sample-specific database to {}", dbFile.getAbsolutePath(), e);
+				return false;
+			}
+		}
 
 		return true;
 	}
@@ -1174,6 +1301,183 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 			return false;
 		}
 	}
+
+	protected boolean combineResultsMarkerSelector() {
+		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": marker PSM combination started");
+		logger.info(getTaskName() + ": marker PSM combination started");
+
+		File markerPsms = new File(combinedFile, "psms.tsv");
+		if (markerPsms.exists() && markerPsms.length() > 200) {
+			logger.info(getTaskName() + ": marker PSMs already combined in {}", markerPsms.getAbsolutePath());
+			return true;
+		}
+
+		File rtFile = new File(magPfindParams.getSpectraFile(), "rt.txt");
+		HashMap<String, Double> rtMap = new HashMap<String, Double>();
+		try (BufferedReader reader = new BufferedReader(new FileReader(rtFile))) {
+			String line = reader.readLine();
+			while ((line = reader.readLine()) != null) {
+				String[] cs = line.split("\t");
+				rtMap.put(cs[0] + "_" + cs[1], Double.parseDouble(cs[2]));
+			}
+			reader.close();
+		} catch (IOException e) {
+			System.out.println(format.format(new Date()) + "\t" + getTaskName()
+					+ ": error in reading the retention time information from " + rtFile);
+			logger.error(getTaskName() + ": error in reading the retention time information from " + rtFile);
+		}
+
+		ArrayList<PFindPSM> psmList = new ArrayList<>();
+		ArrayList<PFindPSM> decoyPsmList = new ArrayList<>();
+		for (int i = 0; i < this.separateResultFolders.length; i++) {
+			File spectraFile = new File(this.separateResultFolders[i], "pFind-Filtered.spectra");
+			if (!spectraFile.exists() || spectraFile.length() == 0) {
+				logger.warn("Marker PSM source file not found: {}", spectraFile.getAbsolutePath());
+				continue;
+			}
+
+			PFindPsmReader psmReader = new PFindPsmReader(spectraFile);
+			PFindPSM[] psms = psmReader.getPsms();
+
+			for (int j = 0; j < psms.length; j++) {
+				String sequence = psms[j].getBaseSequence();
+				if (sequence.contains("X")) {
+					continue;
+				}
+
+				ArrayList<String> revList = new ArrayList<String>();
+				String[] proteins = psms[j].getProteins();
+				for (int k = 0; k < proteins.length; k++) {
+					if (proteins[k].startsWith("REV_")) {
+						revList.add(proteins[k]);
+					}
+				}
+
+				if (revList.size() > 0) {
+					String[] revProteins = revList.toArray(String[]::new);
+					psms[j].setProteins(revProteins);
+					decoyPsmList.add(psms[j]);
+				} else {
+					psmList.add(psms[j]);
+				}
+			}
+		}
+
+		if (psmList.isEmpty()) {
+			logger.warn(getTaskName() + ": no marker PSMs found to combine");
+			return false;
+		}
+
+		logger.info("Marker selector for combined PSMs - {} target and {} decoy PSMs were obtained", psmList.size(),
+				decoyPsmList.size());
+
+		PFindPSM[] psms = psmList.toArray(PFindPSM[]::new);
+		File evidenceTsv = new File(combinedFile, "evidence.tsv");
+		File rankedTsv = new File(combinedFile, "ranked.tsv");
+		File selectedTsv = new File(combinedFile, "selected.tsv");
+
+		File currentFile = magDb.getCurrentFile();
+		File markerFasta = new File(currentFile, "4markers.fasta");
+		if (markerFasta == null || !markerFasta.exists()) {
+			logger.error("Marker FASTA file was not found: {}",
+					markerFasta != null ? markerFasta.getAbsolutePath() : "null");
+			return false;
+		}
+
+		File genomesTaxaTsv = new File(currentFile, "genomes-taxa.tsv");
+		if (genomesTaxaTsv == null || !genomesTaxaTsv.exists()) {
+			logger.error("Genomes taxa TSV was not found: {}",
+					genomesTaxaTsv != null ? genomesTaxaTsv.getAbsolutePath() : "null");
+			return false;
+		}
+
+		if (!selectedTsv.exists()) {
+			MarkerGenomeSelector selector = new MarkerGenomeSelector();
+			selector.peptideTestWithStrategy(psms, markerFasta, genomesTaxaTsv, evidenceTsv.getAbsolutePath(),
+					rankedTsv.getAbsolutePath(), selectedTsv.getAbsolutePath(), 0.99, 1, 500);
+		}
+
+		if (!selectedTsv.exists()) {
+			logger.warn(getTaskName() + ": the selected genome list was not generated");
+			return false;
+		}
+
+		HashSet<String> genomeSet = new HashSet<>();
+		try (BufferedReader reader = new BufferedReader(new FileReader(selectedTsv))) {
+			String line = reader.readLine(); // header
+			while ((line = reader.readLine()) != null) {
+				line = line.trim();
+				if (line.isEmpty() || line.startsWith("#")) {
+					break;
+				}
+				String[] parts = line.split("\t");
+				if (parts.length > 0 && !parts[0].trim().isEmpty()) {
+					genomeSet.add(parts[0].trim());
+				}
+			}
+		} catch (IOException e) {
+			logger.error("Error reading marker selected genomes from {}", selectedTsv.getAbsolutePath(), e);
+			return false;
+		}
+
+		logger.info("Marker selector for combined PSMs - Selected {} genomes", genomeSet.size());
+
+		if (genomeSet.isEmpty()) {
+			logger.info("No genomes were found from combined PSMs");
+		}
+
+		OpenPsmTsvWriter msmsWriter = new OpenPsmTsvWriter(markerPsms, OpenPsmTsvWriter.pFindFormat);
+		for (PFindPSM psm : psms) {
+			String[] proteins = psm.getProteins();
+			ArrayList<String> proList = new ArrayList<String>();
+			for (String pro : proteins) {
+				int id = pro.indexOf("_");
+				if (id > 0) {
+					String genome = pro.substring(0, id);
+					if (genomeSet.contains(genome)) {
+						proList.add(pro);
+					}
+				}
+			}
+			if (proList.size() > 0) {
+				String[] selectProteins = proList.toArray(String[]::new);
+				psm.setProteins(selectProteins);
+
+				String scanKey = psm.getFileName() + "_" + psm.getScan();
+
+				if (rtMap.containsKey(scanKey)) {
+					psm.setRt(rtMap.get(scanKey));
+					msmsWriter.addPFindPSM(psm);
+				}
+			}
+		}
+
+		for (PFindPSM psm : decoyPsmList) {
+			String scanKey = psm.getFileName() + "_" + psm.getScan();
+			if (rtMap.containsKey(scanKey)) {
+				psm.setRt(rtMap.get(scanKey));
+				msmsWriter.addPFindPSM(psm);
+			}
+			msmsWriter.addPFindPSM(psm);
+		}
+
+		msmsWriter.close();
+
+		if (markerPsms.exists() && markerPsms.length() > 200) {
+			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": marker PSM combination finished");
+			logger.info(getTaskName() + ": marker PSM combination finished");
+			return true;
+		}
+
+		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": marker PSM combination failed");
+		logger.info(getTaskName() + ": marker PSM combination failed");
+		return false;
+	}
+
+	private boolean isMarkerSelectorMode() {
+		String mode = magPfindParams.getGenomeSelectorMode();
+		return MagDbItem.MARKER4.equalsIgnoreCase(mode);
+	}
 	
 	protected boolean exportReport() {
 
@@ -1202,7 +1506,7 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 		} else {
 			File[] files = magPfindParams.getDbSearchResultFile().listFiles();
 			for (int i = 0; i < files.length; i++) {
-				if (files[i].isDirectory() && (new File(files[i], "pFind-Filtered.spectra")).exists()) {
+				if (files[i].isDirectory() && !files[i].getName().equals("combined") && (new File(files[i], "pFind-Filtered.spectra")).exists()) {
 					fileIdMap.put(files[i].getName(), fileIdMap.size());
 					fileList.add(files[i].getName());
 				}
@@ -1258,8 +1562,8 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 		logger.info(getTaskName() + ": " + quanPeps.length + " peptides and " + psms.length + " PSMs were obtained");
 
 		// Create and execute the post-analysis task directly
-		DDAMagPostAnalysisTask postAnalysisTask = new DDAMagPostAnalysisTask(
-			metaPar, mrp, secondBar, quanPeps, psms, fileIdMap, fileList, quanMode, intensityTitle, getTaskName(), this);
+		DDAMagPostAnalysisTask postAnalysisTask = new DDAMagPostAnalysisTask(metaPar, mrp, secondBar, quanPeps, psms,
+				fileIdMap, fileList, quanMode, intensityTitle, getTaskName(), PFindResultReader.REV, this);
 		
 		// Execute the task and wait for completion
 		Thread taskThread = new Thread(postAnalysisTask);

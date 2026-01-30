@@ -17,6 +17,8 @@ import uk.ac.quadram.metapilot.core.peptide.PeptideModificationFormatter;
 import uk.ac.quadram.metapilot.task.io.pep.AbstractMetaPeptideReader;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class FragpipePepReader extends AbstractMetaPeptideReader {
 
@@ -41,8 +43,10 @@ public class FragpipePepReader extends AbstractMetaPeptideReader {
 	private HashMap<String, Double> scoreMap;
 	private HashMap<String, ArrayList<Double>> pepProbMap;
 	private HashMap<String, double[]> pepProbListMap;
-	
+
 	private FragPipePSM[] psms;
+
+	private static final Pattern TITLE_PATTERN = Pattern.compile("^.+?\\.(\\d+)\\.(\\d+)\\.(\\d+)$");
 
 	private static Logger LOGGER = LogManager.getLogger(FragpipePepReader.class);
 
@@ -319,6 +323,8 @@ public class FragpipePepReader extends AbstractMetaPeptideReader {
 		String modSeq = modSeqId > -1 ? cs[modSeqId] : seqString;
 
 		String[] proteins = new String[] { cs[proteinId] };
+		boolean isDecoy = cs[proteinId].startsWith(SHUF);
+
 		int length = Integer.parseInt(cs[lengthId]);
 
 		String[] chargeSs = cs[chargeId].split(",");
@@ -389,7 +395,7 @@ public class FragpipePepReader extends AbstractMetaPeptideReader {
 			Arrays.fill(pepList, 1.0);
 		}
 		FragpipePeptide peptide = new FragpipePeptide(seqString, modSeq, length, charge, miss, pepMass, score, PEP,
-				proteins, intensity, spCount, idenType);
+				proteins, intensity, spCount, idenType, isDecoy);
 		peptide.setIndividualPEP(pepList);
 
 		return peptide;
@@ -448,13 +454,13 @@ public class FragpipePepReader extends AbstractMetaPeptideReader {
 		}
 		return intensityTitles;
 	}
-	
+
 	/**
 	 * Read PSM data from individual psm.tsv files
 	 */
 	private void readPSMs() {
 		List<FragPipePSM> psmList = new ArrayList<FragPipePSM>();
-		
+
 		File parentFile = this.getFile().getParentFile();
 		for (int i = 0; i < fileNames.length; i++) {
 			File filei = new File(parentFile, fileNames[i]);
@@ -547,7 +553,8 @@ public class FragpipePepReader extends AbstractMetaPeptideReader {
 
 							String spectrum = spectrumId >= 0 ? cs[spectrumId] : "";
 							String sequence = peptideId >= 0 ? cs[peptideId] : "";
-							
+
+							int scan = parseScanNumberOrDefault(spectrum);
 							int charge = chargeId >= 0 ? Integer.parseInt(cs[chargeId]) : 0;
 							double rt = retentionId >= 0 ? Double.parseDouble(cs[retentionId]) : 0.0;
 							double expMass = observedMassId >= 0 ? Double.parseDouble(cs[observedMassId]) : 0.0;
@@ -565,8 +572,8 @@ public class FragpipePepReader extends AbstractMetaPeptideReader {
 
 							String[] proteins = protein.isEmpty() ? new String[] {} : new String[] { protein };
 
-							FragPipePSM psm = new FragPipePSM(fileNames[i], spectrum, sequence, modSeq, mod, charge,
-									expMass, calMass, massDiff, miss, rt, score, probability, qValue, proteins);
+							FragPipePSM psm = new FragPipePSM(fileNames[i], scan, spectrum, sequence, modSeq, mod,
+									charge, expMass, calMass, massDiff, miss, rt, score, probability, qValue, proteins);
 							psmList.add(psm);
 						}
 
@@ -576,12 +583,38 @@ public class FragpipePepReader extends AbstractMetaPeptideReader {
 				}
 			}
 		}
-		
+
 		this.psms = psmList.toArray(new FragPipePSM[psmList.size()]);
 	}
-	
+
+	public static int parseScanNumberOrDefault(String title) {
+		if (title == null || title.isEmpty())
+			return 0;
+
+		try {
+			Matcher m = TITLE_PATTERN.matcher(title.trim());
+			if (!m.matches())
+				return 0;
+
+			String scanStr = m.group(1); // scanStart
+			if (scanStr == null || scanStr.isEmpty())
+				return 0;
+
+			// parseLong first to safely detect overflow beyond int
+			long scan = Long.parseLong(scanStr);
+			if (scan <= 0 || scan > Integer.MAX_VALUE)
+				return 0;
+
+			return (int) scan;
+		} catch (Exception ignored) {
+			// Swallow everything: NumberFormatException, Pattern issues, etc.
+			return 0;
+		}
+	}
+
 	/**
 	 * Get all PSMs
+	 * 
 	 * @return Array of FragPipePSM objects
 	 */
 	public FragPipePSM[] getPSMs() {

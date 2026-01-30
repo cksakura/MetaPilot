@@ -87,6 +87,10 @@ public class FlashLfqQuanPepReader extends AbstractMetaPeptideReader {
 		try {
 			line = reader.readLine();
 			this.title = line.split("\t");
+			LOGGER.info("FlashLfqQuanPepReader: header has {} columns; Intensity_ columns: {}; Detection Type_ columns: {}",
+					title.length,
+					java.util.Arrays.stream(title).filter(t -> t != null && t.startsWith("Intensity_")).toList(),
+					java.util.Arrays.stream(title).filter(t -> t != null && t.startsWith("Detection Type_")).toList());
 			for (int i = 0; i < title.length; i++) {
 				if (title[i].equals("Sequence")) {
 					modSeqId = i;
@@ -109,6 +113,8 @@ public class FlashLfqQuanPepReader extends AbstractMetaPeptideReader {
 
 			this.intensityTitles = intensityTitleList.toArray(String[]::new);
 			this.idenTypeTitles = idenTypeList.toArray(String[]::new);
+			LOGGER.info("FlashLfqQuanPepReader: parsed {} intensity columns, {} idenType columns (parseTitle no fileList)",
+					intensityTitles.length, idenTypeTitles.length);
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
 			LOGGER.error("Error in reading FlashLFQ quantification result file " + super.getFile(), e);
@@ -126,6 +132,20 @@ public class FlashLfqQuanPepReader extends AbstractMetaPeptideReader {
 		try {
 			line = reader.readLine();
 			this.title = line.split("\t");
+			LOGGER.info("FlashLfqQuanPepReader: fileList size={}, names={}", fileList.size(), fileList);
+			java.util.List<String> intensityCols = new java.util.ArrayList<>();
+			java.util.List<String> detectionTypeCols = new java.util.ArrayList<>();
+			for (int i = 0; i < title.length; i++) {
+				if (title[i] != null && title[i].startsWith("Intensity_")) {
+					intensityCols.add(title[i]);
+				}
+				if (title[i] != null && title[i].startsWith("Detection Type_")) {
+					detectionTypeCols.add(title[i]);
+				}
+			}
+			LOGGER.info("FlashLfqQuanPepReader: header Intensity_ columns ({}): {}", intensityCols.size(), intensityCols);
+			LOGGER.info("FlashLfqQuanPepReader: header Detection Type_ columns ({}): {}", detectionTypeCols.size(), detectionTypeCols);
+
 			for (int i = 0; i < title.length; i++) {
 				if (title[i].equals("Sequence")) {
 					modSeqId = i;
@@ -140,6 +160,18 @@ public class FlashLfqQuanPepReader extends AbstractMetaPeptideReader {
 							this.intensityTitles[j] = title[i];
 						}
 					}
+					// Fallback: match by file name only (header may have path: Intensity_/path/to/file.raw)
+					String intensitySuffix = title[i].substring("Intensity_".length());
+					for (int j = 0; j < fileList.size(); j++) {
+						if (this.intensityTitles[j] == null
+								&& (intensitySuffix.equals(fileList.get(j))
+										|| intensitySuffix.replace('\\', '/').endsWith("/" + fileList.get(j)))) {
+							this.intensityTitles[j] = title[i];
+							LOGGER.info("FlashLfqQuanPepReader: matched intensity column '{}' to fileList[{}]='{}' by path fallback",
+									title[i], j, fileList.get(j));
+							break;
+						}
+					}
 				} else if (title[i].startsWith("Detection Type_")) {
 					idenTypeTitleIdMap.put(title[i], i);
 					for (int j = 0; j < fileList.size(); j++) {
@@ -147,11 +179,44 @@ public class FlashLfqQuanPepReader extends AbstractMetaPeptideReader {
 							this.idenTypeTitles[j] = title[i];
 						}
 					}
+					// Fallback: match by file name only
+					String detectionSuffix = title[i].substring("Detection Type_".length());
+					for (int j = 0; j < fileList.size(); j++) {
+						if (this.idenTypeTitles[j] == null
+								&& (detectionSuffix.equals(fileList.get(j))
+										|| detectionSuffix.replace('\\', '/').endsWith("/" + fileList.get(j)))) {
+							this.idenTypeTitles[j] = title[i];
+							LOGGER.info("FlashLfqQuanPepReader: matched Detection Type column '{}' to fileList[{}]='{}' by path fallback",
+									title[i], j, fileList.get(j));
+							break;
+						}
+					}
 				}
 			}
 
 			if (sequenceId == -1) {
 				sequenceId = modSeqId;
+			}
+
+			int matchedIntensity = 0;
+			int matchedIdenType = 0;
+			for (int j = 0; j < fileList.size(); j++) {
+				if (this.intensityTitles[j] != null) matchedIntensity++;
+				if (this.idenTypeTitles[j] != null) matchedIdenType++;
+			}
+			LOGGER.info("FlashLfqQuanPepReader: after parseTitle(fileList): matched {}/{} intensity columns, {}/{} Detection Type columns",
+					matchedIntensity, fileList.size(), matchedIdenType, fileList.size());
+			if (matchedIntensity < fileList.size() || matchedIdenType < fileList.size()) {
+				for (int j = 0; j < fileList.size(); j++) {
+					if (this.intensityTitles[j] == null) {
+						LOGGER.warn("FlashLfqQuanPepReader: no header match for Intensity_ fileList[{}]='{}'; expected column 'Intensity_{}'",
+								j, fileList.get(j), fileList.get(j));
+					}
+					if (this.idenTypeTitles[j] == null) {
+						LOGGER.warn("FlashLfqQuanPepReader: no header match for Detection Type_ fileList[{}]='{}'; expected 'Detection Type_{}'",
+								j, fileList.get(j), fileList.get(j));
+					}
+				}
 			}
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
@@ -170,6 +235,12 @@ public class FlashLfqQuanPepReader extends AbstractMetaPeptideReader {
 		try {
 			line = reader.readLine();
 			this.title = line.split("\t");
+			java.util.List<String> intensityCols = new java.util.ArrayList<>();
+			for (int i = 0; i < title.length; i++) {
+				if (title[i] != null && title[i].startsWith("Intensity_")) intensityCols.add(title[i]);
+			}
+			LOGGER.info("FlashLfqQuanPepReader: parseTitle(fileList, reportTitle): fileList size={}, reportTitle length={}; header Intensity_ columns ({}): {}",
+					fileList.size(), reportTitle.length, intensityCols.size(), intensityCols);
 			for (int i = 0; i < title.length; i++) {
 				if (title[i].equals("Sequence")) {
 					modSeqId = i;
@@ -200,6 +271,16 @@ public class FlashLfqQuanPepReader extends AbstractMetaPeptideReader {
 			if (sequenceId == -1) {
 				sequenceId = modSeqId;
 			}
+			int matchedIntensity = 0;
+			for (int i = 0; i < this.intensityTitles.length; i++) {
+				if (this.intensityTitles[i] != null) matchedIntensity++;
+			}
+			int matchedIdenType = 0;
+			for (int j = 0; j < this.idenTypeTitles.length; j++) {
+				if (this.idenTypeTitles[j] != null) matchedIdenType++;
+			}
+			LOGGER.info("FlashLfqQuanPepReader: after parseTitle(fileList, reportTitle): matched {}/{} intensity columns, {}/{} Detection Type columns",
+					matchedIntensity, this.intensityTitles.length, matchedIdenType, fileList.size());
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
 			LOGGER.error("Error in reading FlashLFQ quantification result file " + super.getFile(), e);
@@ -220,22 +301,33 @@ public class FlashLfqQuanPepReader extends AbstractMetaPeptideReader {
 
 		double[] intensity = new double[intensityTitles.length];
 		for (int i = 0; i < intensity.length; i++) {
-			int id = this.intensityTitleIdMap.get(intensityTitles[i]);
-			if (id > -1 && id < cs.length) {
-				intensity[i] = Double.parseDouble(cs[id]);
+			if (intensityTitles[i] == null) {
+				continue;
+			}
+			Integer id = this.intensityTitleIdMap.get(intensityTitles[i]);
+			if (id != null && id > -1 && id < cs.length) {
+				try {
+					intensity[i] = Double.parseDouble(cs[id]);
+				} catch (NumberFormatException e) {
+					LOGGER.warn("FlashLfqQuanPepReader: could not parse intensity at column {} ('{}') for title '{}'",
+							id, id < cs.length ? cs[id] : "?", intensityTitles[i]);
+				}
 			}
 		}
 
 		int[] idenType = new int[idenTypeTitles.length];
 		for (int i = 0; i < idenType.length; i++) {
-			int id = this.idenTypeTitleIdMap.get(idenTypeTitles[i]);
-			if (id > -1 && id < cs.length) {
+			if (idenTypeTitles[i] == null) {
+				continue;
+			}
+			Integer id = this.idenTypeTitleIdMap.get(idenTypeTitles[i]);
+			if (id != null && id > -1 && id < cs.length) {
 				if (cs[id].equals("MSMS")) {
-					idenType[i] = 0;
-				} else if (cs[id].equals("MBR")) {
 					idenType[i] = 1;
-				} else if (cs[id].equals("NotDetected")) {
+				} else if (cs[id].equals("MBR")) {
 					idenType[i] = 2;
+				} else if (cs[id].equals("NotDetected")) {
+					idenType[i] = 0;
 				}
 			}
 		}
@@ -256,11 +348,23 @@ public class FlashLfqQuanPepReader extends AbstractMetaPeptideReader {
 	public FlashLfqQuanPeptide[] getMetaPeptides() {
 		// TODO Auto-generated method stub
 		ArrayList<FlashLfqQuanPeptide> list = new ArrayList<FlashLfqQuanPeptide>();
+		boolean loggedFirstRow = false;
 		try {
 			while ((line = reader.readLine()) != null) {
 				FlashLfqQuanPeptide pep = parse();
 				if (pep != null) {
 					list.add(pep);
+					if (!loggedFirstRow) {
+						double[] firstIntensity = pep.getIntensity();
+						int[] firstIdenType = pep.getIdenType();
+						java.util.List<Double> intList = new java.util.ArrayList<>();
+						for (double v : firstIntensity) intList.add(v);
+						java.util.List<Integer> typeList = new java.util.ArrayList<>();
+						for (int v : firstIdenType) typeList.add(v);
+						LOGGER.info("FlashLfqQuanPepReader: first peptide intensity ({} values): {}; idenType ({} values): {}",
+								firstIntensity.length, intList, firstIdenType.length, typeList);
+						loggedFirstRow = true;
+					}
 				}
 			}
 			reader.close();
@@ -271,6 +375,7 @@ public class FlashLfqQuanPepReader extends AbstractMetaPeptideReader {
 		}
 
 		FlashLfqQuanPeptide[] peps = list.toArray(new FlashLfqQuanPeptide[list.size()]);
+		LOGGER.info("FlashLfqQuanPepReader: read {} peptides from {}", peps.length, this.getFile());
 		return peps;
 	}
 
