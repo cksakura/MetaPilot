@@ -1079,6 +1079,26 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
         public StringProperty customField3Property() { return customField3; }
         
         /**
+         * Get value by column display name (as shown in Metadata configuration panel).
+         * Used so metaInfo export order matches the table column order.
+         */
+        public String getValueByColumnName(String columnName) {
+            if (columnName == null) return "";
+            switch (columnName) {
+                case "Label Type": return getLabelType() != null ? getLabelType() : "";
+                case "Age": return getAge() != null ? getAge() : "";
+                case "Gender": return getGender() != null ? getGender() : "";
+                case "Condition": return getCondition() != null ? getCondition() : "";
+                case "Treatment": return getTreatment() != null ? getTreatment() : "";
+                case "Time Point": return getTimePoint() != null ? getTimePoint() : "";
+                case "BMI": case "Custom 1": return getCustomField1() != null ? getCustomField1() : "";
+                case "Custom 2": return getCustomField2() != null ? getCustomField2() : "";
+                case "Custom 3": return getCustomField3() != null ? getCustomField3() : "";
+                default: return getCustomField1() != null ? getCustomField1() : "";
+            }
+        }
+        
+        /**
          * Convert this MetadataRow to a String array for parameter storage.
          * Order: [sampleName, labelType, age, gender, condition, treatment, timePoint, customField1, customField2, customField3]
          */
@@ -1844,6 +1864,14 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
      */
     @Override
     protected void loadLastUsedParameters() {
+        // Check if parameters have already been loaded from an external file
+        // If so, skip loading last used parameters to avoid overwriting
+        if (parametersLoadedFromFile) {
+            System.out.println("DEBUG: Skipping loadLastUsedParameters() - parameters already loaded from file");
+            consolePanel.appendConsoleText("Skipping last used parameters - using loaded file parameters\n");
+            return;
+        }
+        
         try {
             consolePanel.appendConsoleText("Loading last used parameters...\n");
             DDAIgcMaxQuantParameters params = (DDAIgcMaxQuantParameters) parameterIO.loadLastUsedParameters();

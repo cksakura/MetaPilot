@@ -17,6 +17,8 @@ public class MetaData {
 
 	private int metaTypeCount;
 	private String[][] metaInfo;
+	/** Display names for metadata columns (e.g. Age, Gender, Condition). Used in export headers. */
+	private String[] metaTypeTitles;
 	
 	private String[] labelTitle;
 	private String[] labelExpNames;
@@ -297,6 +299,14 @@ public class MetaData {
 	public int getMetaTypeCount() {
 		return metaTypeCount;
 	}
+
+	public String[] getMetaTypeTitles() {
+		return metaTypeTitles;
+	}
+
+	public void setMetaTypeTitles(String[] metaTypeTitles) {
+		this.metaTypeTitles = metaTypeTitles;
+	}
 	
 	public boolean isIsobaricQuan() {
 		if (this.labelTitle == null || this.labelTitle.length == 0) {
@@ -570,8 +580,13 @@ public class MetaData {
 		StringBuilder title = new StringBuilder();
 		title.append("Raw").append("\t");
 		title.append("Experiment");
-		for (int i = 0; i < metaTypeCount; i++) {
-			title.append("\t").append("meta" + (i + 1));
+		// Use only column names from Metadata configuration panel (metaTypeTitles). Do not use "meta1", "meta2", etc.
+		String[] titles = getMetaTypeTitles();
+		int effectiveMetaCols = (titles != null && titles.length > 0) ? Math.min(metaTypeCount, titles.length) : metaTypeCount;
+		for (int i = 0; i < effectiveMetaCols; i++) {
+			String colName = (titles != null && i < titles.length && titles[i] != null && !titles[i].isEmpty())
+					? titles[i] : "";
+			title.append("\t").append(colName);
 		}
 		writer.println(title);
 
@@ -583,12 +598,23 @@ public class MetaData {
 			StringBuilder[] sbs = new StringBuilder[expNames.length];
 
 			for (int i = 0; i < sbs.length; i++) {
-				String raw = raws[i].substring(raws[i].lastIndexOf("\\") + 1, raws[i].length() - ".raw".length());
+				// Extract raw file name without path and extension (supports both Windows and Unix paths)
+				String rawPath = raws[i];
+				int lastSep = Math.max(rawPath.lastIndexOf("\\"), rawPath.lastIndexOf("/"));
+				String rawName = rawPath.substring(lastSep + 1);
+				// Remove extension if present (handles .raw, .mzML, .mzXML, .d, etc.)
+				int dotIndex = rawName.lastIndexOf(".");
+				if (dotIndex > 0) {
+					rawName = rawName.substring(0, dotIndex);
+				}
 				sbs[i] = new StringBuilder();
-				sbs[i].append(raw).append("\t");
+				sbs[i].append(rawName).append("\t");
 				sbs[i].append(expNames[i]);
-				for (int j = 0; j < metaTypeCount; j++) {
-					sbs[i].append("\t").append(metainfo[i][j]);
+				// Safely access metainfo - write same number of columns as headers (effectiveMetaCols)
+				if (metainfo != null && i < metainfo.length) {
+					for (int j = 0; j < effectiveMetaCols && j < metainfo[i].length; j++) {
+						sbs[i].append("\t").append(metainfo[i][j] != null ? metainfo[i][j] : "");
+					}
 				}
 				writer.println(sbs[i]);
 			}
@@ -604,9 +630,12 @@ public class MetaData {
 
 					StringBuilder sb = new StringBuilder();
 					sb.append(expNames[i] + "_" + LabelTitles[j]).append("\t");
-					sb.append(labelExpNames[id]);
-					for (int k = 0; k < metaTypeCount; k++) {
-						sb.append("\t").append(metainfo[id][k]);
+					sb.append(id < labelExpNames.length ? labelExpNames[id] : "");
+					// Safely access metainfo - write same number of columns as headers (effectiveMetaCols)
+					if (metainfo != null && id < metainfo.length) {
+						for (int k = 0; k < effectiveMetaCols && k < metainfo[id].length; k++) {
+							sb.append("\t").append(metainfo[id][k] != null ? metainfo[id][k] : "");
+						}
 					}
 					writer.println(sb);
 				}

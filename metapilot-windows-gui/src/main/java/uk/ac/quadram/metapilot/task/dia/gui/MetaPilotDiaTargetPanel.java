@@ -40,6 +40,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Arrays;
 import java.io.File;
@@ -1359,17 +1360,28 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 			// Create MetaData object
 			MetaData metaData = new MetaData(rawFiles, expNames, fractions, replicates);
 
-			// Collect metadata information from the reusable metadata panel
-			ObservableList<MetaPilotDdaIgcMaxQuantPanel.MetadataRow> metadataRows = metadataPanel
-					.getMetadataTableData();
-			String[][] metaInfo = new String[metadataRows.size()][3];
+		// Collect metadata information using column order from Metadata configuration panel
+		ObservableList<MetaPilotDdaIgcMaxQuantPanel.MetadataRow> metadataRows = metadataPanel
+				.getMetadataTableData();
+		List<String> colNames = metadataPanel != null ? metadataPanel.getMetadataColumnNames() : java.util.Collections.emptyList();
+		int metaTypeCount = Math.max(1, colNames.size());
+		String[][] metaInfo = new String[metadataRows.size()][metaTypeCount];
+		if (!colNames.isEmpty()) {
 			for (int i = 0; i < metadataRows.size(); i++) {
 				MetaPilotDdaIgcMaxQuantPanel.MetadataRow row = metadataRows.get(i);
-				metaInfo[i][0] = row.getAge() != null ? row.getAge() : "";
-				metaInfo[i][1] = row.getGender() != null ? row.getGender() : "";
-				metaInfo[i][2] = row.getCondition() != null ? row.getCondition() : "";
+				for (int j = 0; j < colNames.size(); j++) {
+					String v = row.getValueByColumnName(colNames.get(j));
+					metaInfo[i][j] = v != null ? v : "";
+				}
 			}
-			metaData.setMetaInfo(metaInfo);
+		}
+		// Set both metaTypeCount and metaInfo - metaTypeCount must be set for exportMetadata to work correctly
+		metaData.setMetaTypeCount(metaTypeCount);
+		metaData.setMetaInfo(metaInfo);
+		// Pass column names from UI so export uses them as headers (no "meta1", "meta2", etc.)
+		if (!colNames.isEmpty()) {
+			metaData.setMetaTypeTitles(colNames.toArray(new String[0]));
+		}
 
 			// Get result directory
 			String result = ioPanel.getOutputDirectory();
@@ -1516,16 +1528,20 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 				metaParameterDiaTarget.setSelectedFunctions(selectedFunctionsList.toArray(new String[0]));
 			}
 
-			// Set metadata info (allow empty for auto-save)
+			// Set metadata info (allow empty for auto-save); build from column names for consistency
 			if (metadataPanel != null) {
 				ObservableList<MetaPilotDdaIgcMaxQuantPanel.MetadataRow> metadataRows = metadataPanel
 						.getMetadataTableData();
-				String[][] metaInfo = new String[metadataRows.size()][3];
-				for (int i = 0; i < metadataRows.size(); i++) {
-					MetaPilotDdaIgcMaxQuantPanel.MetadataRow row = metadataRows.get(i);
-					metaInfo[i][0] = row.getAge() != null ? row.getAge() : "";
-					metaInfo[i][1] = row.getGender() != null ? row.getGender() : "";
-					metaInfo[i][2] = row.getCondition() != null ? row.getCondition() : "";
+				List<String> colNames = metadataPanel.getMetadataColumnNames();
+				if (!colNames.isEmpty() && !metadataRows.isEmpty()) {
+					String[][] metaInfo = new String[metadataRows.size()][colNames.size()];
+					for (int i = 0; i < metadataRows.size(); i++) {
+						MetaPilotDdaIgcMaxQuantPanel.MetadataRow row = metadataRows.get(i);
+						for (int j = 0; j < colNames.size(); j++) {
+							String v = row.getValueByColumnName(colNames.get(j));
+							metaInfo[i][j] = v != null ? v : "";
+						}
+					}
 				}
 				// Note: metadata info is not stored in MetaParameterDiaTg
 			}
@@ -1591,6 +1607,14 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 	 */
 	@Override
 	protected void loadLastUsedParameters() {
+		// Check if parameters have already been loaded from an external file
+		// If so, skip loading last used parameters to avoid overwriting
+		if (parametersLoadedFromFile) {
+			System.out.println("DEBUG: Skipping loadLastUsedParameters() - parameters already loaded from file");
+			consolePanel.appendConsoleText("Skipping last used parameters - using loaded file parameters\n");
+			return;
+		}
+		
 		try {
 			consolePanel.appendConsoleText("Loading last used parameters...\n");
 			LOGGER.info("loadLastUsedParameters() called for DIA Target panel");

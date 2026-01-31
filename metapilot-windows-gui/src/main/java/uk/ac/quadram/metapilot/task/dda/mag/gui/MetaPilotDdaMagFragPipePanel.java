@@ -12,6 +12,7 @@ import javafx.scene.paint.Color;
 import javafx.scene.control.Alert.AlertType;
 import java.util.Optional;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
+import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX.ExperimentRow;
 import uk.ac.quadram.metapilot.task.common.gui.MagDatabaseSettingsPanel;
 import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
 import uk.ac.quadram.metapilot.task.common.gui.MetadataConfigurationPanel;
@@ -1022,6 +1023,14 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
      */
     @Override
     protected void loadLastUsedParameters() {
+        // Check if parameters have already been loaded from an external file
+        // If so, skip loading last used parameters to avoid overwriting
+        if (parametersLoadedFromFile) {
+            System.out.println("DEBUG: Skipping loadLastUsedParameters() - parameters already loaded from file");
+            consolePanel.appendConsoleText("Skipping last used parameters - using loaded file parameters\n");
+            return;
+        }
+        
         try {
             consolePanel.appendConsoleText("Loading last used parameters...\n");
             LOGGER.info("Attempting to load last used parameters for DDA MAG FragPipe workflow");
@@ -1084,8 +1093,17 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
                 return;
             }
         
-        // Apply metadata to IO panel if available
-        if (params.getMetadata() != null) {
+        // Apply experiment data to IO panel if available - convert String arrays back to JavaFX rows
+        if (params.getExperimentData() != null && !params.getExperimentData().isEmpty()) {
+            List<ExperimentRow> experimentRows = new ArrayList<>();
+            for (String[] data : params.getExperimentData()) {
+                experimentRows.add(ExperimentRow.fromArray(data));
+            }
+            ioPanel.setExperimentData(experimentRows);
+            consolePanel.appendConsoleText("Applied " + params.getExperimentData().size() + " experiment rows to IO panel\n");
+            LOGGER.info("Applied {} experiment rows to IO panel", params.getExperimentData().size());
+        } else if (params.getMetadata() != null) {
+            // Fallback: Apply metadata to IO panel if experiment data is not available
             MetaData metadata = params.getMetadata();
             String[] rawFiles = metadata.getRawFiles();
             String[] expNames = metadata.getExpNames();
@@ -1100,6 +1118,13 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
                 ioPanel.setExperimentData(experimentRows);
                 LOGGER.info("Applied metadata with {} raw files to IO panel", rawFiles.length);
             }
+        }
+        
+        // Apply output directory if available
+        if (params.getResult() != null && !params.getResult().trim().isEmpty()) {
+            ioPanel.setOutputDirectory(params.getResult());
+            consolePanel.appendConsoleText("Applied output directory: " + params.getResult() + "\n");
+            LOGGER.info("Applied output directory: {}", params.getResult());
         }
         
         // Apply only essential parameters from saved settings
@@ -1212,8 +1237,8 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
             for (String[] data : params.getMetadataTableData()) {
                 metadataRows.add(uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel.MetadataRow.fromArray(data));
             }
-            metadataPanel.setMetadataTableData(metadataRows);
-            LOGGER.info("Applied {} metadata table rows", params.getMetadataTableData().size());
+            metadataPanel.setMetadataTableDataWithColumns(metadataRows);
+            LOGGER.info("Applied {} metadata table rows with columns", params.getMetadataTableData().size());
         }
         
         // Update parameter view after applying parameters

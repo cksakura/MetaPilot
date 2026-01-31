@@ -31,6 +31,10 @@ public abstract class AbstractWorkflowPanel<T extends MetaBaseParameter> extends
     // Current analysis parameters for viewReport
     protected T currentAnalysisParams;
     
+    // Flag to track whether parameters have been loaded from an external file
+    // When true, loadLastUsedParameters() should be skipped to avoid overwriting
+    protected volatile boolean parametersLoadedFromFile = false;
+    
     /**
      * Constructor - subclasses should call this and then initialize their specific components
      */
@@ -317,17 +321,31 @@ public abstract class AbstractWorkflowPanel<T extends MetaBaseParameter> extends
      */
     public void loadParametersFromObject(Object parameters) {
         try {
-            if (parameters != null && parameters.getClass().isAssignableFrom(getParameterClass())) {
+            System.out.println("DEBUG: loadParametersFromObject called with: " + 
+                (parameters != null ? parameters.getClass().getName() : "null"));
+            System.out.println("DEBUG: Expected parameter class: " + getParameterClass().getName());
+            
+            // Fix: Check if expected class is assignable FROM the actual parameter class
+            // (i.e., parameters is an instance of or subclass of the expected type)
+            if (parameters != null && getParameterClass().isAssignableFrom(parameters.getClass())) {
+                // Set flag BEFORE applying parameters to prevent loadLastUsedParameters() from overwriting
+                parametersLoadedFromFile = true;
+                System.out.println("DEBUG: Set parametersLoadedFromFile = true");
+                
+                System.out.println("DEBUG: Type check passed, applying parameters to UI...");
                 @SuppressWarnings("unchecked")
                 T typedParams = (T) parameters;
                 applyParametersToUI(typedParams);
                 consolePanel.appendConsoleText("✓ Successfully loaded parameters from file\n");
+                System.out.println("DEBUG: Parameters applied successfully");
             } else {
+                System.out.println("DEBUG: Type check FAILED - parameter type mismatch");
                 consolePanel.appendConsoleText("ERROR: Parameter type mismatch. Expected: " + 
                     getParameterClass().getSimpleName() + ", Got: " + 
                     (parameters != null ? parameters.getClass().getSimpleName() : "null") + "\n");
             }
         } catch (Exception e) {
+            System.out.println("DEBUG: Exception in loadParametersFromObject: " + e.getMessage());
             consolePanel.appendConsoleText("ERROR: Failed to load parameters: " + e.getMessage() + "\n");
             e.printStackTrace();
         }

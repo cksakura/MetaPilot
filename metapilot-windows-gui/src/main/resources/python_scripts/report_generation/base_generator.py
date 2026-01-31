@@ -80,7 +80,8 @@ class BaseReportGenerator:
         """Load metadata file if available."""
         try:
             if metadata_file and os.path.exists(metadata_file):
-                metadata = pd.read_csv(metadata_file, sep='\t')
+                # keep_default_na=False so "None" (no treatment) stays as "None", not converted to NaN
+                metadata = pd.read_csv(metadata_file, sep='\t', keep_default_na=False)
                 return metadata
         except Exception as e:
             print(f"Warning: Could not load metadata: {e}")
@@ -118,15 +119,16 @@ class BaseReportGenerator:
         intensity_cols = list(dict.fromkeys(intensity_cols))
 
         # Derive sample names by stripping known prefixes
-        raw_sample_names = [
-            (
-                col.replace('LFQ intensity ', '')
-                   .replace('iBAQ ', '')
-                   .replace('Intensity ', '')
-                   .replace('Intensity', '')
-            )
-            for col in intensity_cols
-        ]
+        # Handle both "Intensity " (space) and "Intensity_" (underscore) - used by different tools
+        raw_sample_names = []
+        for col in intensity_cols:
+            name = (col.replace('LFQ intensity ', '')
+                       .replace('iBAQ ', '')
+                       .replace('Intensity ', '')
+                       .replace('Intensity_', '')
+                       .replace('Intensity', '')
+                       .strip(' _'))
+            raw_sample_names.append(name)
         
         # Use experiment names from metadata if available, otherwise use raw sample names
         sample_names = raw_sample_names
@@ -161,36 +163,114 @@ class BaseReportGenerator:
                 print(f"Warning: Could not map to experiment names: {e}")
                 sample_names = raw_sample_names
         
-        # Extract group information from metadata
+        # Extract group information from metadata using classification column
         groups = None
         group_colors = None
         if metadata is not None and len(sample_names) > 0:
             try:
-                # Match samples with metadata
-                sample_col = 'Sample' if 'Sample' in metadata.columns else metadata.columns[0]
-                group_col = 'Group' if 'Group' in metadata.columns else None
+                # Find classification column and build sample-to-group mapping
+                class_col, sample_groups = self._get_classification_column(metadata, sample_names)
                 
-                if group_col and group_col in metadata.columns:
-                    sample_groups = {}
-                    for _, row in metadata.iterrows():
-                        sample_groups[row[sample_col]] = row[group_col]
-                    
+                if class_col and sample_groups:
                     groups = [sample_groups.get(sample, 'Unknown') for sample in sample_names]
                     unique_groups = list(dict.fromkeys(groups))
                     group_colors = self._assign_group_colors(unique_groups)
+                    print(f"INFO: Using '{class_col}' for sample classification ({len(unique_groups)} groups)")
             except Exception as e:
                 print(f"Warning: Could not extract group information: {e}")
         
         return intensity_cols, sample_names, groups, group_colors
 
+    def _get_classification_column(self, metadata, sample_names):
+        """
+        Determine which metadata column to use for sample classification.
+        
+        Rules:
+        1. If only 1 metadata column (after Raw, Experiment) -> use it
+        2. If multiple metadata columns -> use "Condition" if present, otherwise first column
+        
+        Returns:
+            tuple: (classification_column_name, sample_to_group_dict) or (None, None) if not available
+        """
+        if metadata is None or len(metadata.columns) == 0:
+            return None, None
+        
+        # Identify non-metadata columns (system columns)
+        system_cols = {'Raw', 'Experiment', 'raw', 'experiment', 'Sample', 'sample', 
+                       'File', 'file', 'RawFile', 'Raw File', 'Raw file'}
+        
+        # Get metadata columns (columns that are not system columns)
+        meta_cols = [col for col in metadata.columns if col not in system_cols]
+        
+        # Exclude "Species"/"species" - taxonomic rank, not sample classification
+        species_cols = {'Species', 'species', 'SPECIES'}
+        meta_cols = [c for c in meta_cols if c not in species_cols]
+        
+        if not meta_cols:
+            return None, None
+        
+        # Determine classification column - prefer Condition for sample grouping
+        class_col = None
+        if len(meta_cols) == 1:
+            # Only one metadata column - use it (unless it's species)
+            class_col = meta_cols[0]
+        else:
+            # Multiple metadata columns - strongly prefer "Condition"
+            condition_variants = ['Condition', 'condition', 'CONDITION']
+            for variant in condition_variants:
+                if variant in meta_cols:
+                    class_col = variant
+                    break
+            
+            # If no Condition, use first non-species column
+            if class_col is None:
+                class_col = meta_cols[0]
+        
+        # Build sample-to-group mapping
+        # Try Experiment, Sample, then Raw column (case-insensitive header lookup)
+        sample_groups = {}
+        
+        def _get_col(candidates):
+            for c in candidates:
+                if c in metadata.columns:
+                    return c
+            return None
+        
+        exp_col = _get_col(['Experiment', 'experiment', 'Sample', 'sample'])
+        raw_col = _get_col(['Raw', 'raw', 'Raw file', 'RawFile'])
+        
+        # Use 'Unknown' only for truly missing (NaN or empty); keep "None", "NA" etc. as valid values
+        def _group_val(val):
+            if pd.isna(val):
+                return 'Unknown'
+            s = str(val).strip()
+            if s == '' or s.lower() == 'nan':
+                return 'Unknown'
+            return s
+
+        if exp_col and class_col in metadata.columns:
+            for _, row in metadata.iterrows():
+                exp_name = str(row[exp_col]).strip() if pd.notna(row[exp_col]) else None
+                group_val = _group_val(row[class_col])
+                if exp_name and exp_name != 'nan':
+                    sample_groups[exp_name] = group_val
+
+        if raw_col and class_col in metadata.columns:
+            for _, row in metadata.iterrows():
+                raw_name = str(row[raw_col]).strip() if pd.notna(row[raw_col]) else None
+                group_val = _group_val(row[class_col])
+                if raw_name and raw_name != 'nan' and raw_name not in sample_groups:
+                    sample_groups[raw_name] = group_val
+        
+        return class_col, sample_groups if sample_groups else None
+
     def _detect_intensity_columns(self, df) -> List[str]:
         """Detect sample intensity columns across common proteomics outputs."""
         candidates: List[str] = []
         patterns = [
-            'LFQ intensity ', 'iBAQ ', 'Intensity ',
+            'LFQ intensity ', 'iBAQ ', 'Intensity ', 'Intensity_',
         ]
-        # DIA-NN/other tools may produce columns like "Intensity RawFile"; include generic contains rule
-        # IGC format uses "Intensity SampleName" pattern
+        # DIA-NN/FlashLFQ use "Intensity_"; FragPipe/pFind use "Intensity " (space)
         for col in df.columns:
             if col == 'Intensity':
                 continue

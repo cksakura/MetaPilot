@@ -132,7 +132,7 @@ class TaxonomySummaryGenerator(BaseReportGenerator):
             fig.update_yaxes(title_text="Log Intensity", row=current_row, col=1)
             current_row += 1
 
-            # 2. PCA scatter
+            # 2. PCA scatter (with group classification if metadata available)
             if log_intensity_matrix.shape[0] >= 2 and log_intensity_matrix.shape[1] >= 2:
                 try:
                     # Filter out zero/near-zero variance rows (all-zero taxa)
@@ -164,25 +164,64 @@ class TaxonomySummaryGenerator(BaseReportGenerator):
                     x_coords = components[:, 0].tolist()
                     y_coords = components[:, 1].tolist()
                     
-                    fig.add_trace(
-                        go.Scatter(
-                            x=x_coords,
-                            y=y_coords,
-                            mode='markers+text',
-                            marker=dict(
-                                color=self.colors['secondary'], 
-                                size=12,  # Larger markers
-                                opacity=0.8,  # Higher opacity
-                                line=dict(width=2, color='#333333')  # Thicker border
+                    # Plot with group classification if available
+                    if groups is not None and group_colors is not None:
+                        # Group samples by their classification
+                        unique_groups = list(dict.fromkeys(groups))
+                        for group_name in unique_groups:
+                            group_indices = [i for i, g in enumerate(groups) if g == group_name]
+                            group_x = [x_coords[i] for i in group_indices]
+                            group_y = [y_coords[i] for i in group_indices]
+                            group_labels = [point_labels[i] for i in group_indices]
+                            group_color = group_colors.get(group_name, self.colors['secondary'])
+                            
+                            # Add scatter points for this group
+                            fig.add_trace(
+                                go.Scatter(
+                                    x=group_x,
+                                    y=group_y,
+                                    mode='markers+text',
+                                    marker=dict(
+                                        color=group_color,
+                                        size=12,
+                                        opacity=0.8,
+                                        line=dict(width=2, color='#333333')
+                                    ),
+                                    text=group_labels,
+                                    textposition='top center',
+                                    name=group_name,
+                                    legendgroup=group_name,
+                                    hovertemplate=f'<b>%{{text}}</b><br>Group: {group_name}<br>PC1: %{{x:.2f}}<br>PC2: %{{y:.2f}}<extra></extra>',
+                                    showlegend=False
+                                ),
+                                row=current_row,
+                                col=1
+                            )
+                            
+                            # Add confidence ellipse if group has 3+ samples
+                            if len(group_x) >= 3:
+                                self._add_confidence_ellipse(fig, group_x, group_y, group_color, group_name, current_row)
+                    else:
+                        # No grouping - single color for all points
+                        fig.add_trace(
+                            go.Scatter(
+                                x=x_coords,
+                                y=y_coords,
+                                mode='markers+text',
+                                marker=dict(
+                                    color=self.colors['secondary'], 
+                                    size=12,
+                                    opacity=0.8,
+                                    line=dict(width=2, color='#333333')
+                                ),
+                                text=point_labels,
+                                textposition='top center',
+                                hovertemplate='<b>%{text}</b><br>PC1: %{x:.2f}<br>PC2: %{y:.2f}<br><extra></extra>',
+                                showlegend=False
                             ),
-                            text=point_labels,
-                            textposition='top center',
-                            hovertemplate='<b>%{text}</b><br>PC1: %{x:.2f}<br>PC2: %{y:.2f}<br><extra></extra>',
-                            showlegend=False
-                        ),
-                        row=current_row,
-                        col=1
-                    )
+                            row=current_row,
+                            col=1
+                        )
 
                     pc1_label = f"PC1 ({explained[0]*100:.1f}% var)" if len(explained) > 0 else "PC1"
                     pc2_label = f"PC2 ({explained[1]*100:.1f}% var)" if len(explained) > 1 else "PC2"
@@ -193,10 +232,29 @@ class TaxonomySummaryGenerator(BaseReportGenerator):
                     y_vals = components[:, 1]
                     x_min, x_max = float(x_vals.min()), float(x_vals.max())
                     y_min, y_max = float(y_vals.min()), float(y_vals.max())
-                    x_pad = (x_max - x_min) * 0.1 if x_max > x_min else 0.5
-                    y_pad = (y_max - y_min) * 0.1 if y_max > y_min else 0.5
+                    x_pad = (x_max - x_min) * 0.15 if x_max > x_min else 0.5
+                    y_pad = (y_max - y_min) * 0.15 if y_max > y_min else 0.5
                     fig.update_xaxes(range=[x_min - x_pad, x_max + x_pad], row=current_row, col=1)
                     fig.update_yaxes(range=[y_min - y_pad, y_max + y_pad], row=current_row, col=1)
+
+                    # Small legend inside this PCA subplot (group names only)
+                    if groups is not None and group_colors is not None:
+                        unique_groups = list(dict.fromkeys(groups))
+                        legend_text = "<br>".join(unique_groups)
+                        xref = "x domain" if current_row == 1 else f"x{current_row} domain"
+                        yref = "y domain" if current_row == 1 else f"y{current_row} domain"
+                        fig.add_annotation(
+                            text=legend_text,
+                            xref=xref, yref=yref,
+                            x=0.99, y=0.99,
+                            xanchor="right", yanchor="top",
+                            showarrow=False,
+                            font=dict(size=10),
+                            bgcolor="rgba(255,255,255,0.85)",
+                            bordercolor="rgba(0,0,0,0.2)",
+                            borderwidth=1,
+                            borderpad=4
+                        )
 
                 except Exception:
                     fig.add_annotation(
@@ -239,27 +297,25 @@ class TaxonomySummaryGenerator(BaseReportGenerator):
                     heatmap_values = heatmap_values[row_order]
                     heatmap_labels = [heatmap_labels[i] for i in row_order]
 
+                col_order = list(range(heatmap_values.shape[1]))
                 if heatmap_values.shape[1] > 1:
                     from scipy.cluster.hierarchy import linkage, dendrogram
                     from scipy.spatial.distance import pdist
                     col_linkage = linkage(pdist(heatmap_values.T), method='ward')
                     col_order = dendrogram(col_linkage, no_plot=True)['leaves']
                     heatmap_values = heatmap_values[:, col_order]
-                    sample_names_clustered = [
-                        simple_names[i] if i < len(simple_names) else f"Sample_{i+1}"
-                        for i in col_order
-                    ]
-                else:
-                    sample_names_clustered = (
-                        simple_names[:len(intensity_cols)]
-                        if len(simple_names) > 0
-                        else [f"Sample_{i+1}" for i in range(len(intensity_cols))]
-                    )
+                
+                sample_names_clustered = [
+                    simple_names[i] if i < len(simple_names) else f"Sample_{i+1}"
+                    for i in col_order
+                ]
+                # X-axis: experiment name only (no group/Condition appended)
+                heatmap_x_labels = sample_names_clustered
 
                 fig.add_trace(
                     go.Heatmap(
                         z=heatmap_values.tolist(),
-                        x=sample_names_clustered,
+                        x=heatmap_x_labels,
                         y=heatmap_labels,
                         colorscale='Viridis',
                         showscale=False,
@@ -279,7 +335,7 @@ class TaxonomySummaryGenerator(BaseReportGenerator):
                     col=1
                 )
 
-            fig.update_xaxes(title_text="Samples", row=current_row, col=1)
+            fig.update_xaxes(title_text="Samples", row=current_row, col=1, tickangle=45)
             fig.update_yaxes(title_text="Taxa", row=current_row, col=1)
             current_row += 1
 
@@ -343,7 +399,7 @@ class TaxonomySummaryGenerator(BaseReportGenerator):
                             y=abundances,
                             name=taxon,
                             marker_color=color_palette[idx % len(color_palette)],
-                            showlegend=True,
+                            showlegend=False,
                             hovertemplate=f'<b>{taxon}</b><br>Sample: %{{x}}<br>Abundance: %{{y:.1f}}%<extra></extra>'
                         ),
                         row=current_row,
@@ -367,6 +423,7 @@ class TaxonomySummaryGenerator(BaseReportGenerator):
             current_row += 1
 
         height_per_subplot = 900
+        # No global Sample Groups legend; each PCA has a small in-figure legend
         fig.update_layout(
             height=height_per_subplot * total_rows,
             showlegend=False,
@@ -375,4 +432,68 @@ class TaxonomySummaryGenerator(BaseReportGenerator):
         )
         
         return fig
+
+    def _add_confidence_ellipse(self, fig, x_coords, y_coords, color, group_name, row):
+        """Add a 95% confidence ellipse around group points in PCA plot."""
+        try:
+            if len(x_coords) < 3:
+                return
+            
+            x_arr = np.array(x_coords)
+            y_arr = np.array(y_coords)
+            
+            # Calculate mean and covariance
+            mean_x = np.mean(x_arr)
+            mean_y = np.mean(y_arr)
+            
+            # Calculate covariance matrix
+            cov_matrix = np.cov(x_arr, y_arr)
+            
+            # Get eigenvalues and eigenvectors
+            eigenvalues, eigenvectors = np.linalg.eigh(cov_matrix)
+            
+            # Sort by eigenvalue (largest first)
+            order = eigenvalues.argsort()[::-1]
+            eigenvalues = eigenvalues[order]
+            eigenvectors = eigenvectors[:, order]
+            
+            # Calculate ellipse parameters (95% confidence = 2.447 standard deviations)
+            chi2_val = 2.447  # 95% confidence for 2D
+            width = 2 * chi2_val * np.sqrt(eigenvalues[0])
+            height = 2 * chi2_val * np.sqrt(eigenvalues[1])
+            
+            # Calculate rotation angle
+            angle = np.arctan2(eigenvectors[1, 0], eigenvectors[0, 0])
+            
+            # Generate ellipse points
+            t = np.linspace(0, 2 * np.pi, 50)
+            ellipse_x = width/2 * np.cos(t)
+            ellipse_y = height/2 * np.sin(t)
+            
+            # Rotate ellipse
+            cos_angle = np.cos(angle)
+            sin_angle = np.sin(angle)
+            rotated_x = cos_angle * ellipse_x - sin_angle * ellipse_y + mean_x
+            rotated_y = sin_angle * ellipse_x + cos_angle * ellipse_y + mean_y
+            
+            # Add ellipse trace
+            fig.add_trace(
+                go.Scatter(
+                    x=rotated_x.tolist(),
+                    y=rotated_y.tolist(),
+                    mode='lines',
+                    line=dict(color=color, width=2, dash='dash'),
+                    fill='toself',
+                    fillcolor=color.replace(')', ', 0.1)').replace('rgb', 'rgba') if 'rgb' in color else f"rgba{tuple(list(int(color.lstrip('#')[i:i+2], 16) for i in (0, 2, 4)) + [0.1])}",
+                    name=f"{group_name} (95% CI)",
+                    legendgroup=group_name,
+                    showlegend=False,
+                    hoverinfo='skip'
+                ),
+                row=row,
+                col=1
+            )
+        except Exception as e:
+            # Silently skip ellipse if calculation fails
+            print(f"Warning: Could not add confidence ellipse for {group_name}: {e}")
 

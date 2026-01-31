@@ -8,8 +8,14 @@ import os
 import json
 from pathlib import Path
 
-# Add the report generation module to the path
-sys.path.append(os.path.join(os.path.dirname(__file__), 'report_generation'))
+# Use canonical report scripts from metapilot-windows-gui (single source)
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+_project_root = os.path.normpath(os.path.join(_script_dir, "..", "..", "..", ".."))
+_canonical_scripts = os.path.join(_project_root, "metapilot-windows-gui", "src", "main", "resources", "python_scripts")
+if os.path.exists(_canonical_scripts):
+    sys.path.insert(0, _canonical_scripts)
+else:
+    sys.path.insert(0, _script_dir)  # fallback when run from extracted JAR (report_generation is alongside)
 
 from report_generation.metapilot_report_generator import MetaPilotReportGenerator
 

@@ -295,8 +295,10 @@ public class MetadataConfigurationPanel extends VBox {
     
     private void addMetadataColumnWithProperty(String columnName, String propertyName) {
         TableColumn<MetaPilotDdaIgcMaxQuantPanel.MetadataRow, String> newCol = new TableColumn<>(columnName);
+        newCol.setUserData(columnName); // store display name for getMetadataColumnNames() when getText() is empty
         newCol.setCellValueFactory(cellData -> {
             switch (propertyName) {
+                case "labelType": return cellData.getValue().labelTypeProperty();
                 case "age": return cellData.getValue().ageProperty();
                 case "gender": return cellData.getValue().genderProperty();
                 case "condition": return cellData.getValue().conditionProperty();
@@ -329,6 +331,7 @@ public class MetadataConfigurationPanel extends VBox {
         });
         newCol.setOnEditCommit(e -> {
             switch (propertyName) {
+                case "labelType": e.getRowValue().setLabelType(e.getNewValue()); break;
                 case "age": e.getRowValue().setAge(e.getNewValue()); break;
                 case "gender": e.getRowValue().setGender(e.getNewValue()); break;
                 case "condition": e.getRowValue().setCondition(e.getNewValue()); break;
@@ -384,8 +387,33 @@ public class MetadataConfigurationPanel extends VBox {
     }
     
     public int getMetadataColumnCount() {
-        // Return number of metadata columns (excluding Sample and Label Type columns)
+        // Return number of metadata columns (excluding Sample column)
         return Math.max(0, metadataTable.getColumns().size() - 1); // Subtract 1 for Sample column
+    }
+    
+    /**
+     * Returns the display names of metadata columns (excluding Sample column).
+     * Uses the label from the Metadata configuration panel only; never "meta1", "meta2", etc.
+     */
+    public List<String> getMetadataColumnNames() {
+        List<String> names = new ArrayList<>();
+        var columns = metadataTable.getColumns();
+        // Skip first column (Sample)
+        for (int i = 1; i < columns.size(); i++) {
+            TableColumn<MetaPilotDdaIgcMaxQuantPanel.MetadataRow, ?> col = columns.get(i);
+            String text = col.getText();
+            if (text != null && !text.isEmpty()) {
+                names.add(text);
+            } else {
+                Object userData = col.getUserData();
+                if (userData instanceof String && !((String) userData).isEmpty()) {
+                    names.add((String) userData);
+                } else {
+                    names.add("Column " + (names.size() + 1)); // fallback only when neither text nor userData set
+                }
+            }
+        }
+        return names;
     }
     
     // Setter for parameter loading
@@ -394,6 +422,55 @@ public class MetadataConfigurationPanel extends VBox {
         if (data != null) {
             metadataTableData.addAll(data);
         }
+        notifyParameterUpdate();
+    }
+    
+    /**
+     * Set metadata table data and add columns for any metadata fields that have non-empty values.
+     * Use this when loading parameters from file so that columns like Condition, Age, Gender
+     * are visible (they are not added by default - only Sample column exists initially).
+     */
+    public void setMetadataTableDataWithColumns(List<MetaPilotDdaIgcMaxQuantPanel.MetadataRow> data) {
+        if (data == null || data.isEmpty()) {
+            setMetadataTableData(data);
+            return;
+        }
+        
+        // Scan data to find which columns have any non-empty values
+        boolean hasLabelType = false, hasAge = false, hasGender = false, hasCondition = false;
+        boolean hasTreatment = false, hasTimePoint = false;
+        boolean hasCustom1 = false, hasCustom2 = false, hasCustom3 = false;
+        
+        for (MetaPilotDdaIgcMaxQuantPanel.MetadataRow row : data) {
+            if (row.getLabelType() != null && !row.getLabelType().trim().isEmpty()) hasLabelType = true;
+            if (row.getAge() != null && !row.getAge().trim().isEmpty()) hasAge = true;
+            if (row.getGender() != null && !row.getGender().trim().isEmpty()) hasGender = true;
+            if (row.getCondition() != null && !row.getCondition().trim().isEmpty()) hasCondition = true;
+            if (row.getTreatment() != null && !row.getTreatment().trim().isEmpty()) hasTreatment = true;
+            if (row.getTimePoint() != null && !row.getTimePoint().trim().isEmpty()) hasTimePoint = true;
+            if (row.getCustomField1() != null && !row.getCustomField1().trim().isEmpty()) hasCustom1 = true;
+            if (row.getCustomField2() != null && !row.getCustomField2().trim().isEmpty()) hasCustom2 = true;
+            if (row.getCustomField3() != null && !row.getCustomField3().trim().isEmpty()) hasCustom3 = true;
+        }
+        
+        // Reset table and add Sample column
+        metadataTable.getColumns().clear();
+        createBasicMetadataTableColumns();
+        
+        // Add columns for fields that have data (in standard order)
+        if (hasLabelType) addMetadataColumnWithProperty("Label Type", "labelType");
+        if (hasAge) addMetadataColumnWithProperty("Age", "age");
+        if (hasGender) addMetadataColumnWithProperty("Gender", "gender");
+        if (hasCondition) addMetadataColumnWithProperty("Condition", "condition");
+        if (hasTreatment) addMetadataColumnWithProperty("Treatment", "treatment");
+        if (hasTimePoint) addMetadataColumnWithProperty("Time Point", "timePoint");
+        if (hasCustom1) addMetadataColumnWithProperty("Custom 1", "customField1");
+        if (hasCustom2) addMetadataColumnWithProperty("Custom 2", "customField2");
+        if (hasCustom3) addMetadataColumnWithProperty("Custom 3", "customField3");
+        
+        // Set the data
+        metadataTableData.clear();
+        metadataTableData.addAll(data);
         notifyParameterUpdate();
     }
     
