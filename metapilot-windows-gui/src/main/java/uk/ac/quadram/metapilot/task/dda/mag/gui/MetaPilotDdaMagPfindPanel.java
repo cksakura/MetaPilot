@@ -78,6 +78,8 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
     private ComboBox<String> genomeSelectorComboBox;
     private ProgressBar genomeSelectorProgressBar;
     private Label genomeSelectorStatusLabel;
+    /** Flag to suppress Marker4 popup when programmatically loading parameters (setOnAction fires on setValue) */
+    private boolean suppressMarker4CheckOnLoad = false;
     private CheckBox generateSampleSpecificDBCheckBox;
     private CheckBox spectraClusteringCheckBox;
 
@@ -528,6 +530,12 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
 					genomeSelectorStatusLabel.setText("Available");
 				genomeSelectorProgressBar.setVisible(false);
 				genomeSelectorProgressBar.setProgress(0);
+				return;
+			}
+			// When loading parameters programmatically, do not show popup - user hasn't switched to Parameters yet
+			if (suppressMarker4CheckOnLoad) {
+				if (genomeSelectorStatusLabel != null)
+					genomeSelectorStatusLabel.setText("Not available");
 				return;
 			}
 			// Files missing: show status and ask user if they want to generate now
@@ -1199,27 +1207,33 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
 			// Set label titles in metadata
 			metaData.setLabelTitle(labelTitles);
 
-			// Collect metadata information
+			// Collect metadata information using column order from Metadata configuration panel
 			LOGGER.info("Collecting metadata information...");
 			ObservableList<MetaPilotDdaIgcMaxQuantPanel.MetadataRow> metadataRows = metadataPanel != null
 					? metadataPanel.getMetadataTableData()
 					: null;
-			int metaTypeCount = metadataPanel != null ? metadataPanel.getMetadataColumnCount() : 0;
+			List<String> colNames = metadataPanel != null ? metadataPanel.getMetadataColumnNames() : java.util.Collections.emptyList();
+			int metaTypeCount = colNames.size();
 			LOGGER.info("Metadata rows: {}, columns: {}", metadataRows != null ? metadataRows.size() : 0,
 					metaTypeCount);
 
-			String[][] metaInfo = new String[metadataRows != null ? metadataRows.size() : 0][Math.max(3,
-					metaTypeCount)];
-			if (metadataRows != null) {
-				for (int i = 0; i < metadataRows.size(); i++) {
-					MetaPilotDdaIgcMaxQuantPanel.MetadataRow row = metadataRows.get(i);
-					metaInfo[i][0] = row.getAge() != null ? row.getAge() : "";
-					metaInfo[i][1] = row.getGender() != null ? row.getGender() : "";
-					metaInfo[i][2] = row.getCondition() != null ? row.getCondition() : "";
-					// Add more metadata fields as needed
+		String[][] metaInfo = new String[metadataRows != null ? metadataRows.size() : 0][Math.max(1, metaTypeCount)];
+		if (metadataRows != null && !colNames.isEmpty()) {
+			for (int i = 0; i < metadataRows.size(); i++) {
+				MetaPilotDdaIgcMaxQuantPanel.MetadataRow row = metadataRows.get(i);
+				for (int j = 0; j < colNames.size(); j++) {
+					String v = row.getValueByColumnName(colNames.get(j));
+					metaInfo[i][j] = v != null ? v : "";
 				}
 			}
-			metaData.setMetaInfo(metaInfo);
+		}
+		// Set both metaTypeCount and metaInfo - metaTypeCount must be set for exportMetadata to work correctly
+		metaData.setMetaTypeCount(Math.max(1, metaTypeCount));
+		metaData.setMetaInfo(metaInfo);
+		// Pass column names from UI so export uses them as headers (no "meta1", "meta2", etc.)
+		if (!colNames.isEmpty()) {
+			metaData.setMetaTypeTitles(colNames.toArray(new String[0]));
+		}
 
 			// Create DDAMagPfindParameters with required constructor parameters
 			LOGGER.info("Creating DDAMagPfindParameters object...");
@@ -1493,6 +1507,14 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
      */
     @Override
     protected void loadLastUsedParameters() {
+        // Check if parameters have already been loaded from an external file
+        // If so, skip loading last used parameters to avoid overwriting
+        if (parametersLoadedFromFile) {
+            System.out.println("DEBUG: Skipping loadLastUsedParameters() - parameters already loaded from file");
+            consolePanel.appendConsoleText("Skipping last used parameters - using loaded file parameters\n");
+            return;
+        }
+        
         try {
             consolePanel.appendConsoleText("Loading last used parameters...\n");
             DDAMagPfindParameters params = (DDAMagPfindParameters) parameterIO.loadLastUsedParameters();
@@ -1553,8 +1575,17 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
                 return;
             }
         
-        // Apply metadata to IO panel if available
-        if (params.getMetadata() != null) {
+        // Apply experiment data to IO panel if available - convert String arrays back to JavaFX rows
+        if (params.getExperimentData() != null && !params.getExperimentData().isEmpty()) {
+            List<ExperimentRow> experimentRows = new ArrayList<>();
+            for (String[] data : params.getExperimentData()) {
+                experimentRows.add(ExperimentRow.fromArray(data));
+            }
+            ioPanel.setExperimentData(experimentRows);
+            consolePanel.appendConsoleText("Applied " + params.getExperimentData().size() + " experiment rows to IO panel\n");
+            LOGGER.info("Applied {} experiment rows to IO panel", params.getExperimentData().size());
+        } else if (params.getMetadata() != null) {
+            // Fallback: Apply metadata to IO panel if experiment data is not available
             MetaData metadata = params.getMetadata();
             String[] rawFiles = metadata.getRawFiles();
             String[] expNames = metadata.getExpNames();
@@ -1569,6 +1600,13 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
                 ioPanel.setExperimentData(experimentRows);
                 LOGGER.info("Applied metadata with {} raw files to IO panel", rawFiles.length);
             }
+        }
+        
+        // Apply output directory if available
+        if (params.getResult() != null && !params.getResult().trim().isEmpty()) {
+            ioPanel.setOutputDirectory(params.getResult());
+            consolePanel.appendConsoleText("Applied output directory: " + params.getResult() + "\n");
+            LOGGER.info("Applied output directory: {}", params.getResult());
         }
         
         // Apply basic settings that don't depend on file paths
@@ -1594,7 +1632,12 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
             spectraClusteringCheckBox.setSelected(params.isSpectraCluster());
         }
         if (params.getGenomeSelectorMode() != null && genomeSelectorComboBox != null) {
-            genomeSelectorComboBox.setValue(params.getGenomeSelectorMode());
+            suppressMarker4CheckOnLoad = true;
+            try {
+                genomeSelectorComboBox.setValue(params.getGenomeSelectorMode());
+            } finally {
+                suppressMarker4CheckOnLoad = false;
+            }
         }
         
         // Apply database settings using reusable component
@@ -1671,16 +1714,17 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
         }
         
         // Apply metadata table data if available - convert String arrays back to JavaFX rows
+        // Use setMetadataTableDataWithColumns to add columns (Condition, Age, Gender, etc.) for loaded data
         if (params.getMetadataTableData() != null && !params.getMetadataTableData().isEmpty() && metadataPanel != null) {
             List<uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel.MetadataRow> metadataRows = new ArrayList<>();
             for (String[] data : params.getMetadataTableData()) {
                 metadataRows.add(uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel.MetadataRow.fromArray(data));
             }
-            metadataPanel.setMetadataTableData(metadataRows);
-            LOGGER.info("Applied {} metadata table rows", params.getMetadataTableData().size());
+            metadataPanel.setMetadataTableDataWithColumns(metadataRows);
+            LOGGER.info("Applied {} metadata table rows with columns", params.getMetadataTableData().size());
         }
         
-        // Update parameter view after applying parameters
+        // Update parameter view after applying parameters (do not call updateMetadataTable - it would reset columns)
         Platform.runLater(() -> updateParameterView());
         
         consolePanel.appendConsoleText("✓ Successfully applied parameters to UI\n");

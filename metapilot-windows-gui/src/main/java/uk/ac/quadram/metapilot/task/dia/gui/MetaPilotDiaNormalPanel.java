@@ -34,6 +34,7 @@ import org.apache.logging.log4j.Logger;
 
 import java.io.File;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -1199,15 +1200,28 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
             // Create MetaData object
             MetaData metaData = new MetaData(rawFiles, expNames, fractions, replicates);
             
-        // Collect metadata information from the reusable panel
-        String[][] metaInfo = new String[metadataConfigurationPanel.getMetadataTableData().size()][3];
-        for (int i = 0; i < metadataConfigurationPanel.getMetadataTableData().size(); i++) {
-            MetaPilotDdaIgcMaxQuantPanel.MetadataRow row = metadataConfigurationPanel.getMetadataTableData().get(i);
-            metaInfo[i][0] = row.getAge() != null ? row.getAge() : "";
-            metaInfo[i][1] = row.getGender() != null ? row.getGender() : "";
-            metaInfo[i][2] = row.getCondition() != null ? row.getCondition() : "";
+        // Collect metadata information using column order from Metadata configuration panel
+        List<String> colNames = metadataConfigurationPanel != null ? metadataConfigurationPanel.getMetadataColumnNames() : java.util.Collections.emptyList();
+        int metaTypeCount = Math.max(1, colNames.size());
+        java.util.List<MetaPilotDdaIgcMaxQuantPanel.MetadataRow> metadataTableData = metadataConfigurationPanel != null ? metadataConfigurationPanel.getMetadataTableData() : java.util.Collections.emptyList();
+        int rowCount = metadataTableData.size();
+        String[][] metaInfo = new String[rowCount][metaTypeCount];
+        if (!colNames.isEmpty()) {
+            for (int i = 0; i < rowCount; i++) {
+                MetaPilotDdaIgcMaxQuantPanel.MetadataRow row = metadataTableData.get(i);
+                for (int j = 0; j < colNames.size(); j++) {
+                    String v = row.getValueByColumnName(colNames.get(j));
+                    metaInfo[i][j] = v != null ? v : "";
+                }
+            }
         }
+        // Set both metaTypeCount and metaInfo - metaTypeCount must be set for exportMetadata to work correctly
+        metaData.setMetaTypeCount(metaTypeCount);
         metaData.setMetaInfo(metaInfo);
+        // Pass column names from UI so export uses them as headers (no "meta1", "meta2", etc.)
+        if (!colNames.isEmpty()) {
+            metaData.setMetaTypeTitles(colNames.toArray(new String[0]));
+        }
             
             // Get result directory
             String result = ioPanel.getOutputDirectory();
@@ -1401,6 +1415,14 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
      */
     @Override
     protected void loadLastUsedParameters() {
+        // Check if parameters have already been loaded from an external file
+        // If so, skip loading last used parameters to avoid overwriting
+        if (parametersLoadedFromFile) {
+            System.out.println("DEBUG: Skipping loadLastUsedParameters() - parameters already loaded from file");
+            consolePanel.appendConsoleText("Skipping last used parameters - using loaded file parameters\n");
+            return;
+        }
+        
         try {
             consolePanel.appendConsoleText("Loading last used parameters...\n");
             LOGGER.info("loadLastUsedParameters() called");

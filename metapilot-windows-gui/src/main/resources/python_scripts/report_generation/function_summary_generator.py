@@ -85,30 +85,20 @@ class FunctionSummaryGenerator(BaseReportGenerator):
             if plot_type == "Stacked Bar Chart":
                 self._create_stacked_bar_chart(fig, data_source, column, intensity_cols, simple_names, row_idx, plot_name)
             elif plot_type == "PCA":
-                self._create_pca_plot(fig, plot_info.get('data_matrix_info'), simple_names, row_idx, plot_name)
+                self._create_pca_plot(fig, plot_info.get('data_matrix_info'), simple_names, row_idx, plot_name, groups, group_colors)
             elif plot_type == "Heatmap":
-                self._create_heatmap(fig, plot_info.get('data_matrix_info'), simple_names, row_idx, plot_name)
+                self._create_heatmap(fig, plot_info.get('data_matrix_info'), simple_names, row_idx, plot_name, groups, group_colors)
         
         # Update layout with fixed height per plot
         height_per_plot = 400
         total_height = num_rows * height_per_plot
         
-        # Configure legend to prevent overlap with subplots
+        # No global Sample Groups legend; each PCA has a small in-figure legend
         fig.update_layout(
-            height=total_height, 
-            showlegend=True, 
-            title_text="Function Summary Report", 
-            barmode="stack",
-            legend=dict(
-                orientation="v",
-                yanchor="top",
-                y=1.0,
-                xanchor="left", 
-                x=1.02,
-                bgcolor="rgba(255,255,255,0.8)",
-                bordercolor="rgba(0,0,0,0.2)",
-                borderwidth=1
-            )
+            height=total_height,
+            showlegend=False,
+            title_text="Function Summary Report",
+            barmode="stack"
         )
         
         return fig
@@ -370,8 +360,8 @@ class FunctionSummaryGenerator(BaseReportGenerator):
         except Exception as e:
             fig.add_annotation(text=f"{plot_name} chart creation failed: {str(e)[:30]}...", xref="paper", yref="paper", x=0.5, y=0.5, showarrow=False, row=row, col=1)
     
-    def _create_pca_plot(self, fig, data_matrix_info, simple_names, row, plot_name):
-        """Create PCA plot using pre-built data matrix."""
+    def _create_pca_plot(self, fig, data_matrix_info, simple_names, row, plot_name, groups=None, group_colors=None):
+        """Create PCA plot using pre-built data matrix with optional group classification."""
         try:
             import numpy as np
             from sklearn.decomposition import PCA
@@ -395,41 +385,66 @@ class FunctionSummaryGenerator(BaseReportGenerator):
             pca_result = pca.fit_transform(abundance_matrix_scaled)
             point_labels = simple_names  # Samples as points
             
-            print(f"DEBUG PCA: {plot_name}")
-            print(f"  PCA result shape: {pca_result.shape}")
-            print(f"  PC1 range: [{pca_result[:, 0].min():.2f}, {pca_result[:, 0].max():.2f}]")
-            print(f"  PC2 range: [{pca_result[:, 1].min():.2f}, {pca_result[:, 1].max():.2f}]")
-            print(f"  Number of points: {len(point_labels)}")
-            print(f"  Sample names: {point_labels}")
-            print(f"  Adding trace to subplot row {row}, col 1")
-            
             # Convert to lists explicitly
             x_coords = pca_result[:, 0].tolist()
             y_coords = pca_result[:, 1].tolist()
-            print(f"  X coordinates: {x_coords}")
-            print(f"  Y coordinates: {y_coords}")
             
-            # Create scatter plot
-            fig.add_trace(
-                go.Scatter(
-                    x=x_coords,
-                    y=y_coords,
-                    mode='markers+text',  # Add text mode to see if points exist
-                    marker=dict(
-                        size=12,  # Larger markers
-                        color=self.colors["primary"],
-                        opacity=0.8,
-                        line=dict(width=2, color='#333333')  # Add border to markers
+            # Plot with group classification if available
+            if groups is not None and group_colors is not None:
+                unique_groups = list(dict.fromkeys(groups))
+                for group_name in unique_groups:
+                    group_indices = [i for i, g in enumerate(groups) if g == group_name]
+                    group_x = [x_coords[i] for i in group_indices]
+                    group_y = [y_coords[i] for i in group_indices]
+                    group_labels = [point_labels[i] for i in group_indices]
+                    group_color = group_colors.get(group_name, self.colors['primary'])
+                    
+                    # Add scatter points for this group (legend shown only via in-subplot annotation)
+                    fig.add_trace(
+                        go.Scatter(
+                            x=group_x,
+                            y=group_y,
+                            mode='markers+text',
+                            marker=dict(
+                                color=group_color,
+                                size=12,
+                                opacity=0.8,
+                                line=dict(width=2, color='#333333')
+                            ),
+                            text=group_labels,
+                            textposition='top center',
+                            name=group_name,
+                            legendgroup=group_name,
+                            hovertemplate=f'<b>%{{text}}</b><br>Group: {group_name}<br>PC1: %{{x:.2f}}<br>PC2: %{{y:.2f}}<extra></extra>',
+                            showlegend=False
+                        ),
+                        row=row, col=1
+                    )
+                    
+                    # Add confidence ellipse if group has 3+ samples
+                    if len(group_x) >= 3:
+                        self._add_confidence_ellipse(fig, group_x, group_y, group_color, group_name, row)
+            else:
+                # No grouping - single color for all points
+                fig.add_trace(
+                    go.Scatter(
+                        x=x_coords,
+                        y=y_coords,
+                        mode='markers+text',
+                        marker=dict(
+                            size=12,
+                            color=self.colors["primary"],
+                            opacity=0.8,
+                            line=dict(width=2, color='#333333')
+                        ),
+                        text=point_labels,
+                        textposition='top center',
+                        hovertemplate=f'<b>%{{text}}</b><br>PC1: %{{x:.2f}}<br>PC2: %{{y:.2f}}<extra></extra>',
+                        name=f"{plot_name} Sample PCA",
+                        showlegend=False
                     ),
-                    text=point_labels,
-                    textposition='top center',
-                    hovertemplate=f'<b>%{{text}}</b><br>PC1: %{{x:.2f}}<br>PC2: %{{y:.2f}}<extra></extra>',
-                    name=f"{plot_name} Sample PCA",
-                    showlegend=False
-                ),
-                row=row, col=1
-            )
-            print(f"  Trace added successfully")
+                    row=row, col=1
+                )
             
             # Update axes labels
             pc1_var = pca.explained_variance_ratio_[0] * 100
@@ -438,11 +453,101 @@ class FunctionSummaryGenerator(BaseReportGenerator):
             fig.update_xaxes(title_text=f"PC1 ({pc1_var:.1f}%)", row=row, col=1)
             fig.update_yaxes(title_text=f"PC2 ({pc2_var:.1f}%)", row=row, col=1)
             
+            # Small legend inside this PCA subplot (group names only)
+            if groups is not None and group_colors is not None:
+                unique_groups = list(dict.fromkeys(groups))
+                legend_text = "<br>".join(unique_groups)
+                xref = "x domain" if row == 1 else f"x{row} domain"
+                yref = "y domain" if row == 1 else f"y{row} domain"
+                fig.add_annotation(
+                    text=legend_text,
+                    xref=xref, yref=yref,
+                    x=0.99, y=0.99,
+                    xanchor="right", yanchor="top",
+                    showarrow=False,
+                    font=dict(size=10),
+                    bgcolor="rgba(255,255,255,0.85)",
+                    bordercolor="rgba(0,0,0,0.2)",
+                    borderwidth=1,
+                    borderpad=4
+                )
+            
         except Exception as e:
             fig.add_annotation(text=f"{plot_name} PCA creation failed: {str(e)[:50]}...", xref="paper", yref="paper", x=0.5, y=0.5, showarrow=False, row=row, col=1)
     
-    def _create_heatmap(self, fig, data_matrix_info, simple_names, row, plot_name):
-        """Create heatmap using pre-built data matrix."""
+    def _add_confidence_ellipse(self, fig, x_coords, y_coords, color, group_name, row):
+        """Add a 95% confidence ellipse around group points in PCA plot."""
+        try:
+            if len(x_coords) < 3:
+                return
+            
+            x_arr = np.array(x_coords)
+            y_arr = np.array(y_coords)
+            
+            # Calculate mean and covariance
+            mean_x = np.mean(x_arr)
+            mean_y = np.mean(y_arr)
+            
+            # Calculate covariance matrix
+            cov_matrix = np.cov(x_arr, y_arr)
+            
+            # Get eigenvalues and eigenvectors
+            eigenvalues, eigenvectors = np.linalg.eigh(cov_matrix)
+            
+            # Sort by eigenvalue (largest first)
+            order = eigenvalues.argsort()[::-1]
+            eigenvalues = eigenvalues[order]
+            eigenvectors = eigenvectors[:, order]
+            
+            # Calculate ellipse parameters (95% confidence = 2.447 standard deviations)
+            chi2_val = 2.447  # 95% confidence for 2D
+            width = 2 * chi2_val * np.sqrt(max(eigenvalues[0], 0))
+            height = 2 * chi2_val * np.sqrt(max(eigenvalues[1], 0))
+            
+            # Calculate rotation angle
+            angle = np.arctan2(eigenvectors[1, 0], eigenvectors[0, 0])
+            
+            # Generate ellipse points
+            t = np.linspace(0, 2 * np.pi, 50)
+            ellipse_x = width/2 * np.cos(t)
+            ellipse_y = height/2 * np.sin(t)
+            
+            # Rotate ellipse
+            cos_angle = np.cos(angle)
+            sin_angle = np.sin(angle)
+            rotated_x = cos_angle * ellipse_x - sin_angle * ellipse_y + mean_x
+            rotated_y = sin_angle * ellipse_x + cos_angle * ellipse_y + mean_y
+            
+            # Convert hex color to rgba for fill
+            if color.startswith('#'):
+                r, g, b = int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
+                fill_color = f"rgba({r}, {g}, {b}, 0.1)"
+            else:
+                fill_color = color.replace(')', ', 0.1)').replace('rgb', 'rgba') if 'rgb' in color else 'rgba(128, 128, 128, 0.1)'
+            
+            # Add ellipse trace
+            fig.add_trace(
+                go.Scatter(
+                    x=rotated_x.tolist(),
+                    y=rotated_y.tolist(),
+                    mode='lines',
+                    line=dict(color=color, width=2, dash='dash'),
+                    fill='toself',
+                    fillcolor=fill_color,
+                    name=f"{group_name} (95% CI)",
+                    legendgroup=group_name,
+                    showlegend=False,
+                    hoverinfo='skip'
+                ),
+                row=row,
+                col=1
+            )
+        except Exception as e:
+            # Silently skip ellipse if calculation fails
+            print(f"Warning: Could not add confidence ellipse for {group_name}: {e}")
+    
+    def _create_heatmap(self, fig, data_matrix_info, simple_names, row, plot_name, groups=None, group_colors=None):
+        """Create heatmap using pre-built data matrix with optional group annotations."""
         try:
             import numpy as np
             from scipy.cluster.hierarchy import linkage, dendrogram
@@ -471,19 +576,21 @@ class FunctionSummaryGenerator(BaseReportGenerator):
                 functional_ids = [functional_ids[i] for i in row_order]
             
             # Hierarchical clustering on columns (samples)
+            col_order = list(range(abundance_matrix.shape[1]))
             if abundance_matrix.shape[1] > 1:
                 col_linkage = linkage(pdist(abundance_matrix.T), method='ward')
                 col_order = dendrogram(col_linkage, no_plot=True)['leaves']
                 abundance_matrix = abundance_matrix[:, col_order]
-                sample_names_clustered = [simple_names[i] if i < len(simple_names) else f"Sample_{i+1}" for i in col_order]
-            else:
-                sample_names_clustered = simple_names
             
+            sample_names_clustered = [simple_names[i] if i < len(simple_names) else f"Sample_{i+1}" for i in col_order]
+            # X-axis: experiment name only (no group/Condition appended)
+            x_labels = sample_names_clustered
+
             # Create heatmap
             fig.add_trace(
                 go.Heatmap(
-                    z=abundance_matrix.tolist(),  # Convert to list like taxonomy
-                    x=sample_names_clustered,
+                    z=abundance_matrix.tolist(),
+                    x=x_labels,
                     y=functional_ids,
                     colorscale='Viridis',
                     hovertemplate='<b>%{y}</b><br>Sample: %{x}<br>Abundance: %{z:.2f}<extra></extra>',
@@ -494,7 +601,7 @@ class FunctionSummaryGenerator(BaseReportGenerator):
             )
             
             # Update axes labels
-            fig.update_xaxes(title_text="Samples", row=row, col=1)
+            fig.update_xaxes(title_text="Samples", row=row, col=1, tickangle=45)
             fig.update_yaxes(title_text=f"{plot_name} IDs", row=row, col=1)
             
         except Exception as e:

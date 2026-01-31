@@ -17,6 +17,7 @@ import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.util.converter.DefaultStringConverter;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
+import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX.ExperimentRow;
 import uk.ac.quadram.metapilot.task.common.gui.IsobaricLabelingPanel;
 import uk.ac.quadram.metapilot.task.common.gui.DdaIgcInputOutputPanel;
 import uk.ac.quadram.metapilot.task.par.MetaData;
@@ -1031,6 +1032,14 @@ public class MetaPilotDdaIgcPFindPanel extends AbstractWorkflowPanel<DDAIgcPFind
      */
     @Override
     protected void loadLastUsedParameters() {
+        // Check if parameters have already been loaded from an external file
+        // If so, skip loading last used parameters to avoid overwriting
+        if (parametersLoadedFromFile) {
+            System.out.println("DEBUG: Skipping loadLastUsedParameters() - parameters already loaded from file");
+            consolePanel.appendConsoleText("Skipping last used parameters - using loaded file parameters\n");
+            return;
+        }
+        
         try {
             consolePanel.appendConsoleText("Loading last used parameters...\n");
             DDAIgcPFindParameters params = (DDAIgcPFindParameters) parameterIO.loadLastUsedParameters();
@@ -1091,8 +1100,17 @@ public class MetaPilotDdaIgcPFindPanel extends AbstractWorkflowPanel<DDAIgcPFind
                 return;
             }
         
-        // Apply metadata to IO panel if available
-        if (params.getMetadata() != null) {
+        // Apply experiment data to IO panel if available
+        if (params.getExperimentData() != null && !params.getExperimentData().isEmpty()) {
+            List<ExperimentRow> experimentRows = new ArrayList<>();
+            for (String[] data : params.getExperimentData()) {
+                experimentRows.add(ExperimentRow.fromArray(data));
+            }
+            ioPanel.getIoPanel().setExperimentData(experimentRows);
+            consolePanel.appendConsoleText("Applied " + params.getExperimentData().size() + " experiment rows to IO panel\n");
+            LOGGER.info("Applied {} experiment rows to IO panel", params.getExperimentData().size());
+        } else if (params.getMetadata() != null) {
+            // Fallback: Apply metadata to IO panel if experiment data is not available
             MetaData metadata = params.getMetadata();
             String[] rawFiles = metadata.getRawFiles();
             String[] expNames = metadata.getExpNames();
@@ -1107,6 +1125,13 @@ public class MetaPilotDdaIgcPFindPanel extends AbstractWorkflowPanel<DDAIgcPFind
                 ioPanel.getIoPanel().setExperimentData(experimentRows);
                 LOGGER.info("Applied metadata with {} raw files to IO panel", rawFiles.length);
             }
+        }
+        
+        // Apply output directory if available
+        if (params.getResult() != null && !params.getResult().trim().isEmpty()) {
+            ioPanel.getIoPanel().setOutputDirectory(params.getResult());
+            consolePanel.appendConsoleText("Applied output directory: " + params.getResult() + "\n");
+            LOGGER.info("Applied output directory: {}", params.getResult());
         }
         
         // Apply basic settings that don't depend on file paths

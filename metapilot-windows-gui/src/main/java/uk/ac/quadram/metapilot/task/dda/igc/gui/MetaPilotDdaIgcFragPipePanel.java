@@ -16,6 +16,7 @@ import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.beans.property.SimpleStringProperty;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
+import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX.ExperimentRow;
 import uk.ac.quadram.metapilot.task.common.gui.DdaIgcInputOutputPanel;
 import uk.ac.quadram.metapilot.task.common.gui.ModificationsPanel;
 import uk.ac.quadram.metapilot.task.dda.igc.DDAIgcFragPipeTask;
@@ -1145,6 +1146,14 @@ public class MetaPilotDdaIgcFragPipePanel extends AbstractWorkflowPanel<DDAIgcFr
 	 */
 	@Override
 	protected void loadLastUsedParameters() {
+		// Check if parameters have already been loaded from an external file
+		// If so, skip loading last used parameters to avoid overwriting
+		if (parametersLoadedFromFile) {
+			System.out.println("DEBUG: Skipping loadLastUsedParameters() - parameters already loaded from file");
+			consolePanel.appendConsoleText("Skipping last used parameters - using loaded file parameters\n");
+			return;
+		}
+		
 		try {
 			consolePanel.appendConsoleText("Loading last used parameters...\n");
 			DDAIgcFragPipeParameters params = (DDAIgcFragPipeParameters) parameterIO.loadLastUsedParameters();
@@ -1204,6 +1213,24 @@ public class MetaPilotDdaIgcFragPipePanel extends AbstractWorkflowPanel<DDAIgcFr
 				consolePanel.appendConsoleText("WARNING: No parameters to apply\n");
 				LOGGER.warn("No parameters to apply to UI");
 				return;
+			}
+
+			// Apply experiment data to IO panel if available
+			if (params.getExperimentData() != null && !params.getExperimentData().isEmpty()) {
+				List<ExperimentRow> experimentRows = new ArrayList<>();
+				for (String[] data : params.getExperimentData()) {
+					experimentRows.add(ExperimentRow.fromArray(data));
+				}
+				ioPanel.getIoPanel().setExperimentData(experimentRows);
+				consolePanel.appendConsoleText("Applied " + params.getExperimentData().size() + " experiment rows to IO panel\n");
+				LOGGER.info("Applied {} experiment rows to IO panel", params.getExperimentData().size());
+			}
+			
+			// Apply output directory if available
+			if (params.getResult() != null && !params.getResult().trim().isEmpty()) {
+				ioPanel.getIoPanel().setOutputDirectory(params.getResult());
+				consolePanel.appendConsoleText("Applied output directory: " + params.getResult() + "\n");
+				LOGGER.info("Applied output directory: {}", params.getResult());
 			}
 
 			// Apply basic settings that don't depend on file paths

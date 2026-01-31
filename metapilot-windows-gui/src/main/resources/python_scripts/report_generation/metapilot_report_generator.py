@@ -36,8 +36,12 @@ class MetaPilotReportGenerator(BaseReportGenerator):
         """Enhanced taxonomy summary with rank-specific analysis for all taxonomic ranks."""
         return self.taxonomy_generator.create_taxonomy_summary(taxa_df, metadata)
 
-    def create_function_summary(self, func_df, metadata=None, input_file_path=None):
-        """Enhanced function summary with category analysis and dimensionality reduction."""
+    def create_function_summary(self, metadata=None, input_file_path=None, func_df=None):
+        """Enhanced function summary with category analysis and dimensionality reduction.
+        
+        Note: func_df is deprecated - function data comes from input_file_path folder.
+        Java calls create_function_summary(metadata, input_file_path='...') so first arg is metadata.
+        """
         return self.function_generator.create_function_summary(metadata, input_file_path)
 
     def create_bubble_chart_summary(self, tree_data, metadata=None, max_depth=4, min_abundance=0.001):
