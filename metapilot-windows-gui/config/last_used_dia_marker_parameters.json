@@ -1,0 +1,62 @@
+{
+  "genomeSelectionStrategy": "Comprehensive",
+  "models": [],
+  "useModel": false,
+  "workflow": "DIA_FOCUS",
+  "baseParameters": {
+    "result": "Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\8mix\\MetaPilot",
+    "ms2ScanMode": "DIA",
+    "metadata": {
+      "rawFiles": [
+        "Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\8mix\\160822_8Mix_DIA_6ul_01.raw",
+        "Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\8mix\\160822_8Mix_DIA_6ul_02.raw",
+        "Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\8mix\\160822_8Mix_DIA_6ul_03.raw"
+      ],
+      "expNames": [
+        "8Mix_DIA_01",
+        "8Mix_DIA_02",
+        "8Mix_DIA_03"
+      ],
+      "fractions": [
+        1,
+        1,
+        1
+      ],
+      "replicates": [
+        1,
+        1,
+        1
+      ]
+    },
+    "threadCount": 20,
+    "workflowType": "DIA_FOCUS",
+    "hostDB": "",
+    "coreCount": 1,
+    "microDb": "C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-gut\\v2.0.2",
+    "appendHostDb": false
+  },
+  "description": "Last used parameters",
+  "librarySearch": true,
+  "kGG": false,
+  "oxidationM": true,
+  "version": "1.0",
+  "magDatabase": {
+    "identifier": "MGYG",
+    "catalogueId": "human-gut",
+    "repositoryPath": "C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-gut",
+    "version": {
+      "localAvailable": true,
+      "catalogueVersion": "v2.0.2",
+      "speciesCount": 4744
+    }
+  },
+  "acetyProN": true,
+  "selfModelSearch": false,
+  "library": [],
+  "phosphoSTY": false,
+  "generated_at": "2026-02-24 08:27:25",
+  "mExcision": true,
+  "carbamiC": true,
+  "workflowType": "DIA_FOCUS",
+  "timestamp": 1771921645481
+}

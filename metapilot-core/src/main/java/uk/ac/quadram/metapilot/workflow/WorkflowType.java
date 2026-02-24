@@ -13,7 +13,7 @@ package uk.ac.quadram.metapilot.workflow;
  * - DIA: Data-Independent Acquisition
  * 
  * @author Kai Cheng - Quadram Institute Bioscience
- * @version 1.0.0-beta.3
+ * @version 1.0.0-beta.6
  * @since 1.0.0-beta.3
  */
 public enum WorkflowType {
@@ -29,9 +29,14 @@ public enum WorkflowType {
     DDA_MAG_SAGE("DDA_MAG_SAGE"),
     
     // DIA Workflows
-    DIA_NORMAL("DIA_NORMAL"),
+    /** Marker-based DIA workflow (Marker4 genome selection). */
+    DIA_MARKER("DIA_FOCUS"),
+    /** Seed/library-based DIA workflow (MAG library search). */
+    DIA_SEED("DIA_NORMAL"),
     DIA_TARGET("DIA_TARGET"),
-    DIA_REALTIME("DIA_REALTIME");
+    DIA_REALTIME("DIA_REALTIME"),
+    /** Deeper, more time-consuming comprehensive DIA analysis. */
+    DIA_DEEP_COMPREHENSIVE("DIA_DEEP_COMPREHENSIVE");
     
     private final String analysisType;
     

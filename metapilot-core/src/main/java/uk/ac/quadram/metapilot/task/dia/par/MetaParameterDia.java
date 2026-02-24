@@ -15,9 +15,17 @@ public class MetaParameterDia extends MetaBaseParameter {
 	private String[] models;
 
 	private MagDbItem magDbItem;
+
+	// Modification settings (DIA-NN / library generation; same as MetaParameterDiaFocus)
+	private boolean mExcision = true;
+	private boolean carbamiC = true;
+	private boolean oxidationM = false;
+	private boolean acetyProN = false;
+	private boolean phosphoSTY = false;
+	private boolean kGG = false;
 	
 	public MetaParameterDia() {
-		super(uk.ac.quadram.metapilot.workflow.WorkflowType.DIA_NORMAL.getAnalysisType(), new MetaData(), "", "",
+		super(uk.ac.quadram.metapilot.workflow.WorkflowType.DIA_SEED.getAnalysisType(), new MetaData(), "", "",
 				false, "", MetaConstants.HCD_FTMS, 1, 1, true);
 		setThreadCount(Runtime.getRuntime().availableProcessors());
 	}
@@ -26,7 +34,7 @@ public class MetaParameterDia extends MetaBaseParameter {
 			boolean selfModelSearch, String[] library, boolean useModel, String[] models) {
 		super();
 		// Copy all fields from the base parameter using setters
-		this.setWorkflowType(uk.ac.quadram.metapilot.workflow.WorkflowType.DIA_NORMAL.getAnalysisType());
+		this.setWorkflowType(uk.ac.quadram.metapilot.workflow.WorkflowType.DIA_SEED.getAnalysisType());
 		this.setMetadata(metaPar.getMetadata());
 		this.setResult(metaPar.getResult());
 		this.setMicroDb(metaPar.getMicroDb());
@@ -111,4 +119,17 @@ public class MetaParameterDia extends MetaBaseParameter {
         this.magDbItem = magDbItem;
         this.setMicroDb(magDbItem.getCurrentFile().getAbsolutePath());
     }
+
+	public boolean isMExcision() { return mExcision; }
+	public void setMExcision(boolean mExcision) { this.mExcision = mExcision; }
+	public boolean isCarbamiC() { return carbamiC; }
+	public void setCarbamiC(boolean carbamiC) { this.carbamiC = carbamiC; }
+	public boolean isOxidationM() { return oxidationM; }
+	public void setOxidationM(boolean oxidationM) { this.oxidationM = oxidationM; }
+	public boolean isAcetyProN() { return acetyProN; }
+	public void setAcetyProN(boolean acetyProN) { this.acetyProN = acetyProN; }
+	public boolean isPhosphoSTY() { return phosphoSTY; }
+	public void setPhosphoSTY(boolean phosphoSTY) { this.phosphoSTY = phosphoSTY; }
+	public boolean isKGG() { return kGG; }
+	public void setKGG(boolean kGG) { this.kGG = kGG; }
 }

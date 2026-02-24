@@ -633,6 +633,46 @@ public class DiaNNTask {
 		this.parList.add(batFile.getAbsolutePath());
 	}
 
+	/**
+	 * Convert a .speclib library to a .parquet library using DIA-NN (e.g. --lib input.speclib --out-lib output.parquet
+	 * --gen-spec-lib --unimod4 --reanalyse --rt-profiling). Report .parquet is placed in the same directory as the
+	 * output library unless specified.
+	 *
+	 * @param par                DIA-NN parameters (threads, verbose, qvalue, matrices, reanalyse, etc.)
+	 * @param speclibPath        input .speclib file path
+	 * @param outLibParquetPath  output .parquet library path
+	 */
+	public void addSpeclib2ParquetTask(DiannParameter par, String speclibPath, String outLibParquetPath) {
+		addSpeclib2ParquetTask(par, speclibPath, outLibParquetPath, null);
+	}
+
+	/**
+	 * Convert a .speclib library to a .parquet library using DIA-NN.
+	 *
+	 * @param par                DIA-NN parameters
+	 * @param speclibPath        input .speclib file path
+	 * @param outLibParquetPath  output .parquet library path
+	 * @param reportOutPath      path for --out (report.parquet); if null, a report path is derived from output directory
+	 */
+	public void addSpeclib2ParquetTask(DiannParameter par, String speclibPath, String outLibParquetPath, String reportOutPath) {
+		String cmd = (reportOutPath == null || reportOutPath.trim().isEmpty())
+				? par.generateSpeclib2Parquet(speclibPath, outLibParquetPath)
+				: par.generateSpeclib2Parquet(speclibPath, outLibParquetPath, reportOutPath);
+		File outDir = new File(outLibParquetPath).getParentFile();
+		File batFile = outDir != null ? new File(outDir, "speclib2parquet.bat") : new File("speclib2parquet.bat");
+		try (PrintWriter writer = new PrintWriter(batFile)) {
+			writer.print(headsb);
+			writer.println("start /B " + diaNNFile.getName() + " " + cmd);
+			writer.print(tailsb);
+			writer.close();
+		} catch (IOException e) {
+			LOGGER.error(taskName + ": error in writing the .bat file to " + batFile, e);
+			System.out.println(
+					format.format(new Date()) + "\t" + taskName + ": error in writing the .bat file to " + batFile);
+		}
+		this.parList.add(batFile.getAbsolutePath());
+	}
+
 	public void run(int waitHours) {
 		run(1, waitHours);
 	}

@@ -1,0 +1,614 @@
+package uk.ac.quadram.metapilot.task.dia;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashSet;
+import java.util.List;
+
+import javafx.scene.control.ProgressBar;
+
+import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNParquetReader;
+import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNPrecursor;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
+import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
+import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaFocus;
+import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagPepLib;
+import uk.ac.quadram.metapilot.task.mag.MarkerGenomeSelector;
+
+/**
+ * DIA Seed iterative workflow: user-provided library → initial search → set protein info from MAG predicted TSVs
+ * → MarkerGenomeSelector (Focus or Comprehensive) → combined FASTA/library → identification.
+ * Precursors from the user library search do not have genome/protein info; protein mapping is done via
+ * {@link MarkerGenomeSelector#setProteinInfoFromPredictedTsVs(DiaNNPrecursor[], File)} before genome selection.
+ * Library type (microbiome vs standalone, from {@link MagPepLib#isMatchToMag()}):
+ * <ul>
+ *   <li>All standalone: workflow cannot run → fallback to direct search (iden only, no export).</li>
+ *   <li>All microbiome: use full iterative workflow with all libraries.</li>
+ *   <li>Mixed: use only microbiome libraries for the initial search and add --out-lib (library generation).</li>
+ * </ul>
+ * Report export uses the same logic as {@link MetaDiaMarkerTask} (genome/protein scores, peptides, etc.), with
+ * combined FASTA taken from {@link #getIterativeResultFolder()} (seed_iterative).
+ */
+public class MetaDiaSeedIterativeTask extends MetaDiaMarkerTask {
+
+	private static final String TASK_NAME = "DIA Seed iterative";
+	private static final String SEED_ITERATIVE_FOLDER = "seed";
+	private static final SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+
+	protected File combinedFile;
+
+	/** When true, iterative was skipped and direct iden was run (all standalone); no export. */
+	protected boolean fallbackDirectSearch;
+	/** Library paths to use for the initial DIA-NN search (all libs or microbiome-only when mixed). */
+	protected String[] initialSearchLibPaths;
+	/** When true, add --out-lib / library generation to the initial search (mixed case). */
+	protected boolean addOutLibForInitialSearch;
+	/** When mixed, standalone library paths for the final combined search (null otherwise). */
+	protected String[] standaloneSearchLibPaths;
+
+	public MetaDiaSeedIterativeTask(MetaParameterDiaFocus focusParams, MetaResourceParameters mrp, ProgressBar bar1,
+			ProgressBar bar2) {
+		super(focusParams, mrp, bar1, bar2);
+
+		if (diannPar != null) {
+			diannPar.setM_excision(focusParams.isMExcision());
+			diannPar.setCarbami_C(focusParams.isCarbamiC());
+			diannPar.setOxidation_M(focusParams.isOxidationM());
+			diannPar.setAcety_proN(focusParams.isAcetyProN());
+			diannPar.setPhospho_STY(focusParams.isPhosphoSTY());
+			diannPar.setK_GG(focusParams.isKGG());
+		}
+		logger.info("DIA Seed iterative workflow ({} mode) initialized",
+				focusParams.getGenomeSelectionStrategy());
+	}
+
+	@Override
+	protected String getTaskName() {
+		return TASK_NAME;
+	}
+
+	@Override
+	protected File getIterativeResultFolder() {
+		return new File(metaPar.getDbSearchResultFile(), SEED_ITERATIVE_FOLDER);
+	}
+
+	@Override
+	protected Boolean call() throws Exception {
+		updateMessage(getTaskName());
+		updateProgress(0, 100);
+		logger.info(getTaskName() + ": started");
+		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": started");
+
+		updateProgress(5, 100);
+		updateSecondaryProgress(ProgressBar.INDETERMINATE_PROGRESS);
+		if (!copyReportTemplatesInBackground()) {
+			logger.error(getTaskName() + ": Failed to copy report templates");
+			return false;
+		}
+
+		logger.info("Step 1: Starting spectra format conversion...");
+		updateMessage(getTaskName() + ": Converting spectra format...");
+		updateProgress(10, 100);
+		boolean convert = spectraConvert();
+		if (!convert) {
+			logger.error(getTaskName() + ": error in spectra format conversion");
+			updateMessage(getTaskName() + ": Failed - Spectra conversion error");
+			updateSecondaryProgress(0.0);
+			return false;
+		}
+
+		logger.info("Step 2: Classifying libraries (microbiome vs standalone)...");
+		updateProgress(18, 100);
+		updateMessage(getTaskName() + ": Checking library types...");
+		if (!classifyLibraries()) {
+			logger.error(getTaskName() + ": library classification failed");
+			updateMessage(getTaskName() + ": Failed - Library classification error");
+			updateSecondaryProgress(0.0);
+			return false;
+		}
+
+		if (fallbackDirectSearch) {
+			logger.info("All libraries are standalone – fallback to direct search (identification only, no export).");
+			updateProgress(25, 100);
+			updateMessage(getTaskName() + ": Running direct identification...");
+			updateSecondaryProgress(ProgressBar.INDETERMINATE_PROGRESS);
+			boolean directOk = directIden();
+			if (!directOk) {
+				logger.error(getTaskName() + ": error in direct identification");
+				updateMessage(getTaskName() + ": Failed - Identification error");
+				updateSecondaryProgress(0.0);
+				return false;
+			}
+			updateProgress(100, 100);
+			updateMessage(getTaskName() + ": Direct identification completed (no report – standalone libraries).");
+			updateSecondaryProgress(0.0);
+			logger.info(getTaskName() + ": finished – direct search fallback, no export.");
+			System.out.println(format.format(new Date()) + "\t" + getTaskName()
+					+ ": finished – direct search (standalone libraries, no export).");
+			return true;
+		}
+
+		logger.info("Step 3: Validating user library...");
+		updateProgress(20, 100);
+		updateMessage(getTaskName() + ": Validating library...");
+		boolean createOk = createSSLibrary();
+		if (!createOk) {
+			logger.error(getTaskName() + ": error in library validation");
+			updateMessage(getTaskName() + ": Failed - Library validation error");
+			updateSecondaryProgress(0.0);
+			return false;
+		}
+
+		logger.info("Step 4: Starting iterative search (user library → protein mapping → genome selection)...");
+		updateProgress(25, 100);
+		updateMessage(getTaskName() + ": Performing iterative search...");
+		updateSecondaryProgress(ProgressBar.INDETERMINATE_PROGRESS);
+		boolean iterative = iterativeSearch();
+		if (!iterative) {
+			logger.error(getTaskName() + ": error in iterative search");
+			updateMessage(getTaskName() + ": Failed - Iterative search error");
+			updateSecondaryProgress(0.0);
+			return false;
+		}
+		updateProgress(50, 100);
+
+		logger.info("Step 5: Identification using combined library...");
+		updateMessage(getTaskName() + ": Running identification...");
+		updateProgress(55, 100);
+		updateSecondaryProgress(ProgressBar.INDETERMINATE_PROGRESS);
+		boolean iden = iden();
+		if (!iden) {
+			logger.error(getTaskName() + ": error in identification");
+			updateMessage(getTaskName() + ": Failed - Identification error");
+			updateSecondaryProgress(0.0);
+			return false;
+		}
+
+		logger.info("Step 6: Starting report generation...");
+		updateProgress(85, 100);
+		updateMessage(getTaskName() + ": Generating reports...");
+		updateSecondaryProgress(ProgressBar.INDETERMINATE_PROGRESS);
+		boolean exportReport = exportReport();
+		if (!exportReport) {
+			logger.error(getTaskName() + ": error in report generation");
+			updateMessage(getTaskName() + ": Failed - Report generation error");
+			updateSecondaryProgress(0.0);
+			return false;
+		}
+
+		updateProgress(100, 100);
+		updateMessage(getTaskName() + ": Completed successfully!");
+		updateSecondaryProgress(0.0);
+		logger.info(getTaskName() + ": finished - all workflow steps completed successfully");
+		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": finished successfully");
+		return true;
+	}
+
+	/**
+	 * Resolves selected library names/paths to absolute file paths. Used by {@link #classifyLibraries()}
+	 * and by subclasses that need all lib paths (e.g. Deep Comprehensive).
+	 * @return resolved paths, or null if metaPar/MAG/libraries are missing or invalid
+	 */
+	protected String[] resolveLibraryPaths() {
+		if (metaPar == null || !(metaPar instanceof MetaParameterDia) || magDb == null) {
+			return null;
+		}
+		String[] usedLibs = ((MetaParameterDia) metaPar).getLibrary();
+		if (usedLibs == null || usedLibs.length == 0) {
+			return null;
+		}
+		File magDbFile = magDb.getCurrentFile();
+		File libFolderFile = new File(magDbFile, "libraries");
+		MagPepLib[] allLibs = magDb.getMagPepLibs();
+
+		String[] libPath = new String[usedLibs.length];
+		boolean[] matchToMag = new boolean[usedLibs.length];
+		for (int i = 0; i < usedLibs.length; i++) {
+			File directLibFile = new File(usedLibs[i]);
+			if (directLibFile.exists()) {
+				libPath[i] = directLibFile.getAbsolutePath();
+				matchToMag[i] = false;
+			} else {
+				File libFile = new File(new File(libFolderFile, usedLibs[i]), usedLibs[i] + ".speclib");
+				File libTsvFile = new File(new File(libFolderFile, usedLibs[i]), usedLibs[i] + ".tsv");
+				if (usedLibs.length == 1) {
+					libPath[i] = libFile.getAbsolutePath();
+					if (!libFile.exists()) {
+						logger.error(getTaskName() + ": library file doesn't exist: " + libFile);
+						return null;
+					}
+				} else {
+					libPath[i] = libTsvFile.getAbsolutePath();
+					if (!libTsvFile.exists()) {
+						logger.error(getTaskName() + ": library file doesn't exist: " + libTsvFile);
+						return null;
+					}
+				}
+				boolean micro = false;
+				for (MagPepLib lib : allLibs) {
+					if (lib.getLibName().equals(usedLibs[i])) {
+						micro = lib.isMatchToMag();
+						break;
+					}
+				}
+				matchToMag[i] = micro;
+			}
+		}
+		return libPath;
+	}
+
+	/**
+	 * Classifies selected libraries into microbiome vs standalone (MagPepLib.isMatchToMag).
+	 * Sets {@link #fallbackDirectSearch}, {@link #initialSearchLibPaths}, {@link #addOutLibForInitialSearch}.
+	 * @return true if classification succeeded and at least one library is present
+	 */
+	protected boolean classifyLibraries() {
+		String[] libPath = resolveLibraryPaths();
+		if (libPath == null || libPath.length == 0) {
+			logger.error(getTaskName() + ": MetaParameterDia and MAG database required, or no libraries selected");
+			return false;
+		}
+		String[] usedLibs = ((MetaParameterDia) metaPar).getLibrary();
+		MagPepLib[] allLibs = magDb.getMagPepLibs();
+		boolean[] matchToMag = new boolean[usedLibs.length];
+		for (int i = 0; i < usedLibs.length; i++) {
+			File directLibFile = new File(usedLibs[i]);
+			if (directLibFile.exists()) {
+				matchToMag[i] = false;
+			} else {
+				boolean micro = false;
+				for (MagPepLib lib : allLibs) {
+					if (lib.getLibName().equals(usedLibs[i])) {
+						micro = lib.isMatchToMag();
+						break;
+					}
+				}
+				matchToMag[i] = micro;
+			}
+		}
+
+		int microCount = 0;
+		for (boolean b : matchToMag) {
+			if (b) microCount++;
+		}
+		boolean allStandalone = (microCount == 0);
+		boolean allMicrobiome = (microCount == usedLibs.length);
+		boolean mixed = !allStandalone && !allMicrobiome;
+
+		fallbackDirectSearch = allStandalone;
+		addOutLibForInitialSearch = mixed;
+		if (allStandalone) {
+			initialSearchLibPaths = libPath;
+			logger.info(getTaskName() + ": all libraries standalone – will fallback to direct search.");
+		} else if (allMicrobiome) {
+			initialSearchLibPaths = libPath;
+			logger.info(getTaskName() + ": all libraries microbiome – full iterative workflow.");
+		} else {
+			List<String> microPaths = new ArrayList<>();
+			List<String> standalonePaths = new ArrayList<>();
+			for (int i = 0; i < usedLibs.length; i++) {
+				if (matchToMag[i]) microPaths.add(libPath[i]);
+				else standalonePaths.add(libPath[i]);
+			}
+			initialSearchLibPaths = microPaths.toArray(new String[0]);
+			standaloneSearchLibPaths = standalonePaths.toArray(new String[0]);
+			logger.info(getTaskName() + ": mixed libraries – using microbiome libraries only with --out-lib.");
+		}
+		return true;
+	}
+
+	/**
+	 * Direct identification with all selected libraries (no iterative, no export).
+	 * Used when all libraries are standalone. Writes results to combined/.
+	 */
+	private boolean directIden() {
+		combinedFile = new File(metaPar.getDbSearchResultFile(), "combined");
+		if (!combinedFile.exists()) {
+			combinedFile.mkdir();
+		}
+		// Required for exportReport() / getExportQuanPepFile()
+		this.quan_pep_file = new File(combinedFile, "combined.pr_matrix.tsv");
+		this.quan_pro_file = new File(combinedFile, "combined.pg_matrix.tsv");
+		File combineParquetFile = new File(combinedFile, "combined.parquet");
+
+		diaLibSearchPar.setMbr(true);
+		diaLibSearchPar.setDiaFiles(diaFiles);
+		diaLibSearchPar.setThreadCount(threadCount);
+		diaLibSearchPar.setqValue(0.01);
+		diannPar.setThreads(threadCount);
+		diannPar.setMatrices(true);
+		diannPar.setRelaxed_prot_inf(true);
+		diannPar.setReanalyse(true);
+		diannPar.setExportDecoy(true);
+
+		diaNNTask.addTask(diannPar, diaLibSearchPar, combineParquetFile.getAbsolutePath(), initialSearchLibPaths);
+		diaNNTask.run(diaFiles.length * 12);
+
+		if (!combineParquetFile.exists()) {
+			logger.error(getTaskName() + ": Direct identification failed - parquet not created");
+			return false;
+		}
+		logger.info("Direct identification completed.");
+		return true;
+	}
+
+	@Override
+	protected boolean createSSLibrary() {
+		// No marker library to build; user library is already selected
+		logger.info("User library mode - skipping sample-specific library creation");
+		return true;
+	}
+
+	/**
+	 * Runs the first search with user-selected (or microbiome-only) libraries and writes
+	 * result to {@link #getIterativeResultFolder()}/seed.parquet. Subclasses can call this
+	 * to reuse the same first step (e.g. Deep Comprehensive).
+	 * @return true if seed.parquet exists after the step (or already existed)
+	 */
+	protected boolean runFirstSearchUserLibrary() {
+		File iterativeFolder = getIterativeResultFolder();
+		if (!iterativeFolder.exists()) {
+			iterativeFolder.mkdirs();
+		}
+		File tempParquetFile = new File(iterativeFolder, "seed.parquet");
+		if (initialSearchLibPaths == null || initialSearchLibPaths.length == 0) {
+			logger.error(getTaskName() + ": No library paths for first search (classification may have failed)");
+			return false;
+		}
+		if (!tempParquetFile.exists()) {
+			logger.info("Searching {} library against DIA files{}...",
+					addOutLibForInitialSearch ? "microbiome" : "user",
+					addOutLibForInitialSearch ? " (with --out-lib)" : "");
+			diaLibSearchPar.setMbr(false);
+			diaLibSearchPar.setDiaFiles(diaFiles);
+			diaLibSearchPar.setThreadCount(threadCount);
+			diaLibSearchPar.setqValue(0.01);
+			diannPar.setThreads(threadCount);
+			diannPar.setMatrices(false);
+			diannPar.setRelaxed_prot_inf(true);
+			diannPar.setReanalyse(true);
+			diannPar.setExportDecoy(true);
+
+			if (addOutLibForInitialSearch) {
+				diaNNTask.addTask(diannPar, diaLibSearchPar, tempParquetFile.getAbsolutePath(),
+						false, true, true, initialSearchLibPaths);
+			} else {
+				diaNNTask.addTask(diannPar, diaLibSearchPar, tempParquetFile.getAbsolutePath(),
+						initialSearchLibPaths);
+			}
+			diaNNTask.run(diaFiles.length * 12);
+		}
+		if (!tempParquetFile.exists()) {
+			logger.error(getTaskName() + ": First search failed - parquet file not created");
+			return false;
+		}
+		return true;
+	}
+
+	@Override
+	protected boolean iterativeSearch() {
+		logger.info("Starting iterative search for DIA Seed (user library)...");
+
+		MetaParameterDiaFocus focusParams = (metaPar instanceof MetaParameterDiaFocus) ? (MetaParameterDiaFocus) metaPar : null;
+		if (focusParams == null || magDb == null) {
+			logger.error(getTaskName() + ": MetaParameterDiaFocus and MAG database required for iterative seed workflow");
+			return false;
+		}
+
+		if (!runFirstSearchUserLibrary()) {
+			return false;
+		}
+
+		File iterativeFolder = getIterativeResultFolder();
+		File tempParquetFile = new File(iterativeFolder, "seed.parquet");
+
+		// Step 2: Read precursors and set protein info from MAG predicted TSVs
+		logger.info("Reading precursors and setting protein information from MAG predicted TSVs...");
+		DiaNNParquetReader parquetReader = new DiaNNParquetReader(tempParquetFile.getAbsolutePath(), diannPar.getCut());
+		DiaNNPrecursor[] precursors = parquetReader.getDiaNNPrecursors();
+		if (precursors == null || precursors.length == 0) {
+			logger.warn(getTaskName() + ": No precursors found in user library search");
+			return false;
+		}
+
+		File predictedFolder = new File(magDb.getCurrentFile(), "predicted");
+		if (!predictedFolder.isDirectory()) {
+			logger.error(getTaskName() + ": MAG predicted folder not found: " + predictedFolder.getAbsolutePath());
+			return false;
+		}
+
+		List<DiaNNPrecursor> precursorsWithPro = MarkerGenomeSelector.setProteinInfoFromPredictedTsVs(precursors,
+				predictedFolder);
+		if (precursorsWithPro == null || precursorsWithPro.isEmpty()) {
+			logger.error(getTaskName() + ": No precursors could be mapped to MAG proteins; check predicted TSVs");
+			return false;
+		}
+		logger.info("Mapped {} / {} precursors to MAG proteins", precursorsWithPro.size(), precursors.length);
+
+		// Step 3: MarkerGenomeSelector (Focus or Comprehensive)
+		String mode = focusParams.getGenomeSelectionStrategy();
+		if (mode == null || mode.trim().isEmpty()) {
+			mode = MarkerGenomeSelector.KNEE_MODE_FOCUS;
+		}
+		logger.info("Selecting genomes using MarkerGenomeSelector ({} mode)...", mode);
+
+		File markerFasta = new File(magDb.getCurrentFile(), "Marker4.fasta");
+		File genomesTaxaTsv = new File(magDb.getCurrentFile(), "genomes-taxa.tsv");
+		if (!markerFasta.exists() || !genomesTaxaTsv.exists()) {
+			logger.error(getTaskName() + ": Marker4.fasta or genomes-taxa.tsv not found for genome selection");
+			return false;
+		}
+
+		MarkerGenomeSelector selector = new MarkerGenomeSelector();
+		selector.setKneeSelectionMode(mode);
+
+		File evidenceFile = new File(iterativeFolder, "genome_evidence.tsv");
+		File rankedFile = new File(iterativeFolder, "genome_ranked.tsv");
+		File selectedFile = new File(iterativeFolder, "genome_selected.tsv");
+
+		selector.selectMarkerGenomesWithKnee(
+				precursorsWithPro.toArray(new DiaNNPrecursor[0]),
+				markerFasta, genomesTaxaTsv,
+				evidenceFile.getAbsolutePath(), rankedFile.getAbsolutePath(), selectedFile.getAbsolutePath(),
+				300, true);
+
+		// Step 4: Read selected genomes and build combined FASTA
+		HashSet<String> genomeSet = new HashSet<>();
+		if (selectedFile.exists()) {
+			try (BufferedReader reader = new BufferedReader(new FileReader(selectedFile))) {
+				reader.readLine();
+				String line;
+				while ((line = reader.readLine()) != null) {
+					line = line.trim();
+					if (line.isEmpty() || line.startsWith("#")) break;
+					String[] parts = line.split("\t");
+					if (parts.length > 0 && !parts[0].trim().isEmpty()) {
+						genomeSet.add(parts[0].trim());
+					}
+				}
+			} catch (IOException e) {
+				logger.error("Error reading selected genomes", e);
+				return false;
+			}
+		}
+		if (genomeSet.isEmpty()) {
+			logger.warn(getTaskName() + ": No genomes selected");
+			return false;
+		}
+
+		File combinedFastaFile = new File(iterativeFolder, "combined.fasta");
+		try (PrintWriter writer = new PrintWriter(combinedFastaFile)) {
+			File dbFolder = magDb.getOriginalDbFolder();
+			for (String genome : genomeSet) {
+				File genomeDbFile = new File(dbFolder, genome + ".faa");
+				if (!genomeDbFile.exists()) {
+					genomeDbFile = new File(dbFolder, genome + ".fasta");
+				}
+				if (genomeDbFile.exists()) {
+					try (BufferedReader reader = new BufferedReader(new FileReader(genomeDbFile))) {
+						String line;
+						while ((line = reader.readLine()) != null) {
+							writer.println(line);
+						}
+					}
+				} else {
+					logger.warn("Genome file not found: {}", genome);
+				}
+			}
+		} catch (IOException e) {
+			logger.error("Error writing combined FASTA", e);
+			return false;
+		}
+
+		if (!combinedFastaFile.exists() || combinedFastaFile.length() == 0) {
+			logger.error(getTaskName() + ": Failed to create combined FASTA");
+			return false;
+		}
+
+		// Step 5: Generate combined library
+		File combinedLibFile = new File(iterativeFolder, "combined.speclib");
+		if (!combinedLibFile.exists()) {
+			File altLibFile = new File(iterativeFolder, "combined.predicted.speclib");
+			if (altLibFile.exists()) {
+				altLibFile.renameTo(combinedLibFile);
+			} else {
+				diannPar.setThreads(threadCount);
+				diaNNTask.addTask(diannPar, combinedFastaFile.getAbsolutePath(), combinedLibFile.getAbsolutePath(),
+						false);
+				diaNNTask.run(12);
+				if (!combinedLibFile.exists() && altLibFile.exists()) {
+					altLibFile.renameTo(combinedLibFile);
+				}
+			}
+		}
+		if (!combinedLibFile.exists()) {
+			logger.error(getTaskName() + ": Failed to generate combined library");
+			return false;
+		}
+
+		logger.info("Iterative search completed successfully");
+		return true;
+	}
+
+	@Override
+	protected boolean iden() {
+		logger.info("Starting identification using combined library from iterative search...");
+		updateMessage(getTaskName() + ": peptide and protein identification");
+
+		combinedFile = new File(metaPar.getDbSearchResultFile(), "combined");
+		if (!combinedFile.exists()) {
+			combinedFile.mkdir();
+		}
+		// Required for exportReport() / getExportQuanPepFile()
+		this.quan_pep_file = new File(combinedFile, "combined.pr_matrix.tsv");
+		this.quan_pro_file = new File(combinedFile, "combined.pg_matrix.tsv");
+		File combineParquetFile = new File(combinedFile, "combined.parquet");
+
+		diaLibSearchPar.setMbr(true);
+		diaLibSearchPar.setDiaFiles(diaFiles);
+		diaLibSearchPar.setThreadCount(threadCount);
+		diaLibSearchPar.setqValue(0.01);
+		diannPar.setThreads(threadCount);
+		diannPar.setMatrices(true);
+		diannPar.setRelaxed_prot_inf(true);
+		diannPar.setReanalyse(true);
+		diannPar.setExportDecoy(true);
+
+		if (addOutLibForInitialSearch) {
+			// Mixed case: first get mag.parquet + mag.parquet.lib (microbiome search with --out-lib), then combine with standalone libs
+			File magParquetFile = new File(combinedFile, "mag.parquet");
+			if (!magParquetFile.exists()) {
+				logger.info("Generating mag.parquet and library (microbiome libs with --out-lib)...");
+				diaNNTask.addTask(diannPar, diaLibSearchPar, magParquetFile.getAbsolutePath(),
+						false, true, true, initialSearchLibPaths);
+				diaNNTask.run(diaFiles.length * 12);
+			}
+			// DiaNN outputs library as output + ".lib" -> mag.parquet.lib
+			File magLibFile = new File(combinedFile, "mag.lib.parquet");
+			if (!magLibFile.exists()) {
+				logger.error(getTaskName() + ": MAG library file not found: " + magLibFile.getAbsolutePath());
+				return false;
+			}
+			// Combined search: mag.parquet.lib + all standalone libraries -> combined.parquet (skip if already exists)
+			if (!quan_pep_file.exists() || !combineParquetFile.exists()) {
+				List<String> combinedLibPaths = new ArrayList<>();
+				combinedLibPaths.add(magLibFile.getAbsolutePath());
+				if (standaloneSearchLibPaths != null) {
+					for (String p : standaloneSearchLibPaths) {
+						combinedLibPaths.add(p);
+					}
+				}
+				String[] combinedLibArr = combinedLibPaths.toArray(new String[0]);
+				logger.info("Searching with MAG library + {} standalone libraries -> combined.parquet", standaloneSearchLibPaths != null ? standaloneSearchLibPaths.length : 0);
+				diaNNTask.addTask(diannPar, diaLibSearchPar, combineParquetFile.getAbsolutePath(), combinedLibArr);
+				diaNNTask.run(diaFiles.length * 12);
+			}
+		} else {
+			// All microbiome: use combined library from iterative search directly
+			File iterativeFolder = getIterativeResultFolder();
+			File combinedLibFile = new File(iterativeFolder, "combined.speclib");
+			if (!combinedLibFile.exists()) {
+				logger.error(getTaskName() + ": Combined library not found: " + combinedLibFile.getAbsolutePath());
+				return false;
+			}
+			if (!quan_pep_file.exists() || !combineParquetFile.exists()) {
+				diaNNTask.addTask(diannPar, diaLibSearchPar, combineParquetFile.getAbsolutePath(),
+						new String[] { combinedLibFile.getAbsolutePath() });
+				diaNNTask.run(diaFiles.length * 12);
+			}
+		}
+
+		if (!quan_pep_file.exists() || !combineParquetFile.exists()) {
+			logger.error(getTaskName() + ": Identification failed - result files not created");
+			return false;
+		}
+		logger.info("Identification completed successfully");
+		return true;
+	}
+}

@@ -4,6 +4,8 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -26,13 +28,52 @@ import org.apache.parquet.io.MessageColumnIO;
 import org.apache.parquet.io.RecordReader;
 import org.apache.parquet.io.InputFile;
 import org.apache.parquet.schema.MessageType;
+import org.apache.parquet.schema.PrimitiveType;
 import org.apache.parquet.schema.Type;
-
-import cern.colt.Arrays;
 
 public class DiaNNParquetReader {
 
 	private DiaNNPrecursor[] diaNNPrecursors;
+
+	static {
+		// Avoid "HADOOP_HOME and hadoop.home.dir are unset" / winutils.exe warnings on Windows
+		// when using Parquet (Hadoop libs) without a real Hadoop install
+		if (System.getProperty("hadoop.home.dir") == null && System.getenv("HADOOP_HOME") == null) {
+			String dir = System.getProperty("java.io.tmpdir");
+			if (dir != null && !dir.isEmpty()) {
+				System.setProperty("hadoop.home.dir", dir);
+			}
+		}
+	}
+
+	/** Silence verbose Parquet and Hadoop DEBUG logging (works with Logback or Log4j2). */
+	private static void silenceParquetAndHadoopLogging() {
+		try {
+			// Try Logback (e.g. when slf4j binds to logback-classic)
+			Object factory = Class.forName("org.slf4j.LoggerFactory").getMethod("getILoggerFactory").invoke(null);
+			if (factory != null && "ch.qos.logback.classic.LoggerContext".equals(factory.getClass().getName())) {
+				Object levelWarn = Class.forName("ch.qos.logback.classic.Level").getField("WARN").get(null);
+				Class<?> levelClass = Class.forName("ch.qos.logback.classic.Level");
+				for (String name : new String[] { "org.apache.parquet", "org.apache.hadoop" }) {
+					Object log = factory.getClass().getMethod("getLogger", String.class).invoke(factory, name);
+					if (log != null) log.getClass().getMethod("setLevel", levelClass).invoke(log, levelWarn);
+				}
+				return;
+			}
+		} catch (Throwable ignored) {
+		}
+		try {
+			// Try Log4j2
+			Class<?> logManager = Class.forName("org.apache.logging.log4j.LogManager");
+			Class<?> level = Class.forName("org.apache.logging.log4j.Level");
+			Object warn = level.getField("WARN").get(null);
+			for (String name : new String[] { "org.apache.parquet", "org.apache.hadoop" }) {
+				Object log = logManager.getMethod("getLogger", String.class).invoke(null, name);
+				if (log != null) log.getClass().getMethod("setLevel", level).invoke(log, warn);
+			}
+		} catch (Throwable ignored) {
+		}
+	}
 	
 	public static HashMap<String, HashSet<String>> getPepProMap(String parquet) throws IOException {
 		System.out.println("Reading parquet file " + parquet + "......");
@@ -207,6 +248,7 @@ public class DiaNNParquetReader {
 	}
 
 	public DiaNNParquetReader(String parquet, String cut) {
+		silenceParquetAndHadoopLogging();
 		ArrayList<DiaNNPrecursor> list = new ArrayList<DiaNNPrecursor>();
 		HashSet<Character> cutSet = new HashSet<Character>();
 		HashSet<Character> noCutSet = new HashSet<Character>();
@@ -229,12 +271,28 @@ public class DiaNNParquetReader {
 			// Get file schema
 			ParquetMetadata metadata = fileReader.getFooter();
 			MessageType schema = metadata.getFileMetaData().getSchema();
+			boolean hasMs1Area = false;
+			boolean hasCScore = false;
+			for (Type f : schema.getFields()) {
+				if ("Ms1.Area".equals(f.getName())) {
+					hasMs1Area = true;
+				} else if ("CScore".equals(f.getName())) {
+					hasCScore = true;
+				}
+			}
+			// Print all column names
+			StringBuilder colNames = new StringBuilder("Parquet columns: ");
+			for (Type f : schema.getFields()) {
+				if (colNames.length() > 16) colNames.append(", ");
+				colNames.append(f.getName());
+			}
+			System.out.println(colNames);
 
 			// Loop through row groups in the Parquet file
 			PageReadStore pages;
 			while ((pages = fileReader.readNextRowGroup()) != null) {
 				long rowCount = pages.getRowCount();
-				System.out.println("Row group has " + rowCount + " rows.");
+//				System.out.println("Row group has " + rowCount + " rows.");
 
 				MessageColumnIO columnIO = new ColumnIOFactory().getColumnIO(schema);
 				GroupRecordConverter recordConverter = new GroupRecordConverter(schema);
@@ -259,13 +317,10 @@ public class DiaNNParquetReader {
 					}
 					double precursorMz = group.getFloat("Precursor.Mz", 0);
 					int charge = (int) group.getLong("Precursor.Charge", 0);
-//					float rt = group.getFloat("RT", 0);
-//					float rtStart = group.getFloat("RT.Start", 0);
-//					float rtStop = group.getFloat("RT.Stop", 0);
-//					float area = group.getFloat("Ms1.Area", 0);
 					double preNormal = group.getFloat("Precursor.Normalised", 0);
 					double preQuan = group.getFloat("Precursor.Quantity", 0);
 					double ms1Normal = group.getFloat("Ms1.Normalised", 0);
+					double ms1Area = hasMs1Area ? group.getFloat("Ms1.Area", 0) : 0;
 					double qvalue = group.getFloat("Q.Value", 0);
 					double PEP = group.getFloat("PEP", 0);
 					double globalQ = group.getFloat("Global.Q.Value", 0);
@@ -275,6 +330,13 @@ public class DiaNNParquetReader {
 					DiaNNPrecursor diaNNPrecursor = new DiaNNPrecursor(run, proteins, modSeq, sequence, charge,
 							missCleavage, precursorMz, ms1Normal, qvalue, PEP, globalQ, pgQvalue, globalPGQvalue,
 							preNormal, preQuan, isDecoy);
+					if (hasMs1Area) {
+						diaNNPrecursor.setMs1Area(ms1Area);
+					}
+					if (hasCScore) {
+						double cscore = group.getFloat("CScore", 0);
+						diaNNPrecursor.setCscore(cscore);
+					}
 
 					list.add(diaNNPrecursor);
 				}
@@ -324,6 +386,110 @@ public class DiaNNParquetReader {
 
 		return columnNames;
     }
+
+	/**
+	 * Export parquet contents to a TSV file for direct inspection.
+	 * Writes one header line (column names) then one data row per parquet row.
+	 * Cell values are tab-separated; tabs and newlines in values are replaced by spaces.
+	 *
+	 * @param parquetPath path to the parquet file
+	 * @param tsvPath     path for the output TSV file
+	 * @throws IOException if read/write fails
+	 */
+	public static void exportToTsv(String parquetPath, String tsvPath) throws IOException {
+		exportToTsv(parquetPath, new File(tsvPath));
+	}
+
+	/**
+	 * Export parquet contents to a TSV file for direct inspection.
+	 *
+	 * @param parquetPath path to the parquet file
+	 * @param tsvFile     output TSV file
+	 * @throws IOException if read/write fails
+	 */
+	public static void exportToTsv(String parquetPath, File tsvFile) throws IOException {
+		silenceParquetAndHadoopLogging();
+		Path path = new Path(parquetPath);
+		HadoopInputFile inputFile = HadoopInputFile.fromPath(path, new Configuration());
+		ParquetReadOptions readOptions = ParquetReadOptions.builder().build();
+		ParquetFileReader fileReader = ParquetFileReader.open(inputFile, readOptions);
+
+		ParquetMetadata metadata = fileReader.getFooter();
+		MessageType schema = metadata.getFileMetaData().getSchema();
+		int numFields = schema.getFieldCount();
+		String[] columnNames = new String[numFields];
+		for (int i = 0; i < numFields; i++) {
+			columnNames[i] = schema.getFieldName(i);
+		}
+
+		try (PrintWriter out = new PrintWriter(tsvFile, StandardCharsets.UTF_8.name())) {
+			// Header
+			out.println(String.join("\t", columnNames));
+
+			PageReadStore pages;
+			while ((pages = fileReader.readNextRowGroup()) != null) {
+				long rowCount = pages.getRowCount();
+				MessageColumnIO columnIO = new ColumnIOFactory().getColumnIO(schema);
+				GroupRecordConverter recordConverter = new GroupRecordConverter(schema);
+				RecordReader<Group> recordReader = columnIO.getRecordReader(pages, recordConverter);
+
+				for (long r = 0; r < rowCount; r++) {
+					Group group = recordReader.read();
+					String[] cells = new String[numFields];
+					for (int i = 0; i < numFields; i++) {
+						cells[i] = cellToString(schema, group, i);
+					}
+					out.println(String.join("\t", cells));
+				}
+			}
+		} finally {
+			fileReader.close();
+		}
+	}
+
+	/** Format one cell value for TSV (escape tabs and newlines). */
+	private static String cellToString(MessageType schema, Group group, int fieldIndex) {
+		String raw;
+		try {
+			if (group.getFieldRepetitionCount(fieldIndex) == 0) {
+				return "";
+			}
+			Type type = schema.getType(fieldIndex);
+			if (type.isPrimitive()) {
+				PrimitiveType pt = type.asPrimitiveType();
+				switch (pt.getPrimitiveTypeName()) {
+					case BINARY:
+					case FIXED_LEN_BYTE_ARRAY:
+						raw = group.getBinary(fieldIndex, 0).toStringUsingUTF8();
+						break;
+					case INT32:
+						raw = String.valueOf(group.getInteger(fieldIndex, 0));
+						break;
+					case INT64:
+						raw = String.valueOf(group.getLong(fieldIndex, 0));
+						break;
+					case FLOAT:
+						raw = String.valueOf(group.getFloat(fieldIndex, 0));
+						break;
+					case DOUBLE:
+						raw = String.valueOf(group.getDouble(fieldIndex, 0));
+						break;
+					case BOOLEAN:
+						raw = String.valueOf(group.getBoolean(fieldIndex, 0));
+						break;
+					default:
+						raw = String.valueOf(group.getValueToString(fieldIndex, 0));
+				}
+			} else {
+				raw = String.valueOf(group.getValueToString(fieldIndex, 0));
+			}
+		} catch (Exception e) {
+			raw = "";
+		}
+		// Keep TSV valid: replace tab and newline in values
+		if (raw == null) return "";
+		return raw.replace("\t", " ").replace("\n", " ").replace("\r", " ");
+	}
 
 	@SuppressWarnings("unused")
 	private static void compare(File folder) {
@@ -430,14 +596,34 @@ public class DiaNNParquetReader {
 //				+ "combined.parquet");
 //		DiaNNParquetReader.matchGenome("Z:\\Kai\\Database\\human-gut\\v2.0.2", 
 //				"E:\\20250423\\20250422_MetaLAB_DIA_search\\selfModel\\mag_result\\combined.parquet");
-		
-		DiaNNParquetReader reader = new DiaNNParquetReader("Z:\\Test\\Pekka_20251201\\MetaPilot\\iterative_analysis\\combined"
+/*		
+		DiaNNParquetReader reader = new DiaNNParquetReader("Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\pool\\MetaPilot\\focus\\combined"
 				+ "\\combined.parquet", "KR");
-
+		DiaNNPrecursor[] pps =  reader.getDiaNNPrecursors();
+		int[] count = new int[2];
+		for(DiaNNPrecursor pp: pps) {
+			if(pp.getIsDecoy()) {
+				count[0]++;
+			}else {
+				count[1]++;
+			}
+		}
+		System.out.println(count[0]+"\t"+count[1]);
+*/		
 //		System.out.println(DiaNNParquetReader.getPepProMap(
 //				"C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-gut\\v2.0.2\\libraries\\Pekka"
 //						+ "\\Pekka.parquet"));
-
+		File[] files = (new File("Z:\\PRIDE_dataset\\IPX0003851000\\DATA_analysis")).listFiles();
+		for (int i = 0; i < files.length; i++) {
+			String name = files[i].getName();
+			File parquetFile = new File(files[i], name + ".parquet");
+			if (parquetFile.exists()) {
+				File tsvFile = new File(files[i], name + ".parquet.tsv");
+				if (!tsvFile.exists()) {
+					DiaNNParquetReader.exportToTsv(parquetFile.getAbsolutePath(), tsvFile.getAbsolutePath());
+				}
+			}
+		}
 	}
 
 }

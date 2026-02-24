@@ -18,21 +18,30 @@ import uk.ac.quadram.metapilot.task.common.gui.IsobaricLabelingPanel;
 import uk.ac.quadram.metapilot.task.common.gui.ModificationsPanel;
 import uk.ac.quadram.metapilot.task.common.gui.MagDatabaseSettingsPanel;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
+import uk.ac.quadram.metapilot.core.MGYG.HapExtractor;
+import uk.ac.quadram.metapilot.task.mag.MarkerGenomeSelector;
 import uk.ac.quadram.metapilot.task.par.MetaData;
-import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
-import uk.ac.quadram.metapilot.resources.MetaResourceIO;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX.ExperimentRow;
+import uk.ac.quadram.metapilot.dbSearch.deepDetect.DeepDetectParameter;
+import uk.ac.quadram.metapilot.dbSearch.deepDetect.DeepDetectTask;
 import javafx.application.Platform;
-import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
+import uk.ac.quadram.metapilot.resources.MetaResourceIO;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagSageParameters;
 import uk.ac.quadram.metapilot.task.dda.mag.task.DDAMagSageTask;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagSageParameterIO;
@@ -79,6 +88,12 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 	private Spinner<Integer> missedCleavagesSpinner;
 	private ComboBox<String> digestionModeComboBox;
 	private ComboBox<Integer> threadsComboBox;
+	private ComboBox<String> genomeSelectionStrategyComboBox;
+	private ComboBox<String> genomeSelectorComboBox;
+	private ProgressBar genomeSelectorProgressBar;
+	private Label genomeSelectorStatusLabel;
+	/** Flag to suppress Marker4 popup when programmatically loading parameters (setOnAction fires on setValue) */
+	private boolean suppressMarker4CheckOnLoad = false;
 
 	// Data
 	private ObservableList<String> enzymes = FXCollections.observableArrayList();
@@ -663,10 +678,286 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 		VBox threadsBox = new VBox(5);
 		threadsBox.getChildren().addAll(threadsLabel, threadsComboBox);
 
+		Label genomeSelectorLabel = new Label("Genome Selection:");
+		genomeSelectorLabel.setStyle("-fx-font-weight: bold;");
+		genomeSelectorComboBox = new ComboBox<>(
+				FXCollections.observableArrayList(MagDbItem.MARKER2, MagDbItem.MARKER4));
+		genomeSelectorComboBox.setMinWidth(140);
+		genomeSelectorComboBox.setPrefWidth(160);
+		genomeSelectorComboBox.setMaxWidth(Double.MAX_VALUE);
+		genomeSelectorComboBox.setValue(MagDbItem.MARKER2);
+		genomeSelectorComboBox.setPromptText("Genome selection workflow");
+		genomeSelectorComboBox.setOnAction(e -> {
+			updateParameterView();
+			if (!MagDbItem.MARKER4.equals(genomeSelectorComboBox.getValue())) {
+				genomeSelectorProgressBar.setVisible(false);
+				genomeSelectorProgressBar.setProgress(0);
+				if (genomeSelectorStatusLabel != null)
+					genomeSelectorStatusLabel.setText("");
+				return;
+			}
+			if (marker4RequiredFilesExist()) {
+				if (genomeSelectorStatusLabel != null)
+					genomeSelectorStatusLabel.setText("Available");
+				genomeSelectorProgressBar.setVisible(false);
+				genomeSelectorProgressBar.setProgress(0);
+				return;
+			}
+			if (suppressMarker4CheckOnLoad) {
+				if (genomeSelectorStatusLabel != null)
+					genomeSelectorStatusLabel.setText("Not available");
+				return;
+			}
+			if (genomeSelectorStatusLabel != null)
+				genomeSelectorStatusLabel.setText("Not available");
+			Alert confirmAlert = new Alert(AlertType.CONFIRMATION);
+			confirmAlert.setTitle("Marker4 files missing");
+			confirmAlert.setHeaderText("Generate required files for 4-markers?");
+			confirmAlert.setContentText(
+					"Marker4 (Marker4_highpep) requires Marker4_highpep.fasta and genomes-taxa.tsv. These files are missing for the selected MAG database.\n\n"
+							+ "Generate them now? This may take some time (DeepDetect prediction).");
+			confirmAlert.getButtonTypes().setAll(ButtonType.YES, ButtonType.NO);
+			Optional<ButtonType> result = confirmAlert.showAndWait();
+			if (result.isEmpty() || result.get() != ButtonType.YES) {
+				genomeSelectorComboBox.setValue(MagDbItem.MARKER2);
+				updateParameterView();
+				if (genomeSelectorStatusLabel != null)
+					genomeSelectorStatusLabel.setText("");
+				return;
+			}
+			if (genomeSelectorStatusLabel != null)
+				genomeSelectorStatusLabel.setText("Generating...");
+			genomeSelectorProgressBar.setVisible(true);
+			genomeSelectorProgressBar.setProgress(ProgressBar.INDETERMINATE_PROGRESS);
+			generateMarker4FilesIfNeeded(this::onMarker4GenerationComplete);
+		});
+		VBox genomeSelectorBox = new VBox(5);
+		genomeSelectorBox.getChildren().addAll(genomeSelectorLabel, genomeSelectorComboBox);
+
+		genomeSelectorProgressBar = new ProgressBar(0);
+		genomeSelectorProgressBar.setVisible(false);
+		genomeSelectorProgressBar.setPrefWidth(200);
+		genomeSelectorProgressBar.setMaxWidth(Double.MAX_VALUE);
+		genomeSelectorStatusLabel = new Label();
+		genomeSelectorStatusLabel.setMinHeight(Label.USE_PREF_SIZE);
+		genomeSelectorStatusLabel.setStyle("-fx-text-fill: gray;");
+		Label progressLabel = new Label("Availability:");
+		progressLabel.setStyle("-fx-font-weight: bold;");
+		VBox progressBox = new VBox(5);
+		progressBox.getChildren().addAll(progressLabel, genomeSelectorProgressBar, genomeSelectorStatusLabel);
+
+		Label genomeSelectionStrategyLabel = new Label("Selection Strategy:");
+		genomeSelectionStrategyLabel.setStyle("-fx-font-weight: bold;");
+		genomeSelectionStrategyComboBox = new ComboBox<>(
+				FXCollections.observableArrayList(MarkerGenomeSelector.KNEE_MODE_FOCUS,
+						MarkerGenomeSelector.KNEE_MODE_COMPREHENSIVE));
+		genomeSelectionStrategyComboBox.setMinWidth(140);
+		genomeSelectionStrategyComboBox.setPrefWidth(160);
+		genomeSelectionStrategyComboBox.setMaxWidth(Double.MAX_VALUE);
+		genomeSelectionStrategyComboBox.setValue(MarkerGenomeSelector.KNEE_MODE_FOCUS);
+		genomeSelectionStrategyComboBox.setOnAction(e -> updateParameterView());
+		VBox genomeSelectionStrategyBox = new VBox(5);
+		genomeSelectionStrategyBox.getChildren().addAll(genomeSelectionStrategyLabel, genomeSelectionStrategyComboBox);
+
 		paramGrid.add(threadsBox, 0, 0);
+		paramGrid.add(genomeSelectionStrategyBox, 1, 0);
+		paramGrid.add(genomeSelectorBox, 0, 1);
+		paramGrid.add(progressBox, 1, 1);
 
 		section.getChildren().addAll(titleLabel, paramGrid);
 		return section;
+	}
+
+	/**
+	 * Quick check (on current thread): do Marker4_highpep.fasta and genomes-taxa.tsv exist for the selected MAG DB?
+	 */
+	private boolean marker4RequiredFilesExist() {
+		if (magDatabasePanel == null)
+			return false;
+		MagDbItem selectedDb = magDatabasePanel.getSelectedMagDatabase();
+		if (selectedDb == null)
+			return false;
+		File currentFile = selectedDb.getCurrentFile();
+		if (currentFile == null)
+			return false;
+		File markersFile = new File(currentFile, "Marker4_highpep.fasta");
+		File genomeTaxaFile = new File(currentFile, "genomes-taxa.tsv");
+		return markersFile.exists() && genomeTaxaFile.exists();
+	}
+
+	/**
+	 * Generates marker4 required files in a background thread (Marker4_highpep.fasta and genomes-taxa.tsv).
+	 */
+	protected void generateMarker4FilesIfNeeded(Consumer<Boolean> onComplete) {
+		new Thread(() -> {
+			boolean available = false;
+			try {
+				if (magDatabasePanel == null) {
+					Platform.runLater(() -> onComplete.accept(false));
+					return;
+				}
+				MagDbItem selectedDb = magDatabasePanel.getSelectedMagDatabase();
+				if (selectedDb == null) {
+					Platform.runLater(() -> onComplete.accept(false));
+					return;
+				}
+				File currentFile = selectedDb.getCurrentFile();
+				if (currentFile == null) {
+					Platform.runLater(() -> onComplete.accept(false));
+					return;
+				}
+				File markersFile = new File(currentFile, "Marker4_highpep.fasta");
+				if (!markersFile.exists()) {
+					ensure4markersHighpepFasta(selectedDb, markersFile);
+				}
+				File genomeTaxaFile = new File(currentFile, "genomes-taxa.tsv");
+				if (!genomeTaxaFile.exists()) {
+					ensureGenomesTaxaFile(selectedDb, genomeTaxaFile);
+				}
+				available = markersFile.exists() && genomeTaxaFile.exists();
+			} catch (Exception e) {
+				LOGGER.warn("Marker4 file generation failed", e);
+				available = false;
+			}
+			boolean result = available;
+			Platform.runLater(() -> onComplete.accept(result));
+		}).start();
+	}
+
+	/** Default peptide detectability threshold for Marker4_highpep (peptides above this are kept). */
+	private static final double DEFAULT_DETECTABILITY_THRESHOLD = 0.8;
+
+	/**
+	 * Generates Marker4_highpep.fasta when missing: (1) extract 4-markers proteins from original DB
+	 * into Marker4.fasta, (2) run DeepDetect to predict peptide detectability → Marker4.predicted.tsv,
+	 * (3) select high-detectability peptides (threshold {@value #DEFAULT_DETECTABILITY_THRESHOLD}) and
+	 * write Marker4_highpep.fasta for search.
+	 */
+	private void ensure4markersHighpepFasta(MagDbItem selectedDb, File markersHighpepFile) {
+		File currentDir = markersHighpepFile.getParentFile();
+		File originalDbFolder = selectedDb.getOriginalDbFolder();
+		if (originalDbFolder == null || !originalDbFolder.exists()) {
+			LOGGER.debug("Cannot generate Marker4_highpep.fasta: original DB folder not available");
+			return;
+		}
+		try {
+			// Step 1: Extract 4-markers protein FASTA from original DB (not used for search directly)
+			File fourMarkersFasta = new File(currentDir, "Marker4.fasta");
+			if (!fourMarkersFasta.exists()) {
+				HapExtractor extractor = new HapExtractor();
+				extractor.extractFourCategories(originalDbFolder, fourMarkersFasta);
+			}
+			if (!fourMarkersFasta.exists()) {
+				LOGGER.warn("Marker4.fasta was not created");
+				return;
+			}
+
+			// Step 2: Predict peptide detectability with DeepDetect
+			File predictedTsv = new File(currentDir, "Marker4.predicted.tsv");
+			if (!predictedTsv.exists()) {
+				MetaResourceParameters mrp = new MetaResourceIO().loadParameters();
+				String exePath = mrp != null ? mrp.getToolPath(MetaResourceParameters.ToolType.DEEPDETECT) : null;
+				File deepDetectExe = exePath != null && !exePath.isEmpty() ? new File(exePath) : null;
+				if (deepDetectExe == null || !deepDetectExe.exists()) {
+					LOGGER.warn("DeepDetect executable not found; cannot generate Marker4.predicted.tsv");
+					return;
+				}
+				DeepDetectParameter par = new DeepDetectParameter();
+				par.setInput(fourMarkersFasta);
+				par.setOutput(predictedTsv);
+				int timeoutHours = 4;
+				boolean ok = DeepDetectTask.testDeepDetect(deepDetectExe, par, timeoutHours);
+				if (!ok || !predictedTsv.exists()) {
+					LOGGER.warn("DeepDetect did not produce Marker4.predicted.tsv");
+					return;
+				}
+			}
+
+			// Step 3: Select high-detectability peptides and write Marker4_highpep.fasta
+			MarkerGenomeSelector.exportPeptideFasta(predictedTsv.getAbsolutePath(),
+					markersHighpepFile.getAbsolutePath(), DEFAULT_DETECTABILITY_THRESHOLD);
+
+			if (markersHighpepFile.exists()) {
+				LOGGER.info("Generated Marker4_highpep.fasta for selected MAG database: {}",
+						markersHighpepFile.getAbsolutePath());
+			} else {
+				LOGGER.warn("Marker4_highpep.fasta was not written (no peptides above threshold?)");
+			}
+		} catch (IOException e) {
+			LOGGER.warn("Failed to generate Marker4_highpep.fasta", e);
+		}
+	}
+
+	/**
+	 * Derives genomes-taxa.tsv from the MAG DB original taxa file if present (Species_rep, Lineage columns).
+	 */
+	private void ensureGenomesTaxaFile(MagDbItem selectedDb, File genomeTaxaFile) {
+		File genomeAllFile = selectedDb.getOriginalTaxaFile();
+		if (genomeAllFile == null || !genomeAllFile.exists()) {
+			return;
+		}
+		try (BufferedReader reader = new BufferedReader(new FileReader(genomeAllFile))) {
+			String headerLine = reader.readLine();
+			if (headerLine == null) {
+				return;
+			}
+			String[] title = headerLine.split("\t");
+			int repId = -1;
+			int lineageId = -1;
+			for (int i = 0; i < title.length; i++) {
+				if ("Species_rep".equals(title[i])) {
+					repId = i;
+				} else if ("Lineage".equals(title[i])) {
+					lineageId = i;
+				}
+			}
+			if (repId < 0 || lineageId < 0) {
+				return;
+			}
+			HashMap<String, String> map = new HashMap<>();
+			String line;
+			while ((line = reader.readLine()) != null) {
+				String[] cs = line.split("\t");
+				if (cs.length > Math.max(repId, lineageId) && !map.containsKey(cs[repId])) {
+					map.put(cs[repId], cs[lineageId]);
+				}
+			}
+			try (PrintWriter writer = new PrintWriter(genomeTaxaFile)) {
+				writer.println("Genome\tLineage");
+				for (String key : map.keySet()) {
+					writer.println(key + "\t" + map.get(key));
+				}
+			}
+		} catch (IOException e) {
+			LOGGER.debug("Could not derive genomes-taxa.tsv from original taxa file", e);
+		}
+	}
+
+	/**
+	 * Called when marker4 file generation completes. Hides the progress bar; updates status label;
+	 * shows success or failure dialog; if failed, reverts the ComboBox to marker2.
+	 */
+	protected void onMarker4GenerationComplete(Boolean available) {
+		if (genomeSelectorProgressBar != null) {
+			genomeSelectorProgressBar.setVisible(false);
+			genomeSelectorProgressBar.setProgress(0);
+		}
+		if (Boolean.TRUE.equals(available)) {
+			if (genomeSelectorStatusLabel != null)
+				genomeSelectorStatusLabel.setText("Available");
+			new Alert(AlertType.INFORMATION,
+					"Generation completed successfully.\n\n4-markers is now available for the selected MAG database.")
+					.showAndWait();
+		} else {
+			if (genomeSelectorStatusLabel != null)
+				genomeSelectorStatusLabel.setText("Failed");
+			new Alert(AlertType.WARNING, "Generation failed or was cancelled.\n\nReverting to 2-markers (rib_elon).")
+					.showAndWait();
+			genomeSelectorComboBox.setValue(MagDbItem.MARKER2);
+			updateParameterView();
+			if (genomeSelectorStatusLabel != null)
+				genomeSelectorStatusLabel.setText("");
+		}
 	}
 
 	// Combined modifications panel with fixed mods (narrow) and variable mods
@@ -988,6 +1279,12 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 		if (threadsComboBox != null) {
 			sb.append("  Threads: ").append(threadsComboBox.getValue()).append("\n");
 		}
+		if (genomeSelectorComboBox != null) {
+			sb.append("  Genome Selection: ").append(genomeSelectorComboBox.getValue()).append("\n");
+		}
+		if (genomeSelectionStrategyComboBox != null) {
+			sb.append("  Selection Strategy: ").append(genomeSelectionStrategyComboBox.getValue()).append("\n");
+		}
 		sb.append("\n");
 
 		// Quantitative mode
@@ -1094,6 +1391,13 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 					: "Specific";
 			int threadCount = threadsComboBox != null && threadsComboBox.getValue() != null ? threadsComboBox.getValue()
 					: 4;
+			String genomeSelectionStrategy = genomeSelectionStrategyComboBox != null
+					&& genomeSelectionStrategyComboBox.getValue() != null
+							? genomeSelectionStrategyComboBox.getValue()
+							: MarkerGenomeSelector.KNEE_MODE_FOCUS;
+			String genomeSelectorMode = genomeSelectorComboBox != null && genomeSelectorComboBox.getValue() != null
+					? genomeSelectorComboBox.getValue()
+					: MagDbItem.MARKER2;
 
 			// Create DDAMagSageParameters
 			DDAMagSageParameters analysisParams = new DDAMagSageParameters(
@@ -1105,6 +1409,8 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 			analysisParams.setEnzyme(enzyme);
 			analysisParams.setMissCleavages(missCleavages);
 			analysisParams.setDigestMode(digestMode);
+			analysisParams.setGenomeSelectionStrategy(genomeSelectionStrategy);
+			analysisParams.setGenomeSelectorMode(genomeSelectorMode);
 
 			// Set Sage-specific parameters
 			String searchType = "Closed Search"; // Default
@@ -1285,6 +1591,13 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 			String digestMode = digestionModeComboBox.getValue() != null ? digestionModeComboBox.getValue()
 					: "Specific";
 			int threadCount = threadsComboBox.getValue() != null ? threadsComboBox.getValue() : 4;
+			String genomeSelectionStrategy = genomeSelectionStrategyComboBox != null
+					&& genomeSelectionStrategyComboBox.getValue() != null
+							? genomeSelectionStrategyComboBox.getValue()
+							: MarkerGenomeSelector.KNEE_MODE_FOCUS;
+			String genomeSelectorMode = genomeSelectorComboBox != null && genomeSelectorComboBox.getValue() != null
+					? genomeSelectorComboBox.getValue()
+					: MagDbItem.MARKER2;
 
 			// Collect Sage-specific parameters
 			String searchType = "Closed Search"; // Default
@@ -1369,6 +1682,8 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 			analysisParams.setEnzyme(enzyme);
 			analysisParams.setMissCleavages(missCleavages);
 			analysisParams.setDigestMode(digestMode);
+			analysisParams.setGenomeSelectionStrategy(genomeSelectionStrategy);
+			analysisParams.setGenomeSelectorMode(genomeSelectorMode);
 
 			// Get MAG database version
 			String magDbVersion = "";
@@ -1616,6 +1931,21 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 			// parameters
 			if (threadsComboBox != null) {
 				threadsComboBox.setValue(params.getThreadCount());
+			}
+			if (genomeSelectorComboBox != null) {
+				suppressMarker4CheckOnLoad = true;
+				try {
+					genomeSelectorComboBox.setValue(
+							params.getGenomeSelectorMode() != null ? params.getGenomeSelectorMode()
+									: MagDbItem.MARKER2);
+				} finally {
+					suppressMarker4CheckOnLoad = false;
+				}
+			}
+			if (genomeSelectionStrategyComboBox != null) {
+				genomeSelectionStrategyComboBox.setValue(
+						params.getGenomeSelectionStrategy() != null ? params.getGenomeSelectionStrategy()
+								: MarkerGenomeSelector.KNEE_MODE_FOCUS);
 			}
 
 			// Apply Sage-specific parameters

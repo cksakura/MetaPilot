@@ -159,12 +159,18 @@ public class MetaBaseParameter {
 	}
 
 	public int getDigestMode() {
-		if (digestMode.equals("Semi specific")) {
-			return 1;
-		} else if (digestMode.equals("Unspecific")) {
-			return 0;
-		} else {
-			return 3;
+		// pFind-specific modes: 0=Non-Specific, 1=Semi-Specific, 3=Fully-Specific
+		switch (digestMode) {
+			case "Non-Specific":
+			case "Unspecific":  // backward compatibility
+				return 0;
+			case "Semi-Specific":
+			case "Semi specific":  // backward compatibility
+				return 1;
+			case "Fully-Specific":
+			case "Specific":  // backward compatibility
+			default:
+				return 3;
 		}
 	}
 

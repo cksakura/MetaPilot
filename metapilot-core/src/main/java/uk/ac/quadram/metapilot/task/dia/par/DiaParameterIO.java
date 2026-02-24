@@ -13,7 +13,7 @@ import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.MagDbConfigIO;
 
 /**
- * Parameter I/O operations for DIA workflow
+ * Parameter I/O operations for DIA Seed workflow
  *
  * This class handles saving and loading of DIA parameters
  * to/from JSON files for persistence and reproducibility.
@@ -22,10 +22,15 @@ public class DiaParameterIO extends BaseParameterIO {
 
     private static final Logger LOGGER = LogManager.getLogger(DiaParameterIO.class);
 
-    // Workflow-specific file names
-    private static final String PARAMETER_FILENAME = "dia_analysis_parameters.json";
-    private static final String LAST_PARAMETERS_FILENAME = "last_used_dia_parameters.json";
-    private static final String PREFERENCES_FILENAME = "dia_preferences.json";
+    // Workflow-specific file names (new seed naming)
+    private static final String PARAMETER_FILENAME = "dia_seed_analysis_parameters.json";
+    private static final String LAST_PARAMETERS_FILENAME = "last_used_dia_seed_parameters.json";
+    private static final String PREFERENCES_FILENAME = "dia_seed_preferences.json";
+
+    // Legacy filenames kept for backward compatibility with existing runs
+    private static final String LEGACY_PARAMETER_FILENAME = "dia_analysis_parameters.json";
+    private static final String LEGACY_LAST_PARAMETERS_FILENAME = "last_used_dia_parameters.json";
+    private static final String LEGACY_PREFERENCES_FILENAME = "dia_preferences.json";
 
     @Override
     protected String getAnalysisParameterFileName() {
@@ -44,8 +49,97 @@ public class DiaParameterIO extends BaseParameterIO {
 
     @Override
 	protected String getWorkflowType() {
-		return uk.ac.quadram.metapilot.workflow.WorkflowType.DIA_NORMAL.getAnalysisType();
+		return uk.ac.quadram.metapilot.workflow.WorkflowType.DIA_SEED.getAnalysisType();
 	}
+
+    // ---------- Backward-compatible loading helpers ----------
+
+    @Override
+    public Object loadAnalysisParameters(String resultDirectory) {
+        try {
+            if (resultDirectory == null || resultDirectory.trim().isEmpty()) {
+                LOGGER.warn("Cannot load analysis parameters: result directory is null/empty");
+                return null;
+            }
+
+            File newFile = new File(resultDirectory, PARAMETER_FILENAME);
+            File legacyFile = new File(resultDirectory, LEGACY_PARAMETER_FILENAME);
+
+            File chosen = newFile.exists() ? newFile : (legacyFile.exists() ? legacyFile : null);
+            if (chosen == null) {
+                LOGGER.info("Analysis parameters file not found (new or legacy) under {}", resultDirectory);
+                return null;
+            }
+            return loadParametersFromFile(chosen);
+
+        } catch (Exception e) {
+            LOGGER.error("Failed to load analysis parameters from " + resultDirectory, e);
+            return null;
+        }
+    }
+
+    @Override
+    public boolean hasAnalysisParameters(String resultDirectory) {
+        File newFile = new File(resultDirectory, PARAMETER_FILENAME);
+        File legacyFile = new File(resultDirectory, LEGACY_PARAMETER_FILENAME);
+        return (newFile.exists() && newFile.length() > 0) || (legacyFile.exists() && legacyFile.length() > 0);
+    }
+
+    @Override
+    public Object loadLastUsedParameters() {
+        try {
+            File newFile = new File(CONFIG_DIR, LAST_PARAMETERS_FILENAME);
+            File legacyFile = new File(CONFIG_DIR, LEGACY_LAST_PARAMETERS_FILENAME);
+
+            File chosen = newFile.exists() ? newFile : (legacyFile.exists() ? legacyFile : null);
+            if (chosen == null) {
+                LOGGER.info("Last used parameters file not found (new or legacy) in config directory");
+                return null;
+            }
+            return loadParametersFromFile(chosen);
+
+        } catch (Exception e) {
+            LOGGER.error("Failed to load last used parameters", e);
+            return null;
+        }
+    }
+
+    @Override
+    public boolean hasLastUsedParameters() {
+        File newFile = new File(CONFIG_DIR, LAST_PARAMETERS_FILENAME);
+        File legacyFile = new File(CONFIG_DIR, LEGACY_LAST_PARAMETERS_FILENAME);
+        return (newFile.exists() && newFile.length() > 0) || (legacyFile.exists() && legacyFile.length() > 0);
+    }
+
+    @Override
+    public Object loadPreferences() {
+        try {
+            String userHome = System.getProperty("user.home");
+            File preferencesDir = new File(userHome, PREFERENCES_DIR);
+            File newFile = new File(preferencesDir, PREFERENCES_FILENAME);
+            File legacyFile = new File(preferencesDir, LEGACY_PREFERENCES_FILENAME);
+
+            File chosen = newFile.exists() ? newFile : (legacyFile.exists() ? legacyFile : null);
+            if (chosen == null) {
+                LOGGER.info("Preferences file not found (new or legacy) under {}", preferencesDir.getAbsolutePath());
+                return null;
+            }
+            return loadParametersFromFile(chosen);
+
+        } catch (Exception e) {
+            LOGGER.error("Failed to load preferences", e);
+            return null;
+        }
+    }
+
+    @Override
+    public boolean hasPreferences() {
+        String userHome = System.getProperty("user.home");
+        File preferencesDir = new File(userHome, PREFERENCES_DIR);
+        File newFile = new File(preferencesDir, PREFERENCES_FILENAME);
+        File legacyFile = new File(preferencesDir, LEGACY_PREFERENCES_FILENAME);
+        return (newFile.exists() && newFile.length() > 0) || (legacyFile.exists() && legacyFile.length() > 0);
+    }
 
     @Override
     protected boolean saveParametersToFile(Object parameters, File outputFile, String description) {
@@ -329,7 +423,7 @@ public class DiaParameterIO extends BaseParameterIO {
 	protected Object createDefaultParameters() {
 		// Create a default MetaParameterDia with minimal parameters
 		uk.ac.quadram.metapilot.task.par.MetaBaseParameter metaBasePar = new uk.ac.quadram.metapilot.task.par.MetaBaseParameter(
-				uk.ac.quadram.metapilot.workflow.WorkflowType.DIA_NORMAL.getAnalysisType(), new MetaData(), "", "",
+				uk.ac.quadram.metapilot.workflow.WorkflowType.DIA_SEED.getAnalysisType(), new MetaData(), "", "",
 				false, "", "DIA", 1, Runtime.getRuntime().availableProcessors(), true);
 
 		return new MetaParameterDia(metaBasePar, null, // No MAG database by default

@@ -75,7 +75,9 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
     // Additional parameters
     private ComboBox<Integer> threadsComboBox;
     private ComboBox<String> ms2ScanModeComboBox;
+    private ComboBox<String> searchModeComboBox;
     private ComboBox<String> genomeSelectorComboBox;
+    private ComboBox<String> genomeSelectionStrategyComboBox;
     private ProgressBar genomeSelectorProgressBar;
     private Label genomeSelectorStatusLabel;
     /** Flag to suppress Marker4 popup when programmatically loading parameters (setOnAction fires on setValue) */
@@ -437,12 +439,13 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
         digestionLabel.setStyle("-fx-font-weight: bold;");
         digestionModeBox.getChildren().add(digestionLabel);
         
+        // pFind has only 3 digest modes: 0=Non-Specific, 1=Semi-Specific, 3=Fully-Specific
         digestionModeComboBox = new ComboBox<>(FXCollections.observableArrayList(
-            "Specific", "Semi free N-term", "Semi free C-term", "Semi specific", "Unspecific", "None"));
+            "Fully-Specific", "Semi-Specific", "Non-Specific"));
         digestionModeComboBox.setMinWidth(140);
         digestionModeComboBox.setPrefWidth(160);
         digestionModeComboBox.setMaxWidth(Double.MAX_VALUE);
-        digestionModeComboBox.setValue("Specific");
+        digestionModeComboBox.setValue("Fully-Specific");
         digestionModeComboBox.setOnAction(e -> updateParameterView());
         digestionModeBox.getChildren().add(digestionModeComboBox);
         
@@ -503,8 +506,20 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
 		VBox ms2Box = new VBox(5);
 		ms2Box.getChildren().addAll(ms2Label, ms2ScanModeComboBox);
 
+		Label searchModeLabel = new Label("Search mode:");
+		searchModeLabel.setStyle("-fx-font-weight: bold;");
+		searchModeComboBox = new ComboBox<>(FXCollections.observableArrayList("Closed search", "Open search"));
+		searchModeComboBox.setMinWidth(140);
+		searchModeComboBox.setPrefWidth(160);
+		searchModeComboBox.setMaxWidth(Double.MAX_VALUE);
+		searchModeComboBox.setValue("Closed search");
+		searchModeComboBox.setOnAction(e -> updateParameterView());
+		VBox searchModeBox = new VBox(5);
+		searchModeBox.getChildren().addAll(searchModeLabel, searchModeComboBox);
+
 		paramGrid.add(threadsBox, 0, 0);
 		paramGrid.add(ms2Box, 1, 0);
+		paramGrid.add(searchModeBox, 0, 1);
 
 		Label genomeSelectorLabel = new Label("Genome Selection:");
 		genomeSelectorLabel.setStyle("-fx-font-weight: bold;");
@@ -567,6 +582,19 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
 		VBox genomeSelectorBox = new VBox(5);
 		genomeSelectorBox.getChildren().addAll(genomeSelectorLabel, genomeSelectorComboBox);
 
+		Label genomeSelectionStrategyLabel = new Label("Selection Strategy:");
+		genomeSelectionStrategyLabel.setStyle("-fx-font-weight: bold;");
+		genomeSelectionStrategyComboBox = new ComboBox<>(
+				FXCollections.observableArrayList(MarkerGenomeSelector.KNEE_MODE_FOCUS,
+						MarkerGenomeSelector.KNEE_MODE_COMPREHENSIVE));
+		genomeSelectionStrategyComboBox.setMinWidth(140);
+		genomeSelectionStrategyComboBox.setPrefWidth(160);
+		genomeSelectionStrategyComboBox.setMaxWidth(Double.MAX_VALUE);
+		genomeSelectionStrategyComboBox.setValue(MarkerGenomeSelector.KNEE_MODE_FOCUS);
+		genomeSelectionStrategyComboBox.setOnAction(e -> updateParameterView());
+		VBox genomeSelectionStrategyBox = new VBox(5);
+		genomeSelectionStrategyBox.getChildren().addAll(genomeSelectionStrategyLabel, genomeSelectionStrategyComboBox);
+
 		genomeSelectorProgressBar = new ProgressBar(0);
 		genomeSelectorProgressBar.setVisible(false);
 		genomeSelectorProgressBar.setPrefWidth(200);
@@ -579,8 +607,9 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
 		VBox progressBox = new VBox(5);
 		progressBox.getChildren().addAll(progressLabel, genomeSelectorProgressBar, genomeSelectorStatusLabel);
 
-		paramGrid.add(genomeSelectorBox, 0, 1);
-		paramGrid.add(progressBox, 1, 1);
+		paramGrid.add(genomeSelectorBox, 0, 2);
+		paramGrid.add(progressBox, 1, 2);
+		paramGrid.add(genomeSelectionStrategyBox, 0, 3);
 
 		section.getChildren().addAll(titleLabel, paramGrid);
 		return section;
@@ -1053,8 +1082,14 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
         if (ms2ScanModeComboBox != null) {
             sb.append("  MS2 Scan Mode: ").append(ms2ScanModeComboBox.getValue()).append("\n");
         }
+        if (searchModeComboBox != null) {
+            sb.append("  Search mode: ").append(searchModeComboBox.getValue()).append("\n");
+        }
         if (genomeSelectorComboBox != null) {
             sb.append("  Genome Selection: ").append(genomeSelectorComboBox.getValue()).append("\n");
+        }
+        if (genomeSelectionStrategyComboBox != null) {
+            sb.append("  Selection Strategy: ").append(genomeSelectionStrategyComboBox.getValue()).append("\n");
         }
         if (generateSampleSpecificDBCheckBox != null) {
             sb.append("  Generate Sample-specific DB: ").append(generateSampleSpecificDBCheckBox.isSelected()).append("\n");
@@ -1254,6 +1289,20 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
 					: MagDbItem.MARKER2;
 			analysisParams.setGenomeSelectorMode(genomeSelectorMode);
 			LOGGER.info("Genome selection: {}", genomeSelectorMode);
+
+			String genomeSelectionStrategy = genomeSelectionStrategyComboBox != null
+					&& genomeSelectionStrategyComboBox.getValue() != null
+							? genomeSelectionStrategyComboBox.getValue()
+							: MarkerGenomeSelector.KNEE_MODE_FOCUS;
+			analysisParams.setGenomeSelectionStrategy(genomeSelectionStrategy);
+			LOGGER.info("Genome selection strategy: {}", genomeSelectionStrategy);
+
+			// Search mode: open vs closed (only closed writes fixmod/selectmod in pFind.cfg)
+			boolean openSearch = searchModeComboBox != null && "Open search".equals(searchModeComboBox.getValue());
+			if (analysisParams.getOsp() != null) {
+				analysisParams.getOsp().setOpenSearch(openSearch);
+			}
+			LOGGER.info("Search mode: {}", openSearch ? "Open search" : "Closed search");
 
 			// Get MAG database version
 			String magDbVersion = "";
@@ -1639,7 +1688,15 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
                 suppressMarker4CheckOnLoad = false;
             }
         }
-        
+        if (genomeSelectionStrategyComboBox != null) {
+            genomeSelectionStrategyComboBox.setValue(
+                    params.getGenomeSelectionStrategy() != null ? params.getGenomeSelectionStrategy()
+                            : MarkerGenomeSelector.KNEE_MODE_FOCUS);
+        }
+        if (searchModeComboBox != null && params.getOsp() != null) {
+            searchModeComboBox.setValue(params.getOsp().isOpenSearch() ? "Open search" : "Closed search");
+        }
+
         // Apply database settings using reusable component
         if (magDatabasePanel != null) {
             if (params.getMagDbCatalogueId() != null) {

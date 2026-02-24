@@ -38,7 +38,6 @@ import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.task.mag.MetaPilotMagTask;
 import uk.ac.quadram.metapilot.task.mag.MarkerGenomeSelector;
-import uk.ac.quadram.metapilot.task.mag.MarkerGenomeSelector.RepresentativeLevel;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagSageParameters;
 import uk.ac.quadram.metapilot.task.io.pep.AbstractMetaPeptideReader;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
@@ -318,7 +317,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		// Step 3: Protein Extraction from HAP Results
 		logger.info("Step 3: Starting protein extraction from HAP results...");
 		updateProgress(40, 100);
-		boolean extract = this.fastaExtract4MarkerSelector();
+		boolean extract = this.fastaExtractWithGenomeSelectorMode();
 		if (!extract) {
 			logger.error(getTaskName() + ": error in protein extraction");
 			return false;
@@ -657,156 +656,35 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		return true;
 	}
 
-	/**
-	 * Extract protein sequences from HAP search results
-	 */
-	protected boolean fastaExtract4Iterator() {
-		logger.info("Starting FASTA extraction for {} result folders", separateResultFolders.length);
-
-		for (int i = 0; i < this.separateResultFolders.length; i++) {
-			File hapFile = new File(separateResultFolders[i], "hap");
-			File dbFile = new File(hapFile, separateResultFolders[i].getName() + ".fasta");
-
-			if (dbFile.exists() && dbFile.length() > 0) {
-				logger.info("Sample-specific database for {} already exists", separateResultFolders[i].getName());
-				continue;
-			}
-
-			File spectraFile = new File(hapFile, "results.sage.tsv");
-			HashMap<String, HashSet<String>> genomeMap = new HashMap<String, HashSet<String>>();
-			HashSet<String> pepSet = new HashSet<String>();
-
-			try (BufferedReader hapReader = new BufferedReader(new FileReader(spectraFile))) {
-				String headerLine = hapReader.readLine(); // Read header
-				String[] header = headerLine.split("\t");
-
-				// Find the index of "proteins" column
-				int peptidesIndex = -1;
-				int proteinsIndex = -1;
-				int labelIndex = -1;
-				int peptideQIndex = -1;
-				for (int j = 0; j < header.length; j++) {
-					if (header[j].toLowerCase().equals("peptide")) {
-						peptidesIndex = j;
-					} else if (header[j].toLowerCase().equals("proteins")) {
-						proteinsIndex = j;
-					} else if (header[j].toLowerCase().equals("label")) {
-						labelIndex = j;
-					} else if (header[j].toLowerCase().equals("peptide_q")) {
-						peptideQIndex = j;
-					}
-				}
-
-				if (proteinsIndex == -1 || labelIndex == -1 || peptideQIndex == -1) {
-					logger.error("Could not find 'proteins' 'label' or 'peptide_q' column in header: {}", headerLine);
-					continue;
-				}
-
-				logger.info("Found peptide column at index {}: {}", peptidesIndex, header[peptidesIndex]);
-				logger.info("Found proteins column at index {}: {}", proteinsIndex, header[proteinsIndex]);
-				logger.info("Found label column at index {}: {}", labelIndex, header[labelIndex]);
-				logger.info("Found peptide_q column at index {}: {}", peptideQIndex, header[peptideQIndex]);
-
-				String line;
-				while ((line = hapReader.readLine()) != null) {
-					String[] cs = line.split("\t");
-					if (cs.length > labelIndex) {
-						if (!cs[labelIndex].equals("1")) {
-							continue;
-						}
-					} else {
-						continue;
-					}
-
-					if (cs.length > peptideQIndex) {
-						if (Double.parseDouble(cs[peptideQIndex]) > 0.01) {
-							continue;
-						}
-					} else {
-						continue;
-					}
-
-					if (cs.length > proteinsIndex) {
-						String[] pros = cs[proteinsIndex].split(";");
-						for (String pro : pros) {
-							if (pro.startsWith(magDb.getIdentifier())) {
-								String genome = pro.split("_")[0];
-								if (genomeMap.containsKey(genome)) {
-									genomeMap.get(genome).add(cs[peptidesIndex]);
-								} else {
-									HashSet<String> set = new HashSet<String>();
-									set.add(cs[peptidesIndex]);
-									genomeMap.put(genome, set);
-								}
-
-							}
-						}
-						pepSet.add(cs[peptidesIndex]);
-					}
-				}
-			} catch (IOException e) {
-				logger.error("Error reading Sage search result file from {}", spectraFile.getAbsolutePath(), e);
-				return false;
-			}
-
-			logger.info("Sample-specific database for {} - Found {} peptides and {} genomes",
-					separateResultFolders[i].getName(), pepSet.size(), genomeMap.size());
-			// Create sample-specific database
-			File hapGenomeFile = new File(hapFile, "hap_genomes.tsv");
-			HashSet<String> genomeSet = applyOccamsRazor(genomeMap, pepSet, psmCoverThreshold, hapGenomeFile);
-
-			if (genomeSet.size() == 0) {
-				logger.info("No genomes were found from {}", separateResultFolders[i].getName());
-			}
-
-			try (PrintWriter writer = new PrintWriter(dbFile)) {
-				File dbFolder = this.magDb.getOriginalDbFolder();
-				for (String genome : genomeSet) {
-					File genomeDbFile = new File(dbFolder, genome + ".faa");
-					if (!genomeDbFile.exists()) {
-						genomeDbFile = new File(dbFolder, genome + ".fasta");
-					}
-					if (genomeDbFile.exists()) {
-						try (BufferedReader reader = new BufferedReader(new FileReader(genomeDbFile))) {
-							String line;
-							while ((line = reader.readLine()) != null) {
-								writer.println(line);
-							}
-						}
-					}
-				}
-			} catch (IOException e) {
-				logger.error("Error writing sample-specific database to {}", dbFile.getAbsolutePath(), e);
-				return false;
-			}
-		}
-
-		return true;
-	}
-
-	/**
-	 * Extract protein sequences from HAP search results using MarkerGenomeSelector
-	 */
-	protected boolean fastaExtract4MarkerSelector() {
-		logger.info("Starting FASTA extraction (marker selector) for {} result folders", separateResultFolders.length);
+	protected boolean fastaExtractWithGenomeSelectorMode() {
+		boolean useMarker4 = MagDbItem.MARKER4.equalsIgnoreCase(magSageParams.getGenomeSelectorMode());
+		logger.info("Starting FASTA extraction (genome selector mode={}) for {} result folders",
+				useMarker4 ? MagDbItem.MARKER4 : MagDbItem.MARKER2, separateResultFolders.length);
 
 		File currentFile = magDb.getCurrentFile();
-		File markerFasta = new File(currentFile, "4markers.fasta");
-		if (markerFasta == null || !markerFasta.exists()) {
-			logger.error("Marker FASTA file was not found: {}", markerFasta != null ? markerFasta.getAbsolutePath() : "null");
-			return false;
-		}
+		File markerFasta = null;
+		File genomesTaxaTsv = null;
+		if (useMarker4) {
+			markerFasta = new File(currentFile, "Marker4.fasta");
+			if (markerFasta == null || !markerFasta.exists()) {
+				logger.error("Marker FASTA file was not found: {}",
+						markerFasta != null ? markerFasta.getAbsolutePath() : "null");
+				return false;
+			}
 
-		File genomesTaxaTsv = new File(currentFile, "genomes-taxa.tsv");
-		if (genomesTaxaTsv == null || !genomesTaxaTsv.exists()) {
-			logger.error("Genomes taxa TSV was not found: {}", genomesTaxaTsv != null ? genomesTaxaTsv.getAbsolutePath() : "null");
-			return false;
+			genomesTaxaTsv = new File(currentFile, "genomes-taxa.tsv");
+			if (genomesTaxaTsv == null || !genomesTaxaTsv.exists()) {
+				logger.error("Genomes taxa TSV was not found: {}",
+						genomesTaxaTsv != null ? genomesTaxaTsv.getAbsolutePath() : "null");
+				return false;
+			}
 		}
 
 		MarkerGenomeSelector selector = new MarkerGenomeSelector();
-		int stepThreshold = 1;
+		selector.setKneeSelectionMode(magSageParams.getGenomeSelectionStrategy());
 		int maximumSelected = 300;
-		double coverage = 0.85;
+		boolean enableAutoRep = useMarker4;
+		String prefix = useMarker4 ? "marker_genome" : "genome";
 
 		for (int i = 0; i < this.separateResultFolders.length; i++) {
 			File hapFile = new File(separateResultFolders[i], "hap");
@@ -823,13 +701,18 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 				return false;
 			}
 
-			File evidenceFile = new File(hapFile, "marker_genome_evidence.tsv");
-			File rankedFile = new File(hapFile, "marker_genome_ranked.tsv");
-			File selectedFile = new File(hapFile, "marker_genome_selected.tsv");
+			File evidenceFile = new File(hapFile, prefix + "_evidence.tsv");
+			File rankedFile = new File(hapFile, prefix + "_ranked.tsv");
+			File selectedFile = new File(hapFile, prefix + "_selected.tsv");
 
-			selector.peptideTestWithStrategy(spectraFile.getAbsolutePath(), markerFasta, genomesTaxaTsv,
-					evidenceFile.getAbsolutePath(), rankedFile.getAbsolutePath(), selectedFile.getAbsolutePath(), coverage,
-					stepThreshold, maximumSelected);
+			if (useMarker4) {
+				selector.selectMarkerGenomesWithKnee(spectraFile.getAbsolutePath(), markerFasta, genomesTaxaTsv,
+						evidenceFile.getAbsolutePath(), rankedFile.getAbsolutePath(), selectedFile.getAbsolutePath(),
+						maximumSelected, enableAutoRep);
+			} else {
+				selector.selectMarkerGenomesWithKnee(spectraFile.getAbsolutePath(), evidenceFile.getAbsolutePath(),
+						rankedFile.getAbsolutePath(), selectedFile.getAbsolutePath(), maximumSelected, enableAutoRep);
+			}
 
 			HashSet<String> genomeSet = new HashSet<>();
 			try (BufferedReader reader = new BufferedReader(new FileReader(selectedFile))) {
@@ -845,11 +728,13 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 					}
 				}
 			} catch (IOException e) {
-				logger.error("Error reading marker selected genomes from {}", selectedFile.getAbsolutePath(), e);
+				logger.error("Error reading selected genomes from {}", selectedFile.getAbsolutePath(), e);
 				return false;
 			}
 
-			logger.info("Marker selector for {} - Selected {} genomes", separateResultFolders[i].getName(), genomeSet.size());
+			logger.info("Marker selector ({}) for {} - Selected {} genomes",
+					useMarker4 ? MagDbItem.MARKER4 : MagDbItem.MARKER2, separateResultFolders[i].getName(),
+					genomeSet.size());
 
 			if (genomeSet.isEmpty()) {
 				logger.info("No genomes were found from {}", separateResultFolders[i].getName());
@@ -1074,32 +959,43 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 			
 			// Create combined database
 			File currentFile = magDb.getCurrentFile();
-			File markerFasta = new File(currentFile, "4markers.fasta");
-			if (markerFasta == null || !markerFasta.exists()) {
-				logger.error("Marker FASTA file was not found: {}",
-						markerFasta != null ? markerFasta.getAbsolutePath() : "null");
-				return false;
+			boolean useMarker4 = MagDbItem.MARKER4.equalsIgnoreCase(magSageParams.getGenomeSelectorMode());
+			File markerFasta = null;
+			File genomesTaxaTsv = null;
+			if (useMarker4) {
+				markerFasta = new File(currentFile, "Marker4.fasta");
+				if (markerFasta == null || !markerFasta.exists()) {
+					logger.error("Marker FASTA file was not found: {}",
+							markerFasta != null ? markerFasta.getAbsolutePath() : "null");
+					return false;
+				}
+
+				genomesTaxaTsv = new File(currentFile, "genomes-taxa.tsv");
+				if (genomesTaxaTsv == null || !genomesTaxaTsv.exists()) {
+					logger.error("Genomes taxa TSV was not found: {}",
+							genomesTaxaTsv != null ? genomesTaxaTsv.getAbsolutePath() : "null");
+					return false;
+				}
 			}
 
-			File genomesTaxaTsv = new File(currentFile, "genomes-taxa.tsv");
-			if (genomesTaxaTsv == null || !genomesTaxaTsv.exists()) {
-				logger.error("Genomes taxa TSV was not found: {}",
-						genomesTaxaTsv != null ? genomesTaxaTsv.getAbsolutePath() : "null");
-				return false;
-			}
-
-			File evidenceFile = new File(combinedFile, "marker_genome_evidence.tsv");
-			File rankedFile = new File(combinedFile, "marker_genome_ranked.tsv");
-			File selectedFile = new File(combinedFile, "marker_genome_selected.tsv");
+			String prefix = useMarker4 ? "marker_genome" : "genome";
+			File evidenceFile = new File(combinedFile, prefix + "_evidence.tsv");
+			File rankedFile = new File(combinedFile, prefix + "_ranked.tsv");
+			File selectedFile = new File(combinedFile, prefix + "_selected.tsv");
 
 			MarkerGenomeSelector selector = new MarkerGenomeSelector();
 			selector.setRepresentativeLevel("CLASS");
-			int stepThreshold = 1;
-			double coverage = 0.9;
 			int maximumSelected = 1000;
-			selector.peptideTestWithStrategy(combinedResultTsv.getAbsolutePath(), markerFasta, genomesTaxaTsv,
-					evidenceFile.getAbsolutePath(), rankedFile.getAbsolutePath(), selectedFile.getAbsolutePath(),
-					coverage, stepThreshold, maximumSelected);
+			selector.setKneeSelectionMode(magSageParams.getGenomeSelectionStrategy());
+			boolean enableAutoRep = useMarker4;
+			if (useMarker4) {
+				selector.selectMarkerGenomesWithKnee(combinedResultTsv.getAbsolutePath(), markerFasta, genomesTaxaTsv,
+						evidenceFile.getAbsolutePath(), rankedFile.getAbsolutePath(), selectedFile.getAbsolutePath(),
+						maximumSelected, enableAutoRep);
+			} else {
+				selector.selectMarkerGenomesWithKnee(combinedResultTsv.getAbsolutePath(), evidenceFile.getAbsolutePath(),
+						rankedFile.getAbsolutePath(), selectedFile.getAbsolutePath(), maximumSelected, enableAutoRep);
+			}
 
 			HashSet<String> genomeSet = new HashSet<>();
 			try (BufferedReader reader = new BufferedReader(new FileReader(selectedFile))) {

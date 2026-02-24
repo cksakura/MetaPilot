@@ -50,7 +50,8 @@ import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcSagePanel;
 import uk.ac.quadram.metapilot.task.dda.mag.gui.MetaPilotDdaMagPfindPanel;
 import uk.ac.quadram.metapilot.task.dda.mag.gui.MetaPilotDdaMagFragPipePanel;
 import uk.ac.quadram.metapilot.task.dda.mag.gui.MetaPilotDdaMagSagePanel;
-import uk.ac.quadram.metapilot.task.dia.gui.MetaPilotDiaNormalPanel;
+import uk.ac.quadram.metapilot.task.dia.gui.MetaPilotDiaMarkerPanel;
+import uk.ac.quadram.metapilot.task.dia.gui.MetaPilotDiaSeedPanel;
 import uk.ac.quadram.metapilot.task.dia.gui.MetaPilotDiaTargetPanel;
 import uk.ac.quadram.metapilot.task.dia.gui.MetaPilotDiaRealTimePanel;
 import uk.ac.quadram.metapilot.task.par.BaseParameterIO;
@@ -563,8 +564,10 @@ public class MetaPilotApp extends Application {
         workflowBox.setAlignment(Pos.CENTER);
         
         workflowBox.getChildren().addAll(
-            createWorkflowBox("Normal", "Run DIA workflow in normal mode", 
-                e -> launchWorkflow(WorkflowType.DIA_NORMAL)),
+            createWorkflowBox("Marker", "No prior knowledge needed - process data directly using marker strategy", 
+                e -> launchWorkflow(WorkflowType.DIA_MARKER)),
+            createWorkflowBox("Seeded", "Run DIA workflow using a user-supplied seed spectral library (requires prior knowledge).", 
+                e -> launchWorkflow(WorkflowType.DIA_SEED)),
             createWorkflowBox("Target", "Run DIA workflow in target mode", 
                 e -> launchWorkflow(WorkflowType.DIA_TARGET)),
             createWorkflowBox("Real-time", "Run DIA workflow in real-time mode", 
@@ -621,7 +624,8 @@ public class MetaPilotApp extends Application {
                 return resourceParams.isToolAvailable(ToolType.SAGE);
             
             // DIA Workflows
-            case DIA_NORMAL:
+            case DIA_MARKER:
+            case DIA_SEED:
             case DIA_TARGET:
             case DIA_REALTIME:
                 return resourceParams.isToolAvailable(ToolType.DIANN);
@@ -846,28 +850,56 @@ public class MetaPilotApp extends Application {
                     magSageStage.show();
                     break;
                     
-                case DIA_NORMAL:
-                    Stage diaNormalStage = new Stage();
-                    diaNormalStage.setTitle("DIA Normal Workflow");
-                    MetaPilotDiaNormalPanel diaNormalPanel = new MetaPilotDiaNormalPanel(items, resourceParams);
-                    Scene diaNormalScene = new Scene(diaNormalPanel, 1600, 900);
+                case DIA_MARKER:
+                    // Launch the DIA Marker main frame
+                    Stage diaMarkerStage = new Stage();
+                    diaMarkerStage.setTitle("DIA Marker Workflow");
+                    MetaPilotDiaMarkerPanel diaMarkerPanel = new MetaPilotDiaMarkerPanel(items, resourceParams);
+                    Scene diaMarkerScene = new Scene(diaMarkerPanel, 1600, 900);
                     try {
-                        diaNormalScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
+                        diaMarkerScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
                     } catch (Exception e) {
                         System.err.println("Could not load stylesheet: " + e.getMessage());
                     }
-                    diaNormalStage.setScene(diaNormalScene);
-                    diaNormalStage.setMinWidth(800);
-                    diaNormalStage.setMinHeight(600);
-                    diaNormalStage.setMaximized(true);
+                    diaMarkerStage.setScene(diaMarkerScene);
+                    diaMarkerStage.setMinWidth(800);
+                    diaMarkerStage.setMinHeight(600);
+                    diaMarkerStage.setMaximized(true);
                     
-                    // Add close handler to save parameters when window closes
-                    diaNormalStage.setOnCloseRequest(e -> {
-                        System.out.println("DEBUG: DIA Normal window closing - saving parameters");
-                        diaNormalPanel.saveCurrentParameters();
+                    // Add close handler to save parameters
+                    diaMarkerStage.setOnCloseRequest(event -> {
+                        try {
+                            diaMarkerPanel.saveCurrentParameters();
+                        } catch (Exception e) {
+                            System.err.println("Error saving DIA Marker parameters on close: " + e.getMessage());
+                        }
                     });
                     
-                    diaNormalStage.show();
+                    diaMarkerStage.show();
+                    break;
+                    
+                case DIA_SEED:
+                    Stage diaSeedStage = new Stage();
+                    diaSeedStage.setTitle("DIA Seed Workflow");
+                    MetaPilotDiaSeedPanel diaSeedPanel = new MetaPilotDiaSeedPanel(items, resourceParams);
+                    Scene diaSeedScene = new Scene(diaSeedPanel, 1600, 900);
+                    try {
+                        diaSeedScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
+                    } catch (Exception e) {
+                        System.err.println("Could not load stylesheet: " + e.getMessage());
+                    }
+                    diaSeedStage.setScene(diaSeedScene);
+                    diaSeedStage.setMinWidth(800);
+                    diaSeedStage.setMinHeight(600);
+                    diaSeedStage.setMaximized(true);
+                    
+                    // Add close handler to save parameters when window closes
+                    diaSeedStage.setOnCloseRequest(e -> {
+                        System.out.println("DEBUG: DIA Seed window closing - saving parameters");
+                        diaSeedPanel.saveCurrentParameters();
+                    });
+                    
+                    diaSeedStage.show();
                     break;
                     
                 case DIA_TARGET:
@@ -1016,8 +1048,8 @@ public class MetaPilotApp extends Application {
         // Handle DIA workflow type mapping from JSON to WorkflowType enum
         switch (workflowType) {
             case "DiaNNMAG":
-                System.out.println("DEBUG: Mapping DiaNNMAG to DIA_NORMAL");
-                return WorkflowType.DIA_NORMAL;
+                System.out.println("DEBUG: Mapping DiaNNMAG to DIA_SEED");
+                return WorkflowType.DIA_SEED;
             case "DiaNNMAGRT":
                 System.out.println("DEBUG: Mapping DiaNNMAGRT to DIA_REALTIME");
                 return WorkflowType.DIA_REALTIME;
@@ -1094,7 +1126,10 @@ public class MetaPilotApp extends Application {
                 case DDA_MAG_SAGE:
                     launchDdaMagSageWithParameters(parameters, items);
                     break;
-                case DIA_NORMAL:
+                case DIA_MARKER:
+                    launchDiaFocusWithParameters(parameters, items);
+                    break;
+                case DIA_SEED:
                     launchDiaNormalWithParameters(parameters, items);
                     break;
                 case DIA_TARGET:
@@ -1273,34 +1308,67 @@ public class MetaPilotApp extends Application {
         magSagePanel.loadParametersFromObject(parameters);
     }
     
-    private void launchDiaNormalWithParameters(Object parameters, MagDbItem[] items) {
-        Stage diaNormalStage = new Stage();
-        diaNormalStage.setTitle("DIA Normal Workflow");
+    private void launchDiaFocusWithParameters(Object parameters, MagDbItem[] items) {
+        Stage diaMarkerStage = new Stage();
+        diaMarkerStage.setTitle("DIA Marker Workflow");
         
-        MetaPilotDiaNormalPanel diaNormalPanel = new MetaPilotDiaNormalPanel(items, resourceParams);
+        MetaPilotDiaMarkerPanel diaMarkerPanel = new MetaPilotDiaMarkerPanel(items, resourceParams);
         
-        Scene diaNormalScene = new Scene(diaNormalPanel, 1600, 900);
+        Scene diaMarkerScene = new Scene(diaMarkerPanel, 1600, 900);
         try {
-            diaNormalScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
+            diaMarkerScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
         } catch (Exception e) {
             System.err.println("Could not load stylesheet: " + e.getMessage());
         }
         
-        diaNormalStage.setScene(diaNormalScene);
-        diaNormalStage.setMinWidth(800);
-        diaNormalStage.setMinHeight(600);
-        diaNormalStage.setMaximized(true);
+        diaMarkerStage.setScene(diaMarkerScene);
+        diaMarkerStage.setMinWidth(800);
+        diaMarkerStage.setMinHeight(600);
+        diaMarkerStage.setMaximized(true);
         
-        // Add close handler to save parameters when window closes
-        diaNormalStage.setOnCloseRequest(e -> {
-            System.out.println("DEBUG: DIA Normal window closing - saving parameters");
-            diaNormalPanel.saveCurrentParameters();
+        // Add close handler to save parameters
+        diaMarkerStage.setOnCloseRequest(event -> {
+            try {
+                diaMarkerPanel.saveCurrentParameters();
+            } catch (Exception e) {
+                System.err.println("Error saving DIA Marker parameters on close: " + e.getMessage());
+            }
         });
         
-        diaNormalStage.show();
+        diaMarkerStage.show();
         
         // Apply loaded parameters to the panel
-        diaNormalPanel.loadParametersFromObject(parameters);
+        diaMarkerPanel.loadParametersFromObject(parameters);
+    }
+    
+    private void launchDiaNormalWithParameters(Object parameters, MagDbItem[] items) {
+        Stage diaSeedStage = new Stage();
+        diaSeedStage.setTitle("DIA Seed Workflow");
+        
+        MetaPilotDiaSeedPanel diaSeedPanel = new MetaPilotDiaSeedPanel(items, resourceParams);
+        
+        Scene diaSeedScene = new Scene(diaSeedPanel, 1600, 900);
+        try {
+            diaSeedScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
+        } catch (Exception e) {
+            System.err.println("Could not load stylesheet: " + e.getMessage());
+        }
+        
+        diaSeedStage.setScene(diaSeedScene);
+        diaSeedStage.setMinWidth(800);
+        diaSeedStage.setMinHeight(600);
+        diaSeedStage.setMaximized(true);
+        
+        // Add close handler to save parameters when window closes
+        diaSeedStage.setOnCloseRequest(e -> {
+            System.out.println("DEBUG: DIA Seed window closing - saving parameters");
+            diaSeedPanel.saveCurrentParameters();
+        });
+        
+        diaSeedStage.show();
+        
+        // Apply loaded parameters to the panel
+        diaSeedPanel.loadParametersFromObject(parameters);
     }
     
     private void launchDiaTargetWithParameters(Object parameters, MagDbItem[] items) {

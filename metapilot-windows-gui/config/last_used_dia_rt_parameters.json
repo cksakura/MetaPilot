@@ -1,7 +1,7 @@
 {
   "models": [],
   "useModel": false,
-  "workflow": "DiaNNMAGRT",
+  "workflow": "DIA_REALTIME",
   "baseParameters": {
     "result": "",
     "ms2ScanMode": "DIA",
@@ -13,7 +13,7 @@
       "replicates": []
     },
     "threadCount": 20,
-    "workflowType": "DiaNNMAGRT",
+    "workflowType": "DIA_NORMAL",
     "hostDB": "",
     "coreCount": 1,
     "metaWorkflow": true,
@@ -36,10 +36,10 @@
   },
   "selfModelSearch": false,
   "taskCount": 0,
-  "library": ["DDA21"],
-  "generated_at": "2025-09-29 15:49:58",
+  "library": [],
+  "generated_at": "2026-02-09 14:10:58",
   "combineResult": false,
-  "workflowType": "DiaNNMAGRT",
+  "workflowType": "DIA_REALTIME",
   "stopNow": false,
-  "timestamp": 1759157398705
+  "timestamp": 1770646258936
 }

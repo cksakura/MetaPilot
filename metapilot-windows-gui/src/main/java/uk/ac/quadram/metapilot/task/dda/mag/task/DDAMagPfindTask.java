@@ -345,7 +345,7 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 		System.out.println(
 				format.format(new Date()) + "\t" + getTaskName() + ": extracting proteins from the HAP result started");
 
-		boolean extract = isMarkerSelectorMode() ? this.fastaExtract4MarkerSelector() : this.fastaExtract4Iterator();
+		boolean extract = this.fastaExtractWithGenomeSelectorMode();
 
 		if (extract) {
 			logger.info("Step 3: Protein extraction from HAP results completed successfully");
@@ -389,6 +389,17 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 			return false;
 		}
 
+		// Optional: host database search
+		if (magPfindParams.isAppendHostDb()) {
+			logger.info("Step 4b: Starting host database search...");
+			updateMessage(getTaskName() + ": Searching host database...");
+			boolean hostSearch = this.searchHostDatabase();
+			if (!hostSearch) {
+				logger.error(getTaskName() + ": error in host database search");
+				return false;
+			}
+		}
+
 		// Step 5: Combine Results
 		logger.info("Step 5: Starting combination of separate search results...");
 		updateProgress(70, 100);
@@ -399,16 +410,7 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 		System.out.println(
 				format.format(new Date()) + "\t" + getTaskName() + ": combining separate search results started");
 
-		boolean combine = false;
-		if (isMarkerSelectorMode()) {
-			combine = this.combineResultsMarkerSelector();
-			if (!combine) {
-				logger.error(getTaskName() + ": error in combining marker selector PSMs");
-				return false;
-			}
-		} else {
-			combine = this.combineResults();
-		}
+		boolean combine = this.combineResults();
 
 		if (combine) {
 			logger.info("Step 5: Combining separate search results completed successfully");
@@ -630,7 +632,7 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 
 						logger.info("  Searching file {} with pFind", i + 1);
 						pFindTask.searchPF2(new String[] { pf2.getAbsolutePath() }, hapFile.getAbsolutePath(),
-								hapFastaFile.getAbsolutePath(), ms2Type, false, true, mosp.getOpenPsmFDR(),
+								hapFastaFile.getAbsolutePath(), ms2Type, magPfindParams.isOpenSearch(), true, mosp.getOpenPsmFDR(),
 								magPfindParams.getFixedModifications().toArray(new String[0]),
 								magPfindParams.getVariableModifications().toArray(new String[0]),
 								magPfindParams.getEnzyme(), magPfindParams.getMissCleavages(),
@@ -684,139 +686,35 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 		return true;
 	}
 
-	protected boolean fastaExtract4Iterator() {
-		logger.info("Starting FASTA extraction for {} result folders", separateResultFolders.length);
-
-		for (int i = 0; i < this.separateResultFolders.length; i++) {
-			logger.info("Processing folder {}: {}", i+1, separateResultFolders[i].getName());
-
-			File hapFile = new File(separateResultFolders[i], "hap");
-			File dbFile = new File(hapFile, separateResultFolders[i].getName() + ".fasta");
-
-			if (dbFile.exists() && dbFile.length() > 0) {
-				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": sample-specific database for "
-						+ separateResultFolders[i].getName() + " already exists in " + dbFile.getAbsolutePath());
-
-				logger.info("Sample-specific database for {} already exists in {}", 
-					separateResultFolders[i].getName(), dbFile.getAbsolutePath());
-
-				continue;
-			}
-
-			File spectraFile = new File(hapFile, "pFind-Filtered.spectra");
-
-			HashMap<String, HashSet<String>> genomeMap = new HashMap<String, HashSet<String>>();
-			HashSet<String> pepSet = new HashSet<String>();
-
-			try (BufferedReader hapReader = new BufferedReader(new FileReader(spectraFile))) {
-				String line = hapReader.readLine();
-				int lineCount = 0;
-				while ((line = hapReader.readLine()) != null) {
-					lineCount++;
-					String[] cs = line.split("\t");
-					String[] pros = cs[12].split("/");
-					for (int j = 0; j < pros.length; j++) {
-						if (pros[j].startsWith(magDb.getIdentifier())) {
-							String genome = pros[j].split("_")[0];
-							if (genomeMap.containsKey(genome)) {
-								genomeMap.get(genome).add(cs[0]);
-							} else {
-								HashSet<String> set = new HashSet<String>();
-								set.add(cs[0]);
-								genomeMap.put(genome, set);
-							}
-						}
-					}
-					pepSet.add(cs[0]);
-				}
-				hapReader.close();
-				logger.info("  Processed {} lines, found {} unique peptides, {} genomes", 
-					lineCount, pepSet.size(), genomeMap.size());
-			} catch (IOException e) {
-				System.out.println(format.format(new Date()) + "\t" + getTaskName()
-						+ ": error in reading the pFind search result file from " + spectraFile.getAbsolutePath());
-
-				logger.error("Error reading pFind search result file from {}", spectraFile.getAbsolutePath(), e);
-				return false;
-			}
-
-			logger.info("  Starting sample-specific database generation for {}", separateResultFolders[i].getName());
-
-			File hapGenomeFile = new File(hapFile, "hap_genomes.tsv");
-			HashSet<String> genomeSet = applyOccamsRazor(genomeMap, pepSet, psmCoverThreshold, hapGenomeFile);
-			logger.info("  Refined genome set contains {} genomes", genomeSet.size());
-
-			try (PrintWriter writer = new PrintWriter(dbFile)) {
-				File dbFolder = this.magDb.getOriginalDbFolder();
-				logger.info("  Writing database from folder: {}", dbFolder.getAbsolutePath());
-				int genomeCount = 0;
-				for (String genome : genomeSet) {
-					File genomeDbFile = new File(dbFolder, genome + ".faa");
-					if (!genomeDbFile.exists()) {
-						genomeDbFile = new File(dbFolder, genome + ".fasta");
-					}
-					if (genomeDbFile.exists()) {
-						BufferedReader readeri = new BufferedReader(new FileReader(genomeDbFile));
-						String linei = null;
-						while ((linei = readeri.readLine()) != null) {
-							writer.println(linei);
-						}
-						readeri.close();
-						genomeCount++;
-					}
-				}
-				logger.info("  Added {} genome databases to sample-specific database", genomeCount);
-
-				if (magPfindParams.isAppendHostDb()) {
-					logger.info("  Appending host database: {}", this.magPfindParams.getHostDB());
-					BufferedReader hostReader = new BufferedReader(new FileReader(this.magPfindParams.getHostDB()));
-					String linei = null;
-					while ((linei = hostReader.readLine()) != null) {
-						writer.println(linei);
-					}
-					hostReader.close();
-				}
-
-				writer.close();
-			} catch (IOException e) {
-				System.out.println(format.format(new Date()) + "\t" + getTaskName()
-						+ ": error in writing the sample-specific database to " + dbFile.getAbsolutePath());
-
-				logger.error("Error writing sample-specific database to {}", dbFile.getAbsolutePath(), e);
-				return false;
-			}
-
-			logger.info("  Sample-specific database generation completed for {}", separateResultFolders[i].getName());
-		}
-
-		logger.info("FASTA extraction completed successfully for all {} folders", separateResultFolders.length);
-
-		return true;
-	}
-
-	/**
-	 * Extract protein sequences from HAP search results using MarkerGenomeSelector
-	 */
-	protected boolean fastaExtract4MarkerSelector() {
-		logger.info("Starting FASTA extraction (marker selector) for {} result folders", separateResultFolders.length);
+	protected boolean fastaExtractWithGenomeSelectorMode() {
+		boolean useMarker4 = MagDbItem.MARKER4.equalsIgnoreCase(magPfindParams.getGenomeSelectorMode());
+		logger.info("Starting FASTA extraction (genome selector mode={}) for {} result folders",
+				useMarker4 ? MagDbItem.MARKER4 : MagDbItem.MARKER2, separateResultFolders.length);
 
 		File currentFile = magDb.getCurrentFile();
-		File markerFasta = new File(currentFile, "4markers.fasta");
-		if (markerFasta == null || !markerFasta.exists()) {
-			logger.error("Marker FASTA file was not found: {}", markerFasta != null ? markerFasta.getAbsolutePath() : "null");
-			return false;
-		}
+		File markerFasta = null;
+		File genomesTaxaTsv = null;
+		if (useMarker4) {
+			markerFasta = new File(currentFile, "Marker4.fasta");
+			if (markerFasta == null || !markerFasta.exists()) {
+				logger.error("Marker FASTA file was not found: {}",
+						markerFasta != null ? markerFasta.getAbsolutePath() : "null");
+				return false;
+			}
 
-		File genomesTaxaTsv = new File(currentFile, "genomes-taxa.tsv");
-		if (genomesTaxaTsv == null || !genomesTaxaTsv.exists()) {
-			logger.error("Genomes taxa TSV was not found: {}", genomesTaxaTsv != null ? genomesTaxaTsv.getAbsolutePath() : "null");
-			return false;
+			genomesTaxaTsv = new File(currentFile, "genomes-taxa.tsv");
+			if (genomesTaxaTsv == null || !genomesTaxaTsv.exists()) {
+				logger.error("Genomes taxa TSV was not found: {}",
+						genomesTaxaTsv != null ? genomesTaxaTsv.getAbsolutePath() : "null");
+				return false;
+			}
 		}
 
 		MarkerGenomeSelector selector = new MarkerGenomeSelector();
-		int stepThreshold = 1;
+		selector.setKneeSelectionMode(magPfindParams.getGenomeSelectionStrategy());
 		int maximumSelected = 300;
-		double coverage = 0.85;
+		boolean enableAutoRep = useMarker4;
+		String prefix = useMarker4 ? "marker_genome" : "genome";
 
 		for (int i = 0; i < this.separateResultFolders.length; i++) {
 			File hapFile = new File(separateResultFolders[i], "hap");
@@ -836,13 +734,17 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 			PFindPsmReader psmReader = new PFindPsmReader(spectraFile);
 			PFindPSM[] psms = psmReader.getPsms();
 
-			File evidenceFile = new File(hapFile, "marker_genome_evidence.tsv");
-			File rankedFile = new File(hapFile, "marker_genome_ranked.tsv");
-			File selectedFile = new File(hapFile, "marker_genome_selected.tsv");
+			File evidenceFile = new File(hapFile, prefix + "_evidence.tsv");
+			File rankedFile = new File(hapFile, prefix + "_ranked.tsv");
+			File selectedFile = new File(hapFile, prefix + "_selected.tsv");
 
-			selector.peptideTestWithStrategy(psms, markerFasta, genomesTaxaTsv,
-					evidenceFile.getAbsolutePath(), rankedFile.getAbsolutePath(), selectedFile.getAbsolutePath(), coverage,
-					stepThreshold, maximumSelected);
+			if (useMarker4) {
+				selector.selectMarkerGenomesWithKnee(psms, markerFasta, genomesTaxaTsv, evidenceFile.getAbsolutePath(),
+						rankedFile.getAbsolutePath(), selectedFile.getAbsolutePath(), maximumSelected, enableAutoRep);
+			} else {
+				selector.selectMarkerGenomesWithKnee(psms, evidenceFile.getAbsolutePath(), rankedFile.getAbsolutePath(),
+						selectedFile.getAbsolutePath(), maximumSelected, enableAutoRep);
+			}
 
 			HashSet<String> genomeSet = new HashSet<>();
 			if (selectedFile.exists()) {
@@ -859,12 +761,14 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 						}
 					}
 				} catch (IOException e) {
-					logger.error("Error reading marker selected genomes from {}", selectedFile.getAbsolutePath(), e);
+					logger.error("Error reading selected genomes from {}", selectedFile.getAbsolutePath(), e);
 					return false;
 				}
 			}
-			
-			logger.info("Marker selector for {} - Selected {} genomes", separateResultFolders[i].getName(), genomeSet.size());
+
+			logger.info("Marker selector ({}) for {} - Selected {} genomes",
+					useMarker4 ? MagDbItem.MARKER4 : MagDbItem.MARKER2, separateResultFolders[i].getName(),
+					genomeSet.size());
 
 			if (genomeSet.isEmpty()) {
 				logger.info("No genomes were found from {}", separateResultFolders[i].getName());
@@ -885,6 +789,15 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 							}
 						}
 					}
+				}
+
+				if (magPfindParams.isAppendHostDb()) {
+					BufferedReader hostReader = new BufferedReader(new FileReader(this.magPfindParams.getHostDB()));
+					String linei;
+					while ((linei = hostReader.readLine()) != null) {
+						writer.println(linei);
+					}
+					hostReader.close();
 				}
 			} catch (IOException e) {
 				logger.error("Error writing sample-specific database to {}", dbFile.getAbsolutePath(), e);
@@ -1081,6 +994,64 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 		return true;
 	}
 
+	protected boolean searchHostDatabase() {
+		File hostDb = new File(magPfindParams.getHostDB());
+		if (hostDb == null || !hostDb.exists()) {
+			logger.error(getTaskName() + ": host database was not found: {}",
+					hostDb != null ? hostDb.getAbsolutePath() : "null");
+			return false;
+		}
+
+		File hostFolder = new File(metaPar.getDbSearchResultFile(), "host");
+		if (!hostFolder.exists()) {
+			hostFolder.mkdir();
+		}
+		File resultFile = new File(hostFolder, "pFind-Filtered.spectra");
+		if (resultFile.exists() && resultFile.length() > 0) {
+			logger.info(getTaskName() + ": host search results already exist");
+			return true;
+		}
+
+		MetaOpenPar mosp = magPfindParams.getMop();
+		String ms2Type = magPfindParams.getMs2ScanMode();
+		int totalThreadCount = magPfindParams.getThreadCount();
+
+		PFindTask pFindTask = new PFindTask(pFindExe.getParentFile());
+		pFindTask.setTotalThread(totalThreadCount);
+
+		String[] pf2Paths = new String[this.pf2Files.length];
+		for (int i = 0; i < this.pf2Files.length; i++) {
+			File pf2 = new File(pf2Files[i]);
+			if (!pf2.exists()) {
+				logger.error(getTaskName() + ": spectra file {} was not found", pf2.getAbsolutePath());
+				return false;
+			}
+			pf2Paths[i] = pf2.getAbsolutePath();
+		}
+		pFindTask.searchPF2(pf2Paths, hostFolder.getAbsolutePath(), hostDb.getAbsolutePath(), ms2Type,
+				magPfindParams.isOpenSearch(), true, mosp.getOpenPsmFDR(),
+				magPfindParams.getFixedModifications().toArray(new String[0]),
+				magPfindParams.getVariableModifications().toArray(new String[0]), magPfindParams.getEnzyme(),
+				magPfindParams.getMissCleavages(), magPfindParams.getDigestMode(), magPfindParams.getIsobaricTag());
+
+		pFindTask.run(1, 12);
+
+		FileFilter filter = new FileFilter() {
+			@Override
+			public boolean accept(File file) {
+				return file.getName().equals("pFind-Filtered.spectra");
+			}
+		};
+
+		logger.info("Starting WatchService monitoring for host database search");
+		startWatchServiceLoop(new File[] { hostFolder }, "", filter, 1, 68, 75);
+
+		PFindTask.cleanPFindResultFolder(hostFolder, true);
+
+		stopWatchServiceThread();
+		return true;
+	}
+
 	protected boolean lfQuant() {
 
 		updateMessage(getTaskName() + ": peptide and protein quantification");
@@ -1181,18 +1152,15 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 	}
 
 	protected boolean combineResults() {
-		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": result combination started");
-		logger.info(getTaskName() + ": result combination started");
+		boolean useMarker4 = MagDbItem.MARKER4.equalsIgnoreCase(magPfindParams.getGenomeSelectorMode());
+		String modeLabel = useMarker4 ? "marker" : "combined";
+		System.out.println(
+				format.format(new Date()) + "\t" + getTaskName() + ": " + modeLabel + " PSM combination started");
+		logger.info(getTaskName() + ": {} PSM combination started", modeLabel);
 
-		File msms = new File(combinedFile, "psms.tsv");
-		if (msms.exists() && msms.length() > 200) {
-
-			logger.info(getTaskName() + ": peptide and protein identification results have been found in "
-					+ magPfindParams.getDbSearchResultFile() + ", go to next step");
-			System.out.println(format.format(new Date()) + "\t" + getTaskName()
-					+ ": peptide and protein identification results have been found in "
-					+ magPfindParams.getDbSearchResultFile() + ", go to next step");
-
+		File combinedPsms = new File(combinedFile, "psms.tsv");
+		if (combinedPsms.exists() && combinedPsms.length() > 200) {
+			logger.info(getTaskName() + ": PSMs already combined in {}", combinedPsms.getAbsolutePath());
 			return true;
 		}
 
@@ -1204,123 +1172,6 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 				String[] cs = line.split("\t");
 				rtMap.put(cs[0] + "_" + cs[1], Double.parseDouble(cs[2]));
 			}
-			reader.close();
-		} catch (IOException e) {
-			System.out.println(format.format(new Date()) + "\t" + getTaskName()
-					+ ": error in reading the retention time information from " + rtFile);
-			logger.error(getTaskName() + ": error in reading the retention time information from " + rtFile);
-		}
-
-		ArrayList<PFindPSM[]> psmList = new ArrayList<PFindPSM[]>();
-		HashMap<String, HashSet<String>> pepProMap = new HashMap<String, HashSet<String>>();
-		HashMap<String, HashSet<String>> proPepMap = new HashMap<String, HashSet<String>>();
-		for (int i = 0; i < this.separateResultFolders.length; i++) {
-			PFindPsmReader psmReader = new PFindPsmReader(new File(this.separateResultFolders[i], "pFind.spectra"));
-
-			PFindPSM[] psms = psmReader.getPsms();
-
-			for (int j = 0; j < psms.length; j++) {
-				String sequence = psms[j].getSequence();
-
-				if (sequence.contains("X")) {
-					continue;
-				}
-
-				String[] proteins = psms[j].getProteins();
-				HashSet<String> proSet;
-				if (pepProMap.containsKey(sequence)) {
-					proSet = pepProMap.get(sequence);
-				} else {
-					proSet = new HashSet<String>();
-					pepProMap.put(sequence, proSet);
-				}
-				for (int k = 0; k < proteins.length; k++) {
-					proSet.add(proteins[k]);
-				}
-
-				for (int k = 0; k < proteins.length; k++) {
-					if (proPepMap.containsKey(proteins[k])) {
-						proPepMap.get(proteins[k]).add(sequence);
-					} else {
-						HashSet<String> pSet = new HashSet<String>();
-						pSet.add(sequence);
-						proPepMap.put(proteins[k], pSet);
-					}
-				}
-			}
-
-			psmList.add(psms);
-		}
-
-		File razorProteinFile = new File(combinedFile, "razorProteins.tsv");
-		HashSet<String> proteinSet = applyOccamsRazor(proPepMap, pepProMap.keySet(), 1.0, razorProteinFile);
-
-		OpenPsmTsvWriter msmsWriter = new OpenPsmTsvWriter(msms, OpenPsmTsvWriter.pFindFormat);
-		for (int i = 0; i < psmList.size(); i++) {
-			PFindPSM[] psms = psmList.get(i);
-			for (int j = 0; j < psms.length; j++) {
-				String sequence = psms[j].getSequence();
-
-				if (pepProMap.containsKey(sequence)) {
-					HashSet<String> proSet = pepProMap.get(sequence);
-					ArrayList<String> proList = new ArrayList<String>();
-					for (String pro : proSet) {
-						if (proteinSet.contains(pro)) {
-							proList.add(pro);
-						}
-					}
-
-					if (proList.size() > 0) {
-						String[] proteins = proList.toArray(new String[proList.size()]);
-						psms[j].setProteins(proteins);
-
-						String scanKey = psms[j].getFileName() + "_" + psms[j].getScan();
-
-						if (rtMap.containsKey(scanKey)) {
-							psms[j].setRt(rtMap.get(scanKey));
-							msmsWriter.addPFindPSM(psms[j]);
-						}
-					}
-				}
-			}
-		}
-
-		msmsWriter.close();
-
-		if (msms.exists() && msms.length() > 200) {
-
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": result combination finished");
-			logger.info(getTaskName() + ": result combination finished");
-
-			return true;
-		} else {
-
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": result combination failed");
-			logger.info(getTaskName() + ": result combination failed");
-
-			return false;
-		}
-	}
-
-	protected boolean combineResultsMarkerSelector() {
-		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": marker PSM combination started");
-		logger.info(getTaskName() + ": marker PSM combination started");
-
-		File markerPsms = new File(combinedFile, "psms.tsv");
-		if (markerPsms.exists() && markerPsms.length() > 200) {
-			logger.info(getTaskName() + ": marker PSMs already combined in {}", markerPsms.getAbsolutePath());
-			return true;
-		}
-
-		File rtFile = new File(magPfindParams.getSpectraFile(), "rt.txt");
-		HashMap<String, Double> rtMap = new HashMap<String, Double>();
-		try (BufferedReader reader = new BufferedReader(new FileReader(rtFile))) {
-			String line = reader.readLine();
-			while ((line = reader.readLine()) != null) {
-				String[] cs = line.split("\t");
-				rtMap.put(cs[0] + "_" + cs[1], Double.parseDouble(cs[2]));
-			}
-			reader.close();
 		} catch (IOException e) {
 			System.out.println(format.format(new Date()) + "\t" + getTaskName()
 					+ ": error in reading the retention time information from " + rtFile);
@@ -1329,10 +1180,11 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 
 		ArrayList<PFindPSM> psmList = new ArrayList<>();
 		ArrayList<PFindPSM> decoyPsmList = new ArrayList<>();
+		ArrayList<PFindPSM> hostPsmList = new ArrayList<>();
 		for (int i = 0; i < this.separateResultFolders.length; i++) {
 			File spectraFile = new File(this.separateResultFolders[i], "pFind-Filtered.spectra");
 			if (!spectraFile.exists() || spectraFile.length() == 0) {
-				logger.warn("Marker PSM source file not found: {}", spectraFile.getAbsolutePath());
+				logger.warn("PSM source file not found: {}", spectraFile.getAbsolutePath());
 				continue;
 			}
 
@@ -1361,96 +1213,112 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 					psmList.add(psms[j]);
 				}
 			}
+
+			logger.info("{} PSMs were found from {}, now the total number of the PSMs is {}", psms.length,
+					this.separateResultFolders[i].getName(), psmList.size());
+		}
+
+		if (magPfindParams.isAppendHostDb()) {
+			File hostResult = new File(new File(metaPar.getDbSearchResultFile(), "host"), "pFind-Filtered.spectra");
+			if (hostResult.exists() && hostResult.length() > 0) {
+				PFindPsmReader hostReader = new PFindPsmReader(hostResult);
+				PFindPSM[] hostPsms = hostReader.getPsms();
+				for (int j = 0; j < hostPsms.length; j++) {
+					String sequence = hostPsms[j].getBaseSequence();
+					if (sequence.contains("X")) {
+						continue;
+					}
+					ArrayList<String> revList = new ArrayList<String>();
+					String[] proteins = hostPsms[j].getProteins();
+					for (int k = 0; k < proteins.length; k++) {
+						if (proteins[k].startsWith("REV_")) {
+							revList.add(proteins[k]);
+						}
+					}
+					if (revList.size() == 0) {
+						hostPsmList.add(hostPsms[j]);
+					}
+				}
+				logger.info("{} host PSMs were found from {}", hostPsms.length, hostResult.getAbsolutePath());
+			}
 		}
 
 		if (psmList.isEmpty()) {
-			logger.warn(getTaskName() + ": no marker PSMs found to combine");
+			logger.warn(getTaskName() + ": no PSMs found to combine");
 			return false;
 		}
 
-		logger.info("Marker selector for combined PSMs - {} target and {} decoy PSMs were obtained", psmList.size(),
-				decoyPsmList.size());
-
 		PFindPSM[] psms = psmList.toArray(PFindPSM[]::new);
+
+		// Generate evidence.tsv, ranked.tsv, selected.tsv in combined/ for taxonomy analysis
+		// (Marker_selection column and genome_ranked.tsv). We do NOT filter PSMs by selected genomes here.
 		File evidenceTsv = new File(combinedFile, "evidence.tsv");
 		File rankedTsv = new File(combinedFile, "ranked.tsv");
 		File selectedTsv = new File(combinedFile, "selected.tsv");
-
 		File currentFile = magDb.getCurrentFile();
-		File markerFasta = new File(currentFile, "4markers.fasta");
-		if (markerFasta == null || !markerFasta.exists()) {
-			logger.error("Marker FASTA file was not found: {}",
-					markerFasta != null ? markerFasta.getAbsolutePath() : "null");
-			return false;
+		File markerFasta = null;
+		File genomesTaxaTsv = null;
+		if (useMarker4) {
+			markerFasta = new File(currentFile, "Marker4.fasta");
+			if (markerFasta == null || !markerFasta.exists()) {
+				logger.error("Marker FASTA file was not found: {}",
+						markerFasta != null ? markerFasta.getAbsolutePath() : "null");
+				return false;
+			}
+			genomesTaxaTsv = new File(currentFile, "genomes-taxa.tsv");
+			if (genomesTaxaTsv == null || !genomesTaxaTsv.exists()) {
+				logger.error("Genomes taxa TSV was not found: {}",
+						genomesTaxaTsv != null ? genomesTaxaTsv.getAbsolutePath() : "null");
+				return false;
+			}
 		}
-
-		File genomesTaxaTsv = new File(currentFile, "genomes-taxa.tsv");
-		if (genomesTaxaTsv == null || !genomesTaxaTsv.exists()) {
-			logger.error("Genomes taxa TSV was not found: {}",
-					genomesTaxaTsv != null ? genomesTaxaTsv.getAbsolutePath() : "null");
-			return false;
-		}
-
-		if (!selectedTsv.exists()) {
+		// Generate evidence.tsv, ranked.tsv, selected.tsv using user's strategy.
+		// The ranked.tsv contains knee columns (KneeStep, KneeKneedle, KneeCurvature, KneePiecewise, KneeSlope)
+		// which allow taxonomy analysis to compute core/mid/tail labels without running selector twice.
+		if (!evidenceTsv.exists() || !rankedTsv.exists() || !selectedTsv.exists()) {
 			MarkerGenomeSelector selector = new MarkerGenomeSelector();
-			selector.peptideTestWithStrategy(psms, markerFasta, genomesTaxaTsv, evidenceTsv.getAbsolutePath(),
-					rankedTsv.getAbsolutePath(), selectedTsv.getAbsolutePath(), 0.99, 1, 500);
-		}
-
-		if (!selectedTsv.exists()) {
-			logger.warn(getTaskName() + ": the selected genome list was not generated");
-			return false;
-		}
-
-		HashSet<String> genomeSet = new HashSet<>();
-		try (BufferedReader reader = new BufferedReader(new FileReader(selectedTsv))) {
-			String line = reader.readLine(); // header
-			while ((line = reader.readLine()) != null) {
-				line = line.trim();
-				if (line.isEmpty() || line.startsWith("#")) {
-					break;
-				}
-				String[] parts = line.split("\t");
-				if (parts.length > 0 && !parts[0].trim().isEmpty()) {
-					genomeSet.add(parts[0].trim());
-				}
+			selector.setKneeSelectionMode(magPfindParams.getGenomeSelectionStrategy());
+			boolean enableAutoRep = useMarker4;
+			if (useMarker4) {
+				selector.selectMarkerGenomesWithKnee(psms, markerFasta, genomesTaxaTsv, evidenceTsv.getAbsolutePath(),
+						rankedTsv.getAbsolutePath(), selectedTsv.getAbsolutePath(), 500, enableAutoRep);
+			} else {
+				selector.selectMarkerGenomesWithKnee(psms, evidenceTsv.getAbsolutePath(), rankedTsv.getAbsolutePath(),
+						selectedTsv.getAbsolutePath(), 500, enableAutoRep);
 			}
-		} catch (IOException e) {
-			logger.error("Error reading marker selected genomes from {}", selectedTsv.getAbsolutePath(), e);
-			return false;
+		}
+		if (rankedTsv.exists()) {
+			logger.info("Marker selector ({}) generated evidence/ranked/selected genome lists in combined/",
+					useMarker4 ? MagDbItem.MARKER4 : MagDbItem.MARKER2);
+		} else {
+			logger.warn("Marker selector did not produce ranked.tsv; Selection_label in Genome.tsv will be incomplete");
 		}
 
-		logger.info("Marker selector for combined PSMs - Selected {} genomes", genomeSet.size());
-
-		if (genomeSet.isEmpty()) {
-			logger.info("No genomes were found from combined PSMs");
-		}
-
-		OpenPsmTsvWriter msmsWriter = new OpenPsmTsvWriter(markerPsms, OpenPsmTsvWriter.pFindFormat);
+		// Write ALL target PSMs (no filtering by selected genomes); quantification uses complete list.
+		int[] targetPSMCount = new int[2];
+		OpenPsmTsvWriter msmsWriter = new OpenPsmTsvWriter(combinedPsms, OpenPsmTsvWriter.pFindFormat);
 		for (PFindPSM psm : psms) {
-			String[] proteins = psm.getProteins();
-			ArrayList<String> proList = new ArrayList<String>();
-			for (String pro : proteins) {
-				int id = pro.indexOf("_");
-				if (id > 0) {
-					String genome = pro.substring(0, id);
-					if (genomeSet.contains(genome)) {
-						proList.add(pro);
-					}
-				}
-			}
-			if (proList.size() > 0) {
-				String[] selectProteins = proList.toArray(String[]::new);
-				psm.setProteins(selectProteins);
-
-				String scanKey = psm.getFileName() + "_" + psm.getScan();
-
-				if (rtMap.containsKey(scanKey)) {
-					psm.setRt(rtMap.get(scanKey));
-					msmsWriter.addPFindPSM(psm);
-				}
+			targetPSMCount[0]++;
+			String scanKey = psm.getFileName() + "_" + psm.getScan();
+			if (rtMap.containsKey(scanKey)) {
+				psm.setRt(rtMap.get(scanKey));
+				msmsWriter.addPFindPSM(psm);
+				targetPSMCount[1]++;
 			}
 		}
+
+		for (PFindPSM psm : hostPsmList) {
+			targetPSMCount[0]++;
+			String scanKey = psm.getFileName() + "_" + psm.getScan();
+			if (rtMap.containsKey(scanKey)) {
+				psm.setRt(rtMap.get(scanKey));
+				msmsWriter.addPFindPSM(psm);
+				targetPSMCount[1]++;
+			}
+		}
+
+		logger.info("{} PSMs written to combined file; {} PSMs have assigned retention time",
+				targetPSMCount[0], targetPSMCount[1]);
 
 		for (PFindPSM psm : decoyPsmList) {
 			String scanKey = psm.getFileName() + "_" + psm.getScan();
@@ -1463,22 +1331,19 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 
 		msmsWriter.close();
 
-		if (markerPsms.exists() && markerPsms.length() > 200) {
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": marker PSM combination finished");
-			logger.info(getTaskName() + ": marker PSM combination finished");
+		if (combinedPsms.exists() && combinedPsms.length() > 200) {
+			System.out.println(
+					format.format(new Date()) + "\t" + getTaskName() + ": " + modeLabel + " PSM combination finished");
+			logger.info(getTaskName() + ": {} PSM combination finished", modeLabel);
 			return true;
 		}
 
-		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": marker PSM combination failed");
-		logger.info(getTaskName() + ": marker PSM combination failed");
+		System.out.println(
+				format.format(new Date()) + "\t" + getTaskName() + ": " + modeLabel + " PSM combination failed");
+		logger.info(getTaskName() + ": {} PSM combination failed", modeLabel);
 		return false;
 	}
 
-	private boolean isMarkerSelectorMode() {
-		String mode = magPfindParams.getGenomeSelectorMode();
-		return MagDbItem.MARKER4.equalsIgnoreCase(mode);
-	}
-	
 	protected boolean exportReport() {
 
 		logger.info(getTaskName() + ": exporting peptide report started");

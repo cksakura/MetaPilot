@@ -32,7 +32,7 @@ public class ParameterIORegistry {
 		
 		// Also register the enum-based workflow types for backward compatibility
 		System.out.println("DEBUG: Registering enum-based workflow types...");
-		BaseParameterIO.registerParameterIO(uk.ac.quadram.metapilot.workflow.WorkflowType.DIA_NORMAL.getAnalysisType(),
+		BaseParameterIO.registerParameterIO(uk.ac.quadram.metapilot.workflow.WorkflowType.DIA_SEED.getAnalysisType(),
 				DiaParameterIO.class);
 		BaseParameterIO.registerParameterIO(uk.ac.quadram.metapilot.workflow.WorkflowType.DIA_TARGET.getAnalysisType(),
 				DiaTargetParameterIO.class);

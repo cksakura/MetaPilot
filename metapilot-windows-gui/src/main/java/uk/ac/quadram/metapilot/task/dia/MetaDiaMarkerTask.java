@@ -566,13 +566,14 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 		diaLibSearchPar.setMbr(true);
 		diaLibSearchPar.setDiaFiles(diaFiles);
 		diaLibSearchPar.setThreadCount(threadCount);
-		diaLibSearchPar.setqValue(0.5);
+		diaLibSearchPar.setqValue(0.01);
 
 		diannPar.setThreads(threadCount);
 		diannPar.setMatrices(true);
 		diannPar.setRelaxed_prot_inf(true);
 		diannPar.setReanalyse(true);
 
+		// Required for exportReport() / getExportQuanPepFile(): set before report generation
 		this.quan_pep_file = new File(combinedFile, "combined.pr_matrix.tsv");
 		this.quan_pro_file = new File(combinedFile, "combined.pg_matrix.tsv");
 
@@ -635,13 +636,13 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 		}
 
 		// Create combined folder if it doesn't exist
-		File marderFile = new File(metaPar.getDbSearchResultFile(), "marker");
-		if (!marderFile.exists()) {
-			marderFile.mkdir();
+		File markerFile = new File(metaPar.getDbSearchResultFile(), "marker");
+		if (!markerFile.exists()) {
+			markerFile.mkdir();
 		}
 
 		// Temporary parquet file for initial search results
-		File tempParquetFile = new File(marderFile, "marker.parquet");
+		File tempParquetFile = new File(markerFile, "marker.parquet");
 
 		if (!tempParquetFile.exists()) {
 			// Configure DiaLibSearchPar for initial library search
@@ -677,7 +678,7 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 		}
 
 		// Step 5: Create FASTA file from selected genomes
-		File combinedFastaFile = new File(marderFile, "combined.fasta");
+		File combinedFastaFile = new File(markerFile, "combined.fasta");
 		if (!combinedFastaFile.exists()) {
 
 			// Step 2: Read PSMs from parquet file
@@ -713,9 +714,9 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 			MarkerGenomeSelector selector = new MarkerGenomeSelector();
 			selector.setKneeSelectionMode(mode);
 
-			File evidenceFile = new File(marderFile, "genome_evidence.tsv");
-			File rankedFile = new File(marderFile, "genome_ranked.tsv");
-			File selectedFile = new File(marderFile, "genome_selected.tsv");
+			File evidenceFile = new File(markerFile, "genome_evidence.tsv");
+			File rankedFile = new File(markerFile, "genome_ranked.tsv");
+			File selectedFile = new File(markerFile, "genome_selected.tsv");
 
 			int maximumSelected = 300;
 			boolean enableAutoRep = true; // Use auto-representative for MARKER4
@@ -792,11 +793,11 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 				combinedFastaFile.length());
 
 		// Step 6: Generate library from combined FASTA
-		File combinedLibFile = new File(marderFile, "combined.speclib");
+		File combinedLibFile = new File(markerFile, "combined.speclib");
 		logger.info("Generating combined library from FASTA...");
 		
 		if (!combinedLibFile.exists()) {
-			File altLibFile = new File(marderFile, "combined.predicted.speclib");
+			File altLibFile = new File(markerFile, "combined.predicted.speclib");
 			if (altLibFile.exists()) {
 				altLibFile.renameTo(combinedLibFile);
 			} else {
@@ -833,304 +834,67 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 		return true;
 	}
 
+	/**
+	 * Folder containing iterative search results (combined.fasta, etc.). Override in subclasses to use a different folder (e.g. seed_iterative).
+	 */
+	protected File getIterativeResultFolder() {
+		return new File(metaPar.getDbSearchResultFile(), "marker");
+	}
+
+	@Override
+	protected File getExportFastaFolder() {
+		return getIterativeResultFolder();
+	}
+
+	/** Folder for combined.parquet / combined.pr_matrix.tsv; must be set in iden() before exportReport(). */
+	@Override
+	protected File getExportParquetFolder() {
+		return combinedFile;
+	}
+
 	@Override
 	protected boolean exportReport() {
-		logger.info(getTaskName() + ": protein inference started for DIA Focus workflow");
-		System.out.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
-				+ ": protein inference started");
+		return exportReportWithNewGenomeScoring();
+	}
 
-		// Get the combined FASTA file from iterativeSearch()
-		File marderFile = new File(metaPar.getDbSearchResultFile(), "marker");
-		File combinedFastaFile = new File(marderFile, "combined.fasta");
-		
-		logger.info("Using combined FASTA file: {}", combinedFastaFile.getAbsolutePath());
+	/**
+	 * Run the full downstream report for any MetaDiaTask. Used by MetaDiaSeedDirectTask.
+	 * For Marker, runs the full implementation; for others (e.g. SeedDirect), returns true so that
+	 * at least the new genome/protein score TSVs are considered success (full HTML report is Marker-only for now).
+	 */
+	protected static boolean runExportReportDownstream(MetaDiaTask task,
+			java.util.HashMap<String, double[]> genomeScoreMap, java.util.HashMap<String, double[]> proteinScoreMap) {
+		if (task instanceof MetaDiaMarkerTask)
+			return ((MetaDiaMarkerTask) task).exportReportDownstreamFromNewScoring(genomeScoreMap, proteinScoreMap);
+		if (task instanceof MetaDiaSeedDirectTask)
+			return runFullDownstreamFromNewScoring(task, genomeScoreMap, proteinScoreMap);
+		return true;
+	}
 
-		if (!combinedFastaFile.exists()) {
-			logger.error(getTaskName() + ": Combined FASTA file not found: " + combinedFastaFile.getAbsolutePath());
-			System.err.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
-					+ ": Combined FASTA file not found: " + combinedFastaFile.getAbsolutePath());
+	/**
+	 * Full downstream report (peptide report, intensity maps, taxonomy, HTML) for any MetaDiaTask.
+	 * Used by MetaDiaMarkerTask and MetaDiaSeedDirectTask.
+	 */
+	protected static boolean runFullDownstreamFromNewScoring(MetaDiaTask diaTask,
+			java.util.HashMap<String, double[]> genomeScoreMap, java.util.HashMap<String, double[]> proteinScoreMap) {
+		java.text.SimpleDateFormat fmt = new java.text.SimpleDateFormat("MM_dd_yyyy_HH_mm_ss");
+		File quanPepFile = diaTask.getExportQuanPepFile();
+		if (quanPepFile == null || !quanPepFile.exists() || !quanPepFile.canRead()) {
+			String path = quanPepFile != null ? quanPepFile.getAbsolutePath() : "null";
+			diaTask.getExportLogger().error(diaTask.getTaskName() + ": peptide matrix file missing or unreadable: " + path);
 			return false;
 		}
-
-		HashMap<String, String> fastaProPepMap = new HashMap<String, String>();
-
-		// Read the combined FASTA file
-		try (BufferedReader reader = new BufferedReader(new FileReader(combinedFastaFile))) {
-			String line = null;
-			while ((line = reader.readLine()) != null) {
-				if (line.startsWith(">")) {
-					String proName = line.split("\\s")[1];
-					fastaProPepMap.put(proName, reader.readLine());
-				}
-			}
-			logger.info("Read {} proteins from combined FASTA file", fastaProPepMap.size());
-		} catch (IOException e) {
-			logger.error(getTaskName() + ": error in reading the combined FASTA from " + combinedFastaFile, e);
-			System.err.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
-					+ ": error in reading the combined FASTA from " + combinedFastaFile);
-			return false;
-		}
-
-		// Continue with the rest of the export report logic using the combined FASTA
-		File parquetFile = new File(combinedFile, "combined.parquet");
-		DiaNNParquetReader reader = new DiaNNParquetReader(parquetFile.getAbsolutePath(), this.diannPar.getCut());
-		this.diaPp = reader.getDiaNNPrecursors();
-
-		logger.info(getTaskName() + ": " + this.diaPp.length + " PSMs were obtained with Global.Q.Value<0.01");
-		System.out.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName() + ": "
-				+ this.diaPp.length + " PSMs were obtained with Global.Q.Value<0.01");
-
-		// matchedMap: genome -> (protein -> set of matched peptide sequences)
-		HashMap<String, HashMap<String, HashSet<String>>> matchedMap = new HashMap<String, HashMap<String, HashSet<String>>>();
-		int originalDecoyCount = 0;
-		HashSet<String> pepSet = new HashSet<String>();
-		HashMap<String, String> decoyPepMap = new HashMap<String, String>();
-		if (diaPp != null && diaPp.length > 0) {
-			for (int i = 0; i < diaPp.length; i++) {
-				String sequence = diaPp[i].getSeqString();
-				pepSet.add(sequence);
-				if (diaPp[i].getIsDecoy()) {
-					String[] decoyPros = diaPp[i].getProGroups();
-					for (int j = 0; j < decoyPros.length; j++) {
-						String targetSeq = fastaProPepMap.get(decoyPros[j]);
-						if (targetSeq != null && targetSeq.length() == sequence.length()) {
-							pepSet.add(targetSeq);
-							decoyPepMap.put(sequence, targetSeq);
-						}
-					}
-					originalDecoyCount++;
-				} else {
-					// Target precursor: record protein-level mapping for matchedMap
-					String[] proteins = diaPp[i].getProGroups();
-					if (proteins != null) {
-						for (String pro : proteins) {
-							if (pro == null || pro.isEmpty()) {
-								continue;
-							}
-							// Derive genome ID from protein name (prefix before first underscore)
-							String[] parts = pro.split("_");
-							if (parts.length == 0) {
-								continue;
-							}
-							String genome = parts[0];
-
-							// Get or create the protein->peptide map for this genome
-							HashMap<String, HashSet<String>> proPepMap = matchedMap.get(genome);
-							if (proPepMap == null) {
-								proPepMap = new HashMap<String, HashSet<String>>();
-								matchedMap.put(genome, proPepMap);
-							}
-
-							// Get or create the peptide set for this protein
-							HashSet<String> pepSetForPro = proPepMap.get(pro);
-							if (pepSetForPro == null) {
-								pepSetForPro = new HashSet<String>();
-								proPepMap.put(pro, pepSetForPro);
-							}
-
-							// Add the current peptide sequence
-							pepSetForPro.add(sequence);
-						}
-					}
-				}
-			}
-		}
-
-		logger.info(getTaskName() + ": total sequence count: " + pepSet.size() + "; decoy precursor count: "
-				+ originalDecoyCount);
-		System.out
-				.println(format.format(new Date()) + "\t" + getTaskName() + ": total sequence count: " + pepSet.size());
-
-		if (matchedMap.size() == 0) {
-			logger.warn(getTaskName()
-					+ ": matchedMap is empty – no genome/protein/peptide relationships were built from DIA precursors");
-			System.err.println(format.format(new Date()) + "\t" + getTaskName()
-					+ ": matchedMap is empty – no genome/protein/peptide relationships were built from DIA precursors");
-			return false;
-		}
-
-		HashMap<String, HashSet<String>> pepProMap = new HashMap<String, HashSet<String>>();
-		for (String genome : matchedMap.keySet()) {
-			HashMap<String, HashSet<String>> proPepMap = matchedMap.get(genome);
-			for (String pro : proPepMap.keySet()) {
-				HashSet<String> pset = proPepMap.get(pro);
-				for (String pep : pset) {
-					if (pepProMap.containsKey(pep)) {
-						pepProMap.get(pep).add(pro);
-					} else {
-						HashSet<String> proSet = new HashSet<String>();
-						proSet.add(pro);
-						pepProMap.put(pep, proSet);
-					}
-				}
-			}
-		}
-
-		logger.info(getTaskName() + ": matched sequence count: " + pepProMap.size());
-		System.out.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
-				+ ": matched sequence count: " + pepProMap.size());
-
-		int decoyPPCount = 0;
-		HashMap<String, HashSet<String>> genomeMap = new HashMap<String, HashSet<String>>();
-		HashMap<String, HashSet<String>> proteinPepMap = new HashMap<String, HashSet<String>>();
-		HashSet<String> tempPepSet = new HashSet<String>();
-		HashSet<String> missSet = new HashSet<String>();
-		for (DiaNNPrecursor pp : diaPp) {
-			String sequence = pp.getSeqString();
-			if (pepProMap.containsKey(sequence)) {
-				for (String pro : pepProMap.get(sequence)) {
-					String genome = pro.split("_")[0];
-					if (genomeMap.containsKey(genome)) {
-						genomeMap.get(genome).add(sequence);
-					} else {
-						HashSet<String> set = new HashSet<String>();
-						set.add(sequence);
-						genomeMap.put(genome, set);
-					}
-					if (proteinPepMap.containsKey(pro)) {
-						proteinPepMap.get(pro).add(sequence);
-					} else {
-						HashSet<String> set = new HashSet<String>();
-						set.add(sequence);
-						proteinPepMap.put(pro, set);
-					}
-				}
-				tempPepSet.add(sequence);
-			} else {
-				// DIA Focus workflow: No host file processing, so skip hostPepProMap check
-				if (decoyPepMap.containsKey(sequence)) {
-					String targetSequence = decoyPepMap.get(sequence);
-					if (pepProMap.containsKey(targetSequence)) {
-						for (String pro : pepProMap.get(targetSequence)) {
-							String genome = pro.split("_")[0];
-							String decoyGenome = FastaManager.shuffle + genome;
-							String decoyPro = FastaManager.shuffle + pro;
-
-							if (genomeMap.containsKey(decoyGenome)) {
-								genomeMap.get(decoyGenome).add(sequence);
-							} else {
-								HashSet<String> set = new HashSet<String>();
-								set.add(sequence);
-								genomeMap.put(decoyGenome, set);
-							}
-
-							if (proteinPepMap.containsKey(decoyPro)) {
-								proteinPepMap.get(decoyPro).add(sequence);
-							} else {
-								HashSet<String> set = new HashSet<String>();
-								set.add(sequence);
-								proteinPepMap.put(decoyPro, set);
-							}
-						}
-						tempPepSet.add(sequence);
-						decoyPPCount++;
-					}
-				} else {
-					missSet.add(sequence);
-				}
-			}
-		}
-
-		logger.info(getTaskName() + ": " + missSet.size()
-				+ " peptide sequences were not found from the in-silico digested MAG database, "
-				+ "maybe due to unspecific digestion, will be not be included in the following analysis");
-		logger.info(getTaskName() + ": " + decoyPPCount
-				+ " decoy precursor will be used for FDR control in the following steps.");
-		System.out.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName() + ": "
-				+ missSet.size() + " peptide sequences were not found from the in-silico digested MAG database, "
-				+ "maybe due to unspecific digestion, will be not be included in the following analysis");
-
-		ArrayList<DiaNNPrecursor> genomeFilteredList = new ArrayList<DiaNNPrecursor>();
-		HashSet<String> temppepHashSet1 = new HashSet<String>();
-		for (DiaNNPrecursor pp : diaPp) {
-			String sequence = pp.getSeqString();
-			// DIA Focus workflow: No host file processing, so skip hostPepProMap check
-			if (tempPepSet.contains(sequence)) {
-				ArrayList<String> proList = new ArrayList<String>();
-				if (pepProMap.containsKey(sequence)) {
-					HashSet<String> pros = pepProMap.get(sequence);
-					for (String pro : pros) {
-						String genome = pro.split("_")[0];
-						if (genomeMap.containsKey(genome) && proteinPepMap.containsKey(pro)) {
-							proList.add(pro);
-						}
-					}
-				} else {
-					if (decoyPepMap.containsKey(sequence)) {
-						String targetSeq = decoyPepMap.get(sequence);
-						if (pepProMap.containsKey(targetSeq)) {
-							HashSet<String> pros = pepProMap.get(targetSeq);
-							for (String pro : pros) {
-								String genome = pro.split("_")[0];
-								if (genomeMap.containsKey(FastaManager.shuffle + genome)
-										&& proteinPepMap.containsKey(FastaManager.shuffle + pro)) {
-									proList.add(FastaManager.shuffle + pro);
-								}
-							}
-						}
-					}
-				}
-
-				if (proList.size() > 0) {
-					pp.setProGroups(proList.toArray(String[]::new));
-					genomeFilteredList.add(pp);
-					temppepHashSet1.add(sequence);
-				}
-			}
-		}
-
-		DiaNNPrecursor[] filteredPPS = genomeFilteredList.toArray(DiaNNPrecursor[]::new);
-		File genomeScoreFile = new File(combinedFile, "genomes_score.tsv");
-		File proteinScoreFile = new File(combinedFile, "proteins_score.tsv");
-
-		HashMap<String, double[]> genomeScoreMap = new HashMap<String, double[]>();
-		HashMap<String, double[]> proteinScoreMap = new HashMap<String, double[]>();
-		calGenomeProteinScore(filteredPPS, genomeScoreMap, proteinScoreMap, genomeScoreFile, proteinScoreFile);
-
-		HashSet<String> tempPepHashSet = new HashSet<String>();
-		ArrayList<DiaNNPrecursor> finalFilteredList = new ArrayList<DiaNNPrecursor>();
-		for (DiaNNPrecursor pp : filteredPPS) {
-			ArrayList<String> proList = new ArrayList<String>();
-			String[] pros = pp.getProGroups();
-			String razorProtein = "";
-			double razorQvalue = 1.0;
-			for (String pro : pros) {
-				if (proteinScoreMap.containsKey(pro)) {
-					proList.add(pro);
-					if (proteinScoreMap.get(pro)[0] < razorQvalue) {
-						razorQvalue = proteinScoreMap.get(pro)[0];
-						razorProtein = pro;
-					}
-				}
-			}
-
-			if (proList.size() > 0) {
-				tempPepHashSet.add(pp.getSeqString());
-				pp.setProGroups(proList.toArray(String[]::new));
-				pp.setRazorProtein(razorProtein);
-				finalFilteredList.add(pp);
-			}
-		}
-
-		this.diaPp = finalFilteredList.toArray(DiaNNPrecursor[]::new);
-		DiannPrMatrixReader prReader = new DiannPrMatrixReader(this.quan_pep_file);
-		FlashLfqQuanPeptide[] peps = prReader.getMetaPeptides(this.diaPp);
-		this.quanExpNames = prReader.getIntensityTitle();
+		DiannPrMatrixReader prReader = new DiannPrMatrixReader(quanPepFile);
+		FlashLfqQuanPeptide[] peps = prReader.getMetaPeptides(diaTask.diaPp);
+		diaTask.setExportQuanExpNames(prReader.getIntensityTitle());
 
 		HashMap<String, FlashLfqQuanPeptide> modseqPepMap = new HashMap<String, FlashLfqQuanPeptide>();
 		for (FlashLfqQuanPeptide pep : peps) {
 			modseqPepMap.put(pep.getModSeq(), pep);
 		}
 
-		logger.info(getTaskName() + ": protein inference finished, " + this.diaPp.length + " PSMs, "
-				+ modseqPepMap.size() + " peptide, " + proteinScoreMap.size() + " proteins and " + genomeScoreMap.size()
-				+ " genomes were kept");
-		System.out.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
-				+ ": protein inference finished, " + this.diaPp.length + " PSMs, " + modseqPepMap.size() + " peptide, "
-				+ proteinScoreMap.size() + " proteins and " + genomeScoreMap.size() + " genomes were kept");
-
-		logger.info(getTaskName() + ": exporting peptide report started");
-		System.out.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
+		diaTask.getExportLogger().info(diaTask.getTaskName() + ": exporting peptide report started");
+		System.out.println(fmt.format(new Date()) + "\t" + diaTask.getTaskName()
 				+ ": exporting peptide report started");
 
 		HashMap<String, double[]> genomeIntensityMap = new HashMap<String, double[]>();
@@ -1159,7 +923,7 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 				razorPepCountMap.put(razorProtein, set);
 			}
 
-			if (razorProtein.startsWith(magDb.getIdentifier())) {
+			if (razorProtein.startsWith(diaTask.getExportMagDb().getIdentifier())) {
 				String genome = razorProtein.split("_")[0];
 				if (razorPepCountMap.containsKey(genome)) {
 					razorPepCountMap.get(genome).add(stripeSequence);
@@ -1173,8 +937,8 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 
 		HashMap<String, Integer> psmCountMap = new HashMap<String, Integer>();
 
-		int[] filePsmCount = new int[quanExpNames.length];
-		HashSet<String>[] fileSequenceSets = new HashSet[quanExpNames.length];
+		int[] filePsmCount = new int[diaTask.getExportQuanExpNames().length];
+		HashSet<String>[] fileSequenceSets = new HashSet[diaTask.getExportQuanExpNames().length];
 		for (int i = 0; i < fileSequenceSets.length; i++) {
 			fileSequenceSets[i] = new HashSet<String>();
 		}
@@ -1243,7 +1007,7 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 							totalPepCountMap.put(proteins[j], set);
 						}
 
-						if (proteins[j].startsWith(magDb.getIdentifier())) {
+						if (proteins[j].startsWith(diaTask.getExportMagDb().getIdentifier())) {
 							String genome = proteins[j].split("_")[0];
 							if (genomeScoreMap.containsKey(genome)) {
 								double[] genomeIntensity;
@@ -1277,25 +1041,110 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 			}
 		}
 
+		// --- Pure razor: only razor protein list, each peptide contributes full intensity to its razor protein only ---
+		HashMap<String, double[]> proteinIntensityMapRazor = new HashMap<>();
+		HashMap<String, Double> proteinTotalIntenMapRazor = new HashMap<>();
+		HashMap<String, Integer> psmCountMapRazor = new HashMap<>();
+		for (int i = 0; i < peps.length; i++) {
+			String razorProtein = peps[i].getRazorProtein();
+			double[] fullIntensity = peps[i].getIntensity();
+			int[] ms2Count = peps[i].getMs2Counts();
+			int pepMs2Count = 0;
+			for (int j = 0; j < ms2Count.length; j++) pepMs2Count += ms2Count[j];
+			if (proteinIntensityMapRazor.containsKey(razorProtein)) {
+				double[] intensity = proteinIntensityMapRazor.get(razorProtein);
+				double total = proteinTotalIntenMapRazor.get(razorProtein);
+				for (int k = 0; k < fullIntensity.length; k++) {
+					intensity[k] += fullIntensity[k];
+					total += fullIntensity[k];
+				}
+				proteinTotalIntenMapRazor.put(razorProtein, total);
+				psmCountMapRazor.put(razorProtein, psmCountMapRazor.get(razorProtein) + pepMs2Count);
+			} else {
+				double[] intensity = new double[fullIntensity.length];
+				double total = 0;
+				for (int k = 0; k < fullIntensity.length; k++) {
+					intensity[k] = fullIntensity[k];
+					total += fullIntensity[k];
+				}
+				proteinIntensityMapRazor.put(razorProtein, intensity);
+				proteinTotalIntenMapRazor.put(razorProtein, total);
+				psmCountMapRazor.put(razorProtein, pepMs2Count);
+			}
+		}
+
+		// --- Pure shared: all proteins, each peptide's intensity divided among all its proteins ---
+		HashMap<String, double[]> proteinIntensityMapAll = new HashMap<>();
+		HashMap<String, Double> proteinTotalIntenMapAll = new HashMap<>();
+		HashMap<String, HashSet<String>> totalPepCountMapAll = new HashMap<>();
+		HashMap<String, Integer> psmCountMapAll = new HashMap<>();
+		for (int i = 0; i < peps.length; i++) {
+			String[] prots = peps[i].getProteins();
+			if (prots == null || prots.length == 0) continue;
+			String stripeSequence = peps[i].getSequence();
+			double[] fullIntensity = peps[i].getIntensity();
+			int nProts = prots.length;
+			double[] divided = new double[fullIntensity.length];
+			for (int j = 0; j < fullIntensity.length; j++) divided[j] = fullIntensity[j] / (double) nProts;
+			int[] ms2Count = peps[i].getMs2Counts();
+			int pepMs2Count = 0;
+			for (int j = 0; j < ms2Count.length; j++) pepMs2Count += ms2Count[j];
+			for (String pro : prots) {
+				if (proteinIntensityMapAll.containsKey(pro)) {
+					double[] intensity = proteinIntensityMapAll.get(pro);
+					double total = proteinTotalIntenMapAll.get(pro);
+					for (int k = 0; k < divided.length; k++) {
+						intensity[k] += divided[k];
+						total += divided[k];
+					}
+					proteinTotalIntenMapAll.put(pro, total);
+					totalPepCountMapAll.get(pro).add(stripeSequence);
+					psmCountMapAll.put(pro, psmCountMapAll.get(pro) + pepMs2Count);
+				} else {
+					double[] intensity = new double[divided.length];
+					double total = 0;
+					for (int k = 0; k < divided.length; k++) {
+						intensity[k] = divided[k];
+						total += divided[k];
+					}
+					proteinIntensityMapAll.put(pro, intensity);
+					proteinTotalIntenMapAll.put(pro, total);
+					HashSet<String> set = new HashSet<>();
+					set.add(stripeSequence);
+					totalPepCountMapAll.put(pro, set);
+					psmCountMapAll.put(pro, pepMs2Count);
+				}
+			}
+		}
+
+		// Ensure every reported protein has a score row (default 0, 1, 1 if missing)
+		for (String pro : proteinTotalIntenMap.keySet()) {
+			if (!proteinScoreMap.containsKey(pro)) {
+				proteinScoreMap.put(pro, new double[] { 0.0, 1.0, 1.0 });
+			}
+		}
+		for (String pro : proteinTotalIntenMapAll.keySet()) {
+			if (!proteinScoreMap.containsKey(pro)) {
+				proteinScoreMap.put(pro, new double[] { 0.0, 1.0, 1.0 });
+			}
+		}
+
 		String[] proteins = proteinTotalIntenMap.keySet().toArray(String[]::new);
 		Arrays.sort(proteins, new Comparator<String>() {
 
 			@Override
 			public int compare(String o1, String o2) {
-				// TODO Auto-generated method stub
-				if (proteinScoreMap.get(o1)[0] > proteinScoreMap.get(o2)[0]) {
-					return 1;
-				} else if (proteinScoreMap.get(o1)[0] < proteinScoreMap.get(o2)[0]) {
-					return -1;
-				} else {
-					if (proteinTotalIntenMap.get(o1) > proteinTotalIntenMap.get(o2)) {
-						return -1;
-					} else if (proteinTotalIntenMap.get(o1) < proteinTotalIntenMap.get(o2)) {
-						return 1;
-					} else {
-						return 0;
-					}
-				}
+				// sort by S descending (higher S first), then by total intensity descending
+				double[] s1 = proteinScoreMap.get(o1);
+				double[] s2 = proteinScoreMap.get(o2);
+				if (s1 == null && s2 == null) return 0;
+				if (s1 == null) return 1;
+				if (s2 == null) return -1;
+				if (s1[IDX_S] > s2[IDX_S]) return -1;
+				if (s1[IDX_S] < s2[IDX_S]) return 1;
+				if (proteinTotalIntenMap.get(o1) > proteinTotalIntenMap.get(o2)) return -1;
+				if (proteinTotalIntenMap.get(o1) < proteinTotalIntenMap.get(o2)) return 1;
+				return 0;
 			}
 		});
 
@@ -1304,27 +1153,27 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 			proteinIdMap.put(proteins[i], i);
 		}
 
-		try (PrintWriter idWriter = new PrintWriter(new File(resultFolderFile, "id.tsv"))) {
+		try (PrintWriter idWriter = new PrintWriter(new File(diaTask.getExportResultFolderFile(), "id.tsv"))) {
 			idWriter.println("Raw file\tUnique peptide count\tPSM count");
-			for (int i = 0; i < quanExpNames.length; i++) {
-				idWriter.println(quanExpNames[i] + "\t" + fileSequenceSets[i].size() + "\t" + filePsmCount[i]);
+			for (int i = 0; i < diaTask.getExportQuanExpNames().length; i++) {
+				idWriter.println(diaTask.getExportQuanExpNames()[i] + "\t" + fileSequenceSets[i].size() + "\t" + filePsmCount[i]);
 			}
 			idWriter.close();
 		} catch (IOException e) {
-			System.out.println(format.format(new Date()) + "\t" + getTaskName()
-					+ ": error in writing identification information to " + new File(resultFolderFile, "id.tsv"));
-			logger.error(getTaskName() + ": error in writing identification information to "
-					+ new File(resultFolderFile, "id.tsv"), e);
+			System.out.println(fmt.format(new Date()) + "\t" + diaTask.getTaskName()
+					+ ": error in writing identification information to " + new File(diaTask.getExportResultFolderFile(), "id.tsv"));
+			diaTask.getExportLogger().error(diaTask.getTaskName() + ": error in writing identification information to "
+					+ new File(diaTask.getExportResultFolderFile(), "id.tsv"), e);
 		}
 
-		updateProgress(85, 100);
+		diaTask.exportUpdateProgress(85, 100);
 
 		HashMap<String, ArrayList<Integer>> proPepIdMap = new HashMap<String, ArrayList<Integer>>();
 		HashMap<String, ArrayList<Integer>> proPepRazorIdMap = new HashMap<String, ArrayList<Integer>>();
 		try {
-			this.final_pep_txt = new File(resultFolderFile, "final_peptides.tsv");
+			diaTask.setExportFinalPepTxt(new File(diaTask.getExportResultFolderFile(), "final_peptides.tsv"));
 
-			PrintWriter writer = new PrintWriter(this.final_pep_txt);
+			PrintWriter writer = new PrintWriter(diaTask.getExportFinalPepTxt());
 
 			StringBuilder titlesb = new StringBuilder();
 			titlesb.append("Sequence").append("\t");
@@ -1337,18 +1186,18 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 			titlesb.append("Qvalue").append("\t");
 			titlesb.append("PEP").append("\t");
 
-			for (int i = 0; i < this.quanExpNames.length; i++) {
-				titlesb.append("Identification type " + this.quanExpNames[i]).append("\t");
+			for (int i = 0; i < diaTask.getExportQuanExpNames().length; i++) {
+				titlesb.append("Identification type " + diaTask.getExportQuanExpNames()[i]).append("\t");
 			}
 
-			for (int i = 0; i < this.quanExpNames.length; i++) {
-				titlesb.append("MS/MS count " + this.quanExpNames[i]).append("\t");
+			for (int i = 0; i < diaTask.getExportQuanExpNames().length; i++) {
+				titlesb.append("MS/MS count " + diaTask.getExportQuanExpNames()[i]).append("\t");
 			}
 
 			titlesb.append("Intensity").append("\t");
 
-			for (int i = 0; i < quanExpNames.length; i++) {
-				titlesb.append("Intensity " + this.quanExpNames[i]).append("\t");
+			for (int i = 0; i < diaTask.getExportQuanExpNames().length; i++) {
+				titlesb.append("Intensity " + diaTask.getExportQuanExpNames()[i]).append("\t");
 			}
 
 			titlesb.append("Reverse").append("\t");
@@ -1470,41 +1319,42 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 
 		} catch (Exception e) {
 			// TODO Auto-generated catch block
-			logger.error(getTaskName() + ": error in writing the peptides to  " + final_pep_txt, e);
-			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in writing the peptides to  "
-					+ final_pep_txt);
+			diaTask.getExportLogger().error(diaTask.getTaskName() + ": error in writing the peptides to  " + diaTask.getExportFinalPepTxt(), e);
+			System.err.println(fmt.format(new Date()) + "\t" + diaTask.getTaskName() + ": error in writing the peptides to  "
+					+ diaTask.getExportFinalPepTxt());
 		}
 
-		logger.info(getTaskName() + ": peptide report has been exported to " + final_pep_txt);
-		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": peptide report has been exported to "
-				+ final_pep_txt);
+		diaTask.getExportLogger().info(diaTask.getTaskName() + ": peptide report has been exported to " + diaTask.getExportFinalPepTxt());
+		System.out.println(fmt.format(new Date()) + "\t" + diaTask.getTaskName() + ": peptide report has been exported to "
+				+ diaTask.getExportFinalPepTxt());
 
-		if (!final_pep_txt.exists() || final_pep_txt.length() == 0) {
+		if (!diaTask.getExportFinalPepTxt().exists() || diaTask.getExportFinalPepTxt().length() == 0) {
 			return false;
 		}
 
-		updateProgress(87, 100);
+		diaTask.exportUpdateProgress(87, 100);
 
-		logger.info(getTaskName() + ": exporting protein report started");
-		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting protein report started");
+		diaTask.getExportLogger().info(diaTask.getTaskName() + ": exporting protein report started");
+		System.out.println(fmt.format(new Date()) + "\t" + diaTask.getTaskName() + ": exporting protein report started");
 
 		ArrayList<MetaProtein> proteinList = new ArrayList<MetaProtein>();
 		try {
 
-			this.final_pro_txt = new File(resultFolderFile, "final_proteins.tsv");
+			diaTask.setExportFinalProTxt(new File(diaTask.getExportResultFolderFile(), "final_proteins.tsv"));
 
-			PrintWriter writer = new PrintWriter(this.final_pro_txt);
+			PrintWriter writer = new PrintWriter(diaTask.getExportFinalProTxt());
 
 			StringBuilder titlesb = new StringBuilder();
 			titlesb.append("Protein IDs").append("\t");
 			titlesb.append("Peptide counts (all)").append("\t");
 			titlesb.append("Peptide counts (razor)").append("\t");
 			titlesb.append("Number of PSMs").append("\t");
-			titlesb.append("Qvalue").append("\t");
-			titlesb.append("Local FDR").append("\t");
+			titlesb.append("S").append("\t");
+			titlesb.append("p_emp").append("\t");
+			titlesb.append("q_value").append("\t");
 			titlesb.append("Intensity").append("\t");
-			for (int i = 0; i < quanExpNames.length; i++) {
-				titlesb.append("Intensity " + quanExpNames[i]).append("\t");
+			for (int i = 0; i < diaTask.getExportQuanExpNames().length; i++) {
+				titlesb.append("Intensity " + diaTask.getExportQuanExpNames()[i]).append("\t");
 			}
 
 			titlesb.append("Reverse").append("\t");
@@ -1525,8 +1375,14 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 				sb.append(razorPepCountMap.get(proteins[i]).size()).append("\t");
 				sb.append(psmCountMap.get(proteins[i])).append("\t");
 
-				sb.append(df.format(proteinScoreMap.get(proteins[i])[0])).append("\t");
-				sb.append(df4.format(proteinScoreMap.get(proteins[i])[1])).append("\t");
+				double[] proScores = proteinScoreMap.get(proteins[i]);
+				if (proScores != null) {
+					sb.append(df.format(proScores[IDX_S])).append("\t");
+					sb.append(df4.format(proScores[IDX_P_EMP])).append("\t");
+					sb.append(df4.format(proScores[IDX_Q_VALUE])).append("\t");
+				} else {
+					sb.append("\t\t\t");
+				}
 
 				double totalIntensity = proteinTotalIntenMap.get(proteins[i]);
 				sb.append(df.format(totalIntensity)).append("\t");
@@ -1558,8 +1414,9 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 				sb.deleteCharAt(sb.length() - 1);
 				writer.println(sb);
 
+				double scoreForMeta = (proScores != null) ? proScores[IDX_S] : 0.0;
 				MetaProtein mp = new MetaProtein(i, 0, proteins[i], totalPepCountMap.get(proteins[i]).size(),
-						psmCountMap.get(proteins[i]), proteinScoreMap.get(proteins[i])[0], intensity);
+						psmCountMap.get(proteins[i]), scoreForMeta, intensity);
 				proteinList.add(mp);
 			}
 
@@ -1567,32 +1424,124 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
-			logger.error(getTaskName() + ": error in writing final protein result to " + this.final_pro_txt.getName(),
+			diaTask.getExportLogger().error(diaTask.getTaskName() + ": error in writing final protein result to " + diaTask.getExportFinalProTxt().getName(),
 					e);
-			System.err.println(format.format(new Date()) + "\t" + getTaskName()
-					+ ": error in writing final protein result to " + this.final_pro_txt.getName());
+			System.err.println(fmt.format(new Date()) + "\t" + diaTask.getTaskName()
+					+ ": error in writing final protein result to " + diaTask.getExportFinalProTxt().getName());
 		}
 
-		logger.info(getTaskName() + ": protein report has been exported to " + final_pro_txt.getName());
-		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": protein report has been exported to "
-				+ final_pro_txt.getName());
+		diaTask.getExportLogger().info(diaTask.getTaskName() + ": protein report has been exported to " + diaTask.getExportFinalProTxt().getName());
+		System.out.println(fmt.format(new Date()) + "\t" + diaTask.getTaskName() + ": protein report has been exported to "
+				+ diaTask.getExportFinalProTxt().getName());
 
-		updateProgress(89, 100);
+		// --- razor_proteins.tsv: pure razor, only razor list, full intensity to razor only ---
+		String[] proteinsRazor = proteinIntensityMapRazor.keySet().toArray(new String[0]);
+		Arrays.sort(proteinsRazor, Comparator.<String>comparingDouble(p -> proteinScoreMap.containsKey(p) ? -proteinScoreMap.get(p)[IDX_S] : 0)
+				.thenComparing((p1, p2) -> Double.compare(proteinTotalIntenMapRazor.getOrDefault(p2, 0.0), proteinTotalIntenMapRazor.getOrDefault(p1, 0.0))));
+		HashMap<String, ArrayList<Integer>> proPepIdMapRazor = new HashMap<>();
+		HashMap<String, ArrayList<Integer>> proPepRazorIdMapRazor = new HashMap<>();
+		for (int id = 0; id < peptideList.size(); id++) {
+			String razorPro = peptideList.get(id).getRazorProtein();
+			proPepIdMapRazor.computeIfAbsent(razorPro, k -> new ArrayList<>()).add(id);
+			proPepRazorIdMapRazor.computeIfAbsent(razorPro, k -> new ArrayList<>()).add(1);
+		}
+		try (PrintWriter writerRazor = new PrintWriter(new File(diaTask.getExportResultFolderFile(), "razor_proteins.tsv"))) {
+			StringBuilder razorHeader = new StringBuilder();
+			razorHeader.append("Protein IDs\tPeptide counts (all)\tPeptide counts (razor)\tNumber of PSMs\tS\tp_emp\tq_value\tIntensity\t");
+			for (int h = 0; h < diaTask.getExportQuanExpNames().length; h++) razorHeader.append("Intensity ").append(diaTask.getExportQuanExpNames()[h]).append("\t");
+			razorHeader.append("Reverse\tPotential contaminant\tid\tPeptide IDs\tPeptide is razor");
+			writerRazor.println(razorHeader);
+			DecimalFormat df = FormatTool.getDFE4();
+			DecimalFormat df4 = FormatTool.getDF4();
+			for (int i = 0; i < proteinsRazor.length; i++) {
+				String pro = proteinsRazor[i];
+				int pepAll = razorPepCountMap.containsKey(pro) ? razorPepCountMap.get(pro).size() : 0;
+				StringBuilder sb = new StringBuilder();
+				sb.append(pro).append("\t").append(pepAll).append("\t").append(pepAll).append("\t");
+				sb.append(psmCountMapRazor.getOrDefault(pro, 0)).append("\t");
+				double[] sc = proteinScoreMap.get(pro);
+				if (sc != null) {
+					sb.append(df.format(sc[IDX_S])).append("\t").append(df4.format(sc[IDX_P_EMP])).append("\t").append(df4.format(sc[IDX_Q_VALUE])).append("\t");
+				} else sb.append("\t\t\t");
+				sb.append(df.format(proteinTotalIntenMapRazor.getOrDefault(pro, 0.0))).append("\t");
+				double[] intensity = proteinIntensityMapRazor.get(pro);
+				if (intensity != null) for (double v : intensity) sb.append(df.format(v)).append("\t");
+				sb.append("\t\t").append(i).append("\t");
+				ArrayList<Integer> ids = proPepIdMapRazor.get(pro);
+				ArrayList<Integer> raz = proPepRazorIdMapRazor.get(pro);
+				if (ids != null) { for (Integer id : ids) sb.append(id).append(";"); if (!ids.isEmpty()) sb.setLength(sb.length() - 1); }
+				sb.append("\t");
+				if (raz != null) { for (Integer r : raz) sb.append(r == 1 ? "true;" : "false;"); if (!raz.isEmpty()) sb.setLength(sb.length() - 1); }
+				writerRazor.println(sb);
+			}
+		} catch (IOException e) {
+			diaTask.getExportLogger().warn(diaTask.getTaskName() + ": could not write razor_proteins.tsv", e);
+		}
 
-		logger.info(getTaskName() + ": functional annotation started");
-		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": functional annotation started");
+		// --- all_proteins.tsv: all proteins, divided intensity per peptide ---
+		String[] proteinsAll = proteinTotalIntenMapAll.keySet().toArray(new String[0]);
+		Arrays.sort(proteinsAll, Comparator.<String>comparingDouble(p -> proteinScoreMap.containsKey(p) ? -proteinScoreMap.get(p)[IDX_S] : 0)
+				.thenComparing((p1, p2) -> Double.compare(proteinTotalIntenMapAll.getOrDefault(p2, 0.0), proteinTotalIntenMapAll.getOrDefault(p1, 0.0))));
+		HashMap<String, ArrayList<Integer>> proPepIdMapAll = new HashMap<>();
+		HashMap<String, ArrayList<Integer>> proPepRazorIdMapAll = new HashMap<>();
+		for (int id = 0; id < peptideList.size(); id++) {
+			FlashLfqQuanPeptide pep = peptideList.get(id);
+			String razorPro = pep.getRazorProtein();
+			for (String pro : pep.getProteins()) {
+				proPepIdMapAll.computeIfAbsent(pro, k -> new ArrayList<>()).add(id);
+				proPepRazorIdMapAll.computeIfAbsent(pro, k -> new ArrayList<>()).add(razorPro.equals(pro) ? 1 : 0);
+			}
+		}
+		try (PrintWriter writerAll = new PrintWriter(new File(diaTask.getExportResultFolderFile(), "all_proteins.tsv"))) {
+			StringBuilder allHeader = new StringBuilder();
+			allHeader.append("Protein IDs\tPeptide counts (all)\tPeptide counts (razor)\tNumber of PSMs\tS\tp_emp\tq_value\tIntensity\t");
+			for (int h = 0; h < diaTask.getExportQuanExpNames().length; h++) allHeader.append("Intensity ").append(diaTask.getExportQuanExpNames()[h]).append("\t");
+			allHeader.append("Reverse\tPotential contaminant\tid\tPeptide IDs\tPeptide is razor");
+			writerAll.println(allHeader);
+			DecimalFormat df = FormatTool.getDFE4();
+			DecimalFormat df4 = FormatTool.getDF4();
+			for (int i = 0; i < proteinsAll.length; i++) {
+				String pro = proteinsAll[i];
+				int pepAll = totalPepCountMapAll.containsKey(pro) ? totalPepCountMapAll.get(pro).size() : 0;
+				int pepRazor = razorPepCountMap.containsKey(pro) ? razorPepCountMap.get(pro).size() : 0;
+				StringBuilder sb = new StringBuilder();
+				sb.append(pro).append("\t").append(pepAll).append("\t").append(pepRazor).append("\t");
+				sb.append(psmCountMapAll.getOrDefault(pro, 0)).append("\t");
+				double[] sc = proteinScoreMap.get(pro);
+				if (sc != null) {
+					sb.append(df.format(sc[IDX_S])).append("\t").append(df4.format(sc[IDX_P_EMP])).append("\t").append(df4.format(sc[IDX_Q_VALUE])).append("\t");
+				} else sb.append("\t\t\t");
+				sb.append(df.format(proteinTotalIntenMapAll.getOrDefault(pro, 0.0))).append("\t");
+				double[] intensity = proteinIntensityMapAll.get(pro);
+				if (intensity != null) for (double v : intensity) sb.append(df.format(v)).append("\t");
+				sb.append("\t\t").append(i).append("\t");
+				ArrayList<Integer> ids = proPepIdMapAll.get(pro);
+				ArrayList<Integer> raz = proPepRazorIdMapAll.get(pro);
+				if (ids != null) { for (Integer id : ids) sb.append(id).append(";"); if (!ids.isEmpty()) sb.setLength(sb.length() - 1); }
+				sb.append("\t");
+				if (raz != null) { for (Integer r : raz) sb.append(r == 1 ? "true;" : "false;"); if (!raz.isEmpty()) sb.setLength(sb.length() - 1); }
+				writerAll.println(sb);
+			}
+		} catch (IOException e) {
+			diaTask.getExportLogger().warn(diaTask.getTaskName() + ": could not write all_proteins.tsv", e);
+		}
 
-		File funcFile = new File(resultFolderFile, "functional_annotation");
+		diaTask.exportUpdateProgress(89, 100);
+
+		diaTask.getExportLogger().info(diaTask.getTaskName() + ": functional annotation started");
+		System.out.println(fmt.format(new Date()) + "\t" + diaTask.getTaskName() + ": functional annotation started");
+
+		File funcFile = new File(diaTask.getExportResultFolderFile(), "functional_annotation");
 		if (!funcFile.exists()) {
 			funcFile.mkdir();
 		}
 
 		File funTsv = new File(funcFile, "functions.tsv");
-		final_pro_xml_file = new File(funcFile, "functions.xml");
+		diaTask.setExportFinalProXmlFile(new File(funcFile, "functions.xml"));
 
 		HashMap<String, Integer> proTaxIdMap = new HashMap<String, Integer>();
 		MetaProtein[] metapros = proteinList.toArray(new MetaProtein[proteinList.size()]);
-		MetaProteinAnnoMag[] mpas = funcAnnoSqlite(metapros, quanExpNames);
+		MetaProteinAnnoMag[] mpas = diaTask.exportFuncAnnoSqlite(metapros, diaTask.getExportQuanExpNames());
 		for (int i = 0; i < mpas.length; i++) {
 			String name = mpas[i].getPro().getName();
 			if (NumberUtils.isCreatable(mpas[i].getTax_id())) {
@@ -1604,18 +1553,18 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 
 		MetaProteinXMLReader2 funReader = null;
 		try {
-			funReader = new MetaProteinXMLReader2(final_pro_xml_file);
+			funReader = new MetaProteinXMLReader2(diaTask.getExportFinalProXmlFile());
 		} catch (DocumentException e) {
 			// TODO Auto-generated catch block
-			logger.error(getTaskName() + ": error in reading protein function information from "
-					+ this.final_pro_xml_file.getName(), e);
-			System.err.println(format.format(new Date()) + "\t" + getTaskName()
-					+ ": error in reading protein function information from " + this.final_pro_xml_file.getName());
+			diaTask.getExportLogger().error(diaTask.getTaskName() + ": error in reading protein function information from "
+					+ diaTask.getExportFinalProXmlFile().getName(), e);
+			System.err.println(fmt.format(new Date()) + "\t" + diaTask.getTaskName()
+					+ ": error in reading protein function information from " + diaTask.getExportFinalProXmlFile().getName());
 			return false;
 		}
 
 		if (!funTsv.exists()) {
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": writing results to "
+			System.out.println(fmt.format(new Date()) + "\t" + diaTask.getTaskName() + ": writing results to "
 					+ funTsv.getName() + " started");
 			try {
 				funReader.exportTsv(funTsv);
@@ -1639,79 +1588,79 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 				funReader.exportNOGCategoryReport(nogCatTsv);
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
-				logger.error(getTaskName() + ": error in writing protein function information to " + funTsv.getName(),
+				diaTask.getExportLogger().error(diaTask.getTaskName() + ": error in writing protein function information to " + funTsv.getName(),
 						e);
-				System.err.println(format.format(new Date()) + "\t" + getTaskName()
+				System.err.println(fmt.format(new Date()) + "\t" + diaTask.getTaskName()
 						+ ": error in writing protein function information to " + funTsv.getName());
 			}
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": writing results to "
+			System.out.println(fmt.format(new Date()) + "\t" + diaTask.getTaskName() + ": writing results to "
 					+ funTsv.getName() + " finished");
 		}
 
 		File html = new File(funcFile, "functions.html");
 		if (!html.exists()) {
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": writing results to "
+			System.out.println(fmt.format(new Date()) + "\t" + diaTask.getTaskName() + ": writing results to "
 					+ html.getName() + " started");
 			try {
 				funReader.exportHtml(html);
 
 				// Copy the generated functions.html to the reports directory
-				File reportFunctionsHtml = new File(metaPar.getReportDir(), "reports/functions.html");
+				File reportFunctionsHtml = new File(diaTask.getExportMetaPar().getReportDir(), "reports/functions.html");
 				if (reportFunctionsHtml.getParentFile() != null && !reportFunctionsHtml.getParentFile().exists()) {
 					reportFunctionsHtml.getParentFile().mkdirs();
 				}
 				Files.copy(html.toPath(), reportFunctionsHtml.toPath(), StandardCopyOption.REPLACE_EXISTING);
-				logger.info("Copied functions.html to reports directory: " + reportFunctionsHtml.getAbsolutePath());
+				diaTask.getExportLogger().info("Copied functions.html to reports directory: " + reportFunctionsHtml.getAbsolutePath());
 
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
-				logger.error(getTaskName() + ": error in writing protein function information to " + html.getName(), e);
-				System.err.println(format.format(new Date()) + "\t" + getTaskName()
+				diaTask.getExportLogger().error(diaTask.getTaskName() + ": error in writing protein function information to " + html.getName(), e);
+				System.err.println(fmt.format(new Date()) + "\t" + diaTask.getTaskName()
 						+ ": error in writing protein function information to " + html.getName());
 			}
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": writing results to "
+			System.out.println(fmt.format(new Date()) + "\t" + diaTask.getTaskName() + ": writing results to "
 					+ html.getName() + " finished");
 		}
 
 		// Copy functions.html to report directory for navigation access
-		if (html.exists() && this.reportHtmlDir != null) {
-			File reportFunctionsHtml = new File(this.reportHtmlDir, "functions.html");
+		if (html.exists() && diaTask.getExportReportHtmlDir() != null) {
+			File reportFunctionsHtml = new File(diaTask.getExportReportHtmlDir(), "functions.html");
 			if (!reportFunctionsHtml.exists()) {
 				try {
 					java.nio.file.Files.copy(html.toPath(), reportFunctionsHtml.toPath(),
 							java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-					logger.info(getTaskName() + ": copied functions.html to report directory");
-					System.out.println(format.format(new Date()) + "\t" + getTaskName()
+					diaTask.getExportLogger().info(diaTask.getTaskName() + ": copied functions.html to report directory");
+					System.out.println(fmt.format(new Date()) + "\t" + diaTask.getTaskName()
 							+ ": copied functions.html to report directory");
 				} catch (IOException e) {
-					logger.error(getTaskName() + ": error copying functions.html to report directory", e);
-					System.err.println(format.format(new Date()) + "\t" + getTaskName()
+					diaTask.getExportLogger().error(diaTask.getTaskName() + ": error copying functions.html to report directory", e);
+					System.err.println(fmt.format(new Date()) + "\t" + diaTask.getTaskName()
 							+ ": error copying functions.html to report directory");
 				}
 			}
 		}
 
-		updateProgress(91, 100);
+		diaTask.exportUpdateProgress(91, 100);
 
 		// taxonomy analysis
 
-		logger.info(getTaskName() + ": taxonomy analysis started");
-		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": taxonomy analysis started");
+		diaTask.getExportLogger().info(diaTask.getTaskName() + ": taxonomy analysis started");
+		System.out.println(fmt.format(new Date()) + "\t" + diaTask.getTaskName() + ": taxonomy analysis started");
 
-		File taxFile = new File(resultFolderFile, "taxonomy_analysis");
+		File taxFile = new File(diaTask.getExportResultFolderFile(), "taxonomy_analysis");
 		if (!taxFile.exists()) {
 			taxFile.mkdir();
 		}
 
 		MagFuncSearcher searcher = null;
 		try {
-			searcher = new MagFuncSearcher(metaPar.getMicroDb(), mrp.getToolPath(ToolType.FUNCDB), magDb);
+			searcher = new MagFuncSearcher(diaTask.getExportMetaPar().getMicroDb(), diaTask.getExportMrp().getToolPath(ToolType.FUNCDB), diaTask.getExportMagDb());
 
 		} catch (NumberFormatException | SQLException | IOException e) {
 			// TODO Auto-generated catch block
-			logger.error(getTaskName() + ": error in genome analysis, task failed", e);
+			diaTask.getExportLogger().error(diaTask.getTaskName() + ": error in genome analysis, task failed", e);
 			System.err.println(
-					format.format(new Date()) + "\t" + getTaskName() + ": error in genome analysis, task failed");
+					fmt.format(new Date()) + "\t" + diaTask.getTaskName() + ": error in genome analysis, task failed");
 
 			return false;
 		}
@@ -1722,9 +1671,9 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 			genomeTaxaMap = searcher.matchGenome(genomes);
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
-			logger.error(getTaskName() + ": Error in searching the genome2taxa database", e);
+			diaTask.getExportLogger().error(diaTask.getTaskName() + ": Error in searching the genome2taxa database", e);
 			System.err.println(
-					format.format(new Date()) + "\t" + getTaskName() + ": error in searching the genome2taxa database");
+					fmt.format(new Date()) + "\t" + diaTask.getTaskName() + ": error in searching the genome2taxa database");
 			return false;
 		}
 
@@ -1735,40 +1684,40 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 			htmlWriter.close();
 
 			// Copy the generated Genome.html to the reports directory
-			File reportGenomeHtml = new File(metaPar.getReportDir(), "reports/Genome.html");
+			File reportGenomeHtml = new File(diaTask.getExportMetaPar().getReportDir(), "reports/Genome.html");
 			if (reportGenomeHtml.getParentFile() != null && !reportGenomeHtml.getParentFile().exists()) {
 				reportGenomeHtml.getParentFile().mkdirs();
 			}
 			Files.copy(genomeHtmlFile.toPath(), reportGenomeHtml.toPath(), StandardCopyOption.REPLACE_EXISTING);
-			logger.info("Copied Genome.html to reports directory: " + reportGenomeHtml.getAbsolutePath());
+			diaTask.getExportLogger().info("Copied Genome.html to reports directory: " + reportGenomeHtml.getAbsolutePath());
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
-			logger.error("Error in writing genome information to " + genomeHtmlFile, e);
+			diaTask.getExportLogger().error("Error in writing genome information to " + genomeHtmlFile, e);
 			System.err.println(
-					format.format(new Date()) + "\t" + "Error in writing genome information to " + genomeHtmlFile);
+					fmt.format(new Date()) + "\t" + "Error in writing genome information to " + genomeHtmlFile);
 			return false;
 		}
 
 		// Copy Genome.html to report directory for navigation access
-		if (genomeHtmlFile.exists() && this.reportHtmlDir != null) {
-			File reportGenomeHtml = new File(this.reportHtmlDir, "Genome.html");
+		if (genomeHtmlFile.exists() && diaTask.getExportReportHtmlDir() != null) {
+			File reportGenomeHtml = new File(diaTask.getExportReportHtmlDir(), "Genome.html");
 			if (!reportGenomeHtml.exists()) {
 				try {
 					java.nio.file.Files.copy(genomeHtmlFile.toPath(), reportGenomeHtml.toPath(),
 							java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-					logger.info(getTaskName() + ": copied Genome.html to report directory");
-					System.out.println(format.format(new Date()) + "\t" + getTaskName()
+					diaTask.getExportLogger().info(diaTask.getTaskName() + ": copied Genome.html to report directory");
+					System.out.println(fmt.format(new Date()) + "\t" + diaTask.getTaskName()
 							+ ": copied Genome.html to report directory");
 				} catch (IOException e) {
-					logger.error(getTaskName() + ": error copying Genome.html to report directory", e);
-					System.err.println(format.format(new Date()) + "\t" + getTaskName()
+					diaTask.getExportLogger().error(diaTask.getTaskName() + ": error copying Genome.html to report directory", e);
+					System.err.println(fmt.format(new Date()) + "\t" + diaTask.getTaskName()
 							+ ": error copying Genome.html to report directory");
 				}
 			}
 		}
 
 		TaxonomyRanks[] mainRanks = TaxonomyRanks.getMainRanks();
-		double[] cellularIntensity = new double[quanExpNames.length];
+		double[] cellularIntensity = new double[diaTask.getExportQuanExpNames().length];
 		HashMap<String, String[]>[] taxRankMaps = new HashMap[mainRanks.length];
 		HashMap<String, double[]>[] taxIntensityMaps = new HashMap[mainRanks.length];
 		HashMap<String, Double>[] taxScoreMaps = new HashMap[mainRanks.length];
@@ -1784,8 +1733,9 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 			genomeWriter = new PrintWriter(genomeFile);
 			StringBuilder genomeTitlesb = new StringBuilder();
 			genomeTitlesb.append("Genome\t");
-			genomeTitlesb.append("p-value\t");
-			genomeTitlesb.append("Local FDR\t");
+			genomeTitlesb.append("S\t");
+			genomeTitlesb.append("p_emp\t");
+			genomeTitlesb.append("q_value\t");
 			genomeTitlesb.append("PSM count\t");
 			genomeTitlesb.append("Peptide count\t");
 			genomeTitlesb.append("Razor peptide count\t");
@@ -1803,7 +1753,7 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 				genomeTitlesb.append("\t").append("NCBI_").append(mainRanks[i].getName());
 			}
 
-			for (String exp : expNames) {
+			for (String exp : diaTask.getExportExpNames()) {
 				if (exp.startsWith("Intensity ")) {
 					genomeTitlesb.append("\t").append(exp);
 				} else {
@@ -1813,7 +1763,7 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 
 			genomeWriter.println(genomeTitlesb);
 
-			updateProgress(94, 100);
+			diaTask.exportUpdateProgress(94, 100);
 
 			for (int i = 0; i < genomes.length; i++) {
 				String[] taxaContent = genomeTaxaMap.get(genomes[i]);
@@ -1826,8 +1776,10 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 					StringBuilder genomeTaxaSb = new StringBuilder();
 					genomeTaxaSb.append(genomes[i]).append("\t");
 
-					genomeTaxaSb.append(FormatTool.getDFE4().format(genomeScoreMap.get(genomes[i])[0])).append("\t");
-					genomeTaxaSb.append(FormatTool.getDF4().format(genomeScoreMap.get(genomes[i])[1])).append("\t");
+					double[] gScores = genomeScoreMap.get(genomes[i]);
+					genomeTaxaSb.append(FormatTool.getDFE4().format(gScores[IDX_S])).append("\t");
+					genomeTaxaSb.append(FormatTool.getDF4().format(gScores[IDX_P_EMP])).append("\t");
+					genomeTaxaSb.append(FormatTool.getDF4().format(gScores[IDX_Q_VALUE])).append("\t");
 
 					if (psmCountMap.containsKey(genomes[i])) {
 						genomeTaxaSb.append(psmCountMap.get(genomes[i])).append("\t");
@@ -1878,9 +1830,9 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 						taxIntensityMaps[j].put(taxon, taxIntensity);
 
 						if (taxScoreMaps[j].containsKey(taxon)) {
-							taxScoreMaps[j].put(taxon, taxScoreMaps[j].get(taxon) * genomeScoreMap.get(genomes[i])[0]);
+							taxScoreMaps[j].put(taxon, taxScoreMaps[j].get(taxon) * gScores[IDX_S]);
 						} else {
-							taxScoreMaps[j].put(taxon, genomeScoreMap.get(genomes[i])[0]);
+							taxScoreMaps[j].put(taxon, gScores[IDX_S]);
 						}
 					}
 				}
@@ -1889,9 +1841,9 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 
 		} catch (FileNotFoundException e) {
 			// TODO Auto-generated catch block
-			logger.error("Error in writing genome information to " + genomeFile, e);
+			diaTask.getExportLogger().error("Error in writing genome information to " + genomeFile, e);
 			System.err
-					.println(format.format(new Date()) + "\t" + "Error in writing genome information to " + genomeFile);
+					.println(fmt.format(new Date()) + "\t" + "Error in writing genome information to " + genomeFile);
 			return false;
 		}
 
@@ -1911,7 +1863,7 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 			for (int i = 0; i < mainRanks.length; i++) {
 				taxaTitlesb1.append("\t").append(mainRanks[i].getName());
 			}
-			for (String exp : expNames) {
+			for (String exp : diaTask.getExportExpNames()) {
 				if (exp.startsWith("Intensity ")) {
 					taxaTitlesb1.append("\t").append(exp);
 				} else {
@@ -1925,7 +1877,7 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 			for (int i = 0; i < mainRanks.length; i++) {
 				taxaTitlesb2.append("\t").append(mainRanks[i].getName());
 			}
-			for (String exp : expNames) {
+			for (String exp : diaTask.getExportExpNames()) {
 				if (exp.startsWith("Intensity ")) {
 					taxaTitlesb2.append("\t").append(exp);
 				} else {
@@ -1998,50 +1950,50 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 
 		} catch (FileNotFoundException e) {
 			// TODO Auto-generated catch block
-			logger.error("Error in writing taxa information to " + taxaFile, e);
-			System.err.println(format.format(new Date()) + "\t" + "Error in writing taxa information to " + taxaFile);
+			diaTask.getExportLogger().error("Error in writing taxa information to " + taxaFile, e);
+			System.err.println(fmt.format(new Date()) + "\t" + "Error in writing taxa information to " + taxaFile);
 		}
 
-		logger.info(getTaskName() + ": taxonomy analysis finished");
-		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": taxonomy analysis finished");
+		diaTask.getExportLogger().info(diaTask.getTaskName() + ": taxonomy analysis finished");
+		System.out.println(fmt.format(new Date()) + "\t" + diaTask.getTaskName() + ": taxonomy analysis finished");
 
-		updateProgress(95, 100);
+		diaTask.exportUpdateProgress(95, 100);
 
-		updateMessage(getTaskName() + ": exporting report");
+		diaTask.exportUpdateMessage(diaTask.getTaskName() + ": exporting report");
 
-		logger.info(getTaskName() + ": exporting report started");
-		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": exporting report started");
+		diaTask.getExportLogger().info(diaTask.getTaskName() + ": exporting report started");
+		System.out.println(fmt.format(new Date()) + "\t" + diaTask.getTaskName() + ": exporting report started");
 
-		File reportDir = new File(resultFolderFile, "report");
+		File reportDir = new File(diaTask.getExportResultFolderFile(), "report");
 		if (!reportDir.exists()) {
 			reportDir.mkdirs();
 		}
 
 		// Copy report templates using MetaPythonReportCopyTask (same as DDA workflow)
-		MetaPythonReportCopyTask reportCopyTask = new MetaPythonReportCopyTask(resultFolderFile, logger);
+		MetaPythonReportCopyTask reportCopyTask = new MetaPythonReportCopyTask(diaTask.getExportResultFolderFile(), diaTask.getExportLogger());
 		Thread copyThread = new Thread(reportCopyTask);
 		copyThread.start();
 		try {
 			copyThread.join();
 			if (!reportCopyTask.get()) {
-				logger.error(getTaskName() + ": error in copying report template");
+				diaTask.getExportLogger().error(diaTask.getTaskName() + ": error in copying report template");
 				System.err.println(
-						format.format(new Date()) + "\t" + getTaskName() + ": error in copying report template");
+						fmt.format(new Date()) + "\t" + diaTask.getTaskName() + ": error in copying report template");
 				return false;
 			}
 		} catch (Exception e) {
-			logger.error(getTaskName() + ": error in copying report template", e);
-			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in copying report template: "
+			diaTask.getExportLogger().error(diaTask.getTaskName() + ": error in copying report template", e);
+			System.err.println(fmt.format(new Date()) + "\t" + diaTask.getTaskName() + ": error in copying report template: "
 					+ e.getMessage());
 			return false;
 		}
 
-		metaPar.setReportDir(reportDir);
+		diaTask.getExportMetaPar().setReportDir(reportDir);
 
-		this.reportHtmlDir = new File(reportDir + "\\reports");
+		diaTask.setExportReportHtmlDir(new File(reportDir + "\\reports"));
 
-		if (!reportHtmlDir.exists()) {
-			reportHtmlDir.mkdirs();
+		if (!diaTask.getExportReportHtmlDir().exists()) {
+			diaTask.getExportReportHtmlDir().mkdirs();
 		}
 		/*
 		 * File jsOutput = new File(metaPar.getReportDir() + "\\reports\\tree.js"); if
@@ -2057,51 +2009,51 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 		 * bubbleChartOutput.length() == 0) { try { generateBubbleChartReport(jsOutput,
 		 * bubbleChartOutput); } catch (Exception e) { logger.warn(getTaskName() +
 		 * ": Bubble chart generation failed, continuing with other reports: " +
-		 * e.getMessage()); System.out.println(format.format(new Date()) + "\t" +
+		 * e.getMessage()); System.out.println(fmt.format(new Date()) + "\t" +
 		 * getTaskName() +
 		 * ": Bubble chart generation failed, continuing with other reports"); } }
 		 */
-		MetaPythonReportTask task = new MetaPythonReportTask(metaPar.getThreadCount(), mrp, logger);
-		task.setWorkflowType("DIA");
-		task.initializeManifestGenerator(new File(metaPar.getReportDir(), "reports"));
+		MetaPythonReportTask pyTask = new MetaPythonReportTask(diaTask.getExportMetaPar().getThreadCount(), diaTask.getExportMrp(), diaTask.getExportLogger());
+		pyTask.setWorkflowType("DIA");
+		pyTask.initializeManifestGenerator(new File(diaTask.getExportMetaPar().getReportDir(), "reports"));
 
 		// Create initial manifest file to ensure index page can load
-		ReportManifestGenerator manifestGen = new ReportManifestGenerator(new File(metaPar.getReportDir(), "reports"));
+		ReportManifestGenerator manifestGen = new ReportManifestGenerator(new File(diaTask.getExportMetaPar().getReportDir(), "reports"));
 		manifestGen.createInitialManifest();
 
-		this.summaryMetaFile = new File(this.resultFolderFile, "metainfo.tsv");
+		diaTask.setExportSummaryMetaFile(new File(diaTask.getExportResultFolderFile(), "metainfo.tsv"));
 		try {
-			metadata.exportMetadata(summaryMetaFile);
+			diaTask.getExportMetadata().exportMetadata(diaTask.getExportSummaryMetaFile());
 		} catch (FileNotFoundException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 
-		this.exportSummary(task);
+		diaTask.exportSummary(pyTask);
 
-		if (!final_pep_txt.exists() || final_pep_txt.length() == 0) {
+		if (!diaTask.getExportFinalPepTxt().exists() || diaTask.getExportFinalPepTxt().length() == 0) {
 			return false;
 		} else {
-			File report_peptides_summary = new File(reportHtmlDir, "report_peptides_summary.html");
+			File report_peptides_summary = new File(diaTask.getExportReportHtmlDir(), "report_peptides_summary.html");
 			if (!report_peptides_summary.exists() || report_peptides_summary.length() == 0) {
-				if (summaryMetaFile.exists()) {
-					task.addTask(MetaPythonReportTask.PEPTIDE, final_pep_txt, report_peptides_summary, summaryMetaFile);
+				if (diaTask.getExportSummaryMetaFile().exists()) {
+					pyTask.addTask(MetaPythonReportTask.PEPTIDE, diaTask.getExportFinalPepTxt(), report_peptides_summary, diaTask.getExportSummaryMetaFile());
 				} else {
-					task.addTask(MetaPythonReportTask.PEPTIDE, final_pep_txt, report_peptides_summary);
+					pyTask.addTask(MetaPythonReportTask.PEPTIDE, diaTask.getExportFinalPepTxt(), report_peptides_summary);
 				}
 			}
 		}
 
-		if (!final_pro_txt.exists() || final_pro_txt.length() == 0) {
+		if (!diaTask.getExportFinalProTxt().exists() || diaTask.getExportFinalProTxt().length() == 0) {
 			return false;
 		} else {
-			File report_proteinGroups_summary = new File(reportHtmlDir, "report_proteinGroups_summary.html");
+			File report_proteinGroups_summary = new File(diaTask.getExportReportHtmlDir(), "report_proteinGroups_summary.html");
 			if (!report_proteinGroups_summary.exists() || report_proteinGroups_summary.length() == 0) {
-				if (summaryMetaFile.exists()) {
-					task.addTask(MetaPythonReportTask.PROTEIN, final_pro_txt, report_proteinGroups_summary,
-							summaryMetaFile);
+				if (diaTask.getExportSummaryMetaFile().exists()) {
+					pyTask.addTask(MetaPythonReportTask.PROTEIN, diaTask.getExportFinalProTxt(), report_proteinGroups_summary,
+							diaTask.getExportSummaryMetaFile());
 				} else {
-					task.addTask(MetaPythonReportTask.PROTEIN, final_pro_txt, report_proteinGroups_summary);
+					pyTask.addTask(MetaPythonReportTask.PROTEIN, diaTask.getExportFinalProTxt(), report_proteinGroups_summary);
 				}
 			}
 		}
@@ -2109,14 +2061,14 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 		if (!taxaReportFile.exists() || taxaReportFile.length() == 0) {
 			return false;
 		} else {
-			File report_taxonomy_summary = new File(this.reportHtmlDir, "report_taxonomy_summary.html");
+			File report_taxonomy_summary = new File(diaTask.getExportReportHtmlDir(), "report_taxonomy_summary.html");
 			if (!report_taxonomy_summary.exists() || report_taxonomy_summary.length() == 0) {
 
-				if (summaryMetaFile != null && summaryMetaFile.exists()) {
-					task.addTask(MetaPythonReportTask.TAXONOMY, taxaReportFile, report_taxonomy_summary,
-							summaryMetaFile);
+				if (diaTask.getExportSummaryMetaFile() != null && diaTask.getExportSummaryMetaFile().exists()) {
+					pyTask.addTask(MetaPythonReportTask.TAXONOMY, taxaReportFile, report_taxonomy_summary,
+							diaTask.getExportSummaryMetaFile());
 				} else {
-					task.addTask(MetaPythonReportTask.TAXONOMY, taxaReportFile, report_taxonomy_summary);
+					pyTask.addTask(MetaPythonReportTask.TAXONOMY, taxaReportFile, report_taxonomy_summary);
 				}
 			}
 		}
@@ -2124,37 +2076,42 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 		if (!funcFile.exists() || funcFile.listFiles().length == 0) {
 			return false;
 		} else {
-			File report_function_summary = new File(this.reportHtmlDir, "report_function_summary.html");
+			File report_function_summary = new File(diaTask.getExportReportHtmlDir(), "report_function_summary.html");
 			if (!report_function_summary.exists() || report_function_summary.length() == 0) {
 
-				if (summaryMetaFile != null && summaryMetaFile.exists()) {
-					task.addTask(MetaPythonReportTask.FUNCTION, funcFile, report_function_summary, summaryMetaFile);
+				if (diaTask.getExportSummaryMetaFile() != null && diaTask.getExportSummaryMetaFile().exists()) {
+					pyTask.addTask(MetaPythonReportTask.FUNCTION, funcFile, report_function_summary, diaTask.getExportSummaryMetaFile());
 				} else {
-					task.addTask(MetaPythonReportTask.FUNCTION, funcFile, report_function_summary);
+					pyTask.addTask(MetaPythonReportTask.FUNCTION, funcFile, report_function_summary);
 				}
 			}
 		}
 
-		task.run();
+		pyTask.run();
 
 		try {
-			boolean finish = task.get();
+			boolean finish = pyTask.get();
 			if (finish) {
 
-				logger.info(getTaskName() + ": report generation successes");
-				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": report generation successes");
+				diaTask.getExportLogger().info(diaTask.getTaskName() + ": report generation successes");
+				System.out.println(fmt.format(new Date()) + "\t" + diaTask.getTaskName() + ": report generation successes");
 
-				updateProgress(100, 100);
+				diaTask.exportUpdateProgress(100, 100);
 				return true;
 			}
 
 		} catch (InterruptedException | ExecutionException e) {
 			// TODO Auto-generated catch block
-			logger.error(getTaskName() + ": error in the report generation", e);
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": error in the report generation");
+			diaTask.getExportLogger().error(diaTask.getTaskName() + ": error in the report generation", e);
+			System.out.println(fmt.format(new Date()) + "\t" + diaTask.getTaskName() + ": error in the report generation");
 		}
 
 		return true;
+	}
+
+	@Override
+	protected boolean exportReportDownstreamFromNewScoring(java.util.HashMap<String, double[]> genomeScoreMap, java.util.HashMap<String, double[]> proteinScoreMap) {
+		return runFullDownstreamFromNewScoring(this, genomeScoreMap, proteinScoreMap);
 	}
 
 	/**
@@ -2830,28 +2787,6 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 		return q;
 	}
 
-	private static class PeptideEvidence {
-		String seq; // Patch 4: avoid key.split for seq
-		double bestCScore = 0;   // max(CScore) across PSMs (higher = better), 0 if parquet has no CScore
-		double bestPEP = 1.0;    // min(PEP) across PSMs (lower = better); used when CScore absent
-		double bestPreQuan = 0;  // max(Precursor.Quantity) across PSMs
-		double bestMs1Area = 0;  // max(Ms1.Area) across PSMs
-		boolean isDecoy;
-		HashSet<String> proteins = new HashSet<>();
-	}
-
-	private static class WeightedPeptideScore {
-		String seq;
-		double e;
-		double w;
-		double we;
-		double intensityFactor = 1.0;
-	}
-
-	private static class GenomePeptideEntry {
-		ArrayList<WeightedPeptideScore> weightedScores = new ArrayList<>();
-	}
-	
 	public static void main(String[] args) {
 		testReadPrecursorsFromParquet(new File("Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\12mix\\MetaPilot\\focus\\combined"
 				+ "\\combined.parquet"), false);

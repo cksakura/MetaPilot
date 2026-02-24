@@ -108,7 +108,9 @@ public class DDAMagPfindParameterIO extends BaseParameterIO {
 			JSONObject additionalParams = new JSONObject();
 			additionalParams.put("threads", params.getThreadCount());
 			additionalParams.put("ms2_scan_mode", params.getMs2ScanMode());
+			additionalParams.put("open_search", params.getOsp() != null && params.getOsp().isOpenSearch());
 			additionalParams.put("genome_selector_mode", params.getGenomeSelectorMode());
+			additionalParams.put("genome_selection_strategy", params.getGenomeSelectionStrategy());
 			additionalParams.put("generate_sample_specific_db", params.isReduceDb());
 			additionalParams.put("spectra_clustering", params.isSpectraCluster());
 			json.put("additional_parameters", additionalParams);
@@ -231,7 +233,7 @@ public class DDAMagPfindParameterIO extends BaseParameterIO {
 				JSONObject enzymeSettings = json.getJSONObject("enzyme_settings");
 				params.setEnzyme(enzymeSettings.optString("enzyme", "Trypsin"));
 				params.setMissCleavages(enzymeSettings.optInt("missed_cleavages", 2));
-				params.setDigestMode(enzymeSettings.optString("digestion_mode", "Specific"));
+				params.setDigestMode(enzymeSettings.optString("digestion_mode", "Fully-Specific"));
 			}
 
 			// Load additional parameters
@@ -239,7 +241,11 @@ public class DDAMagPfindParameterIO extends BaseParameterIO {
 				JSONObject additionalParams = json.getJSONObject("additional_parameters");
 				params.setThreadCount(additionalParams.optInt("threads", Runtime.getRuntime().availableProcessors()));
 				params.setMs2ScanMode(additionalParams.optString("ms2_scan_mode", "FTMS"));
+				if (params.getOsp() != null) {
+					params.getOsp().setOpenSearch(additionalParams.optBoolean("open_search", false));
+				}
 				params.setGenomeSelectorMode(additionalParams.optString("genome_selector_mode", MagDbItem.MARKER2));
+				params.setGenomeSelectionStrategy(additionalParams.optString("genome_selection_strategy", "Focus"));
 				params.setReduceDb(additionalParams.optBoolean("generate_sample_specific_db", true));
 				params.setSpectraCluster(additionalParams.optBoolean("spectra_clustering", true));
 			}
