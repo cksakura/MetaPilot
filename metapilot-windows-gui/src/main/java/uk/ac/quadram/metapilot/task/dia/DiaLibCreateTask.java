@@ -51,6 +51,8 @@ public class DiaLibCreateTask extends MetaAbstractTask {
 	public static final int fromProtein = 1;
 	public static final int fromPeptide = 2;
 
+	private boolean matchToMag = true;
+
 	public DiaLibCreateTask(MetaParameterDia metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
 			String filePath, ArrayList<String> pathList, int buildType, Logger logger) {
 		super(metaPar, mrp, progressBar, logger);
@@ -59,6 +61,9 @@ public class DiaLibCreateTask extends MetaAbstractTask {
 		this.enzyme = pathList.get(0);
 		this.libName = pathList.get(1);
 		this.miss = Integer.parseInt(pathList.get(2));
+		if (pathList.size() > 3) {
+			this.matchToMag = Boolean.parseBoolean(pathList.get(3));
+		}
 
 		if (filePath.endsWith(".speclib")) {
 			this.taskType = fromLibrary;
@@ -87,6 +92,15 @@ public class DiaLibCreateTask extends MetaAbstractTask {
 		diannPar.setThreads(metaPar.getThreadCount());
 		diannPar.setEnzyme(enzyme);
 		diannPar.setMissed_cleavages(miss);
+		if (metaPar instanceof MetaParameterDia) {
+			MetaParameterDia diaPar = (MetaParameterDia) metaPar;
+			diannPar.setM_excision(diaPar.isMExcision());
+			diannPar.setCarbami_C(diaPar.isCarbamiC());
+			diannPar.setOxidation_M(diaPar.isOxidationM());
+			diannPar.setAcety_proN(diaPar.isAcetyProN());
+			diannPar.setPhospho_STY(diaPar.isPhosphoSTY());
+			diannPar.setK_GG(diaPar.isKGG());
+		}
 
 		File destLibFile = new File(libFile, libName + ".speclib");
 		File parquetFile = new File(libFile, libName + ".parquet");
@@ -308,6 +322,7 @@ public class DiaLibCreateTask extends MetaAbstractTask {
 			writer.println("Data set size:\t" + pepSet.size());
 			writer.println("Enzyme:\t" + enzyme);
 			writer.println("Miss cleavages:\t" + miss);
+			writer.println("MatchToMag:\t" + matchToMag);
 			writer.close();
 		} catch (Exception e) {
 			// TODO Auto-generated catch block
@@ -316,7 +331,7 @@ public class DiaLibCreateTask extends MetaAbstractTask {
 					format.format(new Date()) + "\t" + taskName + ": error in writing the information to " + infoFile);
 		}
 
-		magDbItem.addPepLib(libName, pepSet.size(), enzyme, miss);
+		magDbItem.addPepLib(libName, pepSet.size(), enzyme, miss, matchToMag);
 		return true;
 	}
 

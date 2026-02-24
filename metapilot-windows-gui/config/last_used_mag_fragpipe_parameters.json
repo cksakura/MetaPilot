@@ -2,7 +2,7 @@
   "workflow": "DDA_MAG_FRAGPIPE",
   "input_output": {
     "host_database": "",
-    "mag_database": "human-gut",
+    "mag_database": "honeybee-gut",
     "output_directory": "Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\12mix\\DDA\\MetaPilot",
     "append_host_db": false,
     "experiments": [
@@ -25,7 +25,7 @@
     "missed_cleavages": 2,
     "digestion_mode": "Specific"
   },
-  "generated_at": "2025-12-10 15:33:50",
+  "generated_at": "2026-02-01 12:14:21",
   "fragpipe_workflow_configured": true,
   "additional_parameters": {
     "generate_sample_specific_db": true,

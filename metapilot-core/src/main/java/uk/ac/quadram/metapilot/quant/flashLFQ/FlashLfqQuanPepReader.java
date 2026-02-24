@@ -40,8 +40,8 @@ public class FlashLfqQuanPepReader extends AbstractMetaPeptideReader {
 		try {
 			this.reader = new BufferedReader(new FileReader(quanPep));
 		} catch (FileNotFoundException e) {
-			// TODO Auto-generated catch block
 			LOGGER.error("Error in reading FlashLFQ search result file " + quanPep, e);
+			throw new RuntimeException("Cannot open peptide matrix file: " + (quanPep != null ? quanPep.getAbsolutePath() : "null"), e);
 		}
 		this.parseTitle();
 	}

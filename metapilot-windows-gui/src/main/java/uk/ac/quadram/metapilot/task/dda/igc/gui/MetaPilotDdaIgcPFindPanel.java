@@ -323,12 +323,13 @@ public class MetaPilotDdaIgcPFindPanel extends AbstractWorkflowPanel<DDAIgcPFind
         Label digestionLabel = new Label("Digestion Mode:");
         digestionLabel.setStyle("-fx-font-weight: bold;");
         digestionModeBox.getChildren().add(digestionLabel);
+        // pFind has only 3 digest modes: 0=Non-Specific, 1=Semi-Specific, 3=Fully-Specific
         digestionModeComboBox = new ComboBox<>(FXCollections.observableArrayList(
-            "Specific", "Semi free N-term", "Semi free C-term", "Semi specific", "Unspecific", "None"));
+            "Fully-Specific", "Semi-Specific", "Non-Specific"));
         digestionModeComboBox.setMinWidth(140);
         digestionModeComboBox.setPrefWidth(160);
         digestionModeComboBox.setMaxWidth(Double.MAX_VALUE);
-        digestionModeComboBox.setValue("Specific");
+        digestionModeComboBox.setValue("Fully-Specific");
         digestionModeComboBox.setOnAction(e -> updateParameterView());
         digestionModeBox.getChildren().add(digestionModeComboBox);
         enzymeParamsBox.getChildren().addAll(enzymeBox, missedCleavagesBox, digestionModeBox);

@@ -22,6 +22,7 @@ public class DiaNNPrecursor {
 	private double percolatorFdr;
 	private boolean isDecoy;
 	private double ms1Normal;
+	private double ms1Area; // MS1 peak area (raw), from parquet Ms1.Area if available
 	private String razorProtein;
 
 	public DiaNNPrecursor(String runString, String[] proGroups, String modSeqString, String seqString, int charge,
@@ -88,6 +89,15 @@ public class DiaNNPrecursor {
 		return ms1Normal;
 	}
 
+	/** MS1 peak area (raw). Available when parquet has Ms1.Area column. */
+	public double getMs1Area() {
+		return ms1Area;
+	}
+
+	public void setMs1Area(double ms1Area) {
+		this.ms1Area = ms1Area;
+	}
+
 	public boolean getIsDecoy() {
 		return isDecoy;
 	}
@@ -138,6 +148,10 @@ public class DiaNNPrecursor {
 
 	public double getCscore() {
 		return cscore;
+	}
+
+	public void setCscore(double cscore) {
+		this.cscore = cscore;
 	}
 
 	public int getMissCleavage() {

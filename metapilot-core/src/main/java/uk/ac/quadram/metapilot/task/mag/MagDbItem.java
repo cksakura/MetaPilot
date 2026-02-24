@@ -79,7 +79,11 @@ public class MagDbItem {
 	}
 
 	public void addPepLib(String pepLibName, int pepCount, String protease, int miss) {
-		this.magPepLibMap.put(pepLibName, new MagPepLib(pepLibName, pepCount, protease, miss));
+		this.magPepLibMap.put(pepLibName, new MagPepLib(pepLibName, pepCount, protease, miss, true));
+	}
+
+	public void addPepLib(String pepLibName, int pepCount, String protease, int miss, boolean matchToMag) {
+		this.magPepLibMap.put(pepLibName, new MagPepLib(pepLibName, pepCount, protease, miss, matchToMag));
 	}
 	
 	public boolean removeModel(MagModel magModel) {
@@ -137,22 +141,21 @@ public class MagDbItem {
 		File infoFile = new File(file, pepLibName + "_info.txt");
 		if (infoFile.exists()) {
 			try (BufferedReader reader = new BufferedReader(new FileReader(infoFile))) {
-
-				String line = reader.readLine();
-				String[] cs = line.split("\t");
-				int pepCount = Integer.parseInt(cs[1]);
-
-				line = reader.readLine();
-				cs = line.split("\t");
-				String enzyme = cs[1];
-
-				line = reader.readLine();
-				cs = line.split("\t");
-				int miss = Integer.parseInt(cs[1]);
-				
-				addPepLib(pepLibName, pepCount, enzyme, miss);
-				
-				reader.close();
+				String line;
+				int pepCount = 0;
+				String enzyme = "Trypsin/P";
+				int miss = 1;
+				boolean matchToMag = true;
+				while ((line = reader.readLine()) != null) {
+					String[] cs = line.split("\t");
+					if (cs.length < 2) continue;
+					String key = cs[0].trim().replaceAll(":$", "");
+					if (key.equalsIgnoreCase("Data set size")) pepCount = Integer.parseInt(cs[1].trim());
+					else if (key.equalsIgnoreCase("Enzyme")) enzyme = cs[1].trim();
+					else if (key.equalsIgnoreCase("Miss cleavages")) miss = Integer.parseInt(cs[1].trim());
+					else if (key.equalsIgnoreCase("MatchToMag")) matchToMag = Boolean.parseBoolean(cs[1].trim());
+				}
+				addPepLib(pepLibName, pepCount, enzyme, miss, matchToMag);
 			} catch (Exception e) {
 				System.err.println(e);
 			}
@@ -346,6 +349,21 @@ public class MagDbItem {
 		return new File(currentFile, "Marker4_highpep.fasta");
 	}
 
+	public File getHapLibFile(String selectorMode) {
+		return getMarkerHighPepLibFile();
+	}
+	
+	public File getMarkerHighPepLibFile() {
+		if (repositoryFile == null || !repositoryFile.exists()) {
+			return null;
+		}
+		if (currentFile == null || !currentFile.exists()) {
+			return null;
+		}
+
+		return new File(currentFile, "Marker4_highpep.predicted.speclib");
+	}
+
 	public File getHapFastaFile(String selectorMode) {
 		if (MARKER4.equalsIgnoreCase(selectorMode)) {
 			return getMarkerHighPepFastaFile();
@@ -414,12 +432,19 @@ public class MagDbItem {
 		private int pepCount;
 		private String protease;
 		private int miss;
+		/** True = microbiome (match peptides to MAG for protein/genome info); false = standalone (host/annotated, no MAG matching). */
+		private boolean matchToMag;
 
 		public MagPepLib(String libName, int pepCount, String protease, int miss) {
+			this(libName, pepCount, protease, miss, true);
+		}
+
+		public MagPepLib(String libName, int pepCount, String protease, int miss, boolean matchToMag) {
 			this.libName = libName;
 			this.pepCount = pepCount;
 			this.protease = protease;
 			this.miss = miss;
+			this.matchToMag = matchToMag;
 		}
 
 		public String getLibName() {
@@ -436,6 +461,14 @@ public class MagDbItem {
 
 		public int getMiss() {
 			return miss;
+		}
+
+		public boolean isMatchToMag() {
+			return matchToMag;
+		}
+
+		public void setMatchToMag(boolean matchToMag) {
+			this.matchToMag = matchToMag;
 		}
 
 		public void delete() {

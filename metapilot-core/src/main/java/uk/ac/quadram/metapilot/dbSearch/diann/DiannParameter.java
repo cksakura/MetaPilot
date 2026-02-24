@@ -143,6 +143,57 @@ public class DiannParameter {
 		return sb.toString();
 	}
 
+	/**
+	 * Generate command to convert a .speclib library to .parquet library.
+	 * Uses report.parquet in the same directory as outLibParquetPath for --out when reanalyse is true.
+	 *
+	 * @param speclibPath    input .speclib file path
+	 * @param outLibParquetPath output .parquet library path
+	 * @return command string for diann.exe
+	 */
+	public String generateSpeclib2Parquet(String speclibPath, String outLibParquetPath) {
+		String reportOut = null;
+		if (speclibPath != null && outLibParquetPath != null) {
+			int lastSep = Math.max(outLibParquetPath.lastIndexOf('/'), outLibParquetPath.lastIndexOf('\\'));
+			reportOut = (lastSep > 0) ? outLibParquetPath.substring(0, lastSep + 1) + "report.parquet" : "report.parquet";
+		}
+		return generateSpeclib2Parquet(speclibPath, outLibParquetPath, reportOut);
+	}
+
+	/**
+	 * Generate command to convert a .speclib library to .parquet library.
+	 * Matches usage: diann.exe --lib "input.speclib" --threads N --verbose N --out "report.parquet" --qvalue 0.01
+	 * --matrices --out-lib "lib.parquet" --gen-spec-lib --unimod4 --reanalyse --rt-profiling
+	 *
+	 * @param speclibPath       input .speclib file path
+	 * @param outLibParquetPath output .parquet library path
+	 * @param reportOutPath     path for --out (report.parquet); if null or empty, --out is omitted
+	 * @return command string for diann.exe
+	 */
+	public String generateSpeclib2Parquet(String speclibPath, String outLibParquetPath, String reportOutPath) {
+		StringBuilder sb = new StringBuilder();
+		sb.append("--threads ").append(threads).append(" ");
+		sb.append("--verbose ").append(verbose).append(" ");
+		sb.append("--lib ").append("\"").append(speclibPath).append("\" ");
+		if (reportOutPath != null && !reportOutPath.trim().isEmpty()) {
+			sb.append("--out ").append("\"").append(reportOutPath.trim()).append("\" ");
+		}
+		sb.append("--qvalue ").append(qvalue).append(" ");
+		if (matrices) {
+			sb.append("--matrices ");
+		}
+		sb.append("--out-lib ").append("\"").append(outLibParquetPath).append("\" ");
+		sb.append("--gen-spec-lib ");
+		if (carbami_C) {
+			sb.append("--unimod4 ");
+		}
+		if (reanalyse) {
+			sb.append("--reanalyse ");
+		}
+		sb.append("--rt-profiling ");
+		return sb.toString();
+	}
+
 	public String generateLibSearch(DiaLibSearchPar libSearchPar, String output, String... libs) {
 		StringBuilder sb = new StringBuilder();
 		sb.append("--threads ").append(libSearchPar.getThreadCount()).append(" ");
@@ -229,7 +280,8 @@ public class DiannParameter {
 		}
 
 		if (genLib) {
-			sb.append("--out-lib ").append("\"").append(output + ".lib").append("\" ");
+			sb.append("--out-lib ").append("\"")
+					.append(output.substring(0, output.length() - "parquet".length()) + "lib.parquet").append("\" ");
 			sb.append("--gen-spec-lib ");
 		}
 

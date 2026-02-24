@@ -49,6 +49,8 @@ public class DDAMagSageParameters extends MetaBaseParameter {
 	private String magDbCatalogueId = "";
 	private String magDbVersion = "";
 	private String representativeLevel = "GENUS";
+	private String genomeSelectionStrategy = "Focus";
+	private String genomeSelectorMode = MagDbItem.MARKER2;
 
 	// Isotopic labeling
 	private List<String> lightLabels = new ArrayList<>();
@@ -206,6 +208,30 @@ public class DDAMagSageParameters extends MetaBaseParameter {
 			this.representativeLevel = "GENUS";
 		} else {
 			this.representativeLevel = representativeLevel.trim().toUpperCase();
+		}
+	}
+
+	public String getGenomeSelectorMode() {
+		return genomeSelectorMode;
+	}
+
+	public void setGenomeSelectorMode(String genomeSelectorMode) {
+		if (genomeSelectorMode == null || genomeSelectorMode.trim().isEmpty()) {
+			this.genomeSelectorMode = MagDbItem.MARKER2;
+		} else {
+			this.genomeSelectorMode = genomeSelectorMode.trim();
+		}
+	}
+
+	public String getGenomeSelectionStrategy() {
+		return genomeSelectionStrategy;
+	}
+
+	public void setGenomeSelectionStrategy(String genomeSelectionStrategy) {
+		if (genomeSelectionStrategy == null || genomeSelectionStrategy.trim().isEmpty()) {
+			this.genomeSelectionStrategy = "Focus";
+		} else {
+			this.genomeSelectionStrategy = genomeSelectionStrategy.trim();
 		}
 	}
 

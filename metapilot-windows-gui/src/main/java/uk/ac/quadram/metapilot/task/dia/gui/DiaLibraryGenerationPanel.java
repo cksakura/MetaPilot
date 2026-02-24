@@ -43,7 +43,6 @@ public class DiaLibraryGenerationPanel extends VBox {
 	private TextField inputFileField;
 	private ComboBox<String> enzymeComboBox;
 	private ComboBox<Integer> missCleavageComboBox;
-	private CheckBox keepProteinNamesCheckBox;
 	private TextField libraryNameField;
 	private VBox enzymeBox;
 
@@ -210,7 +209,6 @@ public class DiaLibraryGenerationPanel extends VBox {
 			boolean enableEnzyme = newToggle == proteinDbRadio;
 			enzymeComboBox.setDisable(!enableEnzyme);
 			missCleavageComboBox.setDisable(!enableEnzyme);
-			keepProteinNamesCheckBox.setDisable(!enableEnzyme);
 		});
 
 		inputTypeBox.getChildren().addAll(inputLabel, libraryRadio, peptideListRadio, proteinDbRadio);
@@ -261,25 +259,15 @@ public class DiaLibraryGenerationPanel extends VBox {
 		enzymeGrid.add(missCleavageLabel, 0, 1);
 		enzymeGrid.add(missCleavageComboBox, 1, 1);
 
-		// Keep protein names option
-		keepProteinNamesCheckBox = new CheckBox("Keep protein names in library");
-		keepProteinNamesCheckBox.setSelected(true);
-		Label keepNamesHint = new Label(
-				"Uncheck if proteins are from DNA sequencing without annotation (will match to MAG database)");
-		keepNamesHint.setStyle("-fx-font-size: 10px; -fx-text-fill: #666666;");
-		keepNamesHint.setWrapText(true);
-
-		enzymeBox.getChildren().addAll(enzymeTitle, enzymeGrid, keepProteinNamesCheckBox, keepNamesHint);
+		enzymeBox.getChildren().addAll(enzymeTitle, enzymeGrid);
 
 		// Enzyme parameters are always visible but initially disabled
 		enzymeBox.setVisible(true);
 		enzymeBox.setManaged(true);
 
-		// Initially disable enzyme parameters since "Existing Library File" is selected
-		// by default
+		// Initially disable enzyme parameters since "Existing Library File" is selected by default
 		enzymeComboBox.setDisable(true);
 		missCleavageComboBox.setDisable(true);
-		keepProteinNamesCheckBox.setDisable(true);
 
 		return enzymeBox;
 	}
@@ -388,8 +376,39 @@ public class DiaLibraryGenerationPanel extends VBox {
 		missCol.setMinWidth(80);
 		missCol.setPrefWidth(100);
 
+		// Library type column (Microbiome vs Standalone)
+		TableColumn<LibraryRow, String> typeCol = new TableColumn<>("Type");
+		typeCol.setCellValueFactory(new PropertyValueFactory<>("libType"));
+		typeCol.setMinWidth(100);
+		typeCol.setPrefWidth(140);
+		typeCol.setCellFactory(column -> {
+			return new TableCell<LibraryRow, String>() {
+				private final ComboBox<String> combo = new ComboBox<>(
+						FXCollections.observableArrayList("Microbiome", "Standalone"));
+
+				@Override
+				protected void updateItem(String item, boolean empty) {
+					super.updateItem(item, empty);
+					if (empty || getTableRow() == null || getTableRow().getItem() == null) {
+						setGraphic(null);
+					} else {
+						LibraryRow row = getTableRow().getItem();
+						combo.setValue(row.getLibType());
+						combo.setOnAction(e -> {
+							row.setLibType(combo.getValue());
+							if (row.getMagPepLib() != null) {
+								row.getMagPepLib().setMatchToMag("Microbiome".equals(combo.getValue()));
+							}
+							notifyParameterUpdate();
+						});
+						setGraphic(combo);
+					}
+				}
+			};
+		});
+
 		@SuppressWarnings("unchecked")
-		TableColumn<LibraryRow, ?>[] columns = new TableColumn[] { useCol, nameCol, pepCountCol, proteaseCol, missCol };
+		TableColumn<LibraryRow, ?>[] columns = new TableColumn[] { useCol, nameCol, pepCountCol, proteaseCol, missCol, typeCol };
 		libraryTable.getColumns().addAll(columns);
 
 		tableSection.getChildren().addAll(headerBox, libraryTable);
@@ -440,6 +459,7 @@ public class DiaLibraryGenerationPanel extends VBox {
 		private final SimpleStringProperty pepCount;
 		private final SimpleStringProperty protease;
 		private final SimpleStringProperty miss;
+		private final SimpleStringProperty libType;
 		private MagPepLib magPepLib; // Reference to original MagPepLib
 
 		public LibraryRow(boolean use, MagPepLib magPepLib) {
@@ -448,6 +468,7 @@ public class DiaLibraryGenerationPanel extends VBox {
 			this.pepCount = new SimpleStringProperty(String.valueOf(magPepLib.getPepCount()));
 			this.protease = new SimpleStringProperty(magPepLib.getProtease());
 			this.miss = new SimpleStringProperty(String.valueOf(magPepLib.getMiss()));
+			this.libType = new SimpleStringProperty(magPepLib.isMatchToMag() ? "Microbiome" : "Standalone");
 			this.magPepLib = magPepLib;
 		}
 
@@ -497,6 +518,18 @@ public class DiaLibraryGenerationPanel extends VBox {
 
 		public MagPepLib getMagPepLib() {
 			return magPepLib;
+		}
+
+		public String getLibType() {
+			return libType.get();
+		}
+
+		public void setLibType(String value) {
+			libType.set(value);
+		}
+
+		public StringProperty libTypeProperty() {
+			return libType;
 		}
 	}
 
@@ -585,20 +618,12 @@ public class DiaLibraryGenerationPanel extends VBox {
 			return;
 		}
 
-		// Prepare parameters for DiaLibCreateTask
+		// Prepare parameters for DiaLibCreateTask (type can be set per library in the table after creation)
 		ArrayList<String> pathList = new ArrayList<>();
-		if (buildType == DiaLibCreateTask.fromProtein) {
-			// For protein database, we need enzyme, library name, and miss cleavages
-			pathList.add(enzymeComboBox.getValue());
-			pathList.add(libraryName);
-			pathList.add(String.valueOf(missCleavageComboBox.getValue()));
-		} else {
-			// For library and peptide files, we still need enzyme parameters for
-			// consistency
-			pathList.add(enzymeComboBox.getValue());
-			pathList.add(libraryName);
-			pathList.add(String.valueOf(missCleavageComboBox.getValue()));
-		}
+		pathList.add(enzymeComboBox.getValue());
+		pathList.add(libraryName);
+		pathList.add(String.valueOf(missCleavageComboBox.getValue()));
+		pathList.add("true"); // default Microbiome; user can change in table
 
 		// Create and run the real DiaLibCreateTask
 		DiaLibCreateTask libCreateTask = new DiaLibCreateTask(metaParameter, resourceParameters, libraryProgressBar,

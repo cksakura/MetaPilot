@@ -11,6 +11,7 @@ import org.apache.logging.log4j.LogManager;
 
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.task.par.BaseParameterIO;
+import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 
 /**
  * Parameter I/O operations for DDA MAG Sage workflow
@@ -80,12 +81,16 @@ public class DDAMagSageParameterIO extends BaseParameterIO {
 			// Load Input/Output settings
 			String result = "";
 			String microDb = "";
+			String magDbCatalogueId = "";
+			String magDbVersion = "";
 			boolean appendHostDb = false;
 			String hostDB = "";
 			if (json.has("input_output")) {
 				JSONObject ioSettings = json.getJSONObject("input_output");
 				result = ioSettings.optString("output_directory", "");
-				microDb = ioSettings.optString("mag_database", "");
+				magDbCatalogueId = ioSettings.optString("mag_database", "");
+				magDbVersion = ioSettings.optString("mag_database_version", "");
+				microDb = magDbCatalogueId;
 				appendHostDb = ioSettings.optBoolean("append_host_db", false);
 				hostDB = ioSettings.optString("host_database", "");
 			}
@@ -108,6 +113,8 @@ public class DDAMagSageParameterIO extends BaseParameterIO {
 				"HCD-FTMS", // Default MS2 scan mode for Sage
 				threadCount
 			);
+			params.setMagDbCatalogueId(magDbCatalogueId);
+			params.setMagDbVersion(magDbVersion);
 
 			// Load enzyme settings
 			if (json.has("enzyme_settings")) {
@@ -122,7 +129,9 @@ public class DDAMagSageParameterIO extends BaseParameterIO {
 				JSONObject additionalParams = json.getJSONObject("additional_parameters");
 				params.setReduceDb(additionalParams.optBoolean("generate_sample_specific_db", true));
 				params.setSpectraCluster(additionalParams.optBoolean("spectra_clustering", false));
-			params.setRepresentativeLevel(additionalParams.optString("representative_level", "GENUS"));
+				params.setRepresentativeLevel(additionalParams.optString("representative_level", "GENUS"));
+				params.setGenomeSelectionStrategy(additionalParams.optString("genome_selection_strategy", "Focus"));
+				params.setGenomeSelectorMode(additionalParams.optString("genome_selector_mode", MagDbItem.MARKER2));
 			}
 
 			// Load Sage-specific important parameters
@@ -284,10 +293,11 @@ public class DDAMagSageParameterIO extends BaseParameterIO {
 			// Input/Output settings
 			JSONObject ioSettings = new JSONObject();
 			ioSettings.put("output_directory", params.getResult());
-			ioSettings.put("mag_database", params.getMicroDb());
+			ioSettings.put("mag_database", params.getMagDbCatalogueId());
+			ioSettings.put("mag_database_version", params.getMagDbVersion());
 			ioSettings.put("append_host_db", params.isAppendHostDb());
 			ioSettings.put("host_database", params.getHostDB());
-			LOGGER.info("Added I/O settings - output: {}, mag_db: {}", params.getResult(), params.getMicroDb());
+			LOGGER.info("Added I/O settings - output: {}, mag_db: {}", params.getResult(), params.getMagDbCatalogueId());
 
 			// Raw files and experiments
 			JSONArray experiments = new JSONArray();
@@ -321,7 +331,9 @@ public class DDAMagSageParameterIO extends BaseParameterIO {
 			additionalParams.put("threads", params.getThreadCount());
 			additionalParams.put("generate_sample_specific_db", params.isReduceDb());
 			additionalParams.put("spectra_clustering", params.isSpectraCluster());
-		additionalParams.put("representative_level", params.getRepresentativeLevel());
+			additionalParams.put("representative_level", params.getRepresentativeLevel());
+			additionalParams.put("genome_selection_strategy", params.getGenomeSelectionStrategy());
+			additionalParams.put("genome_selector_mode", params.getGenomeSelectorMode());
 			json.put("additional_parameters", additionalParams);
 			LOGGER.info("Added additional parameters - threads: {}", params.getThreadCount());
 

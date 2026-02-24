@@ -1,0 +1,86 @@
+{
+  "genomeSelectionStrategy": "Focus",
+  "models": [],
+  "useModel": false,
+  "workflow": "DIA_FOCUS",
+  "baseParameters": {
+    "result": "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851001\\MetaPilot",
+    "ms2ScanMode": "DIA",
+    "metadata": {
+      "rawFiles": [
+        "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851001\\YS-194-DIA-1.raw",
+        "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851001\\YS-194-DIA-1_20200620233957.raw",
+        "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851001\\YS-194-DIA-1_20200621022500.raw",
+        "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851001\\YS-194-DIA-2.raw",
+        "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851001\\YS-194-DIA-2_20200621094425.raw",
+        "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851001\\YS-194-DIA-2_20200621122928.raw",
+        "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851001\\YS-194-DIA-3.raw",
+        "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851001\\YS-194-DIA-3_20200621194833.raw",
+        "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851001\\YS-194-DIA-3_20200621223326.raw"
+      ],
+      "expNames": [
+        "YS-194-DIA-1",
+        "YS-194-DIA-1_20200620233957",
+        "YS-194-DIA-1_20200621022500",
+        "YS-194-DIA-2",
+        "YS-194-DIA-2_20200621094425",
+        "YS-194-DIA-2_20200621122928",
+        "YS-194-DIA-3",
+        "YS-194-DIA-3_20200621194833",
+        "YS-194-DIA-3_20200621223326"
+      ],
+      "fractions": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "replicates": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    "threadCount": 20,
+    "workflowType": "DIA_FOCUS",
+    "hostDB": "",
+    "coreCount": 1,
+    "microDb": "C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-gut\\v2.0.2",
+    "appendHostDb": false
+  },
+  "description": "Last used parameters",
+  "librarySearch": true,
+  "kGG": false,
+  "oxidationM": true,
+  "version": "1.0",
+  "magDatabase": {
+    "identifier": "MGYG",
+    "catalogueId": "human-gut",
+    "repositoryPath": "C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-gut",
+    "version": {
+      "localAvailable": true,
+      "catalogueVersion": "v2.0.2",
+      "speciesCount": 4744
+    }
+  },
+  "acetyProN": true,
+  "selfModelSearch": false,
+  "library": [],
+  "phosphoSTY": false,
+  "generated_at": "2026-02-17 11:51:13",
+  "mExcision": true,
+  "carbamiC": true,
+  "workflowType": "DIA_FOCUS",
+  "timestamp": 1771329073310
+}

@@ -1,11 +1,16 @@
 @echo off
 REM MetaPilot Build Script
-REM This script builds the MetaPilot project and generates the shaded JAR file
+REM Builds the MetaPilot Windows GUI module and generates the shaded JAR file.
+
+setlocal enabledelayedexpansion
 
 echo ========================================
 echo Building MetaPilot
 echo ========================================
 echo.
+
+REM Change to script directory (project root)
+cd /d "%~dp0"
 
 REM Check if Maven is available
 where mvn >nul 2>nul
@@ -19,8 +24,11 @@ if %ERRORLEVEL% NEQ 0 (
 echo Maven found. Starting build...
 echo.
 
-REM Clean and build the project with Maven
-mvn clean package
+REM Set Maven JVM memory
+set MAVEN_OPTS=-Xmx4g
+
+REM Clean and build metapilot-windows-gui (and dependencies), skip tests
+call mvn clean package -am -DskipTests -pl metapilot-windows-gui
 
 REM Check if the build was successful
 if %ERRORLEVEL% EQU 0 (
@@ -30,7 +38,9 @@ if %ERRORLEVEL% EQU 0 (
     echo ========================================
     echo.
     echo The shaded JAR file has been generated at:
-    echo target\metapilot-1.0-SNAPSHOT-shaded.jar
+    echo metapilot-windows-gui\target\metapilot-windows-gui-*-shaded.jar
+    echo.
+    echo To run: java -jar metapilot-windows-gui\target\metapilot-windows-gui-*-shaded.jar
     echo.
 ) else (
     echo.
@@ -42,4 +52,5 @@ if %ERRORLEVEL% EQU 0 (
 )
 
 pause
+endlocal
 

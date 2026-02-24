@@ -144,7 +144,8 @@ public class MagDbConfigIO {
 						int pepCount = objj.getInt("pepCount");
 						String protease = objj.getString("protease");
 						int miss = objj.getInt("miss");
-						magDbItem.addPepLib(pepLibName, pepCount, protease, miss);
+						boolean matchToMag = objj.has("matchToMag") ? objj.getBoolean("matchToMag") : true;
+						magDbItem.addPepLib(pepLibName, pepCount, protease, miss, matchToMag);
 					}
 				}
 
@@ -205,7 +206,8 @@ public class MagDbConfigIO {
 						int pepCount = objj.getInt("pepCount");
 						String protease = objj.getString("protease");
 						int miss = objj.getInt("miss");
-						magDbItem.addPepLib(pepLibName, pepCount, protease, miss);
+						boolean matchToMag = objj.has("matchToMag") ? objj.getBoolean("matchToMag") : true;
+						magDbItem.addPepLib(pepLibName, pepCount, protease, miss, matchToMag);
 					}
 				}
 
@@ -317,6 +319,7 @@ public class MagDbConfigIO {
 					jw.key("pepCount").value(magPepLib.getPepCount());
 					jw.key("protease").value(magPepLib.getProtease());
 					jw.key("miss").value(magPepLib.getMiss());
+					jw.key("matchToMag").value(magPepLib.isMatchToMag());
 					jw.endObject();
 				}
 				jw.endArray();
@@ -369,6 +372,7 @@ public class MagDbConfigIO {
 					jw.key("pepCount").value(magPepLib.getPepCount());
 					jw.key("protease").value(magPepLib.getProtease());
 					jw.key("miss").value(magPepLib.getMiss());
+					jw.key("matchToMag").value(magPepLib.isMatchToMag());
 					jw.endObject();
 				}
 				jw.endArray();

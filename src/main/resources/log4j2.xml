@@ -13,6 +13,9 @@
     </Appenders>
     
     <Loggers>
+        <!-- Silence verbose Parquet and Hadoop logging when reading parquet files -->
+        <Logger name="org.apache.parquet" level="WARN" additivity="false"/>
+        <Logger name="org.apache.hadoop" level="WARN" additivity="false"/>
         <Root level="info">
             <AppenderRef ref="ApplicationLogFile"/>
             <AppenderRef ref="Console"/>

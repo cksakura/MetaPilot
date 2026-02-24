@@ -51,6 +51,7 @@ public class DDAMagPfindParameters extends MetaBaseParameter {
 	private String magDbCatalogueId = "";
 	private String magDbVersion = "";
 	private String genomeSelectorMode = MagDbItem.MARKER2;
+	private String genomeSelectionStrategy = "Focus";
 
 	// Isotopic labeling
 	private List<String> lightLabels = new ArrayList<>();
@@ -68,9 +69,10 @@ public class DDAMagPfindParameters extends MetaBaseParameter {
 		setMs2ScanMode(MetaConstants.HCD_FTMS);
 		setThreadCount(Runtime.getRuntime().availableProcessors());
 		setQuantitativeMode(MetaConstants.labelFree);
-		// Initialize with default modifications for pFind
+		// Initialize with default modifications and digest mode for pFind
 		setFixMods(new String[] { "Carbamidomethyl[C] 0" });
 		setVariMods(new String[] { "Acetyl[ProteinN-term] 0", "Oxidation[M] 0" });
+		setDigestMode("Fully-Specific");
 	}
 
 	// Constructor for creating from GUI parameters
@@ -82,7 +84,7 @@ public class DDAMagPfindParameters extends MetaBaseParameter {
 		// Set pFind-specific defaults
 		setEnzyme("Trypsin_P");
 		setMissCleavages(2);
-		setDigestMode("Specific");
+		setDigestMode("Fully-Specific");
 		setQuantitativeMode(MetaConstants.labelFree);
 		setReduceDb(true);
 		setSpectraCluster(false);
@@ -202,6 +204,18 @@ public class DDAMagPfindParameters extends MetaBaseParameter {
 		this.genomeSelectorMode = genomeSelectorMode;
 	}
 
+	public String getGenomeSelectionStrategy() {
+		return genomeSelectionStrategy;
+	}
+
+	public void setGenomeSelectionStrategy(String genomeSelectionStrategy) {
+		if (genomeSelectionStrategy == null || genomeSelectionStrategy.trim().isEmpty()) {
+			this.genomeSelectionStrategy = "Focus";
+		} else {
+			this.genomeSelectionStrategy = genomeSelectionStrategy.trim();
+		}
+	}
+
 	// Isotopic labeling getters and setters
 	public List<String> getLightLabels() {
 		return lightLabels;
@@ -249,9 +263,9 @@ public class DDAMagPfindParameters extends MetaBaseParameter {
 		this.ptp = ptp;
 	}
 
-	// Open search parameter
+	/** Whether open search is selected (open=1 in pFind.cfg). When true, fixmod/selectmod are not written. */
 	public boolean isOpenSearch() {
-		return osp != null && osp.getOpenPsmFDR() > 0;
+		return osp != null && osp.isOpenSearch();
 	}
 
 	// Isobaric tag getter
@@ -260,25 +274,4 @@ public class DDAMagPfindParameters extends MetaBaseParameter {
 		return null;
 	}
 
-	/**
-	 * Convert digestion mode string to integer representation
-	 */
-	private int getDigestModeInt(String digestMode) {
-		switch (digestMode) {
-		case "Specific":
-			return 1;
-		case "Semi free N-term":
-			return 2;
-		case "Semi free C-term":
-			return 3;
-		case "Semi specific":
-			return 4;
-		case "Unspecific":
-			return 5;
-		case "None":
-			return 6;
-		default:
-			return 1;
-		}
-	}
 }

@@ -56,7 +56,7 @@ public class DDAIgcPFindParameters extends MetaBaseParameter {
         // Initialize pFind-specific defaults
         setEnzyme("Trypsin_P");
         setMissCleavages(2);
-        setDigestMode("Specific");
+        setDigestMode("Fully-Specific");
         setMs2ScanMode(MetaConstants.HCD_FTMS);
         setThreadCount(Runtime.getRuntime().availableProcessors());
         setQuantitativeMode(MetaConstants.labelFree);
@@ -76,7 +76,7 @@ public class DDAIgcPFindParameters extends MetaBaseParameter {
         // Set pFind-specific defaults
         setEnzyme("Trypsin_P");
         setMissCleavages(2);
-        setDigestMode("Specific");
+        setDigestMode("Fully-Specific");
         setQuantitativeMode(MetaConstants.labelFree);
         setReduceDb(true);
         setSpectraCluster(false);

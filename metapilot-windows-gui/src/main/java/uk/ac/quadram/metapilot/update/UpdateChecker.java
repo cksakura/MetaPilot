@@ -14,11 +14,14 @@ import java.util.logging.Logger;
 
 import javafx.application.HostServices;
 import javafx.application.Platform;
+import javafx.geometry.Insets;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.Hyperlink;
 import javafx.scene.control.Label;
+import javafx.scene.control.TextArea;
+import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 
 /**
@@ -57,7 +60,7 @@ public class UpdateChecker {
                 }
 
                 if (isNewerVersion(current, latest.version)) {
-                    showUpdateAvailable(current, latest.version, latest.downloadUrl);
+                    showUpdateAvailable(current, latest.version, latest.downloadUrl, latest.releaseNotes);
                 } else if (showNoUpdatesMessage) {
                     showNoUpdatesAvailable(current);
                 }
@@ -107,8 +110,11 @@ public class UpdateChecker {
             String url7z = (assetName != null) ? extractJsonNear(body, assetName, "\"browser_download_url\"") : null;
             if (url7z == null) url7z = GITHUB_PAGE;
 
+            // Release notes (body of the release)
+            String releaseNotes = extractJsonStringValue(body, "\"body\"");
+
             latestUrl = url7z;
-            return new ReleaseInfo(tag, url7z);
+            return new ReleaseInfo(tag, url7z, releaseNotes);
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "GitHub query failed", e);
             return null;
@@ -148,6 +154,44 @@ public class UpdateChecker {
 
     private static String stripV(String v) {
         return (v != null && v.matches("^[vV].*")) ? v.substring(1) : v;
+    }
+
+    /** Extract a JSON string value (handles escaped newlines, quotes, etc.). Returns null if key missing or value is null. */
+    private static String extractJsonStringValue(String json, String key) {
+        int keyIdx = json.indexOf(key);
+        if (keyIdx < 0) return null;
+        int colon = json.indexOf(':', keyIdx);
+        if (colon < 0) return null;
+        int q = colon + 1;
+        while (q < json.length() && Character.isWhitespace(json.charAt(q))) q++;
+        if (q + 4 <= json.length() && json.regionMatches(q, "null", 0, 4)) return null;
+        if (q >= json.length() || json.charAt(q) != '"') return null;
+        int start = q + 1;
+        StringBuilder sb = new StringBuilder();
+        int pos = start;
+        while (pos < json.length()) {
+            char c = json.charAt(pos);
+            if (c == '\\') {
+                pos++;
+                if (pos < json.length()) {
+                    switch (json.charAt(pos)) {
+                        case 'n': sb.append('\n'); break;
+                        case 't': sb.append('\t'); break;
+                        case '"': sb.append('"'); break;
+                        case '\\': sb.append('\\'); break;
+                        default: sb.append(json.charAt(pos));
+                    }
+                    pos++;
+                }
+            } else if (c == '"') {
+                break;
+            } else {
+                sb.append(c);
+                pos++;
+            }
+        }
+        String s = sb.toString().trim();
+        return s.isEmpty() ? null : s;
     }
 
     // === Version comparison (supports pre-release) ===
@@ -196,24 +240,44 @@ public class UpdateChecker {
 
     // === Dialogs ===
 
-    private void showUpdateAvailable(String current, String latest, String url) {
+    private void showUpdateAvailable(String current, String latest, String url, String releaseNotes) {
         Platform.runLater(() -> {
             Alert alert = new Alert(AlertType.INFORMATION);
             alert.setTitle("Update Available");
             alert.setHeaderText("A new version of MetaPilot is available!");
 
             VBox box = new VBox(10);
+            box.setPadding(new Insets(0, 0, 10, 0));
+
             Label info = new Label(
                 "Current version: " + current + "\n" +
                 "Latest version: " + latest + "\n\n" +
                 "Would you like to download it?");
+            info.setWrapText(true);
+
+            box.getChildren().add(info);
+
+            if (releaseNotes != null && !releaseNotes.isBlank()) {
+                Label notesLabel = new Label("What's new:");
+                notesLabel.setStyle("-fx-font-weight: bold;");
+                TextArea notesArea = new TextArea(releaseNotes);
+                notesArea.setEditable(false);
+                notesArea.setWrapText(true);
+                notesArea.setPrefRowCount(8);
+                notesArea.setMaxHeight(200);
+                notesArea.setMinHeight(60);
+                VBox.setVgrow(notesArea, Priority.SOMETIMES);
+                box.getChildren().addAll(notesLabel, notesArea);
+            }
+
             Hyperlink link = new Hyperlink("Download Update (.7z)");
             link.setOnAction(e -> openExternal(url));
             Hyperlink site = new Hyperlink("Visit MetaPilot website");
             site.setOnAction(e -> openExternal(WEBSITE_PAGE));
 
-            box.getChildren().addAll(info, link, site);
+            box.getChildren().addAll(link, site);
             alert.getDialogPane().setContent(box);
+            alert.getDialogPane().setMinWidth(420);
             alert.getButtonTypes().setAll(ButtonType.CLOSE);
             alert.showAndWait();
         });
@@ -257,12 +321,17 @@ public class UpdateChecker {
         String v = Optional.ofNullable(UpdateChecker.class.getPackage())
                 .map(Package::getImplementationVersion)
                 .orElse(null);
-        return (v != null && !v.isBlank()) ? v : "1.0.0-beta.5";
+        return (v != null && !v.isBlank()) ? v : "1.0.0-beta.6";
     }
 
     private static class ReleaseInfo {
         final String version;
         final String downloadUrl;
-        ReleaseInfo(String v, String u) { version = v; downloadUrl = u; }
+        final String releaseNotes;
+        ReleaseInfo(String v, String u, String notes) {
+            version = v;
+            downloadUrl = u;
+            releaseNotes = notes;
+        }
     }
 }

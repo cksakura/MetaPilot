@@ -95,15 +95,17 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
     public void setAvailableMagDatabases(MagDbItem[] magDbItems) {
         if (magDatabasePanel != null) {
             magDatabasePanel.setAvailableMagDatabases(magDbItems);
-            // Update the panels with the selected MAG database
-            if (magDbItems != null && magDbItems.length > 0) {
+            // Create library generation panel first - it calls loadLastUsedParameters()
+            // which applies saved params (including MAG db selection) to the panel
+            createLibraryGenerationPanel();
+            // Update panels and status with the SELECTED database (from panel, or first if none)
+            MagDbItem selected = magDatabasePanel.getSelectedMagDatabase();
+            if (selected != null) {
+                updatePanelsWithMagDb(selected);
+            } else if (magDbItems != null && magDbItems.length > 0) {
                 updatePanelsWithMagDb(magDbItems[0]);
             }
-            // Now that database panel is initialized, check the status
             updateMagDbStatus();
-            
-            // Create library generation panel now that MAG database is available
-            createLibraryGenerationPanel();
         } else {
             LOGGER.debug("magDatabasePanel is null - UI not initialized yet");
         }
@@ -1111,7 +1113,7 @@ public class MetaPilotDiaNormalPanel extends AbstractWorkflowPanel<MetaParameter
             
             // Create MetaBaseParameter with minimal data
 			MetaBaseParameter metaBasePar = new MetaBaseParameter(
-					uk.ac.quadram.metapilot.workflow.WorkflowType.DIA_NORMAL.getAnalysisType(), // Workflow type
+					uk.ac.quadram.metapilot.workflow.WorkflowType.DIA_SEED.getAnalysisType(), // Workflow type
 					metaData, result,
 					selectedMagDb.getCurrentFile() != null ? selectedMagDb.getCurrentFile().getAbsolutePath() : "", // MicroDb
 																													// path

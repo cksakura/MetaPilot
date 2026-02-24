@@ -220,7 +220,7 @@ public class DDAIgcPFindParameterIO extends BaseParameterIO {
                 JSONObject enzymeSettings = json.getJSONObject("enzyme_settings");
                 parameters.setEnzyme(enzymeSettings.optString("enzyme", "Trypsin"));
                 parameters.setMissCleavages(enzymeSettings.optInt("missed_cleavages", 2));
-                parameters.setDigestMode(enzymeSettings.optString("digestion_mode", "Specific"));
+                parameters.setDigestMode(enzymeSettings.optString("digestion_mode", "Fully-Specific"));
             }
             
             // Load additional parameters

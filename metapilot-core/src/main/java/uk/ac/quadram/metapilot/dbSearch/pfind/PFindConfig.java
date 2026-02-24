@@ -840,7 +840,11 @@ public class PFindConfig {
 
 		StringBuilder fixsb = new StringBuilder();
 		for (int i = 0; i < fixedMods.length; i++) {
-			fixsb.append(fixedMods[i].substring(0, fixedMods[i].indexOf(" "))).append(";");
+			String mod = fixedMods[i];
+			if (mod != null && !mod.trim().isEmpty()) {
+				String modName = mod.indexOf(" ") > 0 ? mod.substring(0, mod.indexOf(" ")).trim() : mod.trim();
+				fixsb.append(modName).append(";");
+			}
 		}
 
 		if (tag == null) {
@@ -867,24 +871,34 @@ public class PFindConfig {
 
 		StringBuilder varisb = new StringBuilder();
 		for (int i = 0; i < variMods.length; i++) {
-			varisb.append(variMods[i].substring(0, variMods[i].indexOf(" "))).append(";");
+			String mod = variMods[i];
+			if (mod != null && !mod.trim().isEmpty()) {
+				String modName = mod.indexOf(" ") > 0 ? mod.substring(0, mod.indexOf(" ")).trim() : mod.trim();
+				varisb.append(modName).append(";");
+			}
 		}
 		if (varisb.length() > 0) {
 			varisb.deleteCharAt(varisb.length() - 1);
 		}
 
-		if (this.findMap.containsKey("fixmod")) {
-			this.findMap.get("fixmod").setValue(fixsb.toString());
-		}
-		if (this.findMap.containsKey("selectmod")) {
-			this.findMap.get("selectmod").setValue(varisb.toString());
-		}
-
+		// For open search (open=1), do not write any modification to fixmod/selectmod
 		if (isOpenSearch) {
+			if (this.findMap.containsKey("fixmod")) {
+				this.findMap.get("fixmod").setValue("");
+			}
+			if (this.findMap.containsKey("selectmod")) {
+				this.findMap.get("selectmod").setValue("");
+			}
 			if (this.findMap.containsKey("open")) {
 				this.findMap.get("open").setValue("1");
 			}
 		} else {
+			if (this.findMap.containsKey("fixmod")) {
+				this.findMap.get("fixmod").setValue(fixsb.toString());
+			}
+			if (this.findMap.containsKey("selectmod")) {
+				this.findMap.get("selectmod").setValue(varisb.toString());
+			}
 			if (this.findMap.containsKey("open")) {
 				this.findMap.get("open").setValue("0");
 			}
@@ -894,20 +908,21 @@ public class PFindConfig {
 			this.findMap.get("max_clv_sites").setValue(String.valueOf(missCleavages));
 		}
 
+		// pFind digest modes: 0=Non-Specific, 1=Semi-Specific, 3=Fully-Specific
 		switch (digestType) {
 		case 0:
 			if (this.findMap.containsKey("digest")) {
-				this.findMap.get("digest").setValue("3");
+				this.findMap.get("digest").setValue("0");
 			}
 			break;
-		case 3:
+		case 1:
 			if (this.findMap.containsKey("digest")) {
 				this.findMap.get("digest").setValue("1");
 			}
 			break;
-		case 4:
+		case 3:
 			if (this.findMap.containsKey("digest")) {
-				this.findMap.get("digest").setValue("0");
+				this.findMap.get("digest").setValue("3");
 			}
 			break;
 		default:
@@ -1029,8 +1044,11 @@ public class PFindConfig {
 
 		StringBuilder fixsb = new StringBuilder();
 		for (int i = 0; i < fixedMods.length; i++) {
-			if (fixedMods[i].indexOf(" ") > 0) {
-				fixsb.append(fixedMods[i].substring(0, fixedMods[i].indexOf(" "))).append(";");
+			String mod = fixedMods[i];
+			if (mod != null && !mod.trim().isEmpty()) {
+				// Support both "Carbamidomethyl[C]" (JSON/Unimod) and "Carbamidomethyl[C] 0" (modification.ini) formats
+				String modName = mod.indexOf(" ") > 0 ? mod.substring(0, mod.indexOf(" ")).trim() : mod.trim();
+				fixsb.append(modName).append(";");
 			}
 		}
 		if (tag == null) {
@@ -1060,26 +1078,35 @@ public class PFindConfig {
 
 		StringBuilder varisb = new StringBuilder();
 		for (int i = 0; i < variMods.length; i++) {
-			if (variMods[i].indexOf(" ") > 0) {
-				varisb.append(variMods[i].substring(0, variMods[i].indexOf(" "))).append(";");
+			String mod = variMods[i];
+			if (mod != null && !mod.trim().isEmpty()) {
+				// Support both "Oxidation[M]" (JSON/Unimod) and "Oxidation[M] 0" (modification.ini) formats
+				String modName = mod.indexOf(" ") > 0 ? mod.substring(0, mod.indexOf(" ")).trim() : mod.trim();
+				varisb.append(modName).append(";");
 			}
 		}
 		if (varisb.length() > 0) {
 			varisb.deleteCharAt(varisb.length() - 1);
 		}
 
-		if (this.findMap.containsKey("fixmod")) {
-			this.findMap.get("fixmod").setValue(fixsb.toString());
-		}
-		if (this.findMap.containsKey("selectmod")) {
-			this.findMap.get("selectmod").setValue(varisb.toString());
-		}
-
+		// For open search (open=1), do not write any modification to fixmod/selectmod
 		if (isOpenSearch) {
+			if (this.findMap.containsKey("fixmod")) {
+				this.findMap.get("fixmod").setValue("");
+			}
+			if (this.findMap.containsKey("selectmod")) {
+				this.findMap.get("selectmod").setValue("");
+			}
 			if (this.findMap.containsKey("open")) {
 				this.findMap.get("open").setValue("1");
 			}
 		} else {
+			if (this.findMap.containsKey("fixmod")) {
+				this.findMap.get("fixmod").setValue(fixsb.toString());
+			}
+			if (this.findMap.containsKey("selectmod")) {
+				this.findMap.get("selectmod").setValue(varisb.toString());
+			}
 			if (this.findMap.containsKey("open")) {
 				this.findMap.get("open").setValue("0");
 			}
@@ -1092,20 +1119,21 @@ public class PFindConfig {
 			this.findMap.get("max_clv_sites").setValue(String.valueOf(missCleavages));
 		}
 
+		// pFind digest modes: 0=Non-Specific, 1=Semi-Specific, 3=Fully-Specific
 		switch (digestType) {
 		case 0:
 			if (this.findMap.containsKey("digest")) {
-				this.findMap.get("digest").setValue("3");
+				this.findMap.get("digest").setValue("0");
 			}
 			break;
-		case 3:
+		case 1:
 			if (this.findMap.containsKey("digest")) {
 				this.findMap.get("digest").setValue("1");
 			}
 			break;
-		case 4:
+		case 3:
 			if (this.findMap.containsKey("digest")) {
-				this.findMap.get("digest").setValue("0");
+				this.findMap.get("digest").setValue("3");
 			}
 			break;
 		default:
@@ -1432,7 +1460,11 @@ public class PFindConfig {
 
 		StringBuilder fixsb = new StringBuilder();
 		for (int i = 0; i < fixedMods.length; i++) {
-			fixsb.append(fixedMods[i].substring(0, fixedMods[i].indexOf(" "))).append(";");
+			String mod = fixedMods[i];
+			if (mod != null && !mod.trim().isEmpty()) {
+				String modName = mod.indexOf(" ") > 0 ? mod.substring(0, mod.indexOf(" ")).trim() : mod.trim();
+				fixsb.append(modName).append(";");
+			}
 		}
 		if (tag == null) {
 			if (fixsb.length() > 0) {
@@ -1461,24 +1493,34 @@ public class PFindConfig {
 
 		StringBuilder varisb = new StringBuilder();
 		for (int i = 0; i < variMods.length; i++) {
-			varisb.append(variMods[i].substring(0, variMods[i].indexOf(" "))).append(";");
+			String mod = variMods[i];
+			if (mod != null && !mod.trim().isEmpty()) {
+				String modName = mod.indexOf(" ") > 0 ? mod.substring(0, mod.indexOf(" ")).trim() : mod.trim();
+				varisb.append(modName).append(";");
+			}
 		}
 		if (varisb.length() > 0) {
 			varisb.deleteCharAt(varisb.length() - 1);
 		}
 
-		if (this.findMap.containsKey("fixmod")) {
-			this.findMap.get("fixmod").setValue(fixsb.toString());
-		}
-		if (this.findMap.containsKey("selectmod")) {
-			this.findMap.get("selectmod").setValue(varisb.toString());
-		}
-
+		// For open search (open=1), do not write any modification to fixmod/selectmod
 		if (isOpenSearch) {
+			if (this.findMap.containsKey("fixmod")) {
+				this.findMap.get("fixmod").setValue("");
+			}
+			if (this.findMap.containsKey("selectmod")) {
+				this.findMap.get("selectmod").setValue("");
+			}
 			if (this.findMap.containsKey("open")) {
 				this.findMap.get("open").setValue("1");
 			}
 		} else {
+			if (this.findMap.containsKey("fixmod")) {
+				this.findMap.get("fixmod").setValue(fixsb.toString());
+			}
+			if (this.findMap.containsKey("selectmod")) {
+				this.findMap.get("selectmod").setValue(varisb.toString());
+			}
 			if (this.findMap.containsKey("open")) {
 				this.findMap.get("open").setValue("0");
 			}
@@ -1490,20 +1532,21 @@ public class PFindConfig {
 			this.findMap.get("max_clv_sites").setValue(String.valueOf(missCleavages));
 		}
 
+		// pFind digest modes: 0=Non-Specific, 1=Semi-Specific, 3=Fully-Specific
 		switch (digestType) {
 		case 0:
 			if (this.findMap.containsKey("digest")) {
-				this.findMap.get("digest").setValue("3");
+				this.findMap.get("digest").setValue("0");
 			}
 			break;
-		case 3:
+		case 1:
 			if (this.findMap.containsKey("digest")) {
 				this.findMap.get("digest").setValue("1");
 			}
 			break;
-		case 4:
+		case 3:
 			if (this.findMap.containsKey("digest")) {
-				this.findMap.get("digest").setValue("0");
+				this.findMap.get("digest").setValue("3");
 			}
 			break;
 		default:

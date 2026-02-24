@@ -337,6 +337,24 @@
 		<plugins>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-jar-plugin</artifactId>
+				<version>3.3.0</version>
+				<configuration>
+					<archive>
+						<manifest>
+							<mainClass>uk.ac.quadram.metapilot.MetaPilotApp</mainClass>
+						</manifest>
+						<manifestEntries>
+							<Implementation-Title>${project.name}</Implementation-Title>
+							<Implementation-Version>${project.version}</Implementation-Version>
+							<Build-Jdk-Spec>${maven.compiler.target}</Build-Jdk-Spec>
+							<Created-By>MetaPilot Build System</Created-By>
+						</manifestEntries>
+					</archive>
+				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-shade-plugin</artifactId>
 				<version>3.4.1</version>
 				<executions>
@@ -362,12 +380,10 @@
 							<transformers>
 								<transformer
 									implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-									<mainClass>
-										uk.ac.quadram.metapilot.MetaPilotApp</mainClass>
+									<mainClass>uk.ac.quadram.metapilot.MetaPilotApp</mainClass>
 									<manifestEntries>
 										<Implementation-Title>${project.name}</Implementation-Title>
-										<Implementation-Version>
-											${project.version}</Implementation-Version>
+										<Implementation-Version>${project.version}</Implementation-Version>
 										<Build-Jdk-Spec>${maven.compiler.target}</Build-Jdk-Spec>
 										<Created-By>MetaPilot Build System</Created-By>
 									</manifestEntries>
