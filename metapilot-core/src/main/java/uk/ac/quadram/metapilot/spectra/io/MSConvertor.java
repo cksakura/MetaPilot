@@ -382,6 +382,12 @@ public class MSConvertor {
 	}
 
 	public static void main(String[] args) {
-		MSConvertor.raw2mzML("Z:\\Kai\\Raw_files\\run21\\raw\\Haonan_20220809_DDA_S48_2.raw");
+		File[] files = (new File("Z:\\PRIDE_dataset\\PXD051104_metaExpertPro\\MetaPilot_DDA_MPW")).listFiles();
+		for (int i = 0; i < files.length; i++) {
+			if (files[i].getName().endsWith(".raw")) {
+				MSConvertor.raw2mzML("C:\\Users\\daz25hak\\MetaProAI\\Resources\\ProteoWizard\\msconvert.exe",
+						files[i].getAbsolutePath());
+			}
+		}
 	}
 }

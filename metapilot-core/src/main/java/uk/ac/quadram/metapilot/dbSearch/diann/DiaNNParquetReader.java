@@ -9,11 +9,13 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.commons.io.FileUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.parquet.ParquetReadOptions;
@@ -613,16 +615,55 @@ public class DiaNNParquetReader {
 //		System.out.println(DiaNNParquetReader.getPepProMap(
 //				"C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-gut\\v2.0.2\\libraries\\Pekka"
 //						+ "\\Pekka.parquet"));
-		File[] files = (new File("Z:\\PRIDE_dataset\\IPX0003851000\\DATA_analysis")).listFiles();
+		/*
+		File[] files = (new File("Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DIA\\MetaPilot\\marker_deep\\marker")).listFiles();
 		for (int i = 0; i < files.length; i++) {
 			String name = files[i].getName();
+			if(name.equals("marker")) {
+				continue;
+			}
 			File parquetFile = new File(files[i], name + ".parquet");
 			if (parquetFile.exists()) {
 				File tsvFile = new File(files[i], name + ".parquet.tsv");
 				if (!tsvFile.exists()) {
-					DiaNNParquetReader.exportToTsv(parquetFile.getAbsolutePath(), tsvFile.getAbsolutePath());
+					DiaNNParquetReader.exportToTsv(parquetFile.getAbsolutePath(), tsvFile.getAbsolutePath());					
+				}
+				if (tsvFile.exists()) {
+					FileUtils.copyFile(tsvFile,
+							new File("Z:\\PRIDE_dataset\\IPX0003851000\\DATA_analysis\\data", tsvFile.getName()));
+					Set<String> peptides = new HashSet<>();
+					try {
+						DiaNNParquetReader reader = new DiaNNParquetReader(parquetFile.getAbsolutePath(), "KR");
+						DiaNNPrecursor[] precursors = reader.getDiaNNPrecursors();
+						if (precursors != null) {
+							for (DiaNNPrecursor p : precursors) {
+								if (p == null || p.getIsDecoy()) continue;
+								String seq = p.getSeqString();
+								if (seq != null && !seq.isEmpty()) peptides.add(seq);
+							}
+						}
+					} catch (Exception e) {
+
+					}
+					System.out.println(parquetFile.getName() + "\t" + peptides.size());
 				}
 			}
+		}
+		*/
+		
+		try {
+			BufferedReader reader = new BufferedReader(new FileReader("Z:\\Test\\S2_top_1000_genomes_prodigal_proteins_cluster90_rep_seq_filtered_uniprot.fasta"));
+			String line = null;
+			int count = 0;
+			while((line=reader.readLine())!=null) {
+				System.out.println(line);
+				if(count++==100) {
+					break;
+				}
+			}
+			reader.close();
+		} catch (Exception e) {
+
 		}
 	}
 

@@ -337,7 +337,7 @@ public class DiaNNTask {
 	 * @param lib
 	 */
 	public void addFastTask(DiannParameter par, DiaLibSearchPar libSearchPar, String out, String... lib) {
-		String cmd = par.generateLibSearchFast(libSearchPar, out, lib);
+		String cmd = par.generateLibSearchNoQuant(libSearchPar, out, lib);
 		File batFile = new File(out + ".bat");
 		File cfgFile = new File(out + ".cfg");
 		try (PrintWriter writer = new PrintWriter(batFile)) {
@@ -443,25 +443,12 @@ public class DiaNNTask {
 	 * @param out
 	 * @param lib
 	 */
-	public void addFastLibTask(DiannParameter par, DiaLibSearchPar libSearchPar, String out, String... lib) {
+	public void addNoQuantLibTask(DiannParameter par, DiaLibSearchPar libSearchPar, String out, String... lib) {
 		String cmd = par.generateLibSearchFastLib(libSearchPar, out, lib);
 		File batFile = new File(out + ".bat");
 		File cfgFile = new File(out + ".cfg");
 		try (PrintWriter writer = new PrintWriter(batFile)) {
 			writer.println(headsb);
-			/*
-			 * writer.println("setlocal enabledelayedexpansion"); writer.println(); writer.
-			 * println("REM Get all the file paths passed as parameters and store them in a variable"
-			 * ); writer.println("set files="); writer.println(); writer.println(
-			 * "REM Loop through each file path and append it to the variable with a space and a --f option"
-			 * ); writer.println("for %%f in (%*) do (");
-			 * writer.println("\tset files=!files! --f \"%%f\""); writer.println(")");
-			 * writer.println();
-			 * writer.println("REM Print the content of the start command");
-			 * writer.println("echo !files!"); writer.println(); writer.println("start /B "
-			 * + diaNNFile.getName() + " " + cmd + "!files!"); writer.println();
-			 * writer.println("endlocal"); writer.println();
-			 */
 			writer.println("start /B " + diaNNFile.getName() + " --cfg " + cfgFile.getAbsolutePath());
 			writer.println();
 			writer.print("exit");
@@ -479,11 +466,6 @@ public class DiaNNTask {
 			System.out.println(
 					format.format(new Date()) + "\t" + taskName + ": error in writing the .bat file to " + batFile);
 		}
-		/*
-		 * String[] raws = libSearchPar.getDiaFiles(); StringBuilder sb = new
-		 * StringBuilder(); sb.append(batFile.getAbsolutePath()); for (String raw :
-		 * raws) { sb.append("\t").append(raw); } this.parList.add(sb.toString());
-		 */
 		this.parList.add(batFile.getAbsolutePath());
 	}
 

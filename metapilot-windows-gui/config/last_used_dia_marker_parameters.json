@@ -4,25 +4,49 @@
   "useModel": false,
   "workflow": "DIA_FOCUS",
   "baseParameters": {
-    "result": "Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\8mix\\MetaPilot",
+    "result": "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DIA\\MetaPilot",
     "ms2ScanMode": "DIA",
     "metadata": {
       "rawFiles": [
-        "Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\8mix\\160822_8Mix_DIA_6ul_01.raw",
-        "Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\8mix\\160822_8Mix_DIA_6ul_02.raw",
-        "Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\8mix\\160822_8Mix_DIA_6ul_03.raw"
+        "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DIA\\Qiao-FB1-DIA-1.raw",
+        "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DIA\\Qiao-FB1-DIA-2.raw",
+        "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DIA\\Qiao-FB1-DIA-3.raw",
+        "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DIA\\Qiao-FB2-DIA-1.raw",
+        "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DIA\\Qiao-FB2-DIA-2.raw",
+        "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DIA\\Qiao-FB2-DIA-3.raw",
+        "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DIA\\Qiao-FB3-DIA-1.raw",
+        "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DIA\\Qiao-FB3-DIA-2.raw",
+        "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DIA\\Qiao-FB3-DIA-3.raw"
       ],
       "expNames": [
-        "8Mix_DIA_01",
-        "8Mix_DIA_02",
-        "8Mix_DIA_03"
+        "FB1_DIA_1",
+        "FB1_DIA_2",
+        "FB1_DIA_3",
+        "FB2_DIA_1",
+        "FB2_DIA_2",
+        "FB2_DIA_3",
+        "FB3_DIA_1",
+        "FB3_DIA_2",
+        "FB3_DIA_3"
       ],
       "fractions": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
         1,
         1,
         1
       ],
       "replicates": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
         1,
         1,
         1
@@ -54,9 +78,9 @@
   "selfModelSearch": false,
   "library": [],
   "phosphoSTY": false,
-  "generated_at": "2026-02-24 08:27:25",
+  "generated_at": "2026-02-27 14:28:51",
   "mExcision": true,
   "carbamiC": true,
   "workflowType": "DIA_FOCUS",
-  "timestamp": 1771921645481
+  "timestamp": 1772202531559
 }
