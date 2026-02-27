@@ -265,7 +265,9 @@ public class DiannParameter {
 			sb.append("--no-norm ");
 			sb.append("--no-prot-inf ");
 		} else {
-			sb.append("--matrices ");
+			if(matrices) {
+				sb.append("--matrices ");
+			}
 			sb.append("--relaxed-prot-inf ");
 			if (libSearchPar.getQuanStrategyId() > 0 && libSearchPar.getQuanStrategyId() < quanStrategies.length) {
 				sb.append(quanStrategies[libSearchPar.getQuanStrategyId()]).append(" ");
@@ -277,6 +279,9 @@ public class DiannParameter {
 				sb.append("--matrix-qvalue ").append(looseQValue).append(" ");
 				sb.append("--matrix-spec-q ").append(looseQValue).append(" ");
 			}
+			
+			sb.append("--smart-profiling ");
+			sb.append("--reanalyse ");
 		}
 
 		if (genLib) {
@@ -285,9 +290,6 @@ public class DiannParameter {
 			sb.append("--gen-spec-lib ");
 		}
 
-		sb.append("--smart-profiling ");
-		sb.append("--reanalyse ");
-
 		if (this.exportDecoy) {
 			sb.append("--report-decoys ");
 		}
@@ -295,7 +297,7 @@ public class DiannParameter {
 		return sb.toString();
 	}
 
-	public String generateLibSearchFast(DiaLibSearchPar libSearchPar, String output, String... libs) {
+	public String generateLibSearchNoQuant(DiaLibSearchPar libSearchPar, String output, String... libs) {
 		StringBuilder sb = new StringBuilder();
 		sb.append("--threads ").append(libSearchPar.getThreadCount()).append(" ");
 		sb.append("--verbose ").append(verbose).append(" ");
@@ -312,10 +314,13 @@ public class DiannParameter {
 		sb.append("--mass-acc-ms1 ").append(libSearchPar.getMs1Accu()).append(" ");
 
 		sb.append("--smart-profiling ");
+		sb.append("--direct-quant ");
+		sb.append("--no-refine-q ");
 		sb.append("--no-maxlfq ");
 		sb.append("--no-quant-files ");
-		sb.append("--no-calibration ");
+		sb.append("--no-skyline ");
 		sb.append("--no-norm ");
+		sb.append("--no-prot-norm ");
 		if (libSearchPar.getQuanStrategyId() > 0 && libSearchPar.getQuanStrategyId() < quanStrategies.length) {
 			sb.append(quanStrategies[libSearchPar.getQuanStrategyId()]);
 		}
@@ -340,10 +345,13 @@ public class DiannParameter {
 		sb.append("--mass-acc-ms1 ").append(libSearchPar.getMs1Accu()).append(" ");
 
 		sb.append("--smart-profiling ");
+		sb.append("--direct-quant ");
+		sb.append("--no-refine-q ");
 		sb.append("--no-maxlfq ");
 		sb.append("--no-quant-files ");
-		sb.append("--no-calibration ");
+		sb.append("--no-skyline ");
 		sb.append("--no-norm ");
+		sb.append("--no-prot-norm ");
 		sb.append("--out-lib ").append("\"").append(output + ".lib").append("\" ");
 		sb.append("--gen-spec-lib ");
 

@@ -90,13 +90,14 @@ public class MetaDiaTask extends MetaPilotMagTask {
 	protected MetaData metadata;
 	protected String[] expNames;
 	protected int[] fractions;
-	
+
 	protected File final_pro_xml_file;
 	protected File reportHtmlDir;
 	protected File final_summary_txt;
 	protected File resultFolderFile;
 
-	// Logger is inherited from MetaPilotMagTask -> MetaPilotTask as an instance field
+	// Logger is inherited from MetaPilotMagTask -> MetaPilotTask as an instance
+	// field
 	private static final String taskName = "DIA data analysis";
 
 	public MetaDiaTask(MetaParameterDia metaPar, MetaResourceParameters mrp, ProgressBar bar1, ProgressBar bar2) {
@@ -193,6 +194,8 @@ public class MetaDiaTask extends MetaPilotMagTask {
 					if (this instanceof MetaDiaSeedIterativeTask) {
 						folderName = MarkerGenomeSelector.KNEE_MODE_FOCUS.equals(strategy) ? "seed_focus"
 								: "seed_comprehensive";
+					} else if (this instanceof MetaDiaDeepMarkerTask) {
+						folderName = "marker_deep";
 					} else {
 						folderName = MarkerGenomeSelector.KNEE_MODE_FOCUS.equals(strategy) ? "marker_focus"
 								: "marker_comprehensive";
@@ -201,8 +204,8 @@ public class MetaDiaTask extends MetaPilotMagTask {
 					if (!diaResultDir.exists()) {
 						diaResultDir.mkdirs();
 						logger.info("Created result directory for DIA {} workflow ({}): {}",
-								(this instanceof MetaDiaSeedIterativeTask) ? "Seed" : "Marker",
-								folderName, diaResultDir.getAbsolutePath());
+								(this instanceof MetaDiaSeedIterativeTask) ? "Seed" : "Marker", folderName,
+								diaResultDir.getAbsolutePath());
 					}
 				}
 			} else {
@@ -2502,7 +2505,7 @@ public class MetaDiaTask extends MetaPilotMagTask {
 					if (line.startsWith(">")) {
 						String proName = line.split("\\s")[1];
 						String sequence = reader.readLine();
-						if(fastaProPepMap.containsKey(proName)) {
+						if (fastaProPepMap.containsKey(proName)) {
 							fastaProPepMap.get(proName).put(sequence.length(), sequence);
 						} else {
 							HashMap<Integer, String> seqLengthMap = new HashMap<Integer, String>();
@@ -2531,7 +2534,7 @@ public class MetaDiaTask extends MetaPilotMagTask {
 						if (line.startsWith(">")) {
 							String proName = line.split("\\s")[1];
 							String sequence = reader.readLine();
-							if(fastaProPepMap.containsKey(proName)) {
+							if (fastaProPepMap.containsKey(proName)) {
 								fastaProPepMap.get(proName).put(sequence.length(), sequence);
 							} else {
 								HashMap<Integer, String> seqLengthMap = new HashMap<Integer, String>();
@@ -2560,7 +2563,7 @@ public class MetaDiaTask extends MetaPilotMagTask {
 								if (line.startsWith(">")) {
 									String proName = line.split("\\s")[1];
 									String sequence = reader.readLine();
-									if(fastaProPepMap.containsKey(proName)) {
+									if (fastaProPepMap.containsKey(proName)) {
 										fastaProPepMap.get(proName).put(sequence.length(), sequence);
 									} else {
 										HashMap<Integer, String> seqLengthMap = new HashMap<Integer, String>();
@@ -6252,7 +6255,8 @@ public class MetaDiaTask extends MetaPilotMagTask {
 	}
 
 	@SuppressWarnings({ "unused", "unchecked" })
-	private static void getTaxFuncFromPeptide(String in, String dbfile, String defDbPath, MagDbItem magDb) throws Exception {
+	private static void getTaxFuncFromPeptide(String in, String dbfile, String defDbPath, MagDbItem magDb)
+			throws Exception {
 		HashMap<String, double[]> pepIntensityMap = new HashMap<String, double[]>();
 		/*
 		 * String[] title = null; try (BufferedReader reader = new BufferedReader(new
@@ -7864,9 +7868,9 @@ public class MetaDiaTask extends MetaPilotMagTask {
 			logger.info(taskName + ": Generating bubble chart report from " + treeJsFile.getName());
 			System.out.println(format.format(new Date()) + "\t" + taskName + ": Generating bubble chart report");
 
-		// Use MetaPythonReportTask to generate the bubble chart
-		MetaPythonReportTask reportTask = new MetaPythonReportTask(1, mrp, logger);
-		boolean success = reportTask.addTask(MetaPythonReportTask.BUBBLE_CHART, treeJsFile, outputFile);
+			// Use MetaPythonReportTask to generate the bubble chart
+			MetaPythonReportTask reportTask = new MetaPythonReportTask(1, mrp, logger);
+			boolean success = reportTask.addTask(MetaPythonReportTask.BUBBLE_CHART, treeJsFile, outputFile);
 
 			if (success) {
 				// Wait for completion
@@ -7916,26 +7920,33 @@ public class MetaDiaTask extends MetaPilotMagTask {
 		// System.out.println("Copy successful: " + success);
 	}
 
-	/** Index in score array: S, p_emp, q_value. Used by new genome/protein scoring scheme. */
+	/**
+	 * Index in score array: S, p_emp, q_value. Used by new genome/protein scoring
+	 * scheme.
+	 */
 	protected static final int IDX_S = 0, IDX_P_EMP = 1, IDX_Q_VALUE = 2;
 
 	/**
-	 * Folder containing combined.fasta for new-scheme export. Default: result/combined.
-	 * Override in subclasses (e.g. MetaDiaMarkerTask) to use iterative result folder.
+	 * Folder containing combined.fasta for new-scheme export. Default:
+	 * result/combined. Override in subclasses (e.g. MetaDiaMarkerTask) to use
+	 * iterative result folder.
 	 */
 	protected File getExportFastaFolder() {
 		return new File(metaPar.getDbSearchResultFile(), "combined");
 	}
 
 	/**
-	 * Folder containing combined.parquet and combined.pr_matrix.tsv for new-scheme export. Default: result/combined.
-	 * Override in subclasses (e.g. MetaDiaMarkerTask) to use combinedFile.
+	 * Folder containing combined.parquet and combined.pr_matrix.tsv for new-scheme
+	 * export. Default: result/combined. Override in subclasses (e.g.
+	 * MetaDiaMarkerTask) to use combinedFile.
 	 */
 	protected File getExportParquetFolder() {
 		return new File(metaPar.getDbSearchResultFile(), "combined");
 	}
 
-	/** Used by computeGenomeScoreMap / computeProteinScoreMap (new scoring scheme). */
+	/**
+	 * Used by computeGenomeScoreMap / computeProteinScoreMap (new scoring scheme).
+	 */
 	protected static class PeptideEvidence {
 		String seq;
 		double bestCScore = 0;
@@ -7961,9 +7972,10 @@ public class MetaDiaTask extends MetaPilotMagTask {
 	}
 
 	/**
-	 * Compute per-genome scores (S, p_emp, q_value) from precursors using PEP/CScore+intensity
-	 * scoring and decoy resampling. Uses unique peptides only when uniquePeptidesOnly is true.
-	 * Value is double[]{S, p_emp, q_value}; q_value is Benjamini–Hochberg corrected.
+	 * Compute per-genome scores (S, p_emp, q_value) from precursors using
+	 * PEP/CScore+intensity scoring and decoy resampling. Uses unique peptides only
+	 * when uniquePeptidesOnly is true. Value is double[]{S, p_emp, q_value};
+	 * q_value is Benjamini–Hochberg corrected.
 	 */
 	protected HashMap<String, double[]> computeGenomeScoreMap(DiaNNPrecursor[] precursors, boolean uniquePeptidesOnly) {
 		HashMap<String, double[]> genomeScoreMap = new HashMap<>();
@@ -7973,7 +7985,8 @@ public class MetaDiaTask extends MetaPilotMagTask {
 		HashMap<String, PeptideEvidence> peptideMap = new HashMap<>();
 		for (DiaNNPrecursor pp : precursors) {
 			String seq = pp.getSeqString();
-			if (seq == null || seq.isEmpty()) continue;
+			if (seq == null || seq.isEmpty())
+				continue;
 			int charge = pp.getCharge();
 			boolean isDecoy = pp.getIsDecoy();
 			String key = seq + "|" + charge + "|" + isDecoy;
@@ -8001,7 +8014,8 @@ public class MetaDiaTask extends MetaPilotMagTask {
 			String[] proGroups = pp.getProGroups();
 			if (proGroups != null) {
 				for (String pro : proGroups) {
-					if (pro != null && !pro.isEmpty()) ev.proteins.add(pro);
+					if (pro != null && !pro.isEmpty())
+						ev.proteins.add(pro);
 				}
 			}
 		}
@@ -8011,8 +8025,10 @@ public class MetaDiaTask extends MetaPilotMagTask {
 		for (PeptideEvidence ev : peptideMap.values()) {
 			double logI1 = Math.log(1.0 + Math.max(0, ev.bestPreQuan)) / Math.log(2.0);
 			double logI2 = Math.log(1.0 + Math.max(0, ev.bestMs1Area)) / Math.log(2.0);
-			minLog1 = Math.min(minLog1, logI1); maxLog1 = Math.max(maxLog1, logI1);
-			minLog2 = Math.min(minLog2, logI2); maxLog2 = Math.max(maxLog2, logI2);
+			minLog1 = Math.min(minLog1, logI1);
+			maxLog1 = Math.max(maxLog1, logI1);
+			minLog2 = Math.min(minLog2, logI2);
+			maxLog2 = Math.max(maxLog2, logI2);
 		}
 		double logRange1 = Math.max(1e-10, maxLog1 - minLog1);
 		double logRange2 = Math.max(1e-10, maxLog2 - minLog2);
@@ -8022,8 +8038,7 @@ public class MetaDiaTask extends MetaPilotMagTask {
 		for (Map.Entry<String, PeptideEvidence> ent : peptideMap.entrySet()) {
 			PeptideEvidence ev = ent.getValue();
 			String seq = ev.seq;
-			double e = ev.bestCScore > 0
-					? Math.min(cap, Math.max(0, ev.bestCScore))
+			double e = ev.bestCScore > 0 ? Math.min(cap, Math.max(0, ev.bestCScore))
 					: Math.min(cap, Math.max(0, -Math.log10(Math.max(ev.bestPEP, 1e-10))));
 			double logI1 = Math.log(1.0 + Math.max(0, ev.bestPreQuan)) / Math.log(2.0);
 			double logI2 = Math.log(1.0 + Math.max(0, ev.bestMs1Area)) / Math.log(2.0);
@@ -8031,18 +8046,23 @@ public class MetaDiaTask extends MetaPilotMagTask {
 			double norm2 = (logI2 - minLog2) / logRange2;
 			double intensityFactor = 0.5 + 0.25 * norm1 + 0.25 * norm2;
 			if (ev.isDecoy) {
-				if (ev.bestPEP < decoyPepMax) decoyEPool.add(e * intensityFactor);
+				if (ev.bestPEP < decoyPepMax)
+					decoyEPool.add(e * intensityFactor);
 				continue;
 			}
 			HashSet<String> genomes = new HashSet<>();
 			for (String pro : ev.proteins) {
-				if (pro.startsWith(FastaManager.shuffle)) continue;
+				if (pro.startsWith(FastaManager.shuffle))
+					continue;
 				String[] parts = pro.split("_");
-				if (parts.length > 0 && !parts[0].isEmpty()) genomes.add(parts[0]);
+				if (parts.length > 0 && !parts[0].isEmpty())
+					genomes.add(parts[0]);
 			}
-			if (genomes.isEmpty()) continue;
+			if (genomes.isEmpty())
+				continue;
 			int m = genomes.size();
-			if (m != 1 && uniquePeptidesOnly) continue;
+			if (m != 1 && uniquePeptidesOnly)
+				continue;
 			double w = (m == 1) ? 1.0 : (1.0 / m);
 			double wei = w * e * intensityFactor;
 			for (String g : genomes) {
@@ -8072,16 +8092,20 @@ public class MetaDiaTask extends MetaPilotMagTask {
 			scores.sort((a, b) -> Double.compare(b.we, a.we));
 			int n = Math.min(k, scores.size());
 			double S = 0;
-			for (int i = 0; i < n; i++) S += scores.get(i).we;
+			for (int i = 0; i < n; i++)
+				S += scores.get(i).we;
 			SMap.put(g, S);
 			genomeNMap.put(g, n);
 		}
-		if (decoyEPool.isEmpty()) decoyEPool.add(0.0);
+		if (decoyEPool.isEmpty())
+			decoyEPool.add(0.0);
 		double[] decoyArr = new double[decoyEPool.size()];
-		for (int i = 0; i < decoyArr.length; i++) decoyArr[i] = decoyEPool.get(i);
+		for (int i = 0; i < decoyArr.length; i++)
+			decoyArr[i] = decoyEPool.get(i);
 		int decoyLen = decoyArr.length;
 		int maxM = 0;
-		for (Integer m : genomeTotalPeptidesMap.values()) maxM = Math.max(maxM, m);
+		for (Integer m : genomeTotalPeptidesMap.values())
+			maxM = Math.max(maxM, m);
 		double[] tmp = new double[Math.max(maxM, 1)];
 		HashMap<String, Double> pempMap = new HashMap<>();
 		for (String g : SMap.keySet()) {
@@ -8090,11 +8114,14 @@ public class MetaDiaTask extends MetaPilotMagTask {
 			int ng = genomeNMap.get(g);
 			int count = 0;
 			for (int b = 0; b < B; b++) {
-				for (int i = 0; i < M; i++) tmp[i] = decoyArr[rnd.nextInt(decoyLen)];
+				for (int i = 0; i < M; i++)
+					tmp[i] = decoyArr[rnd.nextInt(decoyLen)];
 				Arrays.sort(tmp, 0, M);
 				double Sb = 0;
-				for (int i = M - 1; i >= M - ng && i >= 0; i--) Sb += tmp[i];
-				if (Sb >= Sg) count++;
+				for (int i = M - 1; i >= M - ng && i >= 0; i--)
+					Sb += tmp[i];
+				if (Sb >= Sg)
+					count++;
 			}
 			double pemp = (1.0 + count) / (1.0 + B);
 			pempMap.put(g, pemp);
@@ -8111,8 +8138,9 @@ public class MetaDiaTask extends MetaPilotMagTask {
 	}
 
 	/**
-	 * Compute per-protein scores (S, p_emp, q_value) from precursors using PEP/CScore+intensity
-	 * scoring and decoy resampling. S = sum of ALL weighted scores per protein (no top-k).
+	 * Compute per-protein scores (S, p_emp, q_value) from precursors using
+	 * PEP/CScore+intensity scoring and decoy resampling. S = sum of ALL weighted
+	 * scores per protein (no top-k).
 	 */
 	protected HashMap<String, double[]> computeProteinScoreMap(DiaNNPrecursor[] precursors) {
 		HashMap<String, double[]> proteinScoreMap = new HashMap<>();
@@ -8122,7 +8150,8 @@ public class MetaDiaTask extends MetaPilotMagTask {
 		HashMap<String, PeptideEvidence> peptideMap = new HashMap<>();
 		for (DiaNNPrecursor pp : precursors) {
 			String seq = pp.getSeqString();
-			if (seq == null || seq.isEmpty()) continue;
+			if (seq == null || seq.isEmpty())
+				continue;
 			int charge = pp.getCharge();
 			boolean isDecoy = pp.getIsDecoy();
 			String key = seq + "|" + charge + "|" + isDecoy;
@@ -8150,7 +8179,8 @@ public class MetaDiaTask extends MetaPilotMagTask {
 			String[] proGroups = pp.getProGroups();
 			if (proGroups != null) {
 				for (String pro : proGroups) {
-					if (pro != null && !pro.isEmpty()) ev.proteins.add(pro);
+					if (pro != null && !pro.isEmpty())
+						ev.proteins.add(pro);
 				}
 			}
 		}
@@ -8160,8 +8190,10 @@ public class MetaDiaTask extends MetaPilotMagTask {
 		for (PeptideEvidence ev : peptideMap.values()) {
 			double logI1 = Math.log(1.0 + Math.max(0, ev.bestPreQuan)) / Math.log(2.0);
 			double logI2 = Math.log(1.0 + Math.max(0, ev.bestMs1Area)) / Math.log(2.0);
-			minLog1 = Math.min(minLog1, logI1); maxLog1 = Math.max(maxLog1, logI1);
-			minLog2 = Math.min(minLog2, logI2); maxLog2 = Math.max(maxLog2, logI2);
+			minLog1 = Math.min(minLog1, logI1);
+			maxLog1 = Math.max(maxLog1, logI1);
+			minLog2 = Math.min(minLog2, logI2);
+			maxLog2 = Math.max(maxLog2, logI2);
 		}
 		double logRange1 = Math.max(1e-10, maxLog1 - minLog1);
 		double logRange2 = Math.max(1e-10, maxLog2 - minLog2);
@@ -8171,8 +8203,7 @@ public class MetaDiaTask extends MetaPilotMagTask {
 		for (Map.Entry<String, PeptideEvidence> ent : peptideMap.entrySet()) {
 			PeptideEvidence ev = ent.getValue();
 			String seq = ev.seq;
-			double e = ev.bestCScore > 0
-					? Math.min(cap, Math.max(0, ev.bestCScore))
+			double e = ev.bestCScore > 0 ? Math.min(cap, Math.max(0, ev.bestCScore))
 					: Math.min(cap, Math.max(0, -Math.log10(Math.max(ev.bestPEP, 1e-10))));
 			double logI1 = Math.log(1.0 + Math.max(0, ev.bestPreQuan)) / Math.log(2.0);
 			double logI2 = Math.log(1.0 + Math.max(0, ev.bestMs1Area)) / Math.log(2.0);
@@ -8181,9 +8212,11 @@ public class MetaDiaTask extends MetaPilotMagTask {
 			double intensityFactor = 0.5 + 0.25 * norm1 + 0.25 * norm2;
 			double wei = e * intensityFactor;
 			if (ev.isDecoy) {
-				if (ev.bestPEP < decoyPepMax) decoyEPool.add(wei);
+				if (ev.bestPEP < decoyPepMax)
+					decoyEPool.add(wei);
 				for (String pro : ev.proteins) {
-					if (!pro.startsWith(FastaManager.shuffle)) continue;
+					if (!pro.startsWith(FastaManager.shuffle))
+						continue;
 					ArrayList<Double> weiList = proteinPeptides.get(pro);
 					if (weiList == null) {
 						weiList = new ArrayList<>();
@@ -8194,7 +8227,8 @@ public class MetaDiaTask extends MetaPilotMagTask {
 				continue;
 			}
 			for (String pro : ev.proteins) {
-				if (pro.startsWith(FastaManager.shuffle)) continue;
+				if (pro.startsWith(FastaManager.shuffle))
+					continue;
 				ArrayList<Double> weiList = proteinPeptides.get(pro);
 				if (weiList == null) {
 					weiList = new ArrayList<>();
@@ -8210,16 +8244,20 @@ public class MetaDiaTask extends MetaPilotMagTask {
 		for (String pro : proteinPeptides.keySet()) {
 			ArrayList<Double> weiList = proteinPeptides.get(pro);
 			double S = 0;
-			for (double w : weiList) S += w;
+			for (double w : weiList)
+				S += w;
 			SMap.put(pro, S);
 			proteinNMap.put(pro, weiList.size());
 		}
-		if (decoyEPool.isEmpty()) decoyEPool.add(0.0);
+		if (decoyEPool.isEmpty())
+			decoyEPool.add(0.0);
 		double[] decoyArr = new double[decoyEPool.size()];
-		for (int i = 0; i < decoyArr.length; i++) decoyArr[i] = decoyEPool.get(i);
+		for (int i = 0; i < decoyArr.length; i++)
+			decoyArr[i] = decoyEPool.get(i);
 		int decoyLen = decoyArr.length;
 		int maxM = 0;
-		for (Integer m : proteinNMap.values()) maxM = Math.max(maxM, m);
+		for (Integer m : proteinNMap.values())
+			maxM = Math.max(maxM, m);
 		double[] tmp = new double[Math.max(maxM, 1)];
 		HashMap<String, Double> pempMap = new HashMap<>();
 		for (String pro : SMap.keySet()) {
@@ -8232,7 +8270,8 @@ public class MetaDiaTask extends MetaPilotMagTask {
 					tmp[i] = decoyArr[rnd.nextInt(decoyLen)];
 					Sb += tmp[i];
 				}
-				if (Sb >= Sp) count++;
+				if (Sb >= Sp)
+					count++;
 			}
 			pempMap.put(pro, (1.0 + count) / (1.0 + B));
 		}
@@ -8248,14 +8287,16 @@ public class MetaDiaTask extends MetaPilotMagTask {
 	}
 
 	/**
-	 * New genome/protein scoring export (S, p_emp, q_value from PEP/CScore+intensity, decoy resampling).
-	 * Uses {@link #getExportFastaFolder()} and {@link #getExportParquetFolder()} for paths.
-	 * Used by MetaDiaMarkerTask and MetaDiaSeedDirectTask.
+	 * New genome/protein scoring export (S, p_emp, q_value from
+	 * PEP/CScore+intensity, decoy resampling). Uses {@link #getExportFastaFolder()}
+	 * and {@link #getExportParquetFolder()} for paths. Used by MetaDiaMarkerTask
+	 * and MetaDiaSeedDirectTask.
 	 * <p>
-	 * Contract: DIA workflows must set {@link #quan_pep_file} (and, where applicable,
-	 * {@link #getExportParquetFolder()}) in their combine/iden step before calling exportReport().
-	 * This method prefers the already-set {@link #getExportQuanPepFile()} when valid; otherwise
-	 * derives the path from {@link #getExportParquetFolder()}.
+	 * Contract: DIA workflows must set {@link #quan_pep_file} (and, where
+	 * applicable, {@link #getExportParquetFolder()}) in their combine/iden step
+	 * before calling exportReport(). This method prefers the already-set
+	 * {@link #getExportQuanPepFile()} when valid; otherwise derives the path from
+	 * {@link #getExportParquetFolder()}.
 	 */
 	protected boolean exportReportWithNewGenomeScoring() {
 
@@ -8266,20 +8307,23 @@ public class MetaDiaTask extends MetaPilotMagTask {
 			File parquetFolder = getExportParquetFolder();
 			if (parquetFolder == null && metaPar != null) {
 				parquetFolder = new File(metaPar.getDbSearchResultFile(), "combined");
-				logger.warn(getTaskName() + ": getExportParquetFolder() was null, using fallback {}", parquetFolder.getAbsolutePath());
+				logger.warn(getTaskName() + ": getExportParquetFolder() was null, using fallback {}",
+						parquetFolder.getAbsolutePath());
 			}
-			this.quan_pep_file = new File(parquetFolder != null ? parquetFolder : new File("combined"), "combined.pr_matrix.tsv");
+			this.quan_pep_file = new File(parquetFolder != null ? parquetFolder : new File("combined"),
+					"combined.pr_matrix.tsv");
 		}
 		if (!this.quan_pep_file.exists() || !this.quan_pep_file.canRead()) {
-			logger.error(getTaskName() + ": peptide matrix file missing or unreadable: {}", this.quan_pep_file.getAbsolutePath());
+			logger.error(getTaskName() + ": peptide matrix file missing or unreadable: {}",
+					this.quan_pep_file.getAbsolutePath());
 			return false;
 		}
 
 		File parquetFolder = this.quan_pep_file.getParentFile();
 
 		logger.info(getTaskName() + ": protein inference started (new genome scoring)");
-		System.out.println(new java.text.SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
-				+ ": protein inference started");
+		System.out.println(new java.text.SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t"
+				+ getTaskName() + ": protein inference started");
 
 		File parquetFile = new File(parquetFolder != null ? parquetFolder : new File("combined"), "combined.parquet");
 		if (!parquetFile.exists() || !parquetFile.canRead()) {
@@ -8288,25 +8332,35 @@ public class MetaDiaTask extends MetaPilotMagTask {
 		}
 		DiaNNParquetReader diannReader = new DiaNNParquetReader(parquetFile.getAbsolutePath(), this.diannPar.getCut());
 		DiaNNPrecursor[] precursorsQ01 = diannReader.getDiaNNPrecursors();
-		if (precursorsQ01 == null) precursorsQ01 = new DiaNNPrecursor[0];
+		if (precursorsQ01 == null)
+			precursorsQ01 = new DiaNNPrecursor[0];
 		precursorsQ01 = mapPrecursorsToGenomes(precursorsQ01);
-		if (precursorsQ01 == null) precursorsQ01 = new DiaNNPrecursor[0];
+		if (precursorsQ01 == null)
+			precursorsQ01 = new DiaNNPrecursor[0];
 		HashMap<String, double[]> genomeScoreMapForFilter = computeGenomeScoreMap(precursorsQ01, true);
 		HashSet<String> genomesPempOne = new HashSet<>();
 		for (String g : genomeScoreMapForFilter.keySet()) {
-			if (genomeScoreMapForFilter.get(g)[IDX_P_EMP] >= 1.0 - 1e-9) genomesPempOne.add(g);
+			if (genomeScoreMapForFilter.get(g)[IDX_P_EMP] >= 1.0 - 1e-9)
+				genomesPempOne.add(g);
 		}
 		ArrayList<DiaNNPrecursor> retainedList = new ArrayList<>();
 		for (DiaNNPrecursor pp : precursorsQ01) {
-			if (pp.getGlobalQvalue() >= 0.01) continue;
+			if (pp.getGlobalQvalue() >= 0.01)
+				continue;
 			String[] proGroups = pp.getProGroups();
-			if (proGroups == null || proGroups.length == 0) continue;
+			if (proGroups == null || proGroups.length == 0)
+				continue;
 			ArrayList<String> keptPro = new ArrayList<>();
 			for (String pro : proGroups) {
-				if (pro == null || pro.isEmpty()) continue;
-				if (pro.startsWith(FastaManager.shuffle)) { keptPro.add(pro); continue; }
+				if (pro == null || pro.isEmpty())
+					continue;
+				if (pro.startsWith(FastaManager.shuffle)) {
+					keptPro.add(pro);
+					continue;
+				}
 				String genome = pro.split("_").length > 0 ? pro.split("_")[0] : null;
-				if (genome != null && !genomesPempOne.contains(genome)) keptPro.add(pro);
+				if (genome != null && !genomesPempOne.contains(genome))
+					keptPro.add(pro);
 			}
 			if (!keptPro.isEmpty()) {
 				pp.setProGroups(keptPro.toArray(new String[0]));
@@ -8326,7 +8380,10 @@ public class MetaDiaTask extends MetaPilotMagTask {
 				if (proteinScoreMap.containsKey(pro)) {
 					proList.add(pro);
 					double S = proteinScoreMap.get(pro)[IDX_S];
-					if (S > bestS) { bestS = S; razorProtein = pro; }
+					if (S > bestS) {
+						bestS = S;
+						razorProtein = pro;
+					}
 				}
 			}
 			if (!proList.isEmpty()) {
@@ -8345,7 +8402,8 @@ public class MetaDiaTask extends MetaPilotMagTask {
 			for (String g : gOrder) {
 				double[] row = genomeScoreMap.get(g);
 				gw.println(g + "\t" + FormatTool.getDFE4().format(row[IDX_S]) + "\t"
-						+ FormatTool.getDF4().format(row[IDX_P_EMP]) + "\t" + FormatTool.getDF4().format(row[IDX_Q_VALUE]));
+						+ FormatTool.getDF4().format(row[IDX_P_EMP]) + "\t"
+						+ FormatTool.getDF4().format(row[IDX_Q_VALUE]));
 			}
 		} catch (IOException e) {
 			logger.warn(getTaskName() + ": could not write " + genomesScoreFile.getAbsolutePath(), e);
@@ -8357,58 +8415,139 @@ public class MetaDiaTask extends MetaPilotMagTask {
 			for (String p : pOrder) {
 				double[] row = proteinScoreMap.get(p);
 				pw.println(p + "\t" + FormatTool.getDFE4().format(row[IDX_S]) + "\t"
-						+ FormatTool.getDF4().format(row[IDX_P_EMP]) + "\t" + FormatTool.getDF4().format(row[IDX_Q_VALUE]));
+						+ FormatTool.getDF4().format(row[IDX_P_EMP]) + "\t"
+						+ FormatTool.getDF4().format(row[IDX_Q_VALUE]));
 			}
 		} catch (IOException e) {
 			logger.warn(getTaskName() + ": could not write " + proteinsScoreFile.getAbsolutePath(), e);
 		}
-		// Delegate the rest of report generation (peptide report, HTML, etc.) to the existing export flow in subclasses if they override it; otherwise run the same downstream as Marker.
+		// Delegate the rest of report generation (peptide report, HTML, etc.) to the
+		// existing export flow in subclasses if they override it; otherwise run the
+		// same downstream as Marker.
 		return exportReportDownstreamFromNewScoring(genomeScoreMap, proteinScoreMap);
 	}
 
-	/** Getters/setters for use by static downstream report (e.g. runFullDownstreamFromNewScoring). */
-	protected org.apache.logging.log4j.Logger getExportLogger() { return logger; }
 	/**
-	 * Peptide matrix file for report export. DIA workflows must set this (e.g. in iden/combine) before report generation.
-	 * @return the combined peptide matrix file (e.g. combined/combined.pr_matrix.tsv), or null if not set
+	 * Getters/setters for use by static downstream report (e.g.
+	 * runFullDownstreamFromNewScoring).
 	 */
-	protected File getExportQuanPepFile() { return quan_pep_file; }
-	protected String[] getExportQuanExpNames() { return quanExpNames; }
-	protected void setExportQuanExpNames(String[] v) { this.quanExpNames = v; }
-	protected File getExportResultFolderFile() { return resultFolderFile; }
-	protected MagDbItem getExportMagDb() { return magDb; }
-	protected File getExportFinalPepTxt() { return final_pep_txt; }
-	protected void setExportFinalPepTxt(File f) { this.final_pep_txt = f; }
-	protected File getExportFinalProTxt() { return final_pro_txt; }
-	protected void setExportFinalProTxt(File f) { this.final_pro_txt = f; }
-	protected File getExportReportHtmlDir() { return reportHtmlDir; }
-	protected void setExportReportHtmlDir(File f) { this.reportHtmlDir = f; }
-	protected File getExportFinalProXmlFile() { return final_pro_xml_file; }
-	protected void setExportFinalProXmlFile(File f) { this.final_pro_xml_file = f; }
-	protected File getExportSummaryMetaFile() { return summaryMetaFile; }
-	protected void setExportSummaryMetaFile(File f) { this.summaryMetaFile = f; }
-	protected MetaParameterDia getExportMetaPar() { return (MetaParameterDia) metaPar; }
-	protected MetaResourceParameters getExportMrp() { return mrp; }
-	protected String[] getExportExpNames() { return expNames; }
-	protected MetaData getExportMetadata() { return metadata; }
-	protected void exportUpdateProgress(long a, long b) { updateProgress(a, b); }
-	protected void exportUpdateMessage(String msg) { updateMessage(msg); }
-	protected MetaProteinAnnoMag[] exportFuncAnnoSqlite(MetaProtein[] pros, String[] fileNames) { return funcAnnoSqlite(pros, fileNames); }
+	protected org.apache.logging.log4j.Logger getExportLogger() {
+		return logger;
+	}
 
 	/**
-	 * Optional mapping of precursors to genome proteins (e.g. from MAG predicted TSVs).
-	 * Default: return precursors unchanged. Override in Seed Direct to fill proGroups from predicted folder.
+	 * Peptide matrix file for report export. DIA workflows must set this (e.g. in
+	 * iden/combine) before report generation.
+	 * 
+	 * @return the combined peptide matrix file (e.g.
+	 *         combined/combined.pr_matrix.tsv), or null if not set
+	 */
+	protected File getExportQuanPepFile() {
+		return quan_pep_file;
+	}
+
+	protected String[] getExportQuanExpNames() {
+		return quanExpNames;
+	}
+
+	protected void setExportQuanExpNames(String[] v) {
+		this.quanExpNames = v;
+	}
+
+	protected File getExportResultFolderFile() {
+		return resultFolderFile;
+	}
+
+	protected MagDbItem getExportMagDb() {
+		return magDb;
+	}
+
+	protected File getExportFinalPepTxt() {
+		return final_pep_txt;
+	}
+
+	protected void setExportFinalPepTxt(File f) {
+		this.final_pep_txt = f;
+	}
+
+	protected File getExportFinalProTxt() {
+		return final_pro_txt;
+	}
+
+	protected void setExportFinalProTxt(File f) {
+		this.final_pro_txt = f;
+	}
+
+	protected File getExportReportHtmlDir() {
+		return reportHtmlDir;
+	}
+
+	protected void setExportReportHtmlDir(File f) {
+		this.reportHtmlDir = f;
+	}
+
+	protected File getExportFinalProXmlFile() {
+		return final_pro_xml_file;
+	}
+
+	protected void setExportFinalProXmlFile(File f) {
+		this.final_pro_xml_file = f;
+	}
+
+	protected File getExportSummaryMetaFile() {
+		return summaryMetaFile;
+	}
+
+	protected void setExportSummaryMetaFile(File f) {
+		this.summaryMetaFile = f;
+	}
+
+	protected MetaParameterDia getExportMetaPar() {
+		return (MetaParameterDia) metaPar;
+	}
+
+	protected MetaResourceParameters getExportMrp() {
+		return mrp;
+	}
+
+	protected String[] getExportExpNames() {
+		return expNames;
+	}
+
+	protected MetaData getExportMetadata() {
+		return metadata;
+	}
+
+	protected void exportUpdateProgress(long a, long b) {
+		updateProgress(a, b);
+	}
+
+	protected void exportUpdateMessage(String msg) {
+		updateMessage(msg);
+	}
+
+	protected MetaProteinAnnoMag[] exportFuncAnnoSqlite(MetaProtein[] pros, String[] fileNames) {
+		return funcAnnoSqlite(pros, fileNames);
+	}
+
+	/**
+	 * Optional mapping of precursors to genome proteins (e.g. from MAG predicted
+	 * TSVs). Default: return precursors unchanged. Override in Seed Direct to fill
+	 * proGroups from predicted folder.
 	 */
 	protected DiaNNPrecursor[] mapPrecursorsToGenomes(DiaNNPrecursor[] precursors) {
 		return precursors;
 	}
 
 	/**
-	 * Downstream report generation after new genome/protein scores (peptide TSV, intensity maps, HTML).
-	 * Default: run the same logic as MetaDiaMarkerTask (shared implementation). Override to customize.
+	 * Downstream report generation after new genome/protein scores (peptide TSV,
+	 * intensity maps, HTML). Default: run the same logic as MetaDiaMarkerTask
+	 * (shared implementation). Override to customize.
 	 */
-	protected boolean exportReportDownstreamFromNewScoring(HashMap<String, double[]> genomeScoreMap, HashMap<String, double[]> proteinScoreMap) {
-		// Default: call the base exportReport() which does the old scheme - not what we want. Subclasses that use new scoring (Marker, SeedDirect) override this.
+	protected boolean exportReportDownstreamFromNewScoring(HashMap<String, double[]> genomeScoreMap,
+			HashMap<String, double[]> proteinScoreMap) {
+		// Default: call the base exportReport() which does the old scheme - not what we
+		// want. Subclasses that use new scoring (Marker, SeedDirect) override this.
 		return false;
 	}
 }
