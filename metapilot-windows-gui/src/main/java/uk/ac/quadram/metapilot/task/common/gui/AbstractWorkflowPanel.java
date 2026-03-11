@@ -311,6 +311,13 @@ public abstract class AbstractWorkflowPanel<T extends MetaBaseParameter> extends
     protected abstract T collectParametersFromUI();
     
     /**
+     * Public accessor for parameters collected from UI (e.g. for use by child panels).
+     */
+    public final T getCollectedParameters() {
+        return collectParametersFromUI();
+    }
+    
+    /**
      * Apply parameters to the UI components
      */
     protected abstract void applyParametersToUI(T params);

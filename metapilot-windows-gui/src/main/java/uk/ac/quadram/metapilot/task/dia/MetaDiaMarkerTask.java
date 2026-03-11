@@ -40,7 +40,7 @@ import uk.ac.quadram.metapilot.core.taxonomy.TaxonomyRanks;
 import uk.ac.quadram.metapilot.core.tools.FormatTool;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
-import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaFocus;
+import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaMarker;
 import uk.ac.quadram.metapilot.dbSearch.deepDetect.DeepDetectParameter;
 import uk.ac.quadram.metapilot.dbSearch.deepDetect.DeepDetectTask;
 import uk.ac.quadram.metapilot.core.MGYG.HapExtractor;
@@ -49,9 +49,9 @@ import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProteinXMLReader2;
 import uk.ac.quadram.metapilot.task.mag.HMGenomeHtmlWriter;
-import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.MagFuncSearcher;
 import uk.ac.quadram.metapilot.task.mag.MarkerGenomeSelector;
+import uk.ac.quadram.metapilot.task.mag.MetaPilotMagTask;
 import uk.ac.quadram.metapilot.task.mag.MetaProteinAnnoMag;
 import uk.ac.quadram.metapilot.task.MetaPythonReportTask;
 import uk.ac.quadram.metapilot.task.MetaPythonReportCopyTask;
@@ -75,28 +75,32 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 	/**
 	 * Constructor for MetaDiaMarkerTask
 	 * 
-	 * @param focusParams The DIA Marker (Focus/Comprehensive) specific parameters
+	 * @param markerParams The DIA Marker (Focus/Comprehensive) specific parameters
 	 * @param mrp         Resource parameters
 	 * @param bar1        Main progress bar
 	 * @param bar2        Secondary progress bar
 	 */
-	public MetaDiaMarkerTask(MetaParameterDiaFocus focusParams, MetaResourceParameters mrp, ProgressBar bar1,
+	public MetaDiaMarkerTask(MetaParameterDiaMarker markerParams, MetaResourceParameters mrp, ProgressBar bar1,
 			ProgressBar bar2) {
 		// Call parent constructor with the base DIA parameters
-		super(focusParams, mrp, bar1, bar2);
+		super(markerParams, mrp, bar1, bar2);
+
+		// Initialize result folder for marker workflows if not already set:
+		// marker_focus / marker_comprehensive, based on genome selection strategy.
+		initResultFolderIfNeeded();
 
 		// Apply modifications from parameters to DiannParameter
 		if (diannPar != null) {
-			diannPar.setM_excision(focusParams.isMExcision());
-			diannPar.setCarbami_C(focusParams.isCarbamiC());
-			diannPar.setOxidation_M(focusParams.isOxidationM());
-			diannPar.setAcety_proN(focusParams.isAcetyProN());
-			diannPar.setPhospho_STY(focusParams.isPhosphoSTY());
-			diannPar.setK_GG(focusParams.isKGG());
+			diannPar.setM_excision(markerParams.isMExcision());
+			diannPar.setCarbami_C(markerParams.isCarbamiC());
+			diannPar.setOxidation_M(markerParams.isOxidationM());
+			diannPar.setAcety_proN(markerParams.isAcetyProN());
+			diannPar.setPhospho_STY(markerParams.isPhosphoSTY());
+			diannPar.setK_GG(markerParams.isKGG());
 			logger.info(
 					"Applied modifications from parameters: M_excision={}, Carbami_C={}, Oxidation_M={}, Acety_proN={}, Phospho_STY={}, K_GG={}",
-					focusParams.isMExcision(), focusParams.isCarbamiC(), focusParams.isOxidationM(),
-					focusParams.isAcetyProN(), focusParams.isPhosphoSTY(), focusParams.isKGG());
+					markerParams.isMExcision(), markerParams.isCarbamiC(), markerParams.isOxidationM(),
+					markerParams.isAcetyProN(), markerParams.isPhosphoSTY(), markerParams.isKGG());
 		}
 
 		logger.info("Initializing MetaDiaMarkerTask...");
@@ -133,6 +137,39 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 	@Override
 	protected Logger getLogger() {
 		return logger;
+	}
+
+	@Override
+	protected void initResultFolderIfNeeded() {
+		if (metaPar == null) {
+			return;
+		}
+		if (metaPar.getDbSearchResultFile() != null) {
+			this.resultFolderFile = metaPar.getDbSearchResultFile();
+			return;
+		}
+		if (!(metaPar instanceof MetaParameterDiaMarker)) {
+			// Fallback to base behavior for non-focus parameters
+			super.initResultFolderIfNeeded();
+			return;
+		}
+		MetaParameterDiaMarker markerParams = (MetaParameterDiaMarker) metaPar;
+		// Use markerMode as the canonical selector; fall back to FOCUS.
+		String markerMode = markerParams.getMarkerMode();
+		String folderName;
+		if ("COMPREHENSIVE".equalsIgnoreCase(markerMode) || "DEEP".equalsIgnoreCase(markerMode)) {
+			folderName = "marker_comprehensive";
+		} else {
+			folderName = "marker_focus";
+		}
+		File base = new File(markerParams.getResult() != null ? markerParams.getResult() : ".");
+		File dir = new File(base, folderName);
+		if (!dir.exists()) {
+			dir.mkdirs();
+			logger.info("Created result directory for DIA Marker workflow ({}): {}", folderName, dir.getAbsolutePath());
+		}
+		markerParams.setDbSearchResultFile(dir);
+		this.resultFolderFile = dir;
 	}
 
 	@Override
@@ -323,38 +360,29 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 	protected boolean createSSLibrary() {
 		logger.info("Starting focus library setup for DIA Focus workflow...");
 
-		// Ensure Marker4 files exist (Marker4_highpep.fasta, genomes-taxa.tsv); generate if missing
+		// Ensure Marker4 files (Marker4.fasta or Marker4_highpep.fasta, genomes-taxa.tsv)
 		updateMessage(getTaskName() + ": Checking Marker4 files...");
 		if (!ensureMarker4FilesIfNeeded()) {
-			logger.error(getTaskName() + ": Failed to ensure Marker4 files (Marker4_highpep.fasta, genomes-taxa.tsv)");
+			logger.error(getTaskName() + ": Failed to ensure Marker4 files");
 			return false;
 		}
 
-		// Get the marker high peptide library file from MagDbItem
-		File libFile = magDb.getMarkerHighPepLibFile();
-
-		if (libFile == null) {
-			logger.error(getTaskName() + ": Marker high peptide library file path is null");
-			System.err.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
-					+ ": Marker high peptide library file path is null");
+		File fastaFile = magDb.getMarker4FastaForLibrary();
+		File libFile = magDb.getMarker4LibFile();
+		if (fastaFile == null || libFile == null) {
+			logger.error(getTaskName() + ": Marker4 FASTA or library path is null");
+			return false;
+		}
+		if (!fastaFile.exists()) {
+			logger.error(getTaskName() + ": Marker4 FASTA not found: {}", fastaFile.getAbsolutePath());
 			return false;
 		}
 
 		// If library file doesn't exist, generate it from FASTA
 		if (!libFile.exists()) {
-			logger.info("Focus library file does not exist, generating from FASTA file...");
+			logger.info("Focus library file does not exist, generating from {}...", fastaFile.getName());
 			System.out.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
 					+ ": generating focus library from FASTA");
-
-			// Get the FASTA file - use MARKER4 mode for marker high peptide
-			File fastaFile = magDb.getHapFastaFile(MagDbItem.MARKER4);
-			if (fastaFile == null || !fastaFile.exists()) {
-				logger.error(getTaskName() + ": Marker high peptide FASTA file not found: "
-						+ (fastaFile != null ? fastaFile.getAbsolutePath() : "null"));
-				System.err.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
-						+ ": Marker high peptide FASTA file not found");
-				return false;
-			}
 
 			logger.info("Using FASTA file: {}", fastaFile.getAbsolutePath());
 			logger.info("Generating library file: {}", libFile.getAbsolutePath());
@@ -396,11 +424,15 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 	}
 
 	private static final double DEFAULT_DETECTABILITY_THRESHOLD = 0.8;
+	private static final int MARKER4_HIGHPEP_PROTEIN_THRESHOLD = 100_000;
 
 	/**
-	 * Ensures Marker4_highpep.fasta and genomes-taxa.tsv exist for the selected MAG database.
-	 * Generates them if missing (HapExtractor, DeepDetect, exportPeptideFasta).
-	 * @return true if files exist or were generated successfully
+	 * Ensures Marker4.fasta and genomes-taxa.tsv exist. Marker4.fasta is auto-generated when a MAG
+	 * database is downloaded; if missing, we extract it from the original DB. If Marker4.fasta has
+	 * more than 100,000 proteins, we generate Marker4_highpep.fasta (high-detectability peptides only)
+	 * to keep the library manageable; otherwise we use Marker4.fasta directly.
+	 *
+	 * @return true if Marker4.fasta (or Marker4_highpep.fasta) and genomes-taxa.tsv exist
 	 */
 	private boolean ensureMarker4FilesIfNeeded() {
 		if (magDb == null) {
@@ -412,52 +444,75 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 			logger.error("MAG database current file is null or does not exist");
 			return false;
 		}
-		File markersHighpepFile = new File(currentFile, "Marker4_highpep.fasta");
-		File genomeTaxaFile = new File(currentFile, "genomes-taxa.tsv");
-		if (markersHighpepFile.exists() && genomeTaxaFile.exists()) {
-			logger.info("Marker4 files already exist");
-			return true;
+
+		// Marker4.fasta is auto-generated on download; extract if missing (e.g. legacy DB)
+		File marker4Fasta = new File(currentFile, "Marker4.fasta");
+		if (!marker4Fasta.exists()) {
+			updateMessage(getTaskName() + ": Extracting Marker4 proteins...");
+			if (!ensureMarker4FastaExists(marker4Fasta)) {
+				return false;
+			}
 		}
-		logger.info("Marker4 files missing, generating... (this may take several minutes)");
-		updateMessage(getTaskName() + ": Generating Marker4 files (DeepDetect prediction)...");
-		try {
-			if (!markersHighpepFile.exists()) {
-				ensure4markersHighpepFasta(markersHighpepFile);
-			}
-			if (!genomeTaxaFile.exists()) {
-				ensureGenomesTaxaFile(genomeTaxaFile);
-			}
-			return markersHighpepFile.exists() && genomeTaxaFile.exists();
-		} catch (Exception e) {
-			logger.error("Marker4 file generation failed", e);
+
+		// If Marker4.fasta has >100k proteins, generate Marker4_highpep.fasta for a smaller library
+		int proteinCount = countFastaProteins(marker4Fasta);
+		if (proteinCount < 0) {
+			logger.error("Failed to read protein count from Marker4.fasta");
 			return false;
 		}
+		if (proteinCount > MARKER4_HIGHPEP_PROTEIN_THRESHOLD) {
+			logger.info("Marker4.fasta has {} proteins (>{}), generating Marker4_highpep.fasta...",
+					proteinCount, MARKER4_HIGHPEP_PROTEIN_THRESHOLD);
+			File markersHighpepFile = new File(currentFile, "Marker4_highpep.fasta");
+			if (!markersHighpepFile.exists()) {
+				ensureMarker4HighpepFasta(markersHighpepFile, marker4Fasta);
+			}
+		} else {
+			logger.info("Marker4.fasta has {} proteins (≤{}), using directly for library", proteinCount,
+					MARKER4_HIGHPEP_PROTEIN_THRESHOLD);
+		}
+
+		// Ensure genomes-taxa.tsv for genome selection
+		File genomeTaxaFile = new File(currentFile, "genomes-taxa.tsv");
+		if (!genomeTaxaFile.exists()) {
+			ensureGenomesTaxaFile(genomeTaxaFile);
+		}
+
+		File effectiveFasta = magDb.getMarker4FastaForLibrary();
+		if (effectiveFasta == null || !effectiveFasta.exists()) {
+			logger.error("Marker4 FASTA not available: {}", effectiveFasta);
+			return false;
+		}
+		if (!genomeTaxaFile.exists()) {
+			logger.error("genomes-taxa.tsv not available");
+			return false;
+		}
+		logger.info("Marker4 files ready: FASTA={}, genomes-taxa.tsv exists", effectiveFasta.getName());
+		return true;
 	}
 
-	private void ensure4markersHighpepFasta(File markersHighpepFile) {
-		File currentDir = markersHighpepFile.getParentFile();
+	private boolean ensureMarker4FastaExists(File marker4Fasta) {
 		File originalDbFolder = magDb.getOriginalDbFolder();
 		if (originalDbFolder == null || !originalDbFolder.exists()) {
-			logger.error("Cannot generate Marker4_highpep.fasta: original DB folder not available");
-			return;
+			logger.error("Cannot extract Marker4.fasta: original DB folder not available");
+			return false;
 		}
-		// Step 1: Extract 4-markers protein FASTA
-		File fourMarkersFasta = new File(currentDir, "Marker4.fasta");
-		if (!fourMarkersFasta.exists()) {
-			updateMessage(getTaskName() + ": Extracting Marker4 proteins...");
-			HapExtractor extractor = new HapExtractor();
-			try {
-				extractor.extractFourCategories(originalDbFolder, fourMarkersFasta);
-			} catch (IOException e) {
-				logger.error("Failed to extract Marker4.fasta", e);
-				return;
-			}
+		HapExtractor extractor = new HapExtractor();
+		try {
+			extractor.extractFourCategories(originalDbFolder, marker4Fasta);
+		} catch (IOException e) {
+			logger.error("Failed to extract Marker4.fasta", e);
+			return false;
 		}
-		if (!fourMarkersFasta.exists()) {
+		if (!marker4Fasta.exists()) {
 			logger.error("Marker4.fasta was not created");
-			return;
+			return false;
 		}
-		// Step 2: Predict peptide detectability with DeepDetect
+		return true;
+	}
+
+	private void ensureMarker4HighpepFasta(File markersHighpepFile, File marker4Fasta) {
+		File currentDir = markersHighpepFile.getParentFile();
 		File predictedTsv = new File(currentDir, "Marker4.predicted.tsv");
 		if (!predictedTsv.exists()) {
 			updateMessage(getTaskName() + ": Running DeepDetect for peptide prediction...");
@@ -468,7 +523,7 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 				return;
 			}
 			DeepDetectParameter par = new DeepDetectParameter();
-			par.setInput(fourMarkersFasta);
+			par.setInput(marker4Fasta);
 			par.setOutput(predictedTsv);
 			int timeoutHours = 4;
 			boolean ok = DeepDetectTask.testDeepDetect(deepDetectExe, par, timeoutHours);
@@ -477,7 +532,6 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 				return;
 			}
 		}
-		// Step 3: Select high-detectability peptides and write Marker4_highpep.fasta
 		if (!markersHighpepFile.exists()) {
 			MarkerGenomeSelector.exportPeptideFasta(predictedTsv.getAbsolutePath(),
 					markersHighpepFile.getAbsolutePath(), DEFAULT_DETECTABILITY_THRESHOLD);
@@ -487,6 +541,21 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 		} else {
 			logger.warn("Marker4_highpep.fasta was not written (no peptides above threshold?)");
 		}
+	}
+
+	private static int countFastaProteins(File fastaFile) {
+		int count = 0;
+		try (BufferedReader r = new BufferedReader(new FileReader(fastaFile))) {
+			String line;
+			while ((line = r.readLine()) != null) {
+				if (line.startsWith(">")) {
+					count++;
+				}
+			}
+		} catch (IOException e) {
+			return -1;
+		}
+		return count;
 	}
 
 	private void ensureGenomesTaxaFile(File genomeTaxaFile) {
@@ -534,6 +603,63 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 		}
 	}
 
+	/**
+	 * Ensures combined/ranked.tsv exists by running MarkerGenomeSelector on the combined precursors
+	 * (same as DDA: ranking from combined result). No-op if combined/ranked.tsv already exists or
+	 * precursors/magDb/Marker4.fasta/genomes-taxa are missing.
+	 */
+	static void ensureCombinedRankedFromPrecursors(MetaDiaTask diaTask, File resultFolder) {
+		File combinedDir = new File(resultFolder, "combined");
+		File rankedTsv = new File(combinedDir, "ranked.tsv");
+		if (rankedTsv.exists()) return;
+		if (diaTask.diaPp == null || diaTask.diaPp.length == 0) return;
+		if (diaTask.getExportMagDb() == null) return;
+		File currentFile = diaTask.getExportMagDb().getCurrentFile();
+		if (currentFile == null || !currentFile.exists()) return;
+		File markerFasta = new File(currentFile, "Marker4.fasta");
+		File genomesTaxaTsv = new File(currentFile, "genomes-taxa.tsv");
+		if (!markerFasta.exists() || !genomesTaxaTsv.exists()) return;
+		String mode = MarkerGenomeSelector.KNEE_MODE_FOCUS;
+		if (diaTask.getExportMetaPar() instanceof MetaParameterDiaMarker) {
+			String markerMode = ((MetaParameterDiaMarker) diaTask.getExportMetaPar()).getMarkerMode();
+			if ("COMPREHENSIVE".equalsIgnoreCase(markerMode) || "DEEP".equalsIgnoreCase(markerMode)) {
+				mode = MarkerGenomeSelector.KNEE_MODE_COMPREHENSIVE;
+			}
+		}
+		if (!combinedDir.exists()) combinedDir.mkdirs();
+		File evidenceFile = new File(combinedDir, "evidence.tsv");
+		File selectedFile = new File(combinedDir, "selected.tsv");
+		try {
+			MarkerGenomeSelector selector = new MarkerGenomeSelector();
+			selector.setKneeSelectionMode(mode);
+			selector.selectMarkerGenomesWithKnee(diaTask.diaPp, markerFasta, genomesTaxaTsv,
+					evidenceFile.getAbsolutePath(), rankedTsv.getAbsolutePath(), selectedFile.getAbsolutePath(),
+					500, true);
+			diaTask.getExportLogger().info(diaTask.getTaskName() + ": generated combined/ranked.tsv from combined result for Selection_label");
+		} catch (Exception e) {
+			diaTask.getExportLogger().warn(diaTask.getTaskName() + ": could not generate combined/ranked.tsv: " + e.getMessage());
+		}
+	}
+
+	/**
+	 * Reads ranked.tsv/genome_ranked.tsv and fills export labels (core/mid/tail) for
+	 * final Genome.tsv reporting.
+	 *
+	 * Export labeling rule (independent from selection stop strategy):
+	 * 1) Rows before greedy starts (GreedyGain == 0): core.
+	 * 2) Greedy starts at first row with GreedyGain != 0.
+	 * 3) From greedy start, first focusKnee rows: core.
+	 * 4) Next (comprehensiveKnee - focusKnee) rows: mid.
+	 * 5) Remaining greedy rows: tail.
+	 * 6) Stop at the first row where GreedyGain returns to 0; that row is not included.
+	 */
+	static void readCoreMidTailFromRankedTsv(File rankedFile,
+			HashMap<String, String> genomeSelectionLabel, java.util.Set<String> genomeIntensityGenomes) {
+		MetaPilotMagTask.RankedGenomeSelectionResult result =
+				MetaPilotMagTask.buildExportSelectionFromRankedTsv(rankedFile, genomeIntensityGenomes);
+		genomeSelectionLabel.putAll(result.genomeSelectionLabel);
+	}
+
 	@Override
 	protected boolean iden() {
 		logger.info("Starting identification process using combined library...");
@@ -541,83 +667,69 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 		System.out.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
 				+ ": peptide and protein identification started");
 
-		// Get the combined library file generated by iterativeSearch()
 		combinedFile = new File(metaPar.getDbSearchResultFile(), "combined");
-		if (!combinedFile.exists()) {
+		if (!combinedFile.exists())
 			combinedFile.mkdir();
-		}
-		File marderFile = new File(metaPar.getDbSearchResultFile(), "marker");
-		File combinedLibFile = new File(marderFile, "combined.speclib");
-		
+		this.quan_pep_file = new File(combinedFile, "combined.pr_matrix.tsv");
+		this.quan_pro_file = new File(combinedFile, "combined.pg_matrix.tsv");
+		File combineParquetFile = new File(combinedFile, "combined.parquet");
+
+		File markerFile = new File(metaPar.getDbSearchResultFile(), "marker");
+		File combinedLibFile = new File(markerFile, "combined.speclib");
 		if (!combinedLibFile.exists()) {
 			logger.error(getTaskName() + ": Combined library file not found: " + combinedLibFile.getAbsolutePath());
-			System.err.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
-					+ ": Combined library file not found: " + combinedLibFile.getAbsolutePath());
 			return false;
 		}
-
-		logger.info("Configuring DiaLibSearchPar for DIA Focus:");
-		logger.info("  DIA files count: {}", diaFiles != null ? diaFiles.length : 0);
-		logger.info("  Thread count: {}", threadCount);
-		logger.info("  Q-value threshold: 0.01");
-		logger.info("  MBR enabled: true");
-		logger.info("  Combined library path: {}", combinedLibFile.getAbsolutePath());
-
 		diaLibSearchPar.setMbr(true);
 		diaLibSearchPar.setDiaFiles(diaFiles);
 		diaLibSearchPar.setThreadCount(threadCount);
 		diaLibSearchPar.setqValue(0.01);
-
 		diannPar.setThreads(threadCount);
 		diannPar.setMatrices(true);
 		diannPar.setRelaxed_prot_inf(true);
 		diannPar.setReanalyse(true);
-
-		// Required for exportReport() / getExportQuanPepFile(): set before report generation
-		this.quan_pep_file = new File(combinedFile, "combined.pr_matrix.tsv");
-		this.quan_pro_file = new File(combinedFile, "combined.pg_matrix.tsv");
-
-		File combineParquetFile = new File(combinedFile, "combined.parquet");
-
 		if (!quan_pep_file.exists() || !combineParquetFile.exists()) {
-			logger.info(getTaskName() + ": combined library search started");
-			System.out.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
-					+ ": combined library search started");
-
 			diannPar.setExportDecoy(true);
-
-			// Use the combined library generated by iterativeSearch()
-			logger.info("Using combined library for identification: {}", combinedLibFile.getAbsolutePath());
 			diaNNTask.addTask(diannPar, diaLibSearchPar, combineParquetFile.getAbsolutePath(),
 					new String[] { combinedLibFile.getAbsolutePath() });
-
-			logger.info("Starting DiaNN identification with combined library using {} threads", threadCount);
 			diaNNTask.run(diaFiles.length * 12);
-
-			logger.info("DiaNN identification with combined library completed");
-		} else {
-			logger.info(getTaskName() + ": identification results already exist, skipping identification");
-			System.out.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
-					+ ": identification results already exist");
 		}
 
-		// Verify that the identification files were created
 		if (!quan_pep_file.exists() || !combineParquetFile.exists()) {
 			logger.error(getTaskName() + ": identification failed - result files not created");
-			System.err.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
-					+ ": identification failed - result files not created");
 			return false;
 		}
-
-		logger.info("Combined library identification completed successfully");
-		logger.info("Peptide results file: {}", quan_pep_file.getAbsolutePath());
-		logger.info("Protein results file: {}", quan_pro_file.getAbsolutePath());
-		logger.info("Parquet results file: {}", combineParquetFile.getAbsolutePath());
-
+		logger.info("Identification completed successfully");
 		System.out.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
 				+ ": identification finished");
-
 		return true;
+	}
+
+	/** Returns a filesystem-safe folder name from a DIA file path. */
+	protected static String getSafeFolderNameForDiaFile(String diaFilePath) {
+		if (diaFilePath == null || diaFilePath.isEmpty()) return "file_unknown";
+		String name = new File(diaFilePath).getName();
+		int lastDot = name.lastIndexOf('.');
+		if (lastDot > 0) name = name.substring(0, lastDot);
+		name = name.replaceAll("[\\\\/:*?\"<>|]", "_");
+		return name.isEmpty() ? "file_unknown" : name;
+	}
+
+	/** Reads genome IDs from a genome_selected.tsv file and adds them to the given set. */
+	protected void readSelectedGenomesIntoSet(File selectedFile, HashSet<String> genomeSet) {
+		if (selectedFile == null || !selectedFile.exists() || genomeSet == null) return;
+		try (BufferedReader reader = new BufferedReader(new FileReader(selectedFile))) {
+			reader.readLine(); // header
+			String line;
+			while ((line = reader.readLine()) != null) {
+				line = line.trim();
+				if (line.isEmpty() || line.startsWith("#")) break;
+				String[] parts = line.split("\t");
+				if (parts.length > 0 && !parts[0].trim().isEmpty()) genomeSet.add(parts[0].trim());
+			}
+		} catch (IOException e) {
+			logger.warn("Error reading selected genomes from {}", selectedFile.getAbsolutePath(), e);
+		}
 	}
 
 	@Override
@@ -627,7 +739,7 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 				+ ": iterative search started");
 
 		// Step 1: Search the marker library to get initial PSMs
-		File markerLibFile = magDb.getMarkerHighPepLibFile();
+		File markerLibFile = magDb.getMarker4LibFile();
 		if (markerLibFile == null || !markerLibFile.exists()) {
 			logger.error(getTaskName() + ": Marker library file not found for iterative search");
 			System.err.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
@@ -641,119 +753,83 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 			markerFile.mkdir();
 		}
 
-		// Temporary parquet file for initial search results
-		File tempParquetFile = new File(markerFile, "marker.parquet");
-
-		if (!tempParquetFile.exists()) {
-			// Configure DiaLibSearchPar for initial library search
-			diaLibSearchPar.setMbr(false);
-			diaLibSearchPar.setDiaFiles(diaFiles);
-			diaLibSearchPar.setThreadCount(threadCount);
-			diaLibSearchPar.setqValue(0.01);
-
-			diannPar.setThreads(threadCount);
-			diannPar.setMatrices(false);
-			diannPar.setRelaxed_prot_inf(true);
-			diannPar.setReanalyse(true);
-			diannPar.setExportDecoy(true);
-
-			logger.info("Searching marker library against DIA files...");
-			logger.info("  Marker library: {}", markerLibFile.getAbsolutePath());
-			logger.info("  DIA files count: {}", diaFiles != null ? diaFiles.length : 0);
-
-			// Search the marker library
-			diaNNTask.addTask(diannPar, diaLibSearchPar, tempParquetFile.getAbsolutePath(),
-					new String[] { markerLibFile.getAbsolutePath() });
-			diaNNTask.run(diaFiles.length * 12);
+		MetaParameterDiaMarker markerParams = (metaPar instanceof MetaParameterDiaMarker) ? (MetaParameterDiaMarker) metaPar : null;
+		// Map markerMode to MarkerGenomeSelector knee mode (FOCUS vs COMPREHENSIVE)
+		String markerMode = markerParams != null ? markerParams.getMarkerMode() : null;
+		String mode;
+		if ("COMPREHENSIVE".equalsIgnoreCase(markerMode) || "DEEP".equalsIgnoreCase(markerMode)) {
+			mode = MarkerGenomeSelector.KNEE_MODE_COMPREHENSIVE;
 		} else {
-			logger.info("Marker library search result already exists in {}", tempParquetFile.getAbsolutePath());
+			mode = MarkerGenomeSelector.KNEE_MODE_FOCUS;
 		}
 
-		// Verify parquet file was created
-		if (!tempParquetFile.exists()) {
-			logger.error(getTaskName() + ": Iterative search failed - parquet file not created");
-			System.err.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
-					+ ": Iterative search failed - parquet file not created");
+		File currentFile = magDb.getCurrentFile();
+		File markerFasta = new File(currentFile, "Marker4.fasta");
+		File genomesTaxaTsv = new File(currentFile, "genomes-taxa.tsv");
+		if (!markerFasta.exists() || !genomesTaxaTsv.exists()) {
+			logger.error(getTaskName() + ": Marker FASTA or genomes-taxa.tsv not found for genome selection");
 			return false;
 		}
 
-		// Step 5: Create FASTA file from selected genomes
 		File combinedFastaFile = new File(markerFile, "combined.fasta");
+		HashSet<String> genomeSet = new HashSet<>();
+
 		if (!combinedFastaFile.exists()) {
-
-			// Step 2: Read PSMs from parquet file
-			logger.info("Reading PSMs from iterative search results...");
-			DiaNNParquetReader parquetReader = new DiaNNParquetReader(tempParquetFile.getAbsolutePath(),
-					diannPar.getCut());
-			DiaNNPrecursor[] precursors = parquetReader.getDiaNNPrecursors(0.01);
-
-			logger.info("Found {} precursors with Global.Q.Value < 0.01", precursors.length);
-
-			if (precursors == null || precursors.length == 0) {
-				logger.warn(getTaskName() + ": No precursors found in iterative search, cannot select genomes");
-				return false;
-			}
-
-			// Step 3: Use MarkerGenomeSelector with user-selected mode (Focus or Comprehensive)
-			MetaParameterDiaFocus focusParams = (metaPar instanceof MetaParameterDiaFocus) ? (MetaParameterDiaFocus) metaPar : null;
-			String strategy = focusParams != null ? focusParams.getGenomeSelectionStrategy() : null;
-			String mode = (strategy != null && strategy.length() > 0) ? strategy : MarkerGenomeSelector.KNEE_MODE_FOCUS;
-			logger.info("Selecting genomes using MarkerGenomeSelector ({} mode)...", mode);
-
-			File currentFile = magDb.getCurrentFile();
-			File markerFasta = new File(currentFile, "Marker4.fasta");
-			File genomesTaxaTsv = new File(currentFile, "genomes-taxa.tsv");
-
-			if (!markerFasta.exists() || !genomesTaxaTsv.exists()) {
-				logger.error(getTaskName() + ": Marker FASTA or genomes-taxa.tsv not found for genome selection");
-				System.err.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
-						+ ": Marker FASTA or genomes-taxa.tsv not found");
-				return false;
-			}
-
-			MarkerGenomeSelector selector = new MarkerGenomeSelector();
-			selector.setKneeSelectionMode(mode);
-
-			File evidenceFile = new File(markerFile, "genome_evidence.tsv");
-			File rankedFile = new File(markerFile, "genome_ranked.tsv");
-			File selectedFile = new File(markerFile, "genome_selected.tsv");
-
-			int maximumSelected = 300;
-			boolean enableAutoRep = true; // Use auto-representative for MARKER4
-
-			selector.selectMarkerGenomesWithKnee(precursors, markerFasta, genomesTaxaTsv,
-					evidenceFile.getAbsolutePath(), rankedFile.getAbsolutePath(), selectedFile.getAbsolutePath(),
-					maximumSelected, enableAutoRep);
-
-			// Step 4: Read selected genomes and extract FASTA
-			HashSet<String> genomeSet = new HashSet<>();
-			if (selectedFile.exists()) {
-				try (BufferedReader reader = new BufferedReader(new FileReader(selectedFile))) {
-					String line = reader.readLine(); // header
-					while ((line = reader.readLine()) != null) {
-						line = line.trim();
-						if (line.isEmpty() || line.startsWith("#")) {
-							break;
-						}
-						String[] parts = line.split("\t");
-						if (parts.length > 0 && !parts[0].trim().isEmpty()) {
-							genomeSet.add(parts[0].trim());
-						}
+				File tempParquetFile = new File(markerFile, "marker.parquet");
+				if (!tempParquetFile.exists()) {
+					diaLibSearchPar.setMbr(false);
+					diaLibSearchPar.setDiaFiles(diaFiles);
+					diaLibSearchPar.setqValue(0.01);
+					diannPar.setThreads(threadCount);
+					diannPar.setMatrices(false);
+					diannPar.setRelaxed_prot_inf(true);
+					diannPar.setReanalyse(true);
+					diannPar.setExportDecoy(true);
+					logger.info("Searching marker library against DIA files...");
+					diaNNTask.addNoQuantLibTask(diannPar, diaLibSearchPar, tempParquetFile.getAbsolutePath(),
+							markerLibFile.getAbsolutePath());
+					diaNNTask.run(diaFiles.length * 12);
+				}
+				if (!tempParquetFile.exists() && diaFiles != null && diaFiles.length > 1) {
+					List<String> damaged = runPerFileFallbackAndRetryCombinedNoQuant(tempParquetFile.getAbsolutePath(),
+							new String[] { markerLibFile.getAbsolutePath() });
+					if (!damaged.isEmpty()) {
+						logger.warn(getTaskName() + ": The following raw files produced no results (may be damaged): {}", damaged);
+						System.err.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
+								+ ": The following raw files produced no results (may be damaged): " + String.join(", ", damaged));
 					}
-				} catch (IOException e) {
-					logger.error("Error reading selected genomes from {}", selectedFile.getAbsolutePath(), e);
+				}
+				DiaNNPrecursor[] precursors;
+				if (tempParquetFile.exists()) {
+					DiaNNParquetReader parquetReader = new DiaNNParquetReader(
+							tempParquetFile.getAbsolutePath(), diannPar.getCut());
+					precursors = parquetReader.getDiaNNPrecursors(0.01);
+				} else {
+					// Combined marker.parquet missing after per-file fallback: use per_file_*.parquet directly
+					logger.warn(getTaskName()
+							+ ": Iterative marker search combined parquet missing; using per-file parquet results for genome selection");
+					precursors = readPrecursorsFromPerFileParquets(markerFile, 0.01);
+				}
+				if (precursors == null || precursors.length == 0) {
+					logger.warn(getTaskName() + ": No precursors found in iterative search, cannot select genomes");
 					return false;
 				}
-			}
-
-			logger.info("Selected {} genomes for combined database", genomeSet.size());
+				logger.info("Selecting genomes using MarkerGenomeSelector ({} mode)...", mode);
+				MarkerGenomeSelector selector = new MarkerGenomeSelector();
+				selector.setKneeSelectionMode(mode);
+				File evidenceFile = new File(markerFile, "genome_evidence.tsv");
+				File rankedFile = new File(markerFile, "genome_ranked.tsv");
+				File selectedFile = new File(markerFile, "genome_selected.tsv");
+				selector.selectMarkerGenomesWithKnee(precursors, markerFasta, genomesTaxaTsv,
+						evidenceFile.getAbsolutePath(), rankedFile.getAbsolutePath(), selectedFile.getAbsolutePath(),
+						300, true);
+				readSelectedGenomesIntoSet(selectedFile, genomeSet);
 
 			if (genomeSet.isEmpty()) {
 				logger.warn(getTaskName() + ": No genomes were selected, cannot create combined database");
 				return false;
 			}
-
-			// Step 5: Create FASTA file from selected genomes
+			logger.info("Selected {} genomes for combined database", genomeSet.size());
 			logger.info("Creating combined FASTA file from {} genomes...", genomeSet.size());
 
 			try (PrintWriter writer = new PrintWriter(combinedFastaFile)) {
@@ -835,10 +911,57 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 	}
 
 	/**
+	 * Read DiaNN precursors from all non-empty per_file_*.parquet files in a directory.
+	 * Used when the initial combined marker.parquet could not be created and per-file
+	 * fallback was triggered.
+	 *
+	 * @param dir     directory containing per_file_*.parquet
+	 * @param qValue  optional q-value cutoff; if null, use default in DiaNNParquetReader
+	 * @return concatenated precursor array, or null if none
+	 */
+	private DiaNNPrecursor[] readPrecursorsFromPerFileParquets(File dir, Double qValue) {
+		if (dir == null || !dir.isDirectory()) {
+			return null;
+		}
+		String cut = diannPar != null && diannPar.getCut() != null ? diannPar.getCut() : "KR";
+		List<DiaNNPrecursor> all = new ArrayList<>();
+		for (int i = 0; i < (diaFiles != null ? diaFiles.length : Integer.MAX_VALUE); i++) {
+			File pf = new File(dir, "per_file_" + i + ".parquet");
+			if (!pf.exists()) {
+				// per_file_* are written densely from 0..N-1; break at first missing index
+				break;
+			}
+			if (pf.length() <= 0) {
+				continue;
+			}
+			try {
+				DiaNNParquetReader reader = new DiaNNParquetReader(pf.getAbsolutePath(), cut);
+				DiaNNPrecursor[] prec = (qValue == null)
+						? reader.getDiaNNPrecursors()
+						: reader.getDiaNNPrecursors(qValue);
+				if (prec != null) {
+					for (DiaNNPrecursor p : prec) {
+						if (p != null) {
+							all.add(p);
+						}
+					}
+				}
+			} catch (Exception e) {
+				logger.warn(getTaskName() + ": failed to read per-file parquet " + pf.getAbsolutePath(), e);
+			}
+		}
+		return all.isEmpty() ? null : all.toArray(new DiaNNPrecursor[0]);
+	}
+
+	/**
 	 * Folder containing iterative search results (combined.fasta, etc.). Override in subclasses to use a different folder (e.g. seed_iterative).
 	 */
 	protected File getIterativeResultFolder() {
 		return new File(metaPar.getDbSearchResultFile(), "marker");
+	}
+
+	protected void enrichPrecursorsWithPeptideProteinMapping(DiaNNPrecursor[] precursors, File parquetFolder) {
+		// Default marker workflow: no additional peptide->protein remapping is required.
 	}
 
 	@Override
@@ -854,7 +977,7 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 
 	@Override
 	protected boolean exportReport() {
-		return exportReportWithNewGenomeScoring();
+		return super.exportReport();
 	}
 
 	/**
@@ -904,8 +1027,6 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 		HashSet<String> pepSequenceSet = new HashSet<String>();
 		HashMap<String, HashSet<String>> totalPepCountMap = new HashMap<String, HashSet<String>>();
 		HashMap<String, HashSet<String>> razorPepCountMap = new HashMap<String, HashSet<String>>();
-		HashMap<String, HashSet<String>> genomePepCountMap = new HashMap<String, HashSet<String>>();
-		HashMap<String, HashSet<String>> genomeRazorPepCountMap = new HashMap<String, HashSet<String>>();
 		ArrayList<FlashLfqQuanPeptide> peptideList = new ArrayList<FlashLfqQuanPeptide>();
 
 		for (int i = 0; i < peps.length; i++) {
@@ -1434,50 +1555,6 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 		System.out.println(fmt.format(new Date()) + "\t" + diaTask.getTaskName() + ": protein report has been exported to "
 				+ diaTask.getExportFinalProTxt().getName());
 
-		// --- razor_proteins.tsv: pure razor, only razor list, full intensity to razor only ---
-		String[] proteinsRazor = proteinIntensityMapRazor.keySet().toArray(new String[0]);
-		Arrays.sort(proteinsRazor, Comparator.<String>comparingDouble(p -> proteinScoreMap.containsKey(p) ? -proteinScoreMap.get(p)[IDX_S] : 0)
-				.thenComparing((p1, p2) -> Double.compare(proteinTotalIntenMapRazor.getOrDefault(p2, 0.0), proteinTotalIntenMapRazor.getOrDefault(p1, 0.0))));
-		HashMap<String, ArrayList<Integer>> proPepIdMapRazor = new HashMap<>();
-		HashMap<String, ArrayList<Integer>> proPepRazorIdMapRazor = new HashMap<>();
-		for (int id = 0; id < peptideList.size(); id++) {
-			String razorPro = peptideList.get(id).getRazorProtein();
-			proPepIdMapRazor.computeIfAbsent(razorPro, k -> new ArrayList<>()).add(id);
-			proPepRazorIdMapRazor.computeIfAbsent(razorPro, k -> new ArrayList<>()).add(1);
-		}
-		try (PrintWriter writerRazor = new PrintWriter(new File(diaTask.getExportResultFolderFile(), "razor_proteins.tsv"))) {
-			StringBuilder razorHeader = new StringBuilder();
-			razorHeader.append("Protein IDs\tPeptide counts (all)\tPeptide counts (razor)\tNumber of PSMs\tS\tp_emp\tq_value\tIntensity\t");
-			for (int h = 0; h < diaTask.getExportQuanExpNames().length; h++) razorHeader.append("Intensity ").append(diaTask.getExportQuanExpNames()[h]).append("\t");
-			razorHeader.append("Reverse\tPotential contaminant\tid\tPeptide IDs\tPeptide is razor");
-			writerRazor.println(razorHeader);
-			DecimalFormat df = FormatTool.getDFE4();
-			DecimalFormat df4 = FormatTool.getDF4();
-			for (int i = 0; i < proteinsRazor.length; i++) {
-				String pro = proteinsRazor[i];
-				int pepAll = razorPepCountMap.containsKey(pro) ? razorPepCountMap.get(pro).size() : 0;
-				StringBuilder sb = new StringBuilder();
-				sb.append(pro).append("\t").append(pepAll).append("\t").append(pepAll).append("\t");
-				sb.append(psmCountMapRazor.getOrDefault(pro, 0)).append("\t");
-				double[] sc = proteinScoreMap.get(pro);
-				if (sc != null) {
-					sb.append(df.format(sc[IDX_S])).append("\t").append(df4.format(sc[IDX_P_EMP])).append("\t").append(df4.format(sc[IDX_Q_VALUE])).append("\t");
-				} else sb.append("\t\t\t");
-				sb.append(df.format(proteinTotalIntenMapRazor.getOrDefault(pro, 0.0))).append("\t");
-				double[] intensity = proteinIntensityMapRazor.get(pro);
-				if (intensity != null) for (double v : intensity) sb.append(df.format(v)).append("\t");
-				sb.append("\t\t").append(i).append("\t");
-				ArrayList<Integer> ids = proPepIdMapRazor.get(pro);
-				ArrayList<Integer> raz = proPepRazorIdMapRazor.get(pro);
-				if (ids != null) { for (Integer id : ids) sb.append(id).append(";"); if (!ids.isEmpty()) sb.setLength(sb.length() - 1); }
-				sb.append("\t");
-				if (raz != null) { for (Integer r : raz) sb.append(r == 1 ? "true;" : "false;"); if (!raz.isEmpty()) sb.setLength(sb.length() - 1); }
-				writerRazor.println(sb);
-			}
-		} catch (IOException e) {
-			diaTask.getExportLogger().warn(diaTask.getTaskName() + ": could not write razor_proteins.tsv", e);
-		}
-
 		// --- all_proteins.tsv: all proteins, divided intensity per peptide ---
 		String[] proteinsAll = proteinTotalIntenMapAll.keySet().toArray(new String[0]);
 		Arrays.sort(proteinsAll, Comparator.<String>comparingDouble(p -> proteinScoreMap.containsKey(p) ? -proteinScoreMap.get(p)[IDX_S] : 0)
@@ -1727,6 +1804,112 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 			taxScoreMaps[i] = new HashMap<String, Double>();
 		}
 
+		// Core/mid/tail classification from ranked.tsv (same as DDA: based on combined result).
+		// Prefer combined/ranked.tsv (genome ranking from combined search); fallback to marker/ or seed/ ranked.
+		HashMap<String, String> genomeSelectionLabel = new HashMap<>();
+		File resultFolder = diaTask.getExportResultFolderFile();
+		ensureCombinedRankedFromPrecursors(diaTask, resultFolder);
+		File rankedFile = new File(resultFolder, "combined/ranked.tsv");
+		if (!rankedFile.exists()) {
+			rankedFile = new File(resultFolder, "marker/genome_ranked.tsv");
+		}
+		if (!rankedFile.exists()) {
+			rankedFile = new File(resultFolder, "seed/genome_ranked.tsv");
+		}
+		if (rankedFile.exists()) {
+			// Export labels for genomes that actually have intensity
+			readCoreMidTailFromRankedTsv(rankedFile, genomeSelectionLabel, genomeIntensityMap.keySet());
+
+			// Global statistics from ranked.tsv (no intensity filter)
+			MetaPilotMagTask.RankedGenomeSelectionResult rankedAll =
+					MetaPilotMagTask.buildExportSelectionFromRankedTsv(rankedFile, null);
+
+			int contributingAll = rankedAll.orderedGenomes.size();
+			int coreAll = 0, midAll = 0, tailAll = 0;
+			for (String g : rankedAll.orderedGenomes) {
+				String lbl = rankedAll.genomeSelectionLabel.get(g);
+				if ("core".equals(lbl)) coreAll++;
+				else if ("mid".equals(lbl)) midAll++;
+				else if ("tail".equals(lbl)) tailAll++;
+			}
+
+			int labeledWithIntensity = genomeSelectionLabel.size();
+			int coreWithIntensity = 0, midWithIntensity = 0, tailWithIntensity = 0;
+			for (String lbl : genomeSelectionLabel.values()) {
+				if ("core".equals(lbl)) coreWithIntensity++;
+				else if ("mid".equals(lbl)) midWithIntensity++;
+				else tailWithIntensity++;
+			}
+
+			java.util.HashSet<String> contributingSet = new java.util.HashSet<>(rankedAll.orderedGenomes);
+			java.util.HashSet<String> intensitySet = new java.util.HashSet<>(genomeIntensityMap.keySet());
+			java.util.HashSet<String> inWindowNoIntensity = new java.util.HashSet<>(contributingSet);
+			inWindowNoIntensity.removeAll(intensitySet);
+			java.util.HashSet<String> intensityBeyondWindow = new java.util.HashSet<>(intensitySet);
+			intensityBeyondWindow.removeAll(contributingSet);
+
+			// Detailed ranked.tsv summary
+			diaTask.getExportLogger().info(
+					"{}: Genome ranked.tsv summary – total_ranked={}, privilege_rows={}, greedy_rows={}, focusKnee={}, comprehensiveKnee={}, core_all={}, mid_all={}, tail_all={}",
+					diaTask.getTaskName(),
+					Integer.valueOf(rankedAll.totalRanked),
+					Integer.valueOf(rankedAll.privilegeCount),
+					Integer.valueOf(rankedAll.greedyCount),
+					Integer.valueOf(rankedAll.focusKnee),
+					Integer.valueOf(rankedAll.comprehensiveKnee),
+					Integer.valueOf(coreAll),
+					Integer.valueOf(midAll),
+					Integer.valueOf(tailAll));
+
+			// Export window vs intensity intersection summary
+			diaTask.getExportLogger().info(
+					"{}: Genome export summary – ranked_window={}, labeled_with_intensity={}, core_with_intensity={}, mid_with_intensity={}, tail_with_intensity={}, window_no_intensity={}, intensity_beyond_window={}",
+					diaTask.getTaskName(),
+					Integer.valueOf(contributingAll),
+					Integer.valueOf(labeledWithIntensity),
+					Integer.valueOf(coreWithIntensity),
+					Integer.valueOf(midWithIntensity),
+					Integer.valueOf(tailWithIntensity),
+					Integer.valueOf(inWindowNoIntensity.size()),
+					Integer.valueOf(intensityBeyondWindow.size()));
+		}
+		if (rankedFile.exists() && !genomeSelectionLabel.isEmpty()) {
+			ArrayList<String> filteredGenomes = new ArrayList<>();
+			for (String genome : genomes) {
+				if (genomeSelectionLabel.containsKey(genome)) {
+					filteredGenomes.add(genome);
+				}
+			}
+			genomes = filteredGenomes.toArray(new String[0]);
+		}
+
+		// Sort genomes for Genome.tsv: core → mid → tail, then by q-value ascending.
+		Arrays.sort(genomes, (g1, g2) -> {
+			String label1 = genomeSelectionLabel.getOrDefault(g1, "tail");
+			String label2 = genomeSelectionLabel.getOrDefault(g2, "tail");
+			int group1 = "core".equals(label1) ? 0 : ("mid".equals(label1) ? 1 : 2);
+			int group2 = "core".equals(label2) ? 0 : ("mid".equals(label2) ? 1 : 2);
+			if (group1 != group2) {
+				return Integer.compare(group1, group2);
+			}
+			double[] s1 = genomeScoreMap.get(g1);
+			double[] s2 = genomeScoreMap.get(g2);
+			double q1 = (s1 != null && s1.length > IDX_Q_VALUE) ? s1[IDX_Q_VALUE] : Double.POSITIVE_INFINITY;
+			double q2 = (s2 != null && s2.length > IDX_Q_VALUE) ? s2[IDX_Q_VALUE] : Double.POSITIVE_INFINITY;
+			int cmpQ = Double.compare(q1, q2);
+			if (cmpQ != 0) {
+				return cmpQ;
+			}
+			// Tie-breaker: higher S first, then lexicographic genome ID
+			double sScore1 = (s1 != null && s1.length > IDX_S) ? s1[IDX_S] : 0.0;
+			double sScore2 = (s2 != null && s2.length > IDX_S) ? s2[IDX_S] : 0.0;
+			int cmpS = Double.compare(sScore2, sScore1);
+			if (cmpS != 0) {
+				return cmpS;
+			}
+			return g1.compareTo(g2);
+		});
+
 		File genomeFile = new File(taxFile, "Genome.tsv");
 		PrintWriter genomeWriter = null;
 		try {
@@ -1739,6 +1922,7 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 			genomeTitlesb.append("PSM count\t");
 			genomeTitlesb.append("Peptide count\t");
 			genomeTitlesb.append("Razor peptide count\t");
+			genomeTitlesb.append("Selection_label\t");
 			genomeTitlesb.append("GTDB_Name\t");
 			genomeTitlesb.append("GTDB_Rank\t");
 
@@ -1796,6 +1980,7 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 					} else {
 						genomeTaxaSb.append("0");
 					}
+					genomeTaxaSb.append("\t").append(genomeSelectionLabel.getOrDefault(genomes[i], "tail"));
 
 					for (int j = 1; j < taxaContent.length; j++) {
 						genomeTaxaSb.append("\t").append(taxaContent[j]);

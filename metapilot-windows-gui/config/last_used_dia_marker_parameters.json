@@ -1,86 +1,83 @@
 {
-  "genomeSelectionStrategy": "Comprehensive",
-  "models": [],
-  "useModel": false,
-  "workflow": "DIA_FOCUS",
-  "baseParameters": {
-    "result": "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DIA\\MetaPilot",
-    "ms2ScanMode": "DIA",
-    "metadata": {
-      "rawFiles": [
-        "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DIA\\Qiao-FB1-DIA-1.raw",
-        "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DIA\\Qiao-FB1-DIA-2.raw",
-        "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DIA\\Qiao-FB1-DIA-3.raw",
-        "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DIA\\Qiao-FB2-DIA-1.raw",
-        "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DIA\\Qiao-FB2-DIA-2.raw",
-        "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DIA\\Qiao-FB2-DIA-3.raw",
-        "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DIA\\Qiao-FB3-DIA-1.raw",
-        "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DIA\\Qiao-FB3-DIA-2.raw",
-        "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DIA\\Qiao-FB3-DIA-3.raw"
-      ],
-      "expNames": [
-        "FB1_DIA_1",
-        "FB1_DIA_2",
-        "FB1_DIA_3",
-        "FB2_DIA_1",
-        "FB2_DIA_2",
-        "FB2_DIA_3",
-        "FB3_DIA_1",
-        "FB3_DIA_2",
-        "FB3_DIA_3"
-      ],
-      "fractions": [
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1
-      ],
-      "replicates": [
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1
-      ]
-    },
-    "threadCount": 20,
-    "workflowType": "DIA_FOCUS",
-    "hostDB": "",
-    "coreCount": 1,
-    "microDb": "C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-gut\\v2.0.2",
-    "appendHostDb": false
-  },
-  "description": "Last used parameters",
-  "librarySearch": true,
-  "kGG": false,
-  "oxidationM": true,
-  "version": "1.0",
-  "magDatabase": {
+  "mag_database": {
+    "catalogue_version": "v2.0.2",
     "identifier": "MGYG",
-    "catalogueId": "human-gut",
-    "repositoryPath": "C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-gut",
-    "version": {
-      "localAvailable": true,
-      "catalogueVersion": "v2.0.2",
-      "speciesCount": 4744
-    }
+    "catalogue_id": "human-gut"
   },
-  "acetyProN": true,
-  "selfModelSearch": false,
-  "library": [],
-  "phosphoSTY": false,
-  "generated_at": "2026-02-27 14:28:51",
-  "mExcision": true,
-  "carbamiC": true,
-  "workflowType": "DIA_FOCUS",
-  "timestamp": 1772202531559
+  "metadata": [
+    {"sample_index": 0},
+    {"sample_index": 1},
+    {"sample_index": 2},
+    {"sample_index": 3},
+    {"sample_index": 4},
+    {"sample_index": 5},
+    {"sample_index": 6},
+    {"sample_index": 7},
+    {"sample_index": 8}
+  ],
+  "workflow": "DIA_MARKER",
+  "input_output": {
+    "micro_db": "C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-gut\\v2.0.2",
+    "host_database": "",
+    "output_directory": "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851001\\DIA\\MetaPilot",
+    "append_host_db": false,
+    "experiments": [
+      {
+        "file_path": "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851001\\DIA\\YS-194-DIA-1.raw",
+        "experiment_name": "YS-194-DIA-1"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851001\\DIA\\YS-194-DIA-1_20200620233957.raw",
+        "experiment_name": "YS-194-DIA-1_20200620233957"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851001\\DIA\\YS-194-DIA-1_20200621022500.raw",
+        "experiment_name": "YS-194-DIA-1_20200621022500"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851001\\DIA\\YS-194-DIA-2.raw",
+        "experiment_name": "YS-194-DIA-2"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851001\\DIA\\YS-194-DIA-2_20200621094425.raw",
+        "experiment_name": "YS-194-DIA-2_20200621094425"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851001\\DIA\\YS-194-DIA-2_20200621122928.raw",
+        "experiment_name": "YS-194-DIA-2_20200621122928"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851001\\DIA\\YS-194-DIA-3.raw",
+        "experiment_name": "YS-194-DIA-3"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851001\\DIA\\YS-194-DIA-3_20200621194833.raw",
+        "experiment_name": "YS-194-DIA-3_20200621194833"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851001\\DIA\\YS-194-DIA-3_20200621223326.raw",
+        "experiment_name": "YS-194-DIA-3_20200621223326"
+      }
+    ]
+  },
+  "generated_at": "2026-03-11 11:46:37",
+  "description": "Last used parameters",
+  "basic_parameters": {
+    "ms2_scan_mode": "DIA",
+    "threads": 20,
+    "meta_workflow": true,
+    "core_count": 1
+  },
+  "dia_settings": {
+    "acetyProN": true,
+    "library_search": true,
+    "phosphoSTY": false,
+    "mExcision": true,
+    "libraries": [],
+    "carbamiC": true,
+    "kGG": false,
+    "oxidationM": true,
+    "marker_mode": "DEEP"
+  },
+  "version": "1.0"
 }

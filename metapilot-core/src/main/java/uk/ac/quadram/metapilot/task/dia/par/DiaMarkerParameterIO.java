@@ -1,0 +1,431 @@
+package uk.ac.quadram.metapilot.task.dia.par;
+
+import java.io.File;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+
+import uk.ac.quadram.metapilot.task.par.BaseParameterIO;
+import uk.ac.quadram.metapilot.task.par.MetaData;
+import uk.ac.quadram.metapilot.task.mag.MagDbItem;
+import uk.ac.quadram.metapilot.task.mag.MagDbConfigIO;
+
+/**
+ * Parameter I/O operations for DIA Marker workflow.
+ *
+ * This class handles saving and loading of DIA Marker parameters to/from JSON
+ * files for persistence and reproducibility.
+ */
+public class DiaMarkerParameterIO extends BaseParameterIO {
+
+	private static final Logger LOGGER = LogManager.getLogger(DiaMarkerParameterIO.class);
+
+	// Workflow-specific file names
+	private static final String PARAMETER_FILENAME = "dia_marker_analysis_parameters.json";
+	private static final String LAST_PARAMETERS_FILENAME = "last_used_dia_marker_parameters.json";
+	private static final String PREFERENCES_FILENAME = "dia_marker_preferences.json";
+
+	@Override
+	protected String getAnalysisParameterFileName() {
+		return PARAMETER_FILENAME;
+	}
+
+	@Override
+	protected String getLastUsedParametersFileName() {
+		return LAST_PARAMETERS_FILENAME;
+	}
+
+	@Override
+	protected String getPreferencesFileName() {
+		return PREFERENCES_FILENAME;
+	}
+
+	// ---------- Backward-compatible loading helpers ----------
+
+	@Override
+	public Object loadAnalysisParameters(String resultDirectory) {
+		try {
+			if (resultDirectory == null || resultDirectory.trim().isEmpty()) {
+				LOGGER.warn("Cannot load analysis parameters: result directory is null/empty");
+				return null;
+			}
+
+			File file = new File(resultDirectory, PARAMETER_FILENAME);
+			if (!file.exists() || file.length() == 0) {
+				LOGGER.info("Analysis parameters file not found under {}", resultDirectory);
+				return null;
+			}
+			return loadParametersFromFile(file);
+
+		} catch (Exception e) {
+			LOGGER.error("Failed to load analysis parameters from " + resultDirectory, e);
+			return null;
+		}
+	}
+
+	@Override
+	public boolean hasAnalysisParameters(String resultDirectory) {
+		File file = new File(resultDirectory, PARAMETER_FILENAME);
+		return file.exists() && file.length() > 0;
+	}
+
+	@Override
+	public Object loadLastUsedParameters() {
+		try {
+			File file = new File(CONFIG_DIR, LAST_PARAMETERS_FILENAME);
+			if (!file.exists() || file.length() == 0) {
+				LOGGER.info("Last used parameters file not found in config directory");
+				return null;
+			}
+			return loadParametersFromFile(file);
+
+		} catch (Exception e) {
+			LOGGER.error("Failed to load last used parameters", e);
+			return null;
+		}
+	}
+
+	@Override
+	public boolean hasLastUsedParameters() {
+		File file = new File(CONFIG_DIR, LAST_PARAMETERS_FILENAME);
+		return file.exists() && file.length() > 0;
+	}
+
+	@Override
+	public Object loadPreferences() {
+		try {
+			String userHome = System.getProperty("user.home");
+			File preferencesDir = new File(userHome, PREFERENCES_DIR);
+			File file = new File(preferencesDir, PREFERENCES_FILENAME);
+
+			if (!file.exists() || file.length() == 0) {
+				LOGGER.info("Preferences file not found under {}", preferencesDir.getAbsolutePath());
+				return null;
+			}
+			return loadParametersFromFile(file);
+
+		} catch (Exception e) {
+			LOGGER.error("Failed to load preferences", e);
+			return null;
+		}
+	}
+
+	@Override
+	public boolean hasPreferences() {
+		String userHome = System.getProperty("user.home");
+		File preferencesDir = new File(userHome, PREFERENCES_DIR);
+		File file = new File(preferencesDir, PREFERENCES_FILENAME);
+		return file.exists() && file.length() > 0;
+	}
+
+	@Override
+	protected String getWorkflowType() {
+		return uk.ac.quadram.metapilot.workflow.WorkflowType.DIA_MARKER.getAnalysisType();
+	}
+
+	@Override
+	protected boolean saveParametersToFile(Object parameters, File outputFile, String description) {
+		if (!(parameters instanceof MetaParameterDiaMarker)) {
+			LOGGER.error("Invalid parameter type: expected MetaParameterDiaMarker, got "
+					+ (parameters != null ? parameters.getClass().getSimpleName() : "null"));
+			return false;
+		}
+
+		MetaParameterDiaMarker params = (MetaParameterDiaMarker) parameters;
+
+		try {
+			// Ensure parent directories exist before writing the file
+			File parentDir = outputFile.getParentFile();
+			if (parentDir != null && !parentDir.exists()) {
+				boolean created = parentDir.mkdirs();
+				if (!created) {
+					LOGGER.error("Failed to create parent directory: " + parentDir.getAbsolutePath());
+					return false;
+				}
+			}
+
+			JSONObject json = createJsonHeader(description);
+			json.put("workflow", getWorkflowType());
+
+			// Input/Output settings (aligned with DIA_SEED format)
+			JSONObject ioSettings = new JSONObject();
+			ioSettings.put("output_directory", params.getResult());
+			ioSettings.put("micro_db", params.getMicroDb());
+			ioSettings.put("append_host_db", params.isAppendHostDb());
+			ioSettings.put("host_database", params.getHostDB());
+
+			// Raw files and experiments
+			JSONArray experiments = new JSONArray();
+			MetaData metaData = params.getMetadata();
+			if (metaData != null) {
+				String[] rawFiles = metaData.getRawFiles();
+				String[] expNames = metaData.getExpNames();
+				if (rawFiles != null) {
+					for (int i = 0; i < rawFiles.length; i++) {
+						JSONObject exp = new JSONObject();
+						exp.put("file_path", rawFiles[i]);
+						exp.put("experiment_name", (expNames != null && i < expNames.length) ? expNames[i] : "");
+						experiments.put(exp);
+					}
+				}
+			}
+			ioSettings.put("experiments", experiments);
+			json.put("input_output", ioSettings);
+
+			// DIA-specific settings (library + genome selection + modifications)
+			JSONObject diaSettings = new JSONObject();
+			diaSettings.put("library_search", params.isLibrarySearch());
+
+			// Library information
+			JSONArray libraries = new JSONArray();
+			if (params.getLibrary() != null) {
+				for (String lib : params.getLibrary()) {
+					libraries.put(lib);
+				}
+			}
+			diaSettings.put("libraries", libraries);
+
+			// Genome-selection mode
+			// Persist only marker_mode; genomeSelectionStrategy is computed from this when loading.
+			diaSettings.put("marker_mode", params.getMarkerMode());
+
+			// Modification settings
+			diaSettings.put("mExcision", params.isMExcision());
+			diaSettings.put("carbamiC", params.isCarbamiC());
+			diaSettings.put("oxidationM", params.isOxidationM());
+			diaSettings.put("acetyProN", params.isAcetyProN());
+			diaSettings.put("phosphoSTY", params.isPhosphoSTY());
+			diaSettings.put("kGG", params.isKGG());
+
+			json.put("dia_settings", diaSettings);
+
+			// MAG database information (aligned with DIA_SEED format)
+			JSONObject magDbSettings = new JSONObject();
+			if (params.getMagDbItem() != null) {
+				MagDbItem magDbItem = params.getMagDbItem();
+				magDbSettings.put("catalogue_id", magDbItem.getCatalogueID());
+				magDbSettings.put("identifier", magDbItem.getIdentifier());
+				if (magDbItem.getUsedVersion() != null) {
+					magDbSettings.put("catalogue_version", magDbItem.getUsedVersion().getCatalogueVersion());
+				}
+			}
+			json.put("mag_database", magDbSettings);
+
+			// Basic parameters
+			JSONObject basicParams = new JSONObject();
+			basicParams.put("threads", params.getThreadCount());
+			basicParams.put("core_count", params.getCoreCount());
+			basicParams.put("ms2_scan_mode", params.getMs2ScanMode());
+			basicParams.put("meta_workflow", params.isMetaWorkflow());
+			json.put("basic_parameters", basicParams);
+
+			// Metadata (sample-level meta info, if available)
+			JSONArray metadata = new JSONArray();
+			if (metaData != null && metaData.getMetaInfo() != null) {
+				String[][] metaInfo = metaData.getMetaInfo();
+				for (int i = 0; i < metaInfo.length; i++) {
+					JSONObject meta = new JSONObject();
+					meta.put("sample_index", i);
+					if (metaInfo[i].length > 0) meta.put("age", metaInfo[i][0]);
+					if (metaInfo[i].length > 1) meta.put("gender", metaInfo[i][1]);
+					if (metaInfo[i].length > 2) meta.put("condition", metaInfo[i][2]);
+					metadata.put(meta);
+				}
+			}
+			json.put("metadata", metadata);
+
+			return writeJsonToFile(json, outputFile);
+
+		} catch (Exception e) {
+			LOGGER.error("Failed to save parameters to " + outputFile.getAbsolutePath(), e);
+			return false;
+		}
+	}
+
+	@Override
+	protected Object loadParametersFromFile(File paramFile) {
+		LOGGER.info("Loading parameters from {}", paramFile.getAbsolutePath());
+
+		try {
+			JSONObject json = readJsonFromFile(paramFile);
+			return jsonToParametersUnified(json);
+		} catch (Exception e) {
+			LOGGER.error("Failed to load parameters from " + paramFile.getAbsolutePath(), e);
+			return createDefaultParameters();
+		}
+	}
+
+	@Override
+	protected Object createDefaultParameters() {
+		// Create a default MetaParameterDiaMarker with minimal parameters
+		uk.ac.quadram.metapilot.task.par.MetaBaseParameter metaBasePar = new uk.ac.quadram.metapilot.task.par.MetaBaseParameter(
+				uk.ac.quadram.metapilot.workflow.WorkflowType.DIA_MARKER.getAnalysisType(), new MetaData(), "", "",
+				false, "", "DIA", 1, Runtime.getRuntime().availableProcessors(), true);
+
+		return new MetaParameterDiaMarker(metaBasePar, null, true, false, new String[0], false, new String[0]);
+	}
+
+	private Object jsonToParametersUnified(JSONObject json) {
+		try {
+			// Create MetaData from input_output.experiments
+			MetaData metadata = new MetaData();
+			if (json.has("input_output") && json.getJSONObject("input_output").has("experiments")) {
+				JSONArray experiments = json.getJSONObject("input_output").getJSONArray("experiments");
+				String[] rawFiles = new String[experiments.length()];
+				String[] expNames = new String[experiments.length()];
+				int[] fractions = new int[experiments.length()];
+				int[] replicates = new int[experiments.length()];
+
+				for (int i = 0; i < experiments.length(); i++) {
+					JSONObject exp = experiments.getJSONObject(i);
+					rawFiles[i] = exp.optString("file_path", "");
+					expNames[i] = exp.optString("experiment_name", "");
+					fractions[i] = 1; // Default fraction
+					replicates[i] = 1; // Default replicate
+				}
+
+				metadata = new MetaData(rawFiles, expNames, fractions, replicates);
+			}
+
+			// Create MetaBaseParameter first
+			uk.ac.quadram.metapilot.task.par.MetaBaseParameter metaBasePar = new uk.ac.quadram.metapilot.task.par.MetaBaseParameter(
+				getWorkflowType(),
+				metadata,
+				"", // output_directory will be set below
+				"", // micro_db will be set below
+				false, // append_host_db will be set below
+				"", // host_database will be set below
+				"DIA", // ms2_scan_mode will be set below
+				1, // core_count will be set below
+				Runtime.getRuntime().availableProcessors(), // threads will be set below
+				true // meta_workflow
+			);
+
+			// Load Input/Output settings
+			if (json.has("input_output")) {
+				JSONObject ioSettings = json.getJSONObject("input_output");
+				metaBasePar.setResult(ioSettings.optString("output_directory", ""));
+				metaBasePar.setMicroDb(ioSettings.optString("micro_db", ""));
+				metaBasePar.setAppendHostDb(ioSettings.optBoolean("append_host_db", false));
+				metaBasePar.setHostDB(ioSettings.optString("host_database", ""));
+			}
+
+			// Load basic parameters
+			if (json.has("basic_parameters")) {
+				JSONObject basicParams = json.getJSONObject("basic_parameters");
+				metaBasePar.setThreadCount(basicParams.optInt("threads", Runtime.getRuntime().availableProcessors()));
+				metaBasePar.setCoreCount(basicParams.optInt("core_count", 1));
+				metaBasePar.setMs2ScanMode(basicParams.optString("ms2_scan_mode", "DIA"));
+				metaBasePar.setMetaWorkflow(basicParams.optBoolean("meta_workflow", true));
+			}
+
+			// Load MAG database information and find the MagDbItem (aligned with DIA_SEED)
+			MagDbItem magDbItem = null;
+			if (json.has("mag_database")) {
+				JSONObject magDbSettings = json.getJSONObject("mag_database");
+				String catalogueId = magDbSettings.optString("catalogue_id", "");
+				String identifier = magDbSettings.optString("identifier", "");
+				String catalogueVersion = magDbSettings.optString("catalogue_version", "");
+
+				if (!catalogueId.isEmpty()) {
+					try {
+						File configFile = new File("config/MAGDB_1_0.json");
+						if (!configFile.exists()) {
+							configFile = new File("MAGDB_1_0.json");
+						}
+						if (configFile.exists()) {
+							MagDbItem[][] magDbItems = MagDbConfigIO.parse(configFile);
+							if (magDbItems != null) {
+								for (MagDbItem[] dbArray : magDbItems) {
+									if (dbArray != null) {
+										for (MagDbItem item : dbArray) {
+											if (item.getCatalogueID().equals(catalogueId)
+													&& item.getIdentifier().equals(identifier)) {
+												magDbItem = item;
+
+												if (!catalogueVersion.isEmpty()) {
+													for (MagDbItem.MagVersion version : item.getVersionList()) {
+														if (version.getCatalogueVersion().equals(catalogueVersion)) {
+															item.setUsedVersion(version);
+															break;
+														}
+													}
+												}
+												break;
+											}
+										}
+									}
+									if (magDbItem != null)
+										break;
+								}
+							}
+						}
+					} catch (Exception e) {
+						LOGGER.warn("Failed to load MAG database from config: " + e.getMessage());
+					}
+				}
+			}
+
+			// Load DIA-specific settings
+			boolean librarySearch = false;
+			String[] library = new String[0];
+
+			// Marker-specific defaults
+			String markerMode = "FOCUS";
+
+			// Modification defaults (match legacy)
+			boolean mExcision = true;
+			boolean carbamiC = true;
+			boolean oxidationM = false;
+			boolean acetyProN = false;
+			boolean phosphoSTY = false;
+			boolean kGG = false;
+
+			if (json.has("dia_settings")) {
+				JSONObject diaSettings = json.getJSONObject("dia_settings");
+				librarySearch = diaSettings.optBoolean("library_search", true);
+
+				if (diaSettings.has("libraries")) {
+					JSONArray libraries = diaSettings.getJSONArray("libraries");
+					library = new String[libraries.length()];
+					for (int i = 0; i < libraries.length(); i++) {
+						library[i] = libraries.getString(i);
+					}
+				}
+
+				markerMode = diaSettings.optString("marker_mode", markerMode);
+
+				mExcision = diaSettings.optBoolean("mExcision", mExcision);
+				carbamiC = diaSettings.optBoolean("carbamiC", carbamiC);
+				oxidationM = diaSettings.optBoolean("oxidationM", oxidationM);
+				acetyProN = diaSettings.optBoolean("acetyProN", acetyProN);
+				phosphoSTY = diaSettings.optBoolean("phosphoSTY", phosphoSTY);
+				kGG = diaSettings.optBoolean("kGG", kGG);
+			}
+
+			// Create MetaParameterDiaMarker (no self model / external models for now)
+			MetaParameterDiaMarker params = new MetaParameterDiaMarker(metaBasePar, magDbItem, librarySearch,
+					false, library, false, new String[0]);
+
+			// Apply marker-specific settings
+			params.setMarkerMode(markerMode);
+
+			// Apply modification settings
+			params.setMExcision(mExcision);
+			params.setCarbamiC(carbamiC);
+			params.setOxidationM(oxidationM);
+			params.setAcetyProN(acetyProN);
+			params.setPhosphoSTY(phosphoSTY);
+			params.setKGG(kGG);
+
+			return params;
+
+		} catch (Exception e) {
+			LOGGER.error("Failed to parse parameters from unified JSON", e);
+			return createDefaultParameters();
+		}
+	}
+}
+

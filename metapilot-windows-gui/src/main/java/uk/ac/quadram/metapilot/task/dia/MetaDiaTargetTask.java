@@ -95,6 +95,9 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 		System.out.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
 				+ ": initializing task");
 
+		// Initialize result folder for DIA Target: use library path parent folder by default
+		initResultFolderIfNeeded();
+
 		logger.info("DIA Target workflow initialized with library search mode");
 		logger.info("Target library path: {}", targetLibraryPath);
 		logger.info("Selected taxa count: {}", selectedTaxa != null ? selectedTaxa.length : 0);
@@ -109,6 +112,29 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 	@Override
 	protected Logger getLogger() {
 		return logger;
+	}
+
+	@Override
+	protected void initResultFolderIfNeeded() {
+		if (metaPar == null) {
+			return;
+		}
+		if (metaPar.getDbSearchResultFile() != null) {
+			this.resultFolderFile = metaPar.getDbSearchResultFile();
+			return;
+		}
+		if (!(metaPar instanceof MetaParameterDiaTg)) {
+			super.initResultFolderIfNeeded();
+			return;
+		}
+		MetaParameterDiaTg targetParams = (MetaParameterDiaTg) metaPar;
+		File libFile = new File(targetParams.getLibraryPath());
+		File dir = libFile.getParentFile();
+		if (dir != null && !dir.exists()) {
+			dir.mkdirs();
+		}
+		metaPar.setDbSearchResultFile(dir);
+		this.resultFolderFile = dir;
 	}
 
 	/**
@@ -614,12 +640,10 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 		}
 
 		DiaNNPrecursor[] filteredPPS = genomeFilteredList.toArray(DiaNNPrecursor[]::new);
-		File genomeScoreFile = new File(combinedFile, "genomes_score.tsv");
-		File proteinScoreFile = new File(combinedFile, "proteins_score.tsv");
 
 		HashMap<String, double[]> genomeScoreMap = new HashMap<String, double[]>();
 		HashMap<String, double[]> proteinScoreMap = new HashMap<String, double[]>();
-		calGenomeProteinScore(filteredPPS, genomeScoreMap, proteinScoreMap, genomeScoreFile, proteinScoreFile);
+		calGenomeProteinScore(filteredPPS, genomeScoreMap, proteinScoreMap, null, null);
 
 		HashSet<String> tempPepHashSet = new HashSet<String>();
 		ArrayList<DiaNNPrecursor> finalFilteredList = new ArrayList<DiaNNPrecursor>();
@@ -1305,6 +1329,25 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 			taxScoreMaps[i] = new HashMap<String, Double>();
 		}
 
+		// Core/mid/tail from ranked.tsv (prefer combined/ranked.tsv like DDA)
+		HashMap<String, String> genomeSelectionLabel = new HashMap<>();
+		MetaDiaMarkerTask.ensureCombinedRankedFromPrecursors(this, resultFolderFile);
+		File rankedFile = new File(resultFolderFile, "combined/ranked.tsv");
+		if (!rankedFile.exists()) rankedFile = new File(resultFolderFile, "marker/genome_ranked.tsv");
+		if (!rankedFile.exists()) rankedFile = new File(resultFolderFile, "seed/genome_ranked.tsv");
+		if (rankedFile.exists()) {
+			MetaDiaMarkerTask.readCoreMidTailFromRankedTsv(rankedFile, genomeSelectionLabel, genomeIntensityMap.keySet());
+		}
+		if (rankedFile.exists() && !genomeSelectionLabel.isEmpty()) {
+			ArrayList<String> filteredGenomes = new ArrayList<>();
+			for (String genome : genomes) {
+				if (genomeSelectionLabel.containsKey(genome)) {
+					filteredGenomes.add(genome);
+				}
+			}
+			genomes = filteredGenomes.toArray(new String[0]);
+		}
+
 		File genomeFile = new File(taxFile, "Genome.tsv");
 		PrintWriter genomeWriter = null;
 		try {
@@ -1316,6 +1359,7 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 			genomeTitlesb.append("PSM count\t");
 			genomeTitlesb.append("Peptide count\t");
 			genomeTitlesb.append("Razor peptide count\t");
+			genomeTitlesb.append("Selection_label\t");
 			genomeTitlesb.append("GTDB_Name\t");
 			genomeTitlesb.append("GTDB_Rank\t");
 
@@ -1371,6 +1415,8 @@ public class MetaDiaTargetTask extends MetaDiaTask {
 					} else {
 						genomeTaxaSb.append("0");
 					}
+
+					genomeTaxaSb.append("\t").append(genomeSelectionLabel.getOrDefault(genomes[i], "tail"));
 
 					for (int j = 1; j < taxaContent.length; j++) {
 						genomeTaxaSb.append("\t").append(taxaContent[j]);

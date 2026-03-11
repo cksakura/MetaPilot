@@ -7,16 +7,16 @@ import javafx.application.Platform;
 import javafx.collections.ObservableList;
 import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNParquetReader;
+import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNPrecursor;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiannParameter;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
-import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaRT;
 import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
+import uk.ac.quadram.metapilot.task.mag.MarkerGenomeSelector;
 
-import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileReader;
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.file.*;
@@ -26,6 +26,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -47,7 +48,6 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 	private DiannParameter diannPar;
 	private File libFolderFile;
 	private ArrayList<String> libPathList;
-	private ArrayList<String> modelPathList;
 	
 	// Logger is inherited from MetaDiaTask -> MetaPilotMagTask -> MetaPilotTask as an instance field
 	private static final String taskName = "Realtime DIA data analysis";
@@ -55,17 +55,12 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 	/**
 	 * Helper method to update table row status
 	 */
-	private void updateTableRowStatus(String fileName, int columnIndex, String status) {
+	private void updateTableStatus(String fileName, String status, String details) {
 		Platform.runLater(() -> {
 			for (TableRowData row : resultTableItems) {
 				if (row.matchesFileName(fileName)) {
-					switch (columnIndex) {
-						case 1: row.setRound1Status(status); break;
-						case 2: row.setRound2Status(status); break;
-						case 3: row.setRound3Status(status); break;
-						case 4: row.setRound4Status(status); break;
-						case 5: row.setRound5Status(status); break;
-					}
+					row.setStatus(status);
+					row.setDetails(details);
 					break;
 				}
 			}
@@ -127,14 +122,6 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 			}
 		}
 
-		File modelFolderFile = new File(magDbFile, "models");
-		String[] usedModels = diaPar.getModels();
-		this.modelPathList = new ArrayList<String>();
-		for (int i = 0; i < usedModels.length; i++) {
-			File modelFile = new File(new File(modelFolderFile, usedModels[i]), usedModels[i] + "_pep_rank.tsv");
-			modelPathList.add(modelFile.getAbsolutePath());
-		}
-
 		executorService = Executors.newFixedThreadPool(maxTaskCount);
 
 		this.fileNameSet = new HashSet<String>();
@@ -143,7 +130,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 		List<Future<String>> futures = new ArrayList<>();
 
 		File[] files = monitorFolder.listFiles();
-		if (files.length > 0) {
+		if (files != null && files.length > 0) {
 			logger.info(
 					getTaskName() + ": " + files.length + " files already in the monitor folder, processing started");
 
@@ -152,17 +139,16 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 			
 			// List the files that will be processed
 			for (File file : files) {
-				if (file.isFile()) {
-					String fileName = file.getName().toLowerCase();
-					if (fileName.endsWith(".raw") || fileName.endsWith(".d") || 
-						fileName.endsWith(".dia") || fileName.endsWith(".mzml")) {
-						System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Found existing file: " + file.getName());
-						logger.info(getTaskName() + ": Found existing file: " + file.getName());
-					}
+				if (isSupportedInput(file)) {
+					System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Found existing file: " + file.getName());
+					logger.info(getTaskName() + ": Found existing file: " + file.getName());
 				}
 			}
 
 			for (int i = 0; i < files.length; i++) {
+				if (!isSupportedInput(files[i])) {
+					continue;
+				}
 				final int index = i;
 				System.out.println("DEBUG: Submitting file " + files[index].getName() + " to executor service");
 				Future<String> future = executorService.submit(() -> process(files[index]));
@@ -194,18 +180,12 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 				Path filename = ev.context();
 				Path filePath = monitorFolderPath.resolve(filename);
 
-				if (Files.isRegularFile(filePath)) {
-					String fileName = filename.toString().toLowerCase();
-					// Only process supported spectra file types
-					if (fileName.endsWith(".raw") || fileName.endsWith(".d") || 
-						fileName.endsWith(".dia") || fileName.endsWith(".mzml")) {
+				if (isSupportedInput(filePath)) {
+					logger.info(getTaskName() + ": found new file " + filePath);
+					System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": New file detected: " + filename);
 
-						logger.info(getTaskName() + ": found new file " + filePath);
-						System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": New file detected: " + filename);
-
-						Future<String> future = executorService.submit(() -> waitForFileCompletionAndProcess(filePath));
-						futures.add(future);
-					}
+					Future<String> future = executorService.submit(() -> waitForFileCompletionAndProcess(filePath));
+					futures.add(future);
 				}
 			}
 
@@ -312,681 +292,391 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 	
 	private String process(File file) {
 		try {
-			System.out.println("DEBUG: process() method called for file: " + file.getName());
-
-			String fileAbPath = file.getAbsolutePath();
 			String fileName = file.getName();
-			
-			// Extract base filename for UI display (remove extensions)
-			String baseFileName = fileName;
-			if (fileName.endsWith(".raw")) {
-				baseFileName = fileName.substring(0, fileName.length() - 4);
-			} else if (fileName.endsWith(".d")) {
-				baseFileName = fileName.substring(0, fileName.length() - 2);
-			} else if (fileName.endsWith(".dia")) {
-				if (fileName.endsWith(".raw.dia")) {
-					baseFileName = fileName.substring(0, fileName.length() - 8);
-				} else if (fileName.endsWith(".raw.d")) {
-					baseFileName = fileName.substring(0, fileName.length() - 6);
-				} else {
-					baseFileName = fileName.substring(0, fileName.length() - 4);
-				}
+			String baseFileName = getBaseName(fileName);
+			if (baseFileName == null || baseFileName.isEmpty()) {
+				return null;
 			}
-			
-			// Check if this base filename is already being processed to avoid duplicates
+
 			synchronized (fileNameSet) {
 				if (fileNameSet.contains(baseFileName)) {
-					System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Duplicate file detected, skipping: " + fileName + " (base: " + baseFileName + ")");
-					logger.info(getTaskName() + ": Duplicate file detected, skipping: " + fileName + " (base: " + baseFileName + ")");
+					logger.info(getTaskName() + ": Duplicate file detected, skipping {}", fileName);
 					return null;
 				}
-				// Add to set immediately to prevent other threads from processing the same base filename
 				fileNameSet.add(baseFileName);
 			}
-			
-			// IMMEDIATE UI UPDATE - Add file to UI as soon as processing starts
-			final String finalBaseFileName = baseFileName;
+
+			final String uiName = baseFileName;
 			Platform.runLater(() -> {
-				// Add to list if not already present
-				if (!rawListItems.contains(finalBaseFileName)) {
-					rawListItems.add(finalBaseFileName);
-					System.out.println("DEBUG: IMMEDIATE UI UPDATE - Added file to list: " + finalBaseFileName);
+				if (!rawListItems.contains(uiName)) {
+					rawListItems.add(uiName);
 				}
-				
-				// Add to table if not already present
-				boolean existsInTable = resultTableItems.stream().anyMatch(row -> row.matchesFileName(finalBaseFileName));
+				boolean existsInTable = resultTableItems.stream().anyMatch(row -> row.matchesFileName(uiName));
 				if (!existsInTable) {
-					TableRowData newRow = new TableRowData(finalBaseFileName, "Processing...", "Waiting", "Waiting", "Waiting", "Waiting");
-					resultTableItems.add(newRow);
-					System.out.println("DEBUG: IMMEDIATE UI UPDATE - Added file to table: " + finalBaseFileName);
+					resultTableItems.add(new TableRowData(uiName, "Processing", "Queued"));
 				}
 			});
+			updateTableStatus(baseFileName, "Processing", "Preparing input");
 
-			logger.info(getTaskName() + ": processing raw files " + fileName + " started");
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": processing raw files " + fileName
-					+ " started");
+			File diaFile = toDiaInput(file);
+			if (diaFile == null || !diaFile.exists()) {
+				updateTableStatus(baseFileName, "Failed", "Input conversion failed");
+				return null;
+			}
 
-			// Use the DiaNN task initialized in the constructor, not create a new one
-			System.out.println(
-					"DEBUG: Using DiaNN task from constructor: " + (this.diaNNTask != null ? "available" : "NULL"));
-			System.out.println(
-					"DEBUG: Using diannPar from constructor: " + (this.diannPar != null ? "available" : "NULL"));
+			File perFileFolder = new File(destinationFolderPath.toFile(), baseFileName);
+			if (!perFileFolder.exists()) {
+				perFileFolder.mkdirs();
+			}
 
-			// Create a new DiannParameter for this specific conversion task
-			DiannParameter conversionDiannPar = new DiannParameter();
-			conversionDiannPar.setThreads(threadCount / maxTaskCount + 1);
+			String rtMode = ((MetaParameterDiaRT) metaPar).getRtWorkflowMode();
+			if (rtMode == null || rtMode.trim().isEmpty()) {
+				rtMode = "SEED_DIRECT";
+			}
+			File finalParquet = new File(perFileFolder, baseFileName + ".parquet");
 
-			File diaFile = new File(fileAbPath);
-			if (fileName.endsWith(".raw") || fileName.endsWith(".RAW")) {
+			if (rtMode.startsWith("MARKER_")) {
+				updateTableStatus(baseFileName, "Processing", "Marker search");
+				File markerDir = new File(perFileFolder, "marker");
+				markerDir.mkdirs();
+				File markerParquet = new File(markerDir, "marker.parquet");
+				File markerLib = magDb != null ? magDb.getMarker4LibFile() : null;
+				if (markerLib == null || !markerLib.exists()) {
+					updateTableStatus(baseFileName, "Failed", "Marker4 library missing");
+					return null;
+				}
+				if (!markerParquet.exists()) {
+					if (!runNoQuantSearch(diaFile.getAbsolutePath(), markerParquet.getAbsolutePath(),
+							new String[] { markerLib.getAbsolutePath() })) {
+						updateTableStatus(baseFileName, "Failed", "Marker search failed");
+						return null;
+					}
+				}
+				updateTableStatus(baseFileName, "Processing", "Genome selection");
+				String kneeMode = "MARKER_FOCUS".equals(rtMode) ? MarkerGenomeSelector.KNEE_MODE_FOCUS
+						: MarkerGenomeSelector.KNEE_MODE_COMPREHENSIVE;
+				HashSet<String> genomes = selectGenomesFromParquet(markerParquet, markerDir, kneeMode);
+				if (genomes.isEmpty()) {
+					updateTableStatus(baseFileName, "Failed", "No genomes selected");
+					return null;
+				}
+				updateTableStatus(baseFileName, "Processing", "Building per-file library");
+				File selectedFasta = new File(markerDir, baseFileName + ".fasta");
+				if (!writeFastaFromGenomeSet(selectedFasta, genomes)) {
+					updateTableStatus(baseFileName, "Failed", "Failed writing FASTA");
+					return null;
+				}
+				File selectedLib = new File(markerDir, baseFileName + ".speclib");
+				if (!buildSpeclibFromFasta(selectedFasta, selectedLib)) {
+					updateTableStatus(baseFileName, "Failed", "Failed building speclib");
+					return null;
+				}
+				updateTableStatus(baseFileName, "Processing", "Final identification search");
+				if (!finalParquet.exists()) {
+					if (!runNoQuantSearch(diaFile.getAbsolutePath(), finalParquet.getAbsolutePath(),
+							new String[] { selectedLib.getAbsolutePath() })) {
+						updateTableStatus(baseFileName, "Failed", "Final search failed");
+						return null;
+					}
+				}
+			} else {
+				File[] seedLibs = resolveSeedLibraries();
+				if (seedLibs.length == 0) {
+					updateTableStatus(baseFileName, "Failed", "No seed libraries selected");
+					return null;
+				}
+				File seedDir = new File(perFileFolder, "seed");
+				seedDir.mkdirs();
+				File seedParquet = new File(seedDir, "seed.parquet");
+				updateTableStatus(baseFileName, "Processing", "Seed search");
+				if (!seedParquet.exists()) {
+					String[] seedLibPaths = new String[seedLibs.length];
+					for (int i = 0; i < seedLibs.length; i++) {
+						seedLibPaths[i] = seedLibs[i].getAbsolutePath();
+					}
+					if (!runNoQuantSearch(diaFile.getAbsolutePath(), seedParquet.getAbsolutePath(), seedLibPaths)) {
+						updateTableStatus(baseFileName, "Failed", "Seed search failed");
+						return null;
+					}
+				}
 
-				diaFile = new File(file + ".dia");
-				fileName = fileName.substring(0, fileName.length() - 4);
-				// fileNameSet.add() already done earlier in the method
-
-				if (!diaFile.exists()) {
-					logger.info(getTaskName() + ": converting raw files " + fileName + " started");
-					System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": converting raw files "
-							+ fileName + " started");
-					System.out.println("DEBUG: Input file: " + fileAbPath);
-					System.out.println("DEBUG: Expected output: " + diaFile.getAbsolutePath());
-					System.out.println("DEBUG: DiaNN task: " + (this.diaNNTask != null ? "initialized" : "NULL"));
-					System.out
-							.println("DEBUG: DiannParameter: " + (conversionDiannPar != null ? "initialized" : "NULL"));
-
-					this.diaNNTask.addTask(conversionDiannPar, new String[] { fileAbPath });
-					System.out.println("DEBUG: DiaNN task added, about to run...");
-					this.diaNNTask.run(1);
-					System.out.println("DEBUG: DiaNN task run completed");
-
-					// Check if conversion was successful
-					if (diaFile.exists()) {
-						logger.info(getTaskName() + ": converting raw files " + fileName + " finished successfully");
-						System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": converting raw files "
-								+ fileName + " finished successfully");
-						System.out.println("DEBUG: Output file created: " + diaFile.getAbsolutePath() + " (size: "
-								+ diaFile.length() + " bytes)");
-					} else {
-						logger.error(getTaskName() + ": converting raw files " + fileName
-								+ " FAILED - output file not created");
-						System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": converting raw files "
-								+ fileName + " FAILED - output file not created");
-						System.out.println("DEBUG: Expected output file does not exist: " + diaFile.getAbsolutePath());
-						System.out.println("DEBUG: Check DiaNN installation and .NET Runtime");
-						System.out.println(
-								"DEBUG: Download .NET Runtime 8.0.407 or later from: https://dotnet.microsoft.com/en-us/download/dotnet/8.0");
+				if ("SEED_DIRECT".equals(rtMode)) {
+					if (!finalParquet.exists()) {
+						Files.copy(seedParquet.toPath(), finalParquet.toPath(), StandardCopyOption.REPLACE_EXISTING);
 					}
 				} else {
-					logger.info(getTaskName() + ": .dia file already exists for " + fileName);
-					System.out.println(format.format(new Date()) + "\t" + getTaskName()
-							+ ": .dia file already exists for " + fileName);
-					System.out.println("DEBUG: Using existing file: " + diaFile.getAbsolutePath() + " (size: "
-							+ diaFile.length() + " bytes)");
-				}
-
-				// Continue processing the .dia file instead of returning null
-				// The rest of the method will process the diaFile
-
-			} else if (fileName.endsWith(".d") || fileName.endsWith(".D")) {
-				fileName = fileName.substring(0, fileName.length() - 2);
-				// fileNameSet.add() already done earlier in the method
-			} else if (fileName.endsWith(".dia") || fileName.endsWith(".DIA")) {
-				if (fileName.endsWith(".raw.dia") || fileName.endsWith(".RAW.DIA")) {
-					fileName = fileName.substring(0, fileName.length() - 8);
-				} else if (fileName.endsWith(".raw.d") || fileName.endsWith(".RAW.D")) {
-					fileName = fileName.substring(0, fileName.length() - 6);
-				} else {
-					fileName = fileName.substring(0, fileName.length() - 4);
-				}
-				// fileNameSet.add() already done earlier in the method
-			} else {
-				// Only process supported spectra file types
-				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Unsupported file type, skipping: " + fileName);
-				logger.info(getTaskName() + ": Unsupported file type, skipping: " + fileName);
-				return null;
-			}
-
-			final String finalFileName = baseFileName; // Use the base filename extracted earlier
-			
-			// UI updates already happened immediately at the start of processing
-
-			// JavaFX models updated directly via Platform.runLater()
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Added file to JavaFX models: "
-					+ finalFileName);
-
-			File resultFolderFile = new File(destinationFolderPath.toAbsolutePath().toString(), fileName);
-			if (!resultFolderFile.exists()) {
-				resultFolderFile.mkdir();
-			}
-
-			HashSet<String> initialLibPepSet = new HashSet<String>();
-			String[] libPath = new String[libPathList.size()];
-			for (int i = 0; i < libPathList.size(); i++) {
-				String usedLibIString = libPathList.get(i);
-				File libTsvFile = new File(new File(libFolderFile, usedLibIString), usedLibIString + ".parquet");
-				File libFile = new File(new File(libFolderFile, usedLibIString), usedLibIString + ".speclib");
-				libPath[i] = libFile.getAbsolutePath();
-
-				initialLibPepSet.addAll(DiaNNParquetReader.getPeptideSet(libTsvFile.getAbsolutePath()));
-			}
-
-			File firstFile = new File(resultFolderFile, "firstSearch");
-			if (!firstFile.exists()) {
-				firstFile.mkdirs();
-			}
-
-			updateTableRowStatus(finalFileName, 1, "Working");
-			logger.info(getTaskName() + ": Updated " + finalFileName + " Round 1 status to Working");
-
-			// JavaFX models updated directly via Platform.runLater()
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": Updated " + finalFileName
-					+ " Round 1 status to Working");
-
-			File round1TsvFile = new File(firstFile, "firstSearch.parquet");
-			if (!round1TsvFile.exists()) {
-
-				logger.info(getTaskName() + ": search raw files " + fileName + " round 1 started");
-				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": search raw files " + fileName
-						+ " round 1 started");
-
-				int batchThreadCount = threadCount / maxTaskCount + 1;
-				DiaLibSearchPar diaLibSearchPar = new DiaLibSearchPar();
-				diaLibSearchPar.setDiaFiles(new String[] { diaFile.getAbsolutePath() });
-				diaLibSearchPar.setThreadCount(batchThreadCount);
-				diaLibSearchPar.setMbr(false);
-				diaLibSearchPar.setqValue(0.01);
-
-				DiannParameter diannPar = new DiannParameter();
-				diannPar.setThreads(batchThreadCount);
-				diannPar.setMatrices(false);
-				diannPar.setRelaxed_prot_inf(true);
-				diaNNTask.addTask(diannPar, diaLibSearchPar, round1TsvFile.getAbsolutePath(), libPath);
-				diaNNTask.run(12);
-
-				logger.info(getTaskName() + ": search raw files " + fileName + " round 1 finished");
-				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": converting raw files "
-						+ fileName + " finished");
-			} else {
-				logger.info(
-						getTaskName() + ": round 1 search result for " + fileName + " existed, go to the next step");
-				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": round 1 search result for "
-						+ fileName + " existed, go to the next step");
-			}
-
-			if (round1TsvFile.exists()) {
-				updateTableRowStatus(finalFileName, 1, "Done");
-			} else {
-				updateTableRowStatus(finalFileName, 1, "Failed");
-				return null;
-			}
-
-			File modelFolderFile = new File(resultFolderFile, "model");
-			if (!modelFolderFile.exists()) {
-				modelFolderFile.mkdirs();
-			}
-
-			File rankedPepFile = new File(modelFolderFile, "model_pep_rank.tsv");
-			if (!rankedPepFile.exists()) {
-
-				logger.info(getTaskName() + ": creating model for " + fileName + " started");
-				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": creating model for " + fileName
-						+ " started");
-
-				HashMap<String, Double> pepIntenMap = new HashMap<String, Double>();
-				try {
-					pepIntenMap = DiaNNParquetReader.getPeptideMap(round1TsvFile.getAbsolutePath());
-				} catch (IOException e) {
-					logger.error(getTaskName() + ": error in reading parquet file " + round1TsvFile.getAbsolutePath(), e);
-					System.out.println(format.format(new Date()) + "\t" + getTaskName()
-							+ ": error in reading parquet file " + round1TsvFile.getAbsolutePath());
-				}
-				int batchThreadCount = threadCount / maxTaskCount + 1;
-				DiaPyTorchModelTask diaModelTask = new DiaPyTorchModelTask((MetaParameterDia) metaPar, mrp, secondBar,
-						logger, pepIntenMap, modelFolderFile, batchThreadCount);
-				diaModelTask.execute();
-
-				updateTableRowStatus(finalFileName, 2, "Working");
-
-				try {
-					if (diaModelTask.get()) {
-						logger.info(getTaskName() + ": creating model for " + fileName + " finished");
-						System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": creating model for "
-								+ fileName + " finished");
-
-					} else {
-						logger.info(getTaskName() + ": creating model for " + fileName + " failed");
-						System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": creating model for "
-								+ fileName + " failed");
+					updateTableStatus(baseFileName, "Processing", "Genome selection");
+					String kneeMode = "SEED_FOCUS".equals(rtMode) ? MarkerGenomeSelector.KNEE_MODE_FOCUS
+							: MarkerGenomeSelector.KNEE_MODE_COMPREHENSIVE;
+					HashSet<String> genomes = selectGenomesFromParquet(seedParquet, seedDir, kneeMode);
+					if (genomes.isEmpty()) {
+						updateTableStatus(baseFileName, "Failed", "No genomes selected");
+						return null;
 					}
-
-				} catch (ExecutionException e) {
-					// TODO Auto-generated catch block
-					logger.error(getTaskName() + ": creating model for " + fileName + " failed", e);
-					System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": creating model for "
-							+ fileName + " failed");
-				}
-			} else {
-				logger.info(getTaskName() + ": model for " + fileName + " existed, go to the next step");
-				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": model for " + fileName
-						+ " existed, go to the next step");
-			}
-
-			if (rankedPepFile.exists()) {
-				updateTableRowStatus(finalFileName, 2, "Done");
-			} else {
-				updateTableRowStatus(finalFileName, 2, "Failed");
-				return null;
-			}
-
-			ArrayList<String> modelListI = new ArrayList<String>(modelPathList);
-			modelListI.add(rankedPepFile.getAbsolutePath());
-			String[] modelPath = modelListI.toArray(String[]::new);
-
-			File round1DbFile = new File(firstFile, "firstSearch.fasta");
-			if (!round1DbFile.exists() || round1DbFile.length() == 0) {
-				HashSet<String> pepSet1 = null;
-				try {
-					pepSet1 = DiaNNParquetReader.getPeptideSet(round1TsvFile.getAbsolutePath());
-				} catch (Exception e) {
-					logger.error(getTaskName() + ": error in reading " + round1TsvFile, e);
-					System.err.println(
-							format.format(new Date()) + "\t" + getTaskName() + ": error in reading " + round1TsvFile);
-					return null;
-				}
-				int batchThreadCount = threadCount / maxTaskCount + 1;
-				HashSet<String> genomeSet1 = getGenomeSet(firstFile, 1.0, pepSet1, 5, false, batchThreadCount);
-
-				logger.info(getTaskName() + ": generating database for " + fileName + ", " + pepSet1.size()
-						+ " peptide sequences were identified, " + genomeSet1.size() + " MAGs were used in this step");
-				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": generating database for "
-						+ fileName + ", " + pepSet1.size() + " peptide sequences were identified, " + genomeSet1.size()
-						+ " MAGs were used in this step");
-
-				dbFromModelPeptide(modelPath, genomeSet1, pepSet1, initialLibPepSet, round1DbFile, 2500000);
-			}
-
-			File secondFile = new File(resultFolderFile, "secondSearch");
-			if (!secondFile.exists()) {
-				secondFile.mkdirs();
-			}
-
-			updateTableRowStatus(finalFileName, 3, "Working");
-
-			File round2TsvFile = new File(secondFile, "secondSearch.parquet");
-			if (!round2TsvFile.exists()) {
-
-				logger.info(getTaskName() + ": search raw files " + fileName + " round 2 started");
-				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": search raw files " + fileName
-						+ " round 2 started");
-
-				File round2LibFile = new File(secondFile, "secondSearch.speclib");
-				if (!round2LibFile.exists()) {
-					File tempLibFile = new File(secondFile, "secondSearch.predicted.speclib");
-					if (tempLibFile.exists()) {
-						tempLibFile.renameTo(round2LibFile);
-					} else {
-						int batchThreadCount = threadCount / maxTaskCount + 1;
-						diannPar.setThreads(batchThreadCount);
-						diaNNTask.addTask(diannPar, round1DbFile.getAbsolutePath(), round2LibFile.getAbsolutePath(),
-								false);
-						diaNNTask.run(12);
+					updateTableStatus(baseFileName, "Processing", "Building per-file library");
+					File selectedFasta = new File(seedDir, baseFileName + ".fasta");
+					if (!writeFastaFromGenomeSet(selectedFasta, genomes)) {
+						updateTableStatus(baseFileName, "Failed", "Failed writing FASTA");
+						return null;
 					}
-				}
-
-				if (!round2LibFile.exists()) {
-					File tempLibFile = new File(secondFile, "secondSearch.predicted.speclib");
-					if (tempLibFile.exists()) {
-						tempLibFile.renameTo(round2LibFile);
-					} else {
-						logger.error(getTaskName() + ": library file " + round2LibFile + " is not found");
-						System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": library file "
-								+ round2LibFile + " is not found");
-
+					File selectedLib = new File(seedDir, baseFileName + ".speclib");
+					if (!buildSpeclibFromFasta(selectedFasta, selectedLib)) {
+						updateTableStatus(baseFileName, "Failed", "Failed building speclib");
+						return null;
 					}
-				}
-				int batchThreadCount = threadCount / maxTaskCount + 1;
-				DiaLibSearchPar diaLibSearchPar = new DiaLibSearchPar();
-				diaLibSearchPar.setDiaFiles(new String[] { diaFile.getAbsolutePath() });
-				diaLibSearchPar.setThreadCount(batchThreadCount);
-				diaLibSearchPar.setMbr(false);
-				diaLibSearchPar.setqValue(0.01);
-
-				DiannParameter diannPar = new DiannParameter();
-				diannPar.setThreads(batchThreadCount);
-				diannPar.setMatrices(false);
-				diannPar.setRelaxed_prot_inf(true);
-				diaNNTask.addTask(diannPar, new String[] { diaFile.getAbsolutePath() }, round2TsvFile.getAbsolutePath(),
-						round2LibFile.getAbsolutePath());
-				diaNNTask.run(12);
-
-				logger.info(getTaskName() + ": search raw files " + fileName + " round 2 finished");
-				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": search raw files " + fileName
-						+ " round 2 finished");
-
-			} else {
-				logger.info(
-						getTaskName() + ": round 2 search result for " + fileName + " existed, go to the next step");
-				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": round 2 search result for "
-						+ fileName + " existed, go to the next step");
-			}
-
-			if (round2TsvFile.exists()) {
-				updateTableRowStatus(finalFileName, 3, "Done");
-			} else {
-				updateTableRowStatus(finalFileName, 3, "Failed");
-				return null;
-			}
-
-			File round2DbFile = new File(secondFile, "secondSearch.fasta");
-			if (!round2DbFile.exists() || round2DbFile.length() == 0) {
-
-				HashSet<String> pepSet2 = new HashSet<String>();
-				try {
-					pepSet2.addAll(DiaNNParquetReader.getPeptideSet(round1TsvFile.getAbsolutePath()));
-				} catch (Exception e) {
-					logger.error(getTaskName() + ": error in reading " + round1TsvFile, e);
-					System.err.println(
-							format.format(new Date()) + "\t" + getTaskName() + ": error in reading " + round1TsvFile);
-					return null;
-				}
-				try {
-					pepSet2.addAll(DiaNNParquetReader.getPeptideSet(round2TsvFile.getAbsolutePath()));
-				} catch (Exception e) {
-					logger.error(getTaskName() + ": error in reading " + round2TsvFile, e);
-					System.err.println(
-							format.format(new Date()) + "\t" + getTaskName() + ": error in reading " + round2TsvFile);
-					return null;
-				}
-
-				int batchThreadCount = threadCount / maxTaskCount + 1;
-				HashSet<String> genomeSet2 = getGenomeSet(secondFile, 1.0, pepSet2, 5, false, batchThreadCount);
-
-				try (BufferedReader firstLibReader = new BufferedReader(
-						new FileReader(new File(firstFile, "firstSearch.fasta")))) {
-
-					String pline = null;
-					while ((pline = firstLibReader.readLine()) != null) {
-						if (!pline.startsWith(">")) {
-							initialLibPepSet.add(pline);
+					updateTableStatus(baseFileName, "Processing", "Final identification search");
+					if (!finalParquet.exists()) {
+						if (!runNoQuantSearch(diaFile.getAbsolutePath(), finalParquet.getAbsolutePath(),
+								new String[] { selectedLib.getAbsolutePath() })) {
+							updateTableStatus(baseFileName, "Failed", "Final search failed");
+							return null;
 						}
 					}
-					firstLibReader.close();
-
-				} catch (Exception e) {
-					logger.error(getTaskName() + ": error in reading fasta file from " + firstFile, e);
-					System.err.println(format.format(new Date()) + "\t" + getTaskName()
-							+ ": error in reading fasta file from " + firstFile);
-					return null;
 				}
-
-				logger.info(getTaskName() + ": generating database for " + fileName + ", " + pepSet2.size()
-						+ " peptide sequences were identified, " + genomeSet2.size()
-						+ " MAGs were used in this step, the size of the excluded set is " + initialLibPepSet.size());
-				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": generating database for "
-						+ fileName + ", " + pepSet2.size() + " peptide sequences were identified, " + genomeSet2.size()
-						+ " MAGs were used in this step, the size of the excluded set is " + initialLibPepSet.size());
-
-				dbFromModelPeptide(modelPath, genomeSet2, pepSet2, initialLibPepSet, round2DbFile, 2000000);
 			}
 
-			File thirdFile = new File(resultFolderFile, "thirdSearch");
-			if (!thirdFile.exists()) {
-				thirdFile.mkdirs();
-			}
-
-			updateTableRowStatus(finalFileName, 4, "Working");
-
-			File round3TsvFile = new File(thirdFile, "thirdSearch.parquet");
-			if (!round3TsvFile.exists()) {
-				logger.info(getTaskName() + ": search raw files " + fileName + " round 3 started");
-				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": search raw files " + fileName
-						+ " round 3 started");
-				File round3LibFile = new File(thirdFile, "thirdSearch.speclib");
-				if (!round3LibFile.exists()) {
-					File tempLibFile = new File(thirdFile, "thirdSearch.predicted.speclib");
-					if (tempLibFile.exists()) {
-						tempLibFile.renameTo(round3LibFile);
-					} else {
-						int batchThreadCount = threadCount / maxTaskCount + 1;
-						diannPar.setThreads(batchThreadCount);
-						diaNNTask.addTask(diannPar, round2DbFile.getAbsolutePath(), round3LibFile.getAbsolutePath(),
-								false);
-						diaNNTask.run(12);
-					}
-				}
-				if (!round3LibFile.exists()) {
-					File tempLibFile = new File(thirdFile, "thirdSearch.predicted.speclib");
-					if (tempLibFile.exists()) {
-						tempLibFile.renameTo(round3LibFile);
-					} else {
-						logger.error(getTaskName() + ": library file " + round3LibFile + " is not found");
-						System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": library file "
-								+ round3LibFile + " is not found");
-					}
-				}
-				int batchThreadCount = threadCount / maxTaskCount + 1;
-				DiaLibSearchPar diaLibSearchPar = new DiaLibSearchPar();
-				diaLibSearchPar.setThreadCount(batchThreadCount);
-				diaLibSearchPar.setMbr(false);
-				diaLibSearchPar.setqValue(0.01);
-
-				DiannParameter diannPar = new DiannParameter();
-				diannPar.setThreads(batchThreadCount);
-				diannPar.setMatrices(false);
-				diannPar.setRelaxed_prot_inf(true);
-				diaNNTask.addTask(diannPar, new String[] { diaFile.getAbsolutePath() }, round3TsvFile.getAbsolutePath(),
-						round3LibFile.getAbsolutePath());
-				diaNNTask.run(12);
-
-				logger.info(getTaskName() + ": search raw files " + fileName + " round 3 finished");
-				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": search raw files " + fileName
-						+ " round 3 finished");
-			} else {
-				logger.info(
-						getTaskName() + ": round 3 search result for " + fileName + " existed, go to the next step");
-				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": round 3 search result for "
-						+ fileName + " existed, go to the next step");
-			}
-
-			if (round3TsvFile.exists()) {
-				updateTableRowStatus(finalFileName, 4, "Done");
-			} else {
-				updateTableRowStatus(finalFileName, 4, "Failed");
+			if (!finalParquet.exists()) {
+				updateTableStatus(baseFileName, "Failed", "Final parquet not found");
 				return null;
 			}
 
-			File round3DbFile = new File(thirdFile, "thirdSearch.fasta");
-			if (!round3DbFile.exists() || round3DbFile.length() == 0) {
-
-				HashSet<String> pepSet3 = new HashSet<String>();
-				try {
-					pepSet3.addAll(DiaNNParquetReader.getPeptideSet(round1TsvFile.getAbsolutePath()));
-				} catch (Exception e) {
-					logger.error(getTaskName() + ": error in reading " + round1TsvFile, e);
-					System.err.println(
-							format.format(new Date()) + "\t" + getTaskName() + ": error in reading " + round1TsvFile);
-				}
-				try {
-					pepSet3.addAll(DiaNNParquetReader.getPeptideSet(round2TsvFile.getAbsolutePath()));
-				} catch (Exception e) {
-					logger.error(getTaskName() + ": error in reading " + round2TsvFile, e);
-					System.err.println(
-							format.format(new Date()) + "\t" + getTaskName() + ": error in reading " + round2TsvFile);
-				}
-				try {
-					pepSet3.addAll(DiaNNParquetReader.getPeptideSet(round3TsvFile.getAbsolutePath()));
-				} catch (Exception e) {
-					logger.error(getTaskName() + ": error in reading " + round3TsvFile, e);
-					System.err.println(
-							format.format(new Date()) + "\t" + getTaskName() + ": error in reading " + round3TsvFile);
-				}
-
-				int batchThreadCount = threadCount / maxTaskCount + 1;
-				HashSet<String> genomeSet3 = getGenomeSet(thirdFile, 1.0, pepSet3, 5, false, batchThreadCount);
-
-				try (BufferedReader firstLibReader = new BufferedReader(
-						new FileReader(new File(firstFile, "firstSearch.fasta")))) {
-
-					String pline = null;
-					while ((pline = firstLibReader.readLine()) != null) {
-						if (!pline.startsWith(">")) {
-							initialLibPepSet.add(pline);
-						}
-					}
-					firstLibReader.close();
-
-				} catch (Exception e) {
-					logger.error(getTaskName() + ": error in reading fasta file from " + firstFile, e);
-					System.err.println(format.format(new Date()) + "\t" + getTaskName()
-							+ ": error in reading fasta file from " + firstFile);
-					return null;
-				}
-				try (BufferedReader secondLibReader = new BufferedReader(
-						new FileReader(new File(secondFile, "secondSearch.fasta")))) {
-
-					String pline = null;
-					while ((pline = secondLibReader.readLine()) != null) {
-						if (!pline.startsWith(">")) {
-							initialLibPepSet.add(pline);
-						}
-					}
-					secondLibReader.close();
-
-				} catch (Exception e) {
-					logger.error(getTaskName() + ": error in reading fasta file from " + firstFile, e);
-					System.err.println(format.format(new Date()) + "\t" + getTaskName()
-							+ ": error in reading fasta file from " + firstFile);
-					return null;
-				}
-
-				logger.info(getTaskName() + ": generating database for " + fileName + ", " + genomeSet3.size()
-						+ " MAGs were used in this step, the size of the excluded set is " + initialLibPepSet.size());
-				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": generating database for "
-						+ fileName + ", " + genomeSet3.size()
-						+ " MAGs were used in this step, the size of the excluded set is " + initialLibPepSet.size());
-
-				dbFromModelPeptide(modelPath, genomeSet3, pepSet3, initialLibPepSet, round3DbFile, 2500000);
-			}
-
-			updateTableRowStatus(finalFileName, 5, "Working");
-
-			File lastTsvFile = new File(resultFolderFile, "lastSearch.parquet");
-			if (!lastTsvFile.exists()) {
-
-				logger.info(getTaskName() + ": search raw files " + fileName + " the last round started");
-				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": search raw files " + fileName
-						+ " the last round started");
-
-				File round4LibFile = new File(resultFolderFile, "lastSearch.speclib");
-				if (!round4LibFile.exists()) {
-					File tempLibFile = new File(resultFolderFile, "lastSearch.predicted.speclib");
-					if (tempLibFile.exists()) {
-						tempLibFile.renameTo(round4LibFile);
-					} else {
-						int batchThreadCount = threadCount / maxTaskCount + 1;
-						diannPar.setThreads(batchThreadCount);
-						diaNNTask.addTask(diannPar, round3DbFile.getAbsolutePath(), round4LibFile.getAbsolutePath(),
-								false);
-						diaNNTask.run(12);
-					}
-				}
-				if (!round4LibFile.exists()) {
-					File tempLibFile = new File(resultFolderFile, "lastSearch.predicted.speclib");
-					if (tempLibFile.exists()) {
-						tempLibFile.renameTo(round4LibFile);
-					} else {
-						logger.error(getTaskName() + ": library file " + round4LibFile + " is not found");
-						System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": library file "
-								+ round4LibFile + " is not found");
-					}
-				}
-				int batchThreadCount = threadCount / maxTaskCount + 1;
-				DiaLibSearchPar diaLibSearchPar = new DiaLibSearchPar();
-				diaLibSearchPar.setThreadCount(batchThreadCount);
-				diaLibSearchPar.setMbr(false);
-				diaLibSearchPar.setqValue(0.01);
-
-				DiannParameter diannPar = new DiannParameter();
-				diannPar.setThreads(batchThreadCount);
-				diannPar.setMatrices(false);
-				diannPar.setRelaxed_prot_inf(true);
-				diaNNTask.addTask(diannPar, new String[] { diaFile.getAbsolutePath() }, lastTsvFile.getAbsolutePath(),
-						round4LibFile.getAbsolutePath());
-				diaNNTask.run(12);
-
-				logger.info(getTaskName() + ": search raw files " + fileName + " the last round finished");
-				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": search raw files " + fileName
-						+ " the last round finished");
-			} else {
-				logger.info(getTaskName() + ": the last round search result for " + fileName
-						+ " existed, go to the next step");
-				System.out.println(format.format(new Date()) + "\t" + getTaskName()
-						+ ": the last round search result for " + fileName + " existed, go to the next step");
-			}
-
-			if (lastTsvFile.exists()) {
-				updateTableRowStatus(finalFileName, 5, "Done");
-			} else {
-				updateTableRowStatus(finalFileName, 5, "Failed");
-				return null;
-			}
-
-			int count = 0;
-			File[] destFiles = destinationFolder.listFiles();
-			for (int i = 0; i < destFiles.length; i++) {
-				if (destFiles[i].isDirectory()) {
-					File resultFileI = new File(destFiles[i], "lastSearch.parquet");
-					if (resultFileI.exists() && resultFileI.length() > 0) {
-						count++;
-					}
-				}
-			}
-
-			logger.info(getTaskName() + ": " + destFiles.length + " files are finished, the total number of file is "
-					+ this.rawListItems.size());
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": " + destFiles.length
-					+ " files are finished, the total number of file is " + this.rawListItems.size());
-
-			if (count <= this.rawListItems.size()) {
-				updateProgress((int) ((double) count / (double) this.rawListItems.size() * 100.0), 100);
-			}
-
+			updateTableStatus(baseFileName, "Done", "Result: " + finalParquet.getName());
+			updateProgress(getFinishedCount(), Math.max(1, rawListItems.size()));
 			return diaFile.getAbsolutePath();
+		} catch (Exception e) {
+			logger.error(getTaskName() + ": failed processing {}", file.getAbsolutePath(), e);
+			String base = getBaseName(file.getName());
+			if (base != null) {
+				updateTableStatus(base, "Failed", e.getMessage() == null ? "Unknown error" : e.getMessage());
+			}
+			return null;
+		}
+	}
 
-		} catch (InterruptedException e) {
-			e.printStackTrace();
-			Thread.currentThread().interrupt();
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
+	private boolean isSupportedInput(File file) {
+		if (file == null || !file.exists()) {
+			return false;
+		}
+		String lower = file.getName().toLowerCase();
+		if (lower.endsWith(".d")) {
+			return file.isDirectory();
+		}
+		return file.isFile() && (lower.endsWith(".raw") || lower.endsWith(".dia") || lower.endsWith(".mzml"));
+	}
+
+	private boolean isSupportedInput(Path filePath) {
+		String lower = filePath.getFileName().toString().toLowerCase();
+		if (!(lower.endsWith(".raw") || lower.endsWith(".d") || lower.endsWith(".dia") || lower.endsWith(".mzml"))) {
+			return false;
+		}
+		return Files.exists(filePath);
+	}
+
+	private String getBaseName(String fileName) {
+		if (fileName == null) {
+			return null;
+		}
+		String lower = fileName.toLowerCase();
+		if (lower.endsWith(".raw")) {
+			return fileName.substring(0, fileName.length() - 4);
+		}
+		if (lower.endsWith(".dia")) {
+			return fileName.substring(0, fileName.length() - 4);
+		}
+		if (lower.endsWith(".mzml")) {
+			return fileName.substring(0, fileName.length() - 5);
+		}
+		if (lower.endsWith(".d")) {
+			return fileName.substring(0, fileName.length() - 2);
+		}
+		return fileName;
+	}
+
+	private File toDiaInput(File inputFile) {
+		String lower = inputFile.getName().toLowerCase();
+		if (lower.endsWith(".raw")) {
+			File diaFile = new File(inputFile.getAbsolutePath() + ".dia");
+			if (!diaFile.exists()) {
+				DiannParameter conversionPar = new DiannParameter();
+				conversionPar.setThreads(Math.max(1, threadCount / Math.max(1, maxTaskCount)));
+				diaNNTask.addTask(conversionPar, new String[] { inputFile.getAbsolutePath() });
+				diaNNTask.run(1);
+			}
+			return diaFile.exists() ? diaFile : null;
+		}
+		return inputFile;
+	}
+
+	private boolean runNoQuantSearch(String diaPath, String outputParquet, String[] libs) {
+		DiaLibSearchPar par = new DiaLibSearchPar();
+		par.setDiaFiles(new String[] { diaPath });
+		par.setThreadCount(Math.max(1, threadCount / Math.max(1, maxTaskCount)));
+		par.setMbr(false);
+		par.setqValue(0.01);
+
+		DiannParameter dpar = new DiannParameter();
+		dpar.setThreads(par.getThreadCount());
+		dpar.setMatrices(false);
+		dpar.setRelaxed_prot_inf(true);
+		dpar.setReanalyse(true);
+		dpar.setExportDecoy(false);
+
+		diaNNTask.addNoQuantLibTask(dpar, par, outputParquet, libs);
+		diaNNTask.run(12);
+		return new File(outputParquet).exists();
+	}
+
+	private File[] resolveSeedLibraries() {
+		ArrayList<File> files = new ArrayList<>();
+		for (String libName : libPathList) {
+			File libFile = new File(new File(libFolderFile, libName), libName + ".parquet");
+			if (libFile.exists()) {
+				files.add(libFile);
+			}
+		}
+		return files.toArray(new File[0]);
+	}
+
+	private HashSet<String> selectGenomesFromParquet(File parquetFile, File outDir, String kneeMode) throws IOException {
+		HashSet<String> genomes = new HashSet<>();
+		if (!parquetFile.exists() || magDb == null || magDb.getCurrentFile() == null) {
+			return genomes;
 		}
 
-		return null;
+		File markerFasta = new File(magDb.getCurrentFile(), "Marker4.fasta");
+		File genomesTaxaTsv = new File(magDb.getCurrentFile(), "genomes-taxa.tsv");
+		if (!markerFasta.exists() || !genomesTaxaTsv.exists()) {
+			return genomes;
+		}
+
+		DiaNNParquetReader parquetReader = new DiaNNParquetReader(parquetFile.getAbsolutePath(), diannPar.getCut());
+		DiaNNPrecursor[] precursors = parquetReader.getDiaNNPrecursors(0.01);
+		if (precursors == null || precursors.length == 0) {
+			return genomes;
+		}
+		File predictedFolder = new File(magDb.getCurrentFile(), "predicted");
+		List<DiaNNPrecursor> withProtein = MarkerGenomeSelector.setProteinInfoFromPredictedTsVs(precursors, predictedFolder);
+		if (withProtein == null || withProtein.isEmpty()) {
+			return genomes;
+		}
+
+		MarkerGenomeSelector.MarkerPeptideRatioResult ratio = MarkerGenomeSelector.computeMarkerPeptideRatio(withProtein, markerFasta);
+		File effectiveMarker = (ratio.ratio >= MarkerGenomeSelector.MARKER_PEPTIDE_RATIO_THRESHOLD) ? markerFasta : null;
+
+		File evidenceFile = new File(outDir, "genome_evidence.tsv");
+		File rankedFile = new File(outDir, "genome_ranked.tsv");
+		File selectedFile = new File(outDir, "genome_selected.tsv");
+
+		MarkerGenomeSelector selector = new MarkerGenomeSelector();
+		selector.setKneeSelectionMode(kneeMode);
+		selector.selectMarkerGenomesWithKnee(withProtein.toArray(new DiaNNPrecursor[0]), effectiveMarker, genomesTaxaTsv,
+				evidenceFile.getAbsolutePath(), rankedFile.getAbsolutePath(), selectedFile.getAbsolutePath(), 300, true);
+		if (!selectedFile.exists()) {
+			return genomes;
+		}
+		List<String> lines = Files.readAllLines(selectedFile.toPath());
+		for (int i = 1; i < lines.size(); i++) {
+			String line = lines.get(i).trim();
+			if (line.isEmpty() || line.startsWith("#")) {
+				break;
+			}
+			String[] split = line.split("\t");
+			if (split.length > 0 && !split[0].trim().isEmpty()) {
+				genomes.add(split[0].trim());
+			}
+		}
+		return genomes;
+	}
+
+	private boolean writeFastaFromGenomeSet(File outFasta, HashSet<String> genomeSet) {
+		File dbFolder = magDb != null ? magDb.getOriginalDbFolder() : null;
+		if (dbFolder == null || !dbFolder.exists() || genomeSet == null || genomeSet.isEmpty()) {
+			return false;
+		}
+		try (PrintWriter writer = new PrintWriter(outFasta)) {
+			for (String genome : genomeSet) {
+				File genomeDbFile = new File(dbFolder, genome + ".faa");
+				if (!genomeDbFile.exists()) {
+					genomeDbFile = new File(dbFolder, genome + ".fasta");
+				}
+				if (!genomeDbFile.exists()) {
+					continue;
+				}
+				for (String line : Files.readAllLines(genomeDbFile.toPath())) {
+					writer.println(line);
+				}
+			}
+		} catch (IOException e) {
+			return false;
+		}
+		return outFasta.exists() && outFasta.length() > 0;
+	}
+
+	private boolean buildSpeclibFromFasta(File fastaFile, File speclibFile) {
+		if (speclibFile.exists() && speclibFile.length() > 0) {
+			return true;
+		}
+		File predictedLib = new File(speclibFile.getParentFile(), speclibFile.getName().replace(".speclib", ".predicted.speclib"));
+		if (predictedLib.exists()) {
+			return predictedLib.renameTo(speclibFile);
+		}
+		DiannParameter buildPar = new DiannParameter();
+		buildPar.setThreads(Math.max(1, threadCount));
+		buildPar.setExportDecoy(true);
+		diaNNTask.addTask(buildPar, fastaFile.getAbsolutePath(), speclibFile.getAbsolutePath(), false);
+		diaNNTask.run(12);
+		if (!speclibFile.exists() && predictedLib.exists()) {
+			predictedLib.renameTo(speclibFile);
+		}
+		return speclibFile.exists() && speclibFile.length() > 0;
+	}
+
+	private int getFinishedCount() {
+		int count = 0;
+		File[] destFiles = destinationFolder.listFiles();
+		if (destFiles == null) {
+			return count;
+		}
+		for (File dir : destFiles) {
+			if (!dir.isDirectory()) {
+				continue;
+			}
+			File finalFile = new File(dir, dir.getName() + ".parquet");
+			if (finalFile.exists() && finalFile.length() > 0) {
+				count++;
+			}
+		}
+		return count;
 	}
 
 	private String waitForFileCompletionAndProcess(Path filePath) {
 		try {
 			long previousSize = -1;
+			int stableCount = 0;
 			while (true) {
-				// Check the file size at regular intervals
-				long currentSize = Files.size(filePath);
+				long currentSize = Files.isDirectory(filePath) ? directorySize(filePath) : Files.size(filePath);
 				if (currentSize == previousSize) {
-					// Try to acquire an exclusive lock to see if any other process is still writing
-					try (FileChannel fileChannel = FileChannel.open(filePath, StandardOpenOption.WRITE)) {
-						FileLock lock = fileChannel.tryLock();
-						if (lock != null) {
-							lock.release(); // Release the lock immediately
-							break; // File is not in use
+					stableCount++;
+					if (Files.isDirectory(filePath)) {
+						if (stableCount >= 3) {
+							break;
 						}
-					} catch (Exception e) {
-						// The file is still in use or another process is writing to it
-						logger.info(getTaskName() + ": detect file " + filePath.toAbsolutePath().toString()
-								+ ", waiting for the copy complete");
-						System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": detect file "
-								+ filePath.toAbsolutePath().toString() + ", waiting for the copy complete");
+					} else {
+						try (FileChannel fileChannel = FileChannel.open(filePath, StandardOpenOption.WRITE)) {
+							FileLock lock = fileChannel.tryLock();
+							if (lock != null) {
+								lock.release();
+								break;
+							}
+						} catch (Exception e) {
+							logger.info(getTaskName() + ": waiting for copy complete {}", filePath.toAbsolutePath());
+						}
 					}
+				} else {
+					stableCount = 0;
 				}
 				previousSize = currentSize;
-				Thread.sleep(1000); // Wait for 1 second before checking again
+				Thread.sleep(1000);
 			}
 
 			return process(new File(filePath.toAbsolutePath().toString()));
@@ -997,6 +687,22 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 		}
 
 		return null;
+	}
+
+	private long directorySize(Path dir) {
+		final long[] size = new long[] { 0L };
+		try {
+			Files.walk(dir).forEach(p -> {
+				try {
+					if (Files.isRegularFile(p)) {
+						size[0] += Files.size(p);
+					}
+				} catch (IOException ignored) {
+				}
+			});
+		} catch (IOException ignored) {
+		}
+		return size[0];
 	}
 
 	@Override

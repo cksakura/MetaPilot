@@ -12,12 +12,14 @@ import uk.ac.quadram.metapilot.dbSearch.AbstractPSM;
 public class SequestHTPSM extends AbstractPSM {
 	
 	private double xcorr;
+	private double probability;
 
 	public SequestHTPSM(String fileName, int scan, int charge, double precorsorMr, double rt, String sequence,
-			double pepmass, double massdiff, int num_matched_ions, int hit_rank, String protein, double xcorr, boolean isTarget) {
+			double pepmass, double massdiff, int num_matched_ions, int hit_rank, String protein, double xcorr,
+			double probability, boolean isTarget) {
 		super(fileName, scan, charge, precorsorMr, rt, sequence, pepmass, massdiff, num_matched_ions, hit_rank, protein, isTarget);
-		// TODO Auto-generated constructor stub
 		this.xcorr = xcorr;
+		this.probability = probability;
 	}
 
 	public double getXcorr() {
@@ -26,6 +28,14 @@ public class SequestHTPSM extends AbstractPSM {
 
 	public void setXcorr(double xcorr) {
 		this.xcorr = xcorr;
+	}
+
+	public double getProbability() {
+		return probability;
+	}
+
+	public void setProbability(double probability) {
+		this.probability = probability;
 	}
 
 }

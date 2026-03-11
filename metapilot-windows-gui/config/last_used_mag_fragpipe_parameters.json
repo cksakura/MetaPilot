@@ -1,22 +1,55 @@
 {
   "workflow": "DDA_MAG_FRAGPIPE",
   "input_output": {
-    "host_database": "",
-    "mag_database": "honeybee-gut",
-    "output_directory": "Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\12mix\\DDA\\MetaPilot",
-    "append_host_db": false,
+    "mag_db_version": "v2.0.2",
+    "host_database": "C:\\Users\\daz25hak\\MetaProAI\\database\\uniprotkb_Human_AND_reviewed_true_AND_m_2025_09_01.fasta",
+    "mag_database": "human-gut",
+    "output_directory": "Z:\\Test\\BellAshley\\MetaPilot",
+    "append_host_db": true,
     "experiments": [
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\12mix\\DDA\\170412_12mix_DDA_library_stock_2_2.raw",
-        "experiment_name": "DDA_2"
+        "file_path": "Z:\\Test\\BellAshley\\RP-MS04-WP_260_S3-B2_1_8059.d",
+        "experiment_name": "260_S3-B2_1_8059"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\12mix\\DDA\\170412_12mix_DDA_library_stock_2_3.raw",
-        "experiment_name": "DDA_3"
+        "file_path": "Z:\\Test\\BellAshley\\RP-MS04-WP_269_S3-A2_1_8047.d",
+        "experiment_name": "269_S3-A2_1_8047"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\12mix\\DDA\\170412_12mix_DDA_library_stock_2_4.raw",
-        "experiment_name": "DDA_4"
+        "file_path": "Z:\\Test\\BellAshley\\RP-MS04-WP_16_S3-G7_1_8128.d",
+        "experiment_name": "16_S3-G7_1_8128"
+      },
+      {
+        "file_path": "Z:\\Test\\BellAshley\\RP-MS04-WP_18_S3-B5_1_8062.d",
+        "experiment_name": "18_S3-B5_1_8062"
+      },
+      {
+        "file_path": "Z:\\Test\\BellAshley\\RP-MS04-WP_272_S3-A11_1_8056.d",
+        "experiment_name": "272_S3-A11_1_8056"
+      },
+      {
+        "file_path": "Z:\\Test\\BellAshley\\RP-MS04-WP_267_S3-C10_1_8081.d",
+        "experiment_name": "267_S3-C10_1_8081"
+      },
+      {
+        "file_path": "Z:\\Test\\BellAshley\\RP-MS04-WP_273_S3-C6_1_8075.d",
+        "experiment_name": "273_S3-C6_1_8075"
+      },
+      {
+        "file_path": "Z:\\Test\\BellAshley\\RP-MS04-WP_292_S3-H11_1_8145.d",
+        "experiment_name": "292_S3-H11_1_8145"
+      },
+      {
+        "file_path": "Z:\\Test\\BellAshley\\RP-MS04-WP_280_S3-B12_1_8069.d",
+        "experiment_name": "280_S3-B12_1_8069"
+      },
+      {
+        "file_path": "Z:\\Test\\BellAshley\\RP-MS04-WP_10_S3-G6_1_8127.d",
+        "experiment_name": "10_S3-G6_1_8127"
+      },
+      {
+        "file_path": "Z:\\Test\\BellAshley\\RP-MS04-WP_278_S3-C11_1_8082.d",
+        "experiment_name": "278_S3-C11_1_8082"
       }
     ]
   },
@@ -25,13 +58,15 @@
     "missed_cleavages": 2,
     "digestion_mode": "Specific"
   },
-  "generated_at": "2026-02-01 12:14:21",
+  "generated_at": "2026-03-11 09:01:20",
   "fragpipe_workflow_configured": true,
   "additional_parameters": {
     "generate_sample_specific_db": true,
     "ms2_scan_mode": "Regular MS",
     "spectra_clustering": false,
-    "threads": 20
+    "threads": 10,
+    "genome_selector_mode": "Marker4",
+    "genome_selection_strategy": "Comprehensive"
   },
   "description": "Last used parameters",
   "version": "1.0",

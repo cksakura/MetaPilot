@@ -169,7 +169,8 @@ public class MetaResourceParameters {
 		// General tools
 		FUNCDB("FunctionDB", ""), PYTHON("Python", ""),
 		// DDA tools
-		PFIND("pFind", ""), MAXQUANT("MaxQuant", "https://www.maxquant.org/maxquant/"), DBREDUCER("DBReducer", ""),
+		PFIND("pFind", "https://github.com/pFindStudio/pFind3"),
+		MAXQUANT("MaxQuant", "https://www.maxquant.org/maxquant/"), DBREDUCER("DBReducer", ""),
 		FRAGPIPE("FragPipe", "https://fragpipe.nesvilab.org/"), SAGE("Sage", "https://github.com/lazear/sage"),
 		FLASHLFQ("FlashLFQ", ""), MSCONVERT("msconvert", "https://proteowizard.sourceforge.io/download.html"),
 		// DIA tools

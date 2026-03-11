@@ -916,6 +916,8 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 	protected String[] refineProteins(MetaPeptide[] quanPeps, HashMap<String, Double> genomeScoreMap,
 			String decoySymble) {
 
+		logger.info(getTaskName() + ": refineProteins called with decoySymble=[{}], quanPeps.length={}", decoySymble, quanPeps != null ? quanPeps.length : 0);
+
 		HashMap<String, Double> proteinIntensityMap = new HashMap<String, Double>();
 		for (int i = 0; i < quanPeps.length; i++) {
 			double[] pepIntensity = quanPeps[i].getIntensity();
@@ -923,7 +925,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 
 			int count = 0;
 			for (int j = 0; j < proteins.length; j++) {
-				if (!proteins[j].startsWith(decoySymble)) {
+				if (decoySymble == null || !proteins[j].startsWith(decoySymble)) {
 					if (proteins[j].startsWith(this.magDb.getIdentifier())) {
 						String genome = proteins[j].split("_")[0];
 						if (genomeScoreMap.containsKey(genome)) {
@@ -938,7 +940,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			if (count > 0) {
 				double intensity = MathTool.getTotal(pepIntensity) / (double) count;
 				for (int j = 0; j < proteins.length; j++) {
-					if (!proteins[j].startsWith(decoySymble)) {
+					if (decoySymble == null || !proteins[j].startsWith(decoySymble)) {
 						if (proteins[j].startsWith(this.magDb.getIdentifier())) {
 							String genome = proteins[j].split("_")[0];
 							if (genomeScoreMap.containsKey(genome)) {
@@ -956,21 +958,35 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 								proteinIntensityMap.put(proteins[j], intensity);
 							}
 						}
-					}
-				}
 			}
 		}
+		}
+	}
 
-		String[] razorProteins = new String[quanPeps.length];
+	String[] razorProteins = new String[quanPeps.length];
+	int peptidesWithOnlyDecoyProteins = 0;
+	for (int i = 0; i < quanPeps.length; i++) {
+		String[] proteins = quanPeps[i].getProteins();
+		boolean hasTarget = false;
+		for (int j = 0; j < proteins.length; j++) {
+			if (decoySymble == null || !proteins[j].startsWith(decoySymble)) {
+				hasTarget = true;
+				break;
+			}
+		}
+		if (!hasTarget && proteins.length > 0)
+			peptidesWithOnlyDecoyProteins++;
+	}
+	logger.info(getTaskName() + ": refineProteins: peptides with only decoy proteins (excluded from razor)={}", peptidesWithOnlyDecoyProteins);
 
-		for (int i = 0; i < quanPeps.length; i++) {
-			String[] proteins = quanPeps[i].getProteins();
-			double genomeScore = Double.MAX_VALUE;
-			double proteinIntensity = 0;
+	for (int i = 0; i < quanPeps.length; i++) {
+		String[] proteins = quanPeps[i].getProteins();
+		double genomeScore = Double.MAX_VALUE;
+		double proteinIntensity = 0;
 
-			for (int j = 0; j < proteins.length; j++) {
+		for (int j = 0; j < proteins.length; j++) {
 
-				if (!proteins[j].startsWith(decoySymble)) {
+			if (decoySymble == null || !proteins[j].startsWith(decoySymble)) {
 					if (proteins[j].startsWith(this.magDb.getIdentifier())) {
 						String genome = proteins[j].split("_")[0];
 						if (genomeScoreMap.containsKey(genome)) {
@@ -1781,12 +1797,26 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 	}
 
 	/**
-	 * Generate protein report
+	 * Generate protein report (backward-compatible: no peptide list, Peptide IDs/razor columns empty).
+	 */
+	protected boolean generateProteinReport(String[] proteins, HashMap<String, double[]> proteinIntensityMap,
+			HashMap<String, Double> proteinTotalIntenMap, HashMap<String, HashSet<String>> totalPepCountMap,
+			HashMap<String, HashSet<String>> razorPepCountMap, HashMap<String, Integer> psmCountMap,
+			HashMap<String, Integer> proteinIdMap, String quanMode, String[] intensityTitle, String taskName) {
+		return generateProteinReport(proteins, proteinIntensityMap, proteinTotalIntenMap, totalPepCountMap,
+				razorPepCountMap, psmCountMap, proteinIdMap, quanMode, intensityTitle, taskName, null);
+	}
+
+	/**
+	 * Generate protein report.
+	 * Peptide IDs = peptide row ids in final_peptides.tsv (0-based), semicolon-separated.
+	 * Peptide is razor = "true"/"false" for each of those peptides, semicolon-separated.
 	 */
 	private boolean generateProteinReport(String[] proteins, HashMap<String, double[]> proteinIntensityMap,
 			HashMap<String, Double> proteinTotalIntenMap, HashMap<String, HashSet<String>> totalPepCountMap,
 			HashMap<String, HashSet<String>> razorPepCountMap, HashMap<String, Integer> psmCountMap,
-			HashMap<String, Integer> proteinIdMap, String quanMode, String[] intensityTitle, String taskName) {
+			HashMap<String, Integer> proteinIdMap, String quanMode, String[] intensityTitle, String taskName,
+			ArrayList<MetaPeptide> peptideList) {
 
 		logger.info(taskName + ": exporting protein report started");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": exporting protein report started");
@@ -1827,9 +1857,14 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			for (int i = 0; i < proteins.length; i++) {
 				StringBuilder sb = new StringBuilder();
 				sb.append(proteins[i]).append("\t");
-				sb.append(totalPepCountMap.get(proteins[i]).size()).append("\t");
-				sb.append(razorPepCountMap.get(proteins[i]).size()).append("\t");
-				sb.append(psmCountMap.get(proteins[i])).append("\t");
+				HashSet<String> totalPepSet = totalPepCountMap.get(proteins[i]);
+				HashSet<String> razorPepSet = razorPepCountMap.get(proteins[i]);
+				if (totalPepSet == null) totalPepSet = new HashSet<String>();
+				if (razorPepSet == null) razorPepSet = new HashSet<String>();
+				sb.append(totalPepSet.size()).append("\t");
+				sb.append(razorPepSet.size()).append("\t");
+				Integer psmCount = psmCountMap.get(proteins[i]);
+				sb.append(psmCount != null ? psmCount : 0).append("\t");
 				sb.append("0").append("\t"); // PEP - would need to be calculated
 
 				double totalIntensity = proteinTotalIntenMap.get(proteins[i]);
@@ -1843,9 +1878,30 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 				sb.append("\t"); // Potential contaminant
 				sb.append(i).append("\t"); // id
 
-				// Note: Peptide IDs and razor information would need additional processing
-				sb.append("").append("\t"); // Peptide IDs
-				sb.append(""); // Peptide is razor
+				// Peptide IDs = row ids in final_peptides.tsv; Peptide is razor = true/false for each
+				ArrayList<Integer> peptideIds = new ArrayList<Integer>();
+				ArrayList<String> isRazorList = new ArrayList<String>();
+				if (peptideList != null) {
+					for (int id = 0; id < peptideList.size(); id++) {
+						String seq = peptideList.get(id).getSequence();
+						if (totalPepSet.contains(seq)) {
+							peptideIds.add(id);
+							isRazorList.add(razorPepSet.contains(seq) ? "true" : "false");
+						}
+					}
+				}
+				StringBuilder idSb = new StringBuilder();
+				for (int k = 0; k < peptideIds.size(); k++) {
+					if (k > 0) idSb.append(";");
+					idSb.append(peptideIds.get(k));
+				}
+				StringBuilder razorSb = new StringBuilder();
+				for (int k = 0; k < isRazorList.size(); k++) {
+					if (k > 0) razorSb.append(";");
+					razorSb.append(isRazorList.get(k));
+				}
+				sb.append(idSb.toString()).append("\t"); // Peptide IDs
+				sb.append(razorSb.toString()); // Peptide is razor
 
 				writer.println(sb);
 			}
@@ -1868,9 +1924,12 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 
 	/**
 	 * Perform functional annotation
+	 * @param razorPepCountMap optional; if present, Peptide count = peptides whose razor protein is this protein
+	 * @param razorPsmCountMap optional; if present, PSM count = total PSMs of those razor peptides
 	 */
 	private boolean performFunctionalAnnotation(String[] proteins, HashMap<String, double[]> proteinIntensityMap,
-			String[] intensityTitle, String taskName) {
+			String[] intensityTitle, String taskName,
+			HashMap<String, HashSet<String>> razorPepCountMap, HashMap<String, Integer> razorPsmCountMap) {
 
 		logger.info(taskName + ": functional annotation started");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": functional annotation started");
@@ -1880,11 +1939,15 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			funcFile.mkdir();
 		}
 
-		// Convert protein data for functional annotation
+		// Convert protein data for functional annotation (pep/psm counts = razor-only)
 		ArrayList<MetaProtein> proteinList = new ArrayList<MetaProtein>();
 		for (int i = 0; i < proteins.length; i++) {
 			double[] intensity = proteinIntensityMap.get(proteins[i]);
-			MetaProtein mp = new MetaProtein(i, 0, proteins[i], 0, 0, 0, intensity);
+			int pepCount = (razorPepCountMap != null && razorPepCountMap.containsKey(proteins[i]))
+					? razorPepCountMap.get(proteins[i]).size() : 0;
+			int psmCount = (razorPsmCountMap != null && razorPsmCountMap.containsKey(proteins[i]))
+					? razorPsmCountMap.get(proteins[i]) : 0;
+			MetaProtein mp = new MetaProtein(i, 0, proteins[i], pepCount, psmCount, 0, intensity);
 			proteinList.add(mp);
 		}
 
@@ -2038,113 +2101,19 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 
 		boolean useDiaStyleColumns = (lastDiaStyleGenomeStats != null && !lastDiaStyleGenomeStats.isEmpty());
 
-		// Marker-based selection labels and order: use same order as ranked.tsv.
-		// Before GreedyStep counts (Reason = PRIVILEGE_UNIQUE_3TYPES, representative, or not GREEDY) = all core.
-		// After GreedyStep starts: focusKnee = median(KneeKneedle, KneeCurvature, KneeSlope); comprehensiveKnee = max(KneeStep, KneePiecewise).
-		// Core = (all before GREEDY) + GREEDY with GreedyStep 1..focusKnee; Mid = GREEDY focusKnee+1..comprehensiveKnee; Tail = rest.
+		// Export-time labels from ranked.tsv using GreedyGain progression.
 		HashMap<String, String> genomeSelectionLabel = new HashMap<>();
-		HashMap<String, Integer> genomeRankMap = new HashMap<>();
-		List<String> orderedGenomes = new ArrayList<>();
-		int focusKnee = -1;
-		int comprehensiveKnee = -1;
-		boolean useReasonGreedyStepLabels = false;
 		if (combinedFile != null) {
 			File rankedFile = new File(combinedFile, "ranked.tsv");
 			if (rankedFile.exists()) {
-				try (BufferedReader reader = new BufferedReader(new FileReader(rankedFile))) {
-					String header = reader.readLine();
-					if (header != null) {
-						String[] headerCols = header.split("\t");
-						int rankIdx = -1, genomeIdx = -1, reasonIdx = -1, greedyStepIdx = -1;
-						int kneeStepIdx = -1, kneeKneedleIdx = -1, kneeCurvIdx = -1, kneePieceIdx = -1, kneeSlopeIdx = -1;
-						for (int i = 0; i < headerCols.length; i++) {
-							String col = headerCols[i].trim();
-							if (col.equals("Rank")) rankIdx = i;
-							else if (col.equals("Genome")) genomeIdx = i;
-							else if (col.equals("Reason")) reasonIdx = i;
-							else if (col.equals("GreedyStep")) greedyStepIdx = i;
-							else if (col.equals("KneeStep")) kneeStepIdx = i;
-							else if (col.equals("KneeKneedle")) kneeKneedleIdx = i;
-							else if (col.equals("KneeCurvature")) kneeCurvIdx = i;
-							else if (col.equals("KneePiecewise")) kneePieceIdx = i;
-							else if (col.equals("KneeSlope")) kneeSlopeIdx = i;
-						}
-						int maxColIdx = Math.max(rankIdx, Math.max(genomeIdx, Math.max(reasonIdx, Math.max(greedyStepIdx,
-								Math.max(kneeStepIdx, Math.max(kneeKneedleIdx, Math.max(kneeCurvIdx, Math.max(kneePieceIdx, kneeSlopeIdx))))))));
-						if (rankIdx >= 0 && genomeIdx >= 0 && kneeStepIdx >= 0 && kneeKneedleIdx >= 0 && kneeCurvIdx >= 0 && kneePieceIdx >= 0 && kneeSlopeIdx >= 0) {
-							useReasonGreedyStepLabels = (reasonIdx >= 0 && greedyStepIdx >= 0);
-							String line;
-							boolean kneeValuesRead = false;
-							boolean greedyStarted = false; // only "at start" (before first GREEDY) is non-GREEDY → core
-							while ((line = reader.readLine()) != null) {
-								line = line.trim();
-								if (line.isEmpty() || line.startsWith("#")) continue;
-								String[] parts = line.split("\t");
-								if (parts.length <= maxColIdx) continue;
-								String genome = parts[genomeIdx].trim();
-								if (genome.isEmpty()) continue;
-								try {
-									int rank = Integer.parseInt(parts[rankIdx].trim());
-									genomeRankMap.put(genome, rank);
-									if (genomeIntensityMap.containsKey(genome)) {
-										orderedGenomes.add(genome);
-									}
-									// Focus knee = median of three; comprehensive knee = max(KneeStep, KneePiecewise)
-									if (!kneeValuesRead) {
-										int kneeStep = parseIntSafe(parts[kneeStepIdx].trim());
-										int kneeKneedle = parseIntSafe(parts[kneeKneedleIdx].trim());
-										int kneeCurv = parseIntSafe(parts[kneeCurvIdx].trim());
-										int kneePiece = parseIntSafe(parts[kneePieceIdx].trim());
-										int kneeSlope = parseIntSafe(parts[kneeSlopeIdx].trim());
-										int[] focusVals = { kneeKneedle, kneeCurv, kneeSlope };
-										java.util.Arrays.sort(focusVals);
-										focusKnee = focusVals[1];
-										comprehensiveKnee = Math.max(kneeStep, kneePiece);
-										kneeValuesRead = true;
-									}
-									// Label: AT START (before first GREEDY) Reason != GREEDY → core; after GREEDY starts, use GreedyStep only
-									if (useReasonGreedyStepLabels && focusKnee > 0 && comprehensiveKnee > 0) {
-										String reason = parts[reasonIdx].trim();
-										int greedyStep = parseIntSafe(parts[greedyStepIdx].trim());
-										if ("GREEDY".equals(reason)) {
-											greedyStarted = true;
-											if (greedyStep >= 1 && greedyStep <= focusKnee) {
-												genomeSelectionLabel.put(genome, "core");
-											} else if (greedyStep > focusKnee && greedyStep <= comprehensiveKnee) {
-												genomeSelectionLabel.put(genome, "mid");
-											} else {
-												genomeSelectionLabel.put(genome, "tail");
-											}
-										} else {
-											// PRIVILEGE_UNIQUE_3TYPES, representative, etc.: core only at start (before any GREEDY)
-											genomeSelectionLabel.put(genome, greedyStarted ? "tail" : "core");
-										}
-									}
-								} catch (NumberFormatException e) {
-									continue;
-								}
-							}
-							// Fallback: no Reason/GreedyStep columns – label by rank vs knees
-							if (!useReasonGreedyStepLabels && focusKnee > 0 && comprehensiveKnee > 0) {
-								for (Map.Entry<String, Integer> entry : genomeRankMap.entrySet()) {
-									String g = entry.getKey();
-									int r = entry.getValue();
-									genomeSelectionLabel.put(g, r < focusKnee ? "core" : r < comprehensiveKnee ? "mid" : "tail");
-								}
-							}
-							for (String g : genomeIntensityMap.keySet()) {
-								if (!orderedGenomes.contains(g)) {
-									orderedGenomes.add(g);
-									genomeSelectionLabel.put(g, "tail");
-								}
-							}
-							genomes = orderedGenomes.toArray(new String[0]);
-							logger.info("Genome list from ranked.tsv: order preserved; labels from {} (focusKnee={}, comprehensiveKnee={}), {} genomes",
-									useReasonGreedyStepLabels ? "Reason+GreedyStep" : "knee rank", focusKnee, comprehensiveKnee, genomes.length);
-						}
-					}
-				} catch (IOException e) {
-					logger.warn(taskName + ": could not read ranked.tsv from combined folder to compute selection labels", e);
+				RankedGenomeSelectionResult rankedSel = buildExportSelectionFromRankedTsv(rankedFile, genomeIntensityMap.keySet());
+				if (!rankedSel.orderedGenomes.isEmpty()) {
+					genomes = rankedSel.orderedGenomes.toArray(new String[0]);
+					genomeSelectionLabel.putAll(rankedSel.genomeSelectionLabel);
+					logger.info("Genome list from ranked.tsv (GreedyGain export labels): focusKnee={}, comprehensiveKnee={}, {} genomes",
+							rankedSel.focusKnee, rankedSel.comprehensiveKnee, genomes.length);
+				} else {
+					logger.warn(taskName + ": ranked.tsv was read but no contributing genomes were parsed for export labels");
 				}
 			}
 		}
@@ -3043,8 +3012,41 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			updateProgress(0.15, 1.0);
 
 			// Refine genomes and proteins (DIA-style genome score when psms available)
+			parentTask.getLogger().info("{}: decoy symbol for filtering = [{}]", getTaskName(), decoySymbol);
+			int inputDecoyPeptides = 0;
+			int sampleDecoyProteins = 0;
+			for (int q = 0; q < quanPeps.length; q++) {
+				String[] prots = quanPeps[q].getProteins();
+				if (prots != null) {
+					for (String p : prots) {
+						if (p != null && decoySymbol != null && p.startsWith(decoySymbol)) {
+							sampleDecoyProteins++;
+							if (sampleDecoyProteins <= 3)
+								parentTask.getLogger().info("{}: sample input protein (decoy): [{}] for peptide modSeq=[{}]", getTaskName(), p, quanPeps[q].getModSeq());
+						}
+					}
+				}
+				if (quanPeps[q].isDecoy()) inputDecoyPeptides++;
+			}
+			parentTask.getLogger().info("{}: input quanPeps: total={}, peptides with isDecoy=true={}, protein IDs starting with decoy symbol (sample count)={}",
+					getTaskName(), quanPeps.length, inputDecoyPeptides, sampleDecoyProteins);
 			HashMap<String, Double> genomeScoreMap = parentTask.refineGenomes(quanPeps, decoySymbol, psms);
-			String[] razorProteins = parentTask.refineProteins(quanPeps, genomeScoreMap);
+			String[] razorProteins = parentTask.refineProteins(quanPeps, genomeScoreMap, decoySymbol);
+
+			int razorNonNull = 0;
+			int razorDecoy = 0;
+			for (int r = 0; r < razorProteins.length; r++) {
+				if (razorProteins[r] != null) {
+					razorNonNull++;
+					if (decoySymbol != null && razorProteins[r].startsWith(decoySymbol)) {
+						razorDecoy++;
+						parentTask.getLogger().warn("{}: razor protein is decoy (starts with [{}]): peptideIdx={} razorProteins[{}]=[{}]",
+								getTaskName(), decoySymbol, r, r, razorProteins[r]);
+					}
+				}
+			}
+			parentTask.getLogger().info("{}: refineProteins: total peptides={}, with non-null razor={}, razor that start with decoy symbol={}",
+					getTaskName(), quanPeps.length, razorNonNull, razorDecoy);
 
 			// Update progress: Genome and protein refinement complete
 			updateMessage("Calculating protein intensities...");
@@ -3110,6 +3112,21 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 					}
 				}
 			}
+
+			int peptideListDecoyRazor = 0;
+			for (int i = 0; i < peptideList.size(); i++) {
+				int idxInQuan = -1;
+				for (int q = 0; q < quanPeps.length; q++) {
+					if (quanPeps[q] == peptideList.get(i)) { idxInQuan = q; break; }
+				}
+				if (idxInQuan >= 0 && razorProteins[idxInQuan] != null && decoySymbol != null && razorProteins[idxInQuan].startsWith(decoySymbol)) {
+					peptideListDecoyRazor++;
+					parentTask.getLogger().warn("{}: peptideList[{}] has decoy razor: modSeq=[{}] razor=[{}]",
+							getTaskName(), i, peptideList.get(i).getModSeq(), razorProteins[idxInQuan]);
+				}
+			}
+			parentTask.getLogger().info("{}: peptideList size={}, peptides in list with decoy razor={}",
+					getTaskName(), peptideList.size(), peptideListDecoyRazor);
 
 			// Calculate protein intensities
 			for (int i = 0; i < quanPeps.length; i++) {
@@ -3270,6 +3287,23 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 
 			// Sort proteins by total intensity
 			String[] proteins = proteinTotalIntenMap.keySet().toArray(String[]::new);
+			int decoyProteinCount = 0;
+			if (decoySymbol != null) {
+				for (String p : proteins) {
+					if (p != null && p.startsWith(decoySymbol)) decoyProteinCount++;
+				}
+				parentTask.getLogger().info("{}: proteinTotalIntenMap: total proteins={}, proteins starting with decoy [{}]={}",
+						getTaskName(), proteins.length, decoySymbol, decoyProteinCount);
+				if (decoyProteinCount > 0) {
+					int shown = 0;
+					for (String p : proteins) {
+						if (p != null && p.startsWith(decoySymbol) && shown < 5) {
+							parentTask.getLogger().warn("{}: decoy protein in report list: [{}]", getTaskName(), p);
+							shown++;
+						}
+					}
+				}
+			}
 			Arrays.sort(proteins, new Comparator<String>() {
 				@Override
 				public int compare(String o1, String o2) {
@@ -3305,14 +3339,25 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			updateMessage("Generating protein report...");
 			updateProgress(0.80, 1.0);
 			if (!parentTask.generateProteinReport(proteins, proteinIntensityMap, proteinTotalIntenMap, totalPepCountMap,
-					razorPepCountMap, psmCountMap, proteinIdMap, quanMode, intensityTitle, taskName)) {
+					razorPepCountMap, psmCountMap, proteinIdMap, quanMode, intensityTitle, taskName, peptideList)) {
 				return false;
 			}
 
-			// Functional annotation
+			// Functional annotation (use razor peptide/PSM counts for functions.tsv)
+			HashMap<String, Integer> razorPsmCountMap = new HashMap<String, Integer>();
+			for (int i = 0; i < quanPeps.length; i++) {
+				if (razorProteins[i] != null) {
+					String protein = razorProteins[i];
+					int total = 0;
+					int[] arr = pepPsmCountMap.get(quanPeps[i].getModSeq());
+					if (arr != null) for (int c : arr) total += c;
+					razorPsmCountMap.merge(protein, total, Integer::sum);
+				}
+			}
 			updateMessage("Performing functional annotation...");
 			updateProgress(0.85, 1.0);
-			if (!parentTask.performFunctionalAnnotation(proteins, proteinIntensityMap, intensityTitle, taskName)) {
+			if (!parentTask.performFunctionalAnnotation(proteins, proteinIntensityMap, intensityTitle, taskName,
+					razorPepCountMap, razorPsmCountMap)) {
 				return false;
 			}
 
@@ -3349,6 +3394,171 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			return Integer.parseInt(s.trim());
 		} catch (NumberFormatException e) {
 			return 0;
+		}
+	}
+
+	/**
+	 * Export selection labels parsed from ranked.tsv:
+	 * ordered genomes and labels limited to rows that still contribute (GreedyGain != 0 after greedy starts).
+	 */
+	public static class RankedGenomeSelectionResult {
+		public final HashMap<String, String> genomeSelectionLabel = new HashMap<>();
+		public final List<String> orderedGenomes = new ArrayList<>();
+		public int focusKnee = -1;
+		public int comprehensiveKnee = -1;
+		/** Total data rows in ranked.tsv (excluding header). */
+		public int totalRanked = 0;
+		/** Rows with Reason=PRIVILEGE_UNIQUE_3TYPES (or equivalent privilege stage). */
+		public int privilegeCount = 0;
+		/** Rows with Reason=GREEDY (all greedy steps, independent of window). */
+		public int greedyCount = 0;
+	}
+
+	/**
+	 * Shared export-time label parser used by DIA and DDA workflows.
+	 * Rule:
+	 * 1) Before greedy starts (GreedyGain == 0): core.
+	 * 2) Greedy starts at first GreedyGain != 0.
+	 * 3) First focusKnee greedy rows: core.
+	 * 4) Next comprehensiveKnee-focusKnee greedy rows: mid.
+	 * 5) Remaining greedy rows: tail.
+	 * 6) Stop at first row where GreedyGain returns to 0 after greedy starts (that row excluded).
+	 */
+	public static RankedGenomeSelectionResult buildExportSelectionFromRankedTsv(File rankedFile,
+			java.util.Set<String> allowedGenomes) {
+		RankedGenomeSelectionResult result = new RankedGenomeSelectionResult();
+		if (rankedFile == null || !rankedFile.isFile()) {
+			return result;
+		}
+		try (BufferedReader reader = new BufferedReader(new FileReader(rankedFile))) {
+			String header = reader.readLine();
+			if (header == null) return result;
+			String[] headerCols = header.split("\t");
+			int rankIdx = -1, genomeIdx = -1, greedyGainIdx = -1, reasonIdx = -1;
+			int kneeStepIdx = -1, kneeKneedleIdx = -1, kneeCurvIdx = -1, kneePieceIdx = -1, kneeSlopeIdx = -1;
+			for (int i = 0; i < headerCols.length; i++) {
+				String col = headerCols[i].trim();
+				if (col.equals("Rank")) rankIdx = i;
+				else if (col.equals("Genome")) genomeIdx = i;
+				else if (col.equals("Reason")) reasonIdx = i;
+				else if (col.equals("GreedyGain")) greedyGainIdx = i;
+				else if (col.equals("KneeStep")) kneeStepIdx = i;
+				else if (col.equals("KneeKneedle")) kneeKneedleIdx = i;
+				else if (col.equals("KneeCurvature")) kneeCurvIdx = i;
+				else if (col.equals("KneePiecewise")) kneePieceIdx = i;
+				else if (col.equals("KneeSlope")) kneeSlopeIdx = i;
+			}
+			int maxColIdx = Math.max(rankIdx, Math.max(genomeIdx,
+					Math.max(greedyGainIdx, Math.max(kneeStepIdx, Math.max(kneeKneedleIdx,
+							Math.max(kneeCurvIdx, Math.max(kneePieceIdx, kneeSlopeIdx)))))));
+			if (rankIdx < 0 || genomeIdx < 0 || greedyGainIdx < 0 || kneeStepIdx < 0 || kneeKneedleIdx < 0
+					|| kneeCurvIdx < 0 || kneePieceIdx < 0 || kneeSlopeIdx < 0) {
+				return result;
+			}
+
+			String line;
+			boolean kneeValuesRead = false;
+			boolean greedyStarted = false;
+			int greedyContributionCount = 0;
+			while ((line = reader.readLine()) != null) {
+				line = line.trim();
+				if (line.isEmpty() || line.startsWith("#")) continue;
+				String[] parts = line.split("\t");
+				if (parts.length <= maxColIdx) continue;
+				String genome = parts[genomeIdx].trim();
+				if (genome.isEmpty()) continue;
+				result.totalRanked++;
+				// Reason-based statistics (independent of allowedGenomes)
+				if (reasonIdx >= 0 && reasonIdx < parts.length) {
+					String reason = parts[reasonIdx].trim();
+					if ("PRIVILEGE_UNIQUE_3TYPES".equals(reason)) {
+						result.privilegeCount++;
+					} else if ("GREEDY".equals(reason)) {
+						result.greedyCount++;
+					}
+				}
+				if (allowedGenomes != null && !allowedGenomes.contains(genome)) continue;
+				try {
+					Integer.parseInt(parts[rankIdx].trim());
+					if (!kneeValuesRead) {
+						int kneeStep = parseIntSafe(parts[kneeStepIdx].trim());
+						int kneeKneedle = parseIntSafe(parts[kneeKneedleIdx].trim());
+						int kneeCurv = parseIntSafe(parts[kneeCurvIdx].trim());
+						int kneePiece = parseIntSafe(parts[kneePieceIdx].trim());
+						int kneeSlope = parseIntSafe(parts[kneeSlopeIdx].trim());
+						int[] focusVals = { kneeKneedle, kneeCurv, kneeSlope };
+						Arrays.sort(focusVals);
+						result.focusKnee = focusVals[1];
+						result.comprehensiveKnee = Math.max(kneeStep, kneePiece);
+						kneeValuesRead = true;
+					}
+					if (result.focusKnee <= 0 || result.comprehensiveKnee <= 0) {
+						continue;
+					}
+					double greedyGain = parseDoubleSafe(parts[greedyGainIdx].trim());
+					if (!greedyStarted) {
+						if (greedyGain == 0.0) {
+							result.genomeSelectionLabel.put(genome, "core");
+							result.orderedGenomes.add(genome);
+							continue;
+						}
+						greedyStarted = true;
+						greedyContributionCount = 1;
+					} else {
+						if (greedyGain == 0.0) {
+							break;
+						}
+						greedyContributionCount++;
+					}
+					if (greedyContributionCount <= result.focusKnee) {
+						result.genomeSelectionLabel.put(genome, "core");
+					} else if (greedyContributionCount <= result.comprehensiveKnee) {
+						result.genomeSelectionLabel.put(genome, "mid");
+					} else {
+						result.genomeSelectionLabel.put(genome, "tail");
+					}
+					result.orderedGenomes.add(genome);
+				} catch (NumberFormatException e) {
+					// skip malformed row
+				}
+			}
+
+			// Special case: no GREEDY rows at all (only privilege/representative stage).
+			// In this scenario, all genomes that pass allowedGenomes should be treated as CORE.
+			if (result.greedyCount == 0 && result.totalRanked > 0 && result.orderedGenomes.isEmpty()) {
+				try (BufferedReader r2 = new BufferedReader(new FileReader(rankedFile))) {
+					// skip header
+					r2.readLine();
+					String l2;
+					while ((l2 = r2.readLine()) != null) {
+						l2 = l2.trim();
+						if (l2.isEmpty() || l2.startsWith("#")) continue;
+						String[] p2 = l2.split("\t");
+						if (p2.length <= genomeIdx) continue;
+						String g = p2[genomeIdx].trim();
+						if (g.isEmpty()) continue;
+						if (allowedGenomes != null && !allowedGenomes.contains(g)) continue;
+						if (!result.genomeSelectionLabel.containsKey(g)) {
+							result.genomeSelectionLabel.put(g, "core");
+							result.orderedGenomes.add(g);
+						}
+					}
+				} catch (IOException e) {
+					// fall back silently; caller will see empty result
+				}
+			}
+		} catch (IOException e) {
+			return result;
+		}
+		return result;
+	}
+
+	private static double parseDoubleSafe(String s) {
+		if (s == null || s.trim().isEmpty()) return 0.0;
+		try {
+			return Double.parseDouble(s.trim());
+		} catch (NumberFormatException e) {
+			return 0.0;
 		}
 	}
 

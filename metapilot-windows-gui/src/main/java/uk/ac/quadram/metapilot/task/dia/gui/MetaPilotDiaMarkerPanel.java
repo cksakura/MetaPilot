@@ -17,9 +17,8 @@ import uk.ac.quadram.metapilot.task.common.gui.AbstractWorkflowPanel;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
-import uk.ac.quadram.metapilot.task.mag.MarkerGenomeSelector;
-import uk.ac.quadram.metapilot.task.dia.par.DiaFocusParameterIO;
-import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaFocus;
+import uk.ac.quadram.metapilot.task.dia.par.DiaMarkerParameterIO;
+import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaMarker;
 import uk.ac.quadram.metapilot.task.dia.MetaDiaMarkerTask;
 import uk.ac.quadram.metapilot.task.dia.MetaDiaDeepMarkerTask;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagVersion;
@@ -35,7 +34,7 @@ import java.util.Optional;
  * DIA Marker workflow panel: marker-based genome selection (Focus or Comprehensive)
  * using Marker4 and MetaDiaMarkerTask.
  */
-public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameterDiaFocus> {
+public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameterDiaMarker> {
 	private static final Logger LOGGER = LogManager.getLogger(MetaPilotDiaMarkerPanel.class);
 
 	// UI Components
@@ -44,14 +43,14 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 	private MetadataConfigurationPanel metadataPanel;
 	// Note: consolePanel is inherited from AbstractWorkflowPanel
 
-	/** Workflow mode: "Marker" (standard) or "Deep Marker" (iterative rounds + combined search). */
-	private static final String WORKFLOW_MARKER = "Marker";
-	private static final String WORKFLOW_DEEP_MARKER = "Deep Marker";
+	/** Marker workflows: Focus, Comprehensive, Deep (iterative comprehensive). */
+	private static final String WORKFLOW_FOCUS = "Focus";
+	private static final String WORKFLOW_COMPREHENSIVE = "Comprehensive";
+	private static final String WORKFLOW_DEEP = "Deep";
 
 	// Parameter components
 	private ComboBox<String> workflowModeComboBox;
 	private ComboBox<Integer> threadsComboBox;
-	private ComboBox<String> genomeSelectionStrategyComboBox;
 	private Label marker4StatusLabel;
 
 	// Modification checkboxes (from DiannParameter lines 28-33)
@@ -65,12 +64,12 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 	// Task management
 	private MetaDiaMarkerTask currentTask;
 	private MetaResourceParameters resourceParams;
-	private MetaParameterDiaFocus currentAnalysisParams;
+	// currentAnalysisParams inherited from AbstractWorkflowPanel; set in startAnalysis for viewReport()
 
 
 	public MetaPilotDiaMarkerPanel(MagDbItem[] magDbItems, MetaResourceParameters resourceParams) {
 		super();
-		parameterIO = new DiaFocusParameterIO();
+		parameterIO = new DiaMarkerParameterIO();
 		this.resourceParams = resourceParams;
 		initializeSpecificUI();
 		setAvailableMagDatabases(magDbItems);
@@ -127,12 +126,9 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 					updateMarker4Status();
 			} else if (newTab == consoleTab) {
 				updateParameterView();
-				// Auto-save parameters
+				// Auto-save without validation or alerts (validation/alert only when user clicks Run)
 				try {
-					MetaParameterDiaFocus currentParams = collectParametersFromUI();
-					if (currentParams == null) {
-						currentParams = collectParametersFromUIForAutoSave();
-					}
+					MetaParameterDiaMarker currentParams = collectParametersFromUIForAutoSave();
 					if (currentParams != null) {
 						parameterIO.saveLastUsedParameters(currentParams);
 					}
@@ -227,17 +223,18 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 		section.setStyle("-fx-background-color: #f0f8ff; -fx-background-radius: 5;");
 
 		Label titleLabel = createSectionTitle("Workflow");
-		Label workflowLabel = new Label("Mode:");
+		Label workflowLabel = new Label("Workflow:");
 		workflowLabel.setStyle("-fx-font-weight: bold;");
 		workflowModeComboBox = new ComboBox<>(
-				FXCollections.observableArrayList(WORKFLOW_MARKER, WORKFLOW_DEEP_MARKER));
+				FXCollections.observableArrayList(WORKFLOW_FOCUS, WORKFLOW_COMPREHENSIVE, WORKFLOW_DEEP));
 		workflowModeComboBox.setMinWidth(160);
 		workflowModeComboBox.setPrefWidth(200);
-		workflowModeComboBox.setValue(WORKFLOW_MARKER);
+		workflowModeComboBox.setValue(WORKFLOW_FOCUS);
 		workflowModeComboBox.setOnAction(e -> updateParameterView());
 		Tooltip workflowTooltip = new Tooltip(
-				"Marker: one combined library from selected genomes, then identification.\n"
-				+ "Deep Marker: iterative rounds (round1.parquet, round2.parquet, ...) with round libraries (round1-lib.parquet, ...), then combined search and report.");
+				"Focus: knee-based genome selection with a compact set of genomes.\n"
+				+ "Comprehensive: more inclusive genome set using comprehensive knee mode.\n"
+				+ "Deep: deep comprehensive iterative workflow (multiple rounds + combined search).");
 		workflowModeComboBox.setTooltip(workflowTooltip);
 		VBox workflowBox = new VBox(5);
 		workflowBox.getChildren().addAll(workflowLabel, workflowModeComboBox);
@@ -293,20 +290,7 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 		col2.setHgrow(Priority.ALWAYS);
 		paramGrid.getColumnConstraints().addAll(col1, col2);
 
-		Label genomeSelectionStrategyLabel = new Label("Selection Strategy:");
-		genomeSelectionStrategyLabel.setStyle("-fx-font-weight: bold;");
-		genomeSelectionStrategyComboBox = new ComboBox<>(
-				FXCollections.observableArrayList(MarkerGenomeSelector.KNEE_MODE_FOCUS,
-						MarkerGenomeSelector.KNEE_MODE_COMPREHENSIVE));
-		genomeSelectionStrategyComboBox.setMinWidth(140);
-		genomeSelectionStrategyComboBox.setPrefWidth(160);
-		genomeSelectionStrategyComboBox.setMaxWidth(Double.MAX_VALUE);
-		genomeSelectionStrategyComboBox.setValue(MarkerGenomeSelector.KNEE_MODE_FOCUS);
-		genomeSelectionStrategyComboBox.setOnAction(e -> updateParameterView());
-		VBox genomeSelectionStrategyBox = new VBox(5);
-		genomeSelectionStrategyBox.getChildren().addAll(genomeSelectionStrategyLabel, genomeSelectionStrategyComboBox);
-
-		Label genomeSelectorLabel = new Label("Genome Selection:");
+		Label genomeSelectorLabel = new Label("Genome selector:");
 		genomeSelectorLabel.setStyle("-fx-font-weight: bold;");
 		Label genomeSelectorValueLabel = new Label(MagDbItem.MARKER4);
 		genomeSelectorValueLabel.setStyle("-fx-font-weight: normal; -fx-text-fill: #333333;");
@@ -322,10 +306,9 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 		VBox marker4StatusBox = new VBox(5);
 		marker4StatusBox.getChildren().addAll(marker4StatusTitleLabel, marker4StatusLabel);
 
-		paramGrid.add(genomeSelectionStrategyBox, 0, 0);
-		paramGrid.add(genomeSelectorBox, 1, 0);
+		paramGrid.add(genomeSelectorBox, 0, 0);
 		paramGrid.add(marker4StatusBox, 0, 1);
-		paramGrid.add(new Region(), 1, 1); // placeholder for alignment
+		paramGrid.add(new Region(), 1, 0); // placeholder for alignment
 
 		section.getChildren().addAll(titleLabel, paramGrid);
 		return section;
@@ -444,8 +427,9 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 		sb.append("=== Analysis Parameters ===\n\n");
 
 		if (workflowModeComboBox != null && workflowModeComboBox.getValue() != null) {
-			sb.append("Workflow: ").append(workflowModeComboBox.getValue()).append("\n\n");
+			sb.append("Workflow: ").append(workflowModeComboBox.getValue()).append("\n");
 		}
+		sb.append("\n");
 
 		// Database settings
 		sb.append("Database Settings:\n");
@@ -470,10 +454,7 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 
 		// Genome selection
 		sb.append("Genome Selection:\n");
-		if (genomeSelectionStrategyComboBox != null) {
-			sb.append("  Selection Strategy: ").append(genomeSelectionStrategyComboBox.getValue()).append("\n");
-		}
-		sb.append("  Mode: ").append(MagDbItem.MARKER4).append("\n");
+		sb.append("  Selector: ").append(MagDbItem.MARKER4).append("\n");
 		if (marker4StatusLabel != null && !marker4StatusLabel.getText().isEmpty()) {
 			sb.append("  Marker4 Status: ").append(marker4StatusLabel.getText()).append("\n");
 		}
@@ -505,7 +486,7 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 	}
 
 	@Override
-	protected MetaParameterDiaFocus collectParametersFromUI() {
+	protected MetaParameterDiaMarker collectParametersFromUI() {
 		try {
 			consolePanel.appendConsoleText("Collecting parameters from UI...\n");
 			LOGGER.info("Starting parameter collection from UI for DIA Marker workflow");
@@ -561,8 +542,8 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 			uk.ac.quadram.metapilot.workflow.WorkflowType.DIA_MARKER.getAnalysisType(),
 					metaData, result, microDb, false, "", "DIA", 1, threadCount, true);
 
-			// Create MetaParameterDiaFocus
-			MetaParameterDiaFocus params = new MetaParameterDiaFocus(baseParams, selectedMagDb, true, false, 
+			// Create parameter object (MetaParameterDiaMarker for DIA Marker workflow)
+			MetaParameterDiaMarker params = new MetaParameterDiaMarker(baseParams, selectedMagDb, true, false,
 				new String[0], false, new String[0]);
 
 			// Set MAG database
@@ -593,8 +574,17 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 			if (kGGCheckBox != null) {
 				params.setKGG(kGGCheckBox.isSelected());
 			}
-			if (genomeSelectionStrategyComboBox != null && genomeSelectionStrategyComboBox.getValue() != null) {
-				params.setGenomeSelectionStrategy(genomeSelectionStrategyComboBox.getValue());
+
+			// Set genome selection strategy based on workflow
+			String workflow = workflowModeComboBox != null && workflowModeComboBox.getValue() != null
+					? workflowModeComboBox.getValue()
+					: WORKFLOW_FOCUS;
+			if (WORKFLOW_DEEP.equals(workflow)) {
+				params.setMarkerMode("DEEP");
+			} else if (WORKFLOW_COMPREHENSIVE.equals(workflow)) {
+				params.setMarkerMode("COMPREHENSIVE");
+			} else {
+				params.setMarkerMode("FOCUS");
 			}
 
 			// Collect metadata
@@ -630,7 +620,7 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 		}
 	}
 
-	public MetaParameterDiaFocus collectParametersFromUIForAutoSave() {
+	public MetaParameterDiaMarker collectParametersFromUIForAutoSave() {
 		// Lenient version for auto-save - skip validation
 		try {
 			// Create minimal MetaData even if no experiment data
@@ -672,7 +662,7 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 			uk.ac.quadram.metapilot.workflow.WorkflowType.DIA_MARKER.getAnalysisType(),
 					metaData, result, microDb, false, "", "DIA", 1, threadCount, true);
 
-			MetaParameterDiaFocus params = new MetaParameterDiaFocus(baseParams, selectedMagDb, true, false, 
+			MetaParameterDiaMarker params = new MetaParameterDiaMarker(baseParams, selectedMagDb, true, false,
 				new String[0], false, new String[0]);
 
 			// Set MAG database
@@ -705,8 +695,17 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 			if (kGGCheckBox != null) {
 				params.setKGG(kGGCheckBox.isSelected());
 			}
-			if (genomeSelectionStrategyComboBox != null && genomeSelectionStrategyComboBox.getValue() != null) {
-				params.setGenomeSelectionStrategy(genomeSelectionStrategyComboBox.getValue());
+
+			// Set genome selection strategy based on workflow (best effort for auto-save)
+			String workflow = workflowModeComboBox != null && workflowModeComboBox.getValue() != null
+					? workflowModeComboBox.getValue()
+					: WORKFLOW_FOCUS;
+			if (WORKFLOW_DEEP.equals(workflow)) {
+				params.setMarkerMode("DEEP");
+			} else if (WORKFLOW_COMPREHENSIVE.equals(workflow)) {
+				params.setMarkerMode("COMPREHENSIVE");
+			} else {
+				params.setMarkerMode("FOCUS");
 			}
 
 			return params;
@@ -748,7 +747,7 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 	@Override
 	protected void loadLastUsedParameters() {
 		try {
-			MetaParameterDiaFocus params = (MetaParameterDiaFocus) parameterIO.loadLastUsedParameters();
+			MetaParameterDiaMarker params = (MetaParameterDiaMarker) parameterIO.loadLastUsedParameters();
 			if (params != null) {
 				applyParametersToUI(params);
 			}
@@ -758,7 +757,7 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 	}
 
 	@Override
-	protected void applyParametersToUI(MetaParameterDiaFocus params) {
+	protected void applyParametersToUI(MetaParameterDiaMarker params) {
 		if (params == null) {
 			return;
 		}
@@ -836,25 +835,29 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 		if (kGGCheckBox != null) {
 			kGGCheckBox.setSelected(params.isKGG());
 		}
-		if (genomeSelectionStrategyComboBox != null && params.getGenomeSelectionStrategy() != null) {
-			String strategy = params.getGenomeSelectionStrategy();
-			if (MarkerGenomeSelector.KNEE_MODE_FOCUS.equals(strategy)
-					|| MarkerGenomeSelector.KNEE_MODE_COMPREHENSIVE.equals(strategy)) {
-				genomeSelectionStrategyComboBox.setValue(strategy);
+
+		// Map stored genome selection strategy back to workflow combo (best effort)
+		if (workflowModeComboBox != null) {
+			String markerMode = params.getMarkerMode();
+			if ("DEEP".equalsIgnoreCase(markerMode)) {
+				workflowModeComboBox.setValue(WORKFLOW_DEEP);
+			} else if ("COMPREHENSIVE".equalsIgnoreCase(markerMode)) {
+				workflowModeComboBox.setValue(WORKFLOW_COMPREHENSIVE);
 			} else {
-				genomeSelectionStrategyComboBox.setValue(MarkerGenomeSelector.KNEE_MODE_FOCUS);
+				// Default and legacy fallback: treat anything else as FOCUS
+				workflowModeComboBox.setValue(WORKFLOW_FOCUS);
 			}
 		}
 	}
 
 	@Override
-	protected Class<MetaParameterDiaFocus> getParameterClass() {
-		return MetaParameterDiaFocus.class;
+	protected Class<MetaParameterDiaMarker> getParameterClass() {
+		return MetaParameterDiaMarker.class;
 	}
 
 	public void saveCurrentParameters() {
 		try {
-			MetaParameterDiaFocus currentParams = collectParametersFromUI();
+			MetaParameterDiaMarker currentParams = collectParametersFromUI();
 			if (currentParams == null) {
 				currentParams = collectParametersFromUIForAutoSave();
 			}
@@ -872,7 +875,7 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 			consolePanel.appendConsoleText("Starting DIA Marker analysis...\n");
 			LOGGER.info("Starting DIA Marker analysis");
 
-			MetaParameterDiaFocus analysisParams = collectParametersFromUI();
+			MetaParameterDiaMarker analysisParams = collectParametersFromUI();
 			if (analysisParams == null) {
 				consolePanel.appendConsoleText("ERROR: Failed to collect parameters\n");
 				return;
@@ -891,16 +894,19 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 			MetaResourceIO resourceIO = new MetaResourceIO();
 			MetaResourceParameters mrp = resourceIO.loadParameters();
 
-			// Create task - choose Marker (standard) or Deep Marker (iterative rounds + combined)
-			boolean deepMarker = WORKFLOW_DEEP_MARKER.equals(workflowModeComboBox != null ? workflowModeComboBox.getValue() : WORKFLOW_MARKER);
+			// Create task - choose Focus / Comprehensive (standard) or Deep (iterative rounds + combined)
+			String workflow = workflowModeComboBox != null && workflowModeComboBox.getValue() != null
+					? workflowModeComboBox.getValue()
+					: WORKFLOW_FOCUS;
+			boolean deepMarker = WORKFLOW_DEEP.equals(workflow);
 			if (deepMarker) {
 				currentTask = new MetaDiaDeepMarkerTask(analysisParams, mrp,
 						consolePanel.getOverallProgressBar(), consolePanel.getCurrentTaskProgressBar());
-				consolePanel.appendConsoleText("Workflow: Deep Marker (iterative rounds + combined search)\n");
+				consolePanel.appendConsoleText("Workflow: Deep (iterative comprehensive marker workflow)\n");
 			} else {
 				currentTask = new MetaDiaMarkerTask(analysisParams, mrp,
 						consolePanel.getOverallProgressBar(), consolePanel.getCurrentTaskProgressBar());
-				consolePanel.appendConsoleText("Workflow: Marker\n");
+				consolePanel.appendConsoleText("Workflow: " + workflow + "\n");
 			}
 
 			// Set up task callbacks
@@ -971,35 +977,18 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 		}
 	}
 
-	@Override
-	protected void viewReport() {
-		if (currentAnalysisParams != null) {
-			String resultDir = currentAnalysisParams.getResult();
-			if (resultDir != null && !resultDir.isEmpty()) {
-				File reportDir = new File(resultDir, "report");
-				if (reportDir.exists()) {
-					try {
-						java.awt.Desktop.getDesktop().open(reportDir);
-					} catch (Exception e) {
-						LOGGER.error("Failed to open report directory", e);
-						showError("Error", "Failed to open report directory: " + e.getMessage());
-					}
-				} else {
-					showError("Report Not Found", "Report directory does not exist: " + reportDir.getAbsolutePath());
-				}
-			}
-		}
-	}
+	// viewReport() uses base implementation: currentAnalysisParams.getReportDir()
+	// (set by the task to the workflow folder, e.g. result/marker_focus/report)
 
 	@Override
 	public void loadParametersFromObject(Object parameters) {
-		if (!(parameters instanceof MetaParameterDiaFocus)) {
+		if (!(parameters instanceof MetaParameterDiaMarker)) {
 			LOGGER.warn("Invalid parameter type for DIA Marker: {}", 
 				parameters != null ? parameters.getClass().getSimpleName() : "null");
 			return;
 		}
 
-		MetaParameterDiaFocus params = (MetaParameterDiaFocus) parameters;
+		MetaParameterDiaMarker params = (MetaParameterDiaMarker) parameters;
 
 		// Load basic parameters - use applyParametersToUI which handles this properly
 		applyParametersToUI(params);
@@ -1038,7 +1027,7 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 			}
 		}
 
-		// Modifications are stored in MetaParameterDiaFocus
+		// Modifications are stored in MetaParameterDiaMarker
 		updateParameterView();
 		updateMarker4Status();
 	}

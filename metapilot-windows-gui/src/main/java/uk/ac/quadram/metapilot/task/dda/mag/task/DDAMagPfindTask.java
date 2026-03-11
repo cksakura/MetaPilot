@@ -389,17 +389,6 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 			return false;
 		}
 
-		// Optional: host database search
-		if (magPfindParams.isAppendHostDb()) {
-			logger.info("Step 4b: Starting host database search...");
-			updateMessage(getTaskName() + ": Searching host database...");
-			boolean hostSearch = this.searchHostDatabase();
-			if (!hostSearch) {
-				logger.error(getTaskName() + ": error in host database search");
-				return false;
-			}
-		}
-
 		// Step 5: Combine Results
 		logger.info("Step 5: Starting combination of separate search results...");
 		updateProgress(70, 100);
@@ -1198,10 +1187,15 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 				}
 
 				ArrayList<String> revList = new ArrayList<String>();
+				ArrayList<String> hostList = new ArrayList<String>();
 				String[] proteins = psms[j].getProteins();
 				for (int k = 0; k < proteins.length; k++) {
 					if (proteins[k].startsWith("REV_")) {
 						revList.add(proteins[k]);
+					} else {
+						if (!proteins[k].startsWith(this.magDb.getIdentifier())) {
+							hostList.add(proteins[k]);
+						}
 					}
 				}
 
@@ -1210,37 +1204,18 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 					psms[j].setProteins(revProteins);
 					decoyPsmList.add(psms[j]);
 				} else {
-					psmList.add(psms[j]);
+					if (hostList.size() > 0) {
+						String[] hostProteins = hostList.toArray(String[]::new);
+						psms[j].setProteins(hostProteins);
+						hostPsmList.add(psms[j]);
+					} else {
+						psmList.add(psms[j]);
+					}
 				}
 			}
 
 			logger.info("{} PSMs were found from {}, now the total number of the PSMs is {}", psms.length,
 					this.separateResultFolders[i].getName(), psmList.size());
-		}
-
-		if (magPfindParams.isAppendHostDb()) {
-			File hostResult = new File(new File(metaPar.getDbSearchResultFile(), "host"), "pFind-Filtered.spectra");
-			if (hostResult.exists() && hostResult.length() > 0) {
-				PFindPsmReader hostReader = new PFindPsmReader(hostResult);
-				PFindPSM[] hostPsms = hostReader.getPsms();
-				for (int j = 0; j < hostPsms.length; j++) {
-					String sequence = hostPsms[j].getBaseSequence();
-					if (sequence.contains("X")) {
-						continue;
-					}
-					ArrayList<String> revList = new ArrayList<String>();
-					String[] proteins = hostPsms[j].getProteins();
-					for (int k = 0; k < proteins.length; k++) {
-						if (proteins[k].startsWith("REV_")) {
-							revList.add(proteins[k]);
-						}
-					}
-					if (revList.size() == 0) {
-						hostPsmList.add(hostPsms[j]);
-					}
-				}
-				logger.info("{} host PSMs were found from {}", hostPsms.length, hostResult.getAbsolutePath());
-			}
 		}
 
 		if (psmList.isEmpty()) {
@@ -1250,8 +1225,10 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 
 		PFindPSM[] psms = psmList.toArray(PFindPSM[]::new);
 
-		// Generate evidence.tsv, ranked.tsv, selected.tsv in combined/ for taxonomy analysis
-		// (Marker_selection column and genome_ranked.tsv). We do NOT filter PSMs by selected genomes here.
+		// Generate evidence.tsv, ranked.tsv, selected.tsv in combined/ for taxonomy
+		// analysis
+		// (Marker_selection column and genome_ranked.tsv). We do NOT filter PSMs by
+		// selected genomes here.
 		File evidenceTsv = new File(combinedFile, "evidence.tsv");
 		File rankedTsv = new File(combinedFile, "ranked.tsv");
 		File selectedTsv = new File(combinedFile, "selected.tsv");
@@ -1273,11 +1250,13 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 			}
 		}
 		// Generate evidence.tsv, ranked.tsv, selected.tsv using user's strategy.
-		// The ranked.tsv contains knee columns (KneeStep, KneeKneedle, KneeCurvature, KneePiecewise, KneeSlope)
-		// which allow taxonomy analysis to compute core/mid/tail labels without running selector twice.
+		// The ranked.tsv contains knee columns (KneeStep, KneeKneedle, KneeCurvature,
+		// KneePiecewise, KneeSlope)
+		// which allow taxonomy analysis to compute core/mid/tail labels without running
+		// selector twice.
 		if (!evidenceTsv.exists() || !rankedTsv.exists() || !selectedTsv.exists()) {
 			MarkerGenomeSelector selector = new MarkerGenomeSelector();
-			selector.setKneeSelectionMode(magPfindParams.getGenomeSelectionStrategy());
+			selector.setKneeSelectionMode(MarkerGenomeSelector.KNEE_MODE_COMPREHENSIVE);
 			boolean enableAutoRep = useMarker4;
 			if (useMarker4) {
 				selector.selectMarkerGenomesWithKnee(psms, markerFasta, genomesTaxaTsv, evidenceTsv.getAbsolutePath(),
@@ -1294,7 +1273,8 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 			logger.warn("Marker selector did not produce ranked.tsv; Selection_label in Genome.tsv will be incomplete");
 		}
 
-		// Write ALL target PSMs (no filtering by selected genomes); quantification uses complete list.
+		// Write ALL target PSMs (no filtering by selected genomes); quantification uses
+		// complete list.
 		int[] targetPSMCount = new int[2];
 		OpenPsmTsvWriter msmsWriter = new OpenPsmTsvWriter(combinedPsms, OpenPsmTsvWriter.pFindFormat);
 		for (PFindPSM psm : psms) {
@@ -1317,8 +1297,8 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 			}
 		}
 
-		logger.info("{} PSMs written to combined file; {} PSMs have assigned retention time",
-				targetPSMCount[0], targetPSMCount[1]);
+		logger.info("{} PSMs written to combined file; {} PSMs have assigned retention time", targetPSMCount[0],
+				targetPSMCount[1]);
 
 		for (PFindPSM psm : decoyPsmList) {
 			String scanKey = psm.getFileName() + "_" + psm.getScan();
@@ -1461,4 +1441,5 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 		// TODO Auto-generated method stub
 		return null;
 	}
+
 }

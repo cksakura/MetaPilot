@@ -338,6 +338,9 @@ public class MagDbItem {
 		return marker2File;
 	}
 
+	/**
+	 * Returns the path to Marker4_highpep.fasta (used when caller knows it exists).
+	 */
 	public File getMarkerHighPepFastaFile() {
 		if (repositoryFile == null || !repositoryFile.exists()) {
 			return null;
@@ -345,28 +348,57 @@ public class MagDbItem {
 		if (currentFile == null || !currentFile.exists()) {
 			return null;
 		}
-
 		return new File(currentFile, "Marker4_highpep.fasta");
 	}
 
-	public File getHapLibFile(String selectorMode) {
-		return getMarkerHighPepLibFile();
-	}
-	
-	public File getMarkerHighPepLibFile() {
+	/**
+	 * Returns the effective Marker4 FASTA for library generation: Marker4_highpep.fasta if it exists
+	 * (generated when Marker4.fasta has &gt;100k proteins), otherwise Marker4.fasta.
+	 */
+	public File getMarker4FastaForLibrary() {
 		if (repositoryFile == null || !repositoryFile.exists()) {
 			return null;
 		}
 		if (currentFile == null || !currentFile.exists()) {
 			return null;
 		}
+		File highpep = new File(currentFile, "Marker4_highpep.fasta");
+		if (highpep.exists()) {
+			return highpep;
+		}
+		return new File(currentFile, "Marker4.fasta");
+	}
 
-		return new File(currentFile, "Marker4_highpep.predicted.speclib");
+	/**
+	 * Returns the Marker4 library file path: Marker4_highpep.predicted.speclib if Marker4_highpep.fasta exists,
+	 * otherwise Marker4.predicted.speclib.
+	 */
+	public File getMarker4LibFile() {
+		if (repositoryFile == null || !repositoryFile.exists()) {
+			return null;
+		}
+		if (currentFile == null || !currentFile.exists()) {
+			return null;
+		}
+		File highpep = new File(currentFile, "Marker4_highpep.fasta");
+		if (highpep.exists()) {
+			return new File(currentFile, "Marker4_highpep.predicted.speclib");
+		}
+		return new File(currentFile, "Marker4.predicted.speclib");
+	}
+
+	public File getHapLibFile(String selectorMode) {
+		return getMarker4LibFile();
+	}
+
+	/** Delegates to {@link #getMarker4LibFile()}. Kept for backward compatibility. */
+	public File getMarkerHighPepLibFile() {
+		return getMarker4LibFile();
 	}
 
 	public File getHapFastaFile(String selectorMode) {
 		if (MARKER4.equalsIgnoreCase(selectorMode)) {
-			return getMarkerHighPepFastaFile();
+			return getMarker4FastaForLibrary();
 		}
 		return getRibElonFastaFile();
 	}
@@ -383,14 +415,24 @@ public class MagDbItem {
 	}
 
 	public File getHapFastaTDFile() {
+		return getHapFastaTDFile(null);
+	}
 
+	/**
+	 * Returns the target-decoy FASTA path for the given genome selector mode.
+	 * Marker4 uses Marker4_td.fasta; otherwise Marker2_td.fasta.
+	 * The file may not exist yet (caller should create it via FastaManager.addDecoy if needed).
+	 */
+	public File getHapFastaTDFile(String selectorMode) {
 		if (repositoryFile == null || !repositoryFile.exists()) {
 			return null;
 		}
 		if (currentFile == null || !currentFile.exists()) {
 			return null;
 		}
-
+		if (MARKER4.equalsIgnoreCase(selectorMode)) {
+			return new File(currentFile, "Marker4_td.fasta");
+		}
 		return new File(currentFile, "Marker2_td.fasta");
 	}
 

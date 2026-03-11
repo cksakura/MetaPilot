@@ -453,7 +453,7 @@ public class ResourceConfigPanel extends BorderPane {
 
 			// Highlight PFind, DBReducer, DeepDetect, FlashLFQ, and FunctionDB that come
 			// with the software
-			boolean isIncluded = (toolType == ToolType.PFIND || toolType == ToolType.DBREDUCER
+			boolean isIncluded = (toolType == ToolType.DBREDUCER
 					|| toolType == ToolType.DEEPDETECT || toolType == ToolType.FLASHLFQ || toolType == ToolType.FUNCDB);
 
 			if (isIncluded) {

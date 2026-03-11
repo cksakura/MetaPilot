@@ -1,13 +1,13 @@
 package uk.ac.quadram.metapilot.task.par;
 
-import uk.ac.quadram.metapilot.MetaPilotApp;
+import uk.ac.quadram.metapilot.task.dia.par.DiaMarkerParameterIO;
 import uk.ac.quadram.metapilot.task.dia.par.DiaParameterIO;
-import uk.ac.quadram.metapilot.task.dia.par.DiaTargetParameterIO;
 import uk.ac.quadram.metapilot.task.dia.par.DiaRTParameterIO;
+import uk.ac.quadram.metapilot.task.dia.par.DiaTargetParameterIO;
 import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcMaxQuantParameterIO;
 import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcPFindParameterIO;
-import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagPfindParameterIO;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagFragPipeParameterIO;
+import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagPfindParameterIO;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagSageParameterIO;
 
 /**
@@ -29,7 +29,7 @@ public class ParameterIORegistry {
 		BaseParameterIO.registerParameterIO("DiaNNMAG", DiaParameterIO.class);
 		BaseParameterIO.registerParameterIO("DiaNNMAGTG", DiaTargetParameterIO.class);
 		BaseParameterIO.registerParameterIO("DiaNNMAGRT", DiaRTParameterIO.class);
-		
+
 		// Also register the enum-based workflow types for backward compatibility
 		System.out.println("DEBUG: Registering enum-based workflow types...");
 		BaseParameterIO.registerParameterIO(uk.ac.quadram.metapilot.workflow.WorkflowType.DIA_SEED.getAnalysisType(),
@@ -38,6 +38,9 @@ public class ParameterIORegistry {
 				DiaTargetParameterIO.class);
 		BaseParameterIO.registerParameterIO(uk.ac.quadram.metapilot.workflow.WorkflowType.DIA_REALTIME.getAnalysisType(),
 				DiaRTParameterIO.class);
+		// DIA marker workflow
+		BaseParameterIO.registerParameterIO(uk.ac.quadram.metapilot.workflow.WorkflowType.DIA_MARKER.getAnalysisType(),
+				DiaMarkerParameterIO.class);
 
 		// Register DDA MAG workflow types
 		System.out.println("DEBUG: Registering DDA MAG workflow types...");

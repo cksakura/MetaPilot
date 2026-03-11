@@ -13,6 +13,22 @@ public class MetaParameterDiaRT extends MetaParameterDia {
 	private int taskCount;
 	private File monitorFolder;
 	private File resultFolder;
+	/**
+	 * Selected real-time workflow mode.
+	 * <p>
+	 * Expected values (string codes, interpreted by UI and monitor task):
+	 * <ul>
+	 *   <li>"MARKER_FOCUS"</li>
+	 *   <li>"MARKER_COMPREHENSIVE"</li>
+	 *   <li>"MARKER_DEEP"</li>
+	 *   <li>"SEED_DIRECT"</li>
+	 *   <li>"SEED_FOCUS"</li>
+	 *   <li>"SEED_COMPREHENSIVE"</li>
+	 *   <li>"SEED_DEEP"</li>
+	 * </ul>
+	 * Implementations should treat unknown or null as a sensible default (e.g. SEED_DIRECT).
+	 */
+	private String rtWorkflowMode;
 
 	public MetaParameterDiaRT(MetaBaseParameter metaPar, MagDbItem magDbItem, boolean librarySearch,
 			boolean selfModelSearch, String[] library, boolean useModel, String[] models) {
@@ -66,6 +82,22 @@ public class MetaParameterDiaRT extends MetaParameterDia {
 
 	public void setResultFolder(File resultFolder) {
 		this.resultFolder = resultFolder;
+	}
+
+	/**
+	 * Returns the selected real-time workflow mode code.
+	 */
+	public String getRtWorkflowMode() {
+		return rtWorkflowMode;
+	}
+
+	/**
+	 * Sets the selected real-time workflow mode code.
+	 *
+	 * @param rtWorkflowMode one of the documented mode strings, or null to use a default.
+	 */
+	public void setRtWorkflowMode(String rtWorkflowMode) {
+		this.rtWorkflowMode = rtWorkflowMode;
 	}
 
 }

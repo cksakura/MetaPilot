@@ -22,8 +22,8 @@ import uk.ac.quadram.metapilot.task.dda.mag.task.DDAMagFragPipeTask;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagFragPipeParameterIO;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagVersion;
+import uk.ac.quadram.metapilot.task.mag.MarkerGenomeSelector;
 import uk.ac.quadram.metapilot.task.par.MetaData;
-import uk.ac.quadram.metapilot.MetaPilotApp;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.common.gui.AbstractWorkflowPanel;
 import javafx.application.Platform;
@@ -59,6 +59,8 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
     private ComboBox<Integer> threadsComboBox;
     private ComboBox<String> workflowComboBox;
     private ComboBox<String> msDataTypeComboBox;
+    private ComboBox<String> genomeSelectorComboBox;
+    private ComboBox<String> genomeSelectionStrategyComboBox;
 
     // Data
     private ObservableList<String> enzymes = FXCollections.observableArrayList();
@@ -475,10 +477,34 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
         
         VBox msDataTypeBox = new VBox(5);
         msDataTypeBox.getChildren().addAll(msDataTypeLabel, msDataTypeComboBox);
+
+        Label genomeSelectorLabel = new Label("Genome selection:");
+        genomeSelectorLabel.setStyle("-fx-font-weight: bold;");
+        genomeSelectorComboBox = new ComboBox<>(FXCollections.observableArrayList(MagDbItem.MARKER2, MagDbItem.MARKER4));
+        genomeSelectorComboBox.setValue(MagDbItem.MARKER2);
+        genomeSelectorComboBox.setMinWidth(140);
+        genomeSelectorComboBox.setPrefWidth(160);
+        genomeSelectorComboBox.setPromptText("Genome selection workflow");
+        genomeSelectorComboBox.setOnAction(e -> updateParameterView());
+        VBox genomeSelectorBox = new VBox(5);
+        genomeSelectorBox.getChildren().addAll(genomeSelectorLabel, genomeSelectorComboBox);
+
+        Label genomeStrategyLabel = new Label("Genome selection strategy:");
+        genomeStrategyLabel.setStyle("-fx-font-weight: bold;");
+        genomeSelectionStrategyComboBox = new ComboBox<>(FXCollections.observableArrayList(
+                MarkerGenomeSelector.KNEE_MODE_FOCUS, MarkerGenomeSelector.KNEE_MODE_COMPREHENSIVE));
+        genomeSelectionStrategyComboBox.setValue(MarkerGenomeSelector.KNEE_MODE_FOCUS);
+        genomeSelectionStrategyComboBox.setMinWidth(140);
+        genomeSelectionStrategyComboBox.setPrefWidth(160);
+        genomeSelectionStrategyComboBox.setOnAction(e -> updateParameterView());
+        VBox genomeStrategyBox = new VBox(5);
+        genomeStrategyBox.getChildren().addAll(genomeStrategyLabel, genomeSelectionStrategyComboBox);
         
         paramGrid.add(threadsBox, 0, 0);
         paramGrid.add(workflowBox, 1, 0);
         paramGrid.add(msDataTypeBox, 0, 1, 2, 1); // Span both columns
+        paramGrid.add(genomeSelectorBox, 0, 2);
+        paramGrid.add(genomeStrategyBox, 1, 2);
 
         section.getChildren().addAll(titleLabel, paramGrid);
         return section;
@@ -655,8 +681,6 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
             
             // 4. Create progress bars and status label
             consolePanel.appendConsoleText("Setting up progress tracking...\n");
-            ProgressBar overallBar = new ProgressBar();
-            ProgressBar currentBar = new ProgressBar();
             Label statusLabel = new Label("Ready to start analysis...");
             consolePanel.appendConsoleText("✓ Progress bars and status label initialized\n");
             
@@ -824,6 +848,8 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
             MagDbItem selectedMagDb = magDatabasePanel.getSelectedMagDatabase();
             String microDb = selectedMagDb != null ? selectedMagDb.getCatalogueID() : "";
             LOGGER.info("Selected MAG database: {}", microDb);
+
+            MagVersion selectedVersion = magDatabasePanel.getSelectedMagVersion();
             
             boolean appendHostDb = magDatabasePanel.isAppendHostDb();
             String hostDB = appendHostDb ? magDatabasePanel.getHostDatabase() : "";
@@ -849,19 +875,27 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
             
             // Set MAG-specific fields
             analysisParams.setMagDbCatalogueId(microDb);
-            if (selectedMagDb != null && selectedMagDb.getVersionList() != null && !selectedMagDb.getVersionList().isEmpty()) {
-                String magDbVersion = selectedMagDb.getVersionList().get(0).getCatalogueVersion();
-                analysisParams.setMagDbVersion(magDbVersion);
+            if (selectedVersion != null) {
+                analysisParams.setMagDbVersion(selectedVersion.getCatalogueVersion());
+            } else if (selectedMagDb != null && selectedMagDb.getVersionList() != null && !selectedMagDb.getVersionList().isEmpty()) {
+                // Fallback: keep previous behavior if version combobox isn't ready
+                analysisParams.setMagDbVersion(selectedMagDb.getVersionList().get(0).getCatalogueVersion());
             }
             
             // Set the used version on the MagDbItem
-            MagVersion selectedVersion = magDatabasePanel.getSelectedMagVersion();
             if (selectedVersion != null && selectedMagDb != null) {
                 selectedMagDb.setUsedVersion(selectedVersion);
                 LOGGER.info("Set used version on MagDbItem: {}", selectedVersion.getCatalogueVersion());
             }
             
             analysisParams.setMagDbItem(selectedMagDb);
+
+            String genomeSelectorMode = genomeSelectorComboBox != null && genomeSelectorComboBox.getValue() != null
+                    ? genomeSelectorComboBox.getValue() : MagDbItem.MARKER2;
+            analysisParams.setGenomeSelectorMode(genomeSelectorMode);
+            String genomeSelectionStrategy = genomeSelectionStrategyComboBox != null && genomeSelectionStrategyComboBox.getValue() != null
+                    ? genomeSelectionStrategyComboBox.getValue() : MarkerGenomeSelector.KNEE_MODE_FOCUS;
+            analysisParams.setGenomeSelectionStrategy(genomeSelectionStrategy);
             
             // Set quantitative mode based on workflow (default to label-free)
             analysisParams.setQuantitativeMode("Label-Free");
@@ -1128,9 +1162,14 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
         }
         
         // Apply only essential parameters from saved settings
-        // Thread count is the only parameter that should be loaded from saved parameters
         if (threadsComboBox != null) {
             threadsComboBox.setValue(params.getThreadCount());
+        }
+        if (params.getGenomeSelectorMode() != null && genomeSelectorComboBox != null) {
+            genomeSelectorComboBox.setValue(params.getGenomeSelectorMode());
+        }
+        if (params.getGenomeSelectionStrategy() != null && genomeSelectionStrategyComboBox != null) {
+            genomeSelectionStrategyComboBox.setValue(params.getGenomeSelectionStrategy());
         }
         
         // Workflow selection - don't update since workflow is not saved in parameters
@@ -1147,10 +1186,15 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
         
         // Apply database settings using reusable component
         if (magDatabasePanel != null) {
-            if (params.getMagDbCatalogueId() != null) {
+            String targetMagDbId = params.getMagDbCatalogueId();
+            if (targetMagDbId == null || targetMagDbId.trim().isEmpty()) {
+                // Backward compatibility: older saved parameters store MAG DB in MetaBaseParameter.microDb
+                targetMagDbId = params.getMicroDb();
+            }
+            if (targetMagDbId != null && !targetMagDbId.trim().isEmpty()) {
                 // Find and select the matching MAG database
                 for (MagDbItem item : magDatabasePanel.getAvailableMagDatabases()) {
-                    if (item.getCatalogueID().equals(params.getMagDbCatalogueId())) {
+                    if (item.getCatalogueID().equals(targetMagDbId)) {
                         magDatabasePanel.setSelectedMagDatabase(item);
                         
                         // Also apply version selection if available

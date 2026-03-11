@@ -65,13 +65,8 @@ public class DiaLibCreateTask extends MetaAbstractTask {
 			this.matchToMag = Boolean.parseBoolean(pathList.get(3));
 		}
 
-		if (filePath.endsWith(".speclib")) {
-			this.taskType = fromLibrary;
-		} else if (filePath.endsWith(".faa") || filePath.endsWith(".fasta")) {
-			this.taskType = fromProtein;
-		} else if (filePath.endsWith(".tsv") || filePath.endsWith(".csv")) {
-			this.taskType = fromPeptide;
-		}
+		// Use buildType from UI so "Protein Database" is respected (e.g. .fa files); do not infer from extension only.
+		this.taskType = buildType;
 	}
 
 	@Override

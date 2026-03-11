@@ -30,9 +30,9 @@ public enum WorkflowType {
     
     // DIA Workflows
     /** Marker-based DIA workflow (Marker4 genome selection). */
-    DIA_MARKER("DIA_FOCUS"),
+    DIA_MARKER("DIA_MARKER"),
     /** Seed/library-based DIA workflow (MAG library search). */
-    DIA_SEED("DIA_NORMAL"),
+    DIA_SEED("DIA_SEED"),
     DIA_TARGET("DIA_TARGET"),
     DIA_REALTIME("DIA_REALTIME"),
     /** Deeper, more time-consuming comprehensive DIA analysis. */

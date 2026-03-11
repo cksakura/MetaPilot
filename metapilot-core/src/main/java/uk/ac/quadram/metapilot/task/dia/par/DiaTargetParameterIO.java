@@ -187,6 +187,14 @@ public class DiaTargetParameterIO extends BaseParameterIO {
 			json.put("targetLibraryName", params.getTargetLibraryName());
 			System.out.println("DEBUG: DIA Target specific parameters added successfully");
 
+			// DIA-NN modification settings (unified across DIA workflows)
+			json.put("mExcision", params.isMExcision());
+			json.put("carbamiC", params.isCarbamiC());
+			json.put("oxidationM", params.isOxidationM());
+			json.put("acetyProN", params.isAcetyProN());
+			json.put("phosphoSTY", params.isPhosphoSTY());
+			json.put("kGG", params.isKGG());
+
 			// Add selected taxa
 			if (params.getSelectedTaxa() != null) {
 				JSONArray selectedTaxa = new JSONArray();
@@ -396,6 +404,21 @@ public class DiaTargetParameterIO extends BaseParameterIO {
 
 			// Set DIA Target specific parameters
 			params.setTargetLibraryName(json.optString("targetLibraryName", "target_library"));
+
+			// DIA-NN modification settings (default values match Seed workflow)
+			boolean mExcision = json.optBoolean("mExcision", true);
+			boolean carbamiC = json.optBoolean("carbamiC", true);
+			boolean oxidationM = json.optBoolean("oxidationM", false);
+			boolean acetyProN = json.optBoolean("acetyProN", false);
+			boolean phosphoSTY = json.optBoolean("phosphoSTY", false);
+			boolean kGG = json.optBoolean("kGG", false);
+
+			params.setMExcision(mExcision);
+			params.setCarbamiC(carbamiC);
+			params.setOxidationM(oxidationM);
+			params.setAcetyProN(acetyProN);
+			params.setPhosphoSTY(phosphoSTY);
+			params.setKGG(kGG);
 
 			// Set selected taxa
 			if (json.has("selectedTaxa")) {

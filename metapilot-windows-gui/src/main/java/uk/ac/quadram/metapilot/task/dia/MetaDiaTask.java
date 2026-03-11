@@ -2,18 +2,12 @@ package uk.ac.quadram.metapilot.task.dia;
 
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileFilter;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.lang.management.ManagementFactory;
 import java.math.BigInteger;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -21,7 +15,6 @@ import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -39,17 +32,12 @@ import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 import org.apache.commons.math3.stat.inference.MannWhitneyUTest;
 import org.dom4j.DocumentException;
 
-import com.sun.management.OperatingSystemMXBean;
-
-import uk.ac.quadram.metapilot.core.function.v2.EnzymeCommission;
-import uk.ac.quadram.metapilot.core.function.v2.GoObo;
 import uk.ac.quadram.metapilot.core.math.MathTool;
 import uk.ac.quadram.metapilot.core.prodb.FastaManager;
 import uk.ac.quadram.metapilot.core.taxonomy.TaxonomyRanks;
 import uk.ac.quadram.metapilot.core.tools.FormatTool;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNParquetReader;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNPrecursor;
-import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNResultReader;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNTask;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiannParameter;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiannPrMatrixReader;
@@ -61,8 +49,7 @@ import uk.ac.quadram.metapilot.task.io.ReportManifestGenerator;
 import uk.ac.quadram.metapilot.task.MetaPythonReportCopyTask;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaTg;
-import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaFocus;
-import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaRT;
+import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaMarker;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import javafx.application.Platform;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
@@ -70,23 +57,23 @@ import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProteinAnnoEggNog;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProteinXMLReader2;
 import uk.ac.quadram.metapilot.task.mag.HMGenomeHtmlWriter;
-import uk.ac.quadram.metapilot.task.mag.MarkerGenomeSelector;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.MagFuncSearcher;
 import uk.ac.quadram.metapilot.task.mag.MetaPilotMagTask;
 import uk.ac.quadram.metapilot.task.mag.MetaProteinAnnoMag;
 import javafx.scene.control.ProgressBar;
 
-public class MetaDiaTask extends MetaPilotMagTask {
+/**
+ * Base class for DIA workflows. Abstract so that every task started from the UI
+ * is a specific task (Marker, Seed Direct, Seed Iterative, Target, etc.).
+ */
+public abstract class MetaDiaTask extends MetaPilotMagTask {
 
 	protected String[] diaFiles;
 	protected DiaNNTask diaNNTask;
 	protected DiaLibSearchPar diaLibSearchPar;
 	protected DiannParameter diannPar;
 	protected DiaNNPrecursor[] diaPp;
-	private boolean libSearch;
-	private boolean selfModelSearch;
-
 	protected MetaData metadata;
 	protected String[] expNames;
 	protected int[] fractions;
@@ -150,14 +137,14 @@ public class MetaDiaTask extends MetaPilotMagTask {
 		this.diannPar = new DiannParameter();
 		this.diannPar.setThreads(metaPar.getThreadCount());
 		logger.info("DiannParameter initialized with thread count: {}", metaPar.getThreadCount());
-		if (metaPar instanceof MetaParameterDiaFocus) {
-			MetaParameterDiaFocus focusParams = (MetaParameterDiaFocus) metaPar;
-			this.diannPar.setM_excision(focusParams.isMExcision());
-			this.diannPar.setCarbami_C(focusParams.isCarbamiC());
-			this.diannPar.setOxidation_M(focusParams.isOxidationM());
-			this.diannPar.setAcety_proN(focusParams.isAcetyProN());
-			this.diannPar.setPhospho_STY(focusParams.isPhosphoSTY());
-			this.diannPar.setK_GG(focusParams.isKGG());
+		if (metaPar instanceof MetaParameterDiaMarker) {
+			MetaParameterDiaMarker markerParams = (MetaParameterDiaMarker) metaPar;
+			this.diannPar.setM_excision(markerParams.isMExcision());
+			this.diannPar.setCarbami_C(markerParams.isCarbamiC());
+			this.diannPar.setOxidation_M(markerParams.isOxidationM());
+			this.diannPar.setAcety_proN(markerParams.isAcetyProN());
+			this.diannPar.setPhospho_STY(markerParams.isPhosphoSTY());
+			this.diannPar.setK_GG(markerParams.isKGG());
 		} else if (metaPar instanceof MetaParameterDia) {
 			MetaParameterDia diaParams = (MetaParameterDia) metaPar;
 			this.diannPar.setM_excision(diaParams.isMExcision());
@@ -168,37 +155,32 @@ public class MetaDiaTask extends MetaPilotMagTask {
 			this.diannPar.setK_GG(diaParams.isKGG());
 		}
 
-		// Set search modes
-		this.libSearch = metaPar.isLibrarySearch();
-		this.selfModelSearch = metaPar.isSelfModelSearch();
-		logger.info("Search modes - Library search: {}, Self model search: {}", libSearch, selfModelSearch);
-
-		// Create result directory if not already set
+		// Set result directory if not already set (DIA Target and DIA Marker/Seed iterative set it here; Seed Direct sets it in initResultFolderIfNeeded())
 		if (metaPar.getDbSearchResultFile() == null) {
-			File diaResultDir;
-
+			File diaResultDir = null;
 			if (metaPar instanceof MetaParameterDiaTg) {
-				// DIA Target: keep existing behavior based on library path
 				diaResultDir = (new File(((MetaParameterDiaTg) metaPar).getLibraryPath())).getParentFile();
-			} else if (metaPar instanceof MetaParameterDiaFocus) {
-				// Focus / comprehensive workflows using MetaParameterDiaFocus
-				// - Marker workflow: marker_focus / marker_comprehensive
-				// - Seed iterative workflow: seed_focus / seed_comprehensive
-				// - Deep comprehensive: manages its own base folder (deep_comprehensive)
+			} else if (metaPar instanceof MetaParameterDiaMarker) {
 				if (this instanceof MetaDiaDeepComprehensiveTask) {
-					// Deep comprehensive will set dbSearchResultFile in its own call(), skip here.
 					diaResultDir = null;
 				} else {
-					String strategy = ((MetaParameterDiaFocus) metaPar).getGenomeSelectionStrategy();
+					MetaParameterDiaMarker markerParams = (MetaParameterDiaMarker) metaPar;
+					String markerMode = markerParams.getMarkerMode();
 					String folderName;
 					if (this instanceof MetaDiaSeedIterativeTask) {
-						folderName = MarkerGenomeSelector.KNEE_MODE_FOCUS.equals(strategy) ? "seed_focus"
-								: "seed_comprehensive";
+						if ("COMPREHENSIVE".equalsIgnoreCase(markerMode) || "DEEP".equalsIgnoreCase(markerMode)) {
+							folderName = "seed_comprehensive";
+						} else {
+							folderName = "seed_focus";
+						}
 					} else if (this instanceof MetaDiaDeepMarkerTask) {
 						folderName = "marker_deep";
 					} else {
-						folderName = MarkerGenomeSelector.KNEE_MODE_FOCUS.equals(strategy) ? "marker_focus"
-								: "marker_comprehensive";
+						if ("COMPREHENSIVE".equalsIgnoreCase(markerMode) || "DEEP".equalsIgnoreCase(markerMode)) {
+							folderName = "marker_comprehensive";
+						} else {
+							folderName = "marker_focus";
+						}
 					}
 					diaResultDir = new File(metaPar.getResult(), folderName);
 					if (!diaResultDir.exists()) {
@@ -208,26 +190,7 @@ public class MetaDiaTask extends MetaPilotMagTask {
 								diaResultDir.getAbsolutePath());
 					}
 				}
-			} else {
-				// Seed / normal-style DIA workflows (including real-time variants)
-				// Use workflow-aware naming for different seed strategies
-				if (this.libSearch) {
-					// Direct seed library search
-					diaResultDir = new File(metaPar.getResult(), "seed_direct");
-				} else if (this.selfModelSearch) {
-					// Self-model based on seed
-					diaResultDir = new File(metaPar.getResult(), "seed_self_model");
-				} else {
-					// Iterative refinement starting from seed / models
-					diaResultDir = new File(metaPar.getResult(), "seed_iterative");
-				}
-
-				if (!diaResultDir.exists()) {
-					diaResultDir.mkdirs();
-					logger.info("Created result directory for DIA seed workflow: {}", diaResultDir.getAbsolutePath());
-				}
 			}
-
 			if (diaResultDir != null) {
 				metaPar.setDbSearchResultFile(diaResultDir);
 			} else {
@@ -274,6 +237,14 @@ public class MetaDiaTask extends MetaPilotMagTask {
 
 		logger.info("MetaDiaTask initialization completed successfully");
 		logger.info("[{}] initialization completed", getTaskName());
+	}
+
+	/**
+	 * Initialize result folder if not already set. Subclasses override to create
+	 * workflow-specific folders (e.g. seed_direct, marker_focus). Default: no-op.
+	 */
+	protected void initResultFolderIfNeeded() {
+		// Base: no-op; subclasses set metaPar.setDbSearchResultFile() and resultFolderFile as needed.
 	}
 
 	protected boolean spectraConvert() {
@@ -346,28 +317,9 @@ public class MetaDiaTask extends MetaPilotMagTask {
 	protected boolean createSSLibrary() {
 		logger.info("Starting sample-specific library creation...");
 		updateProgress(0, 100);
-
-		if (libSearch) {
-			logger.info("Library search mode detected - skipping sample-specific library creation");
-			return true;
-		}
-
-		logger.info("starting iterative search for sample-specific library creation");
-		logger.info("[{}] iterative search started", getTaskName());
-
-		boolean iterativeSearch = this.iterativeSearch();
-
-		if (iterativeSearch) {
-			logger.info(getTaskName() + ": iterative search finished");
-			logger.info("[{}] iterative search finished", getTaskName());
-
-			return true;
-		} else {
-			logger.error(getTaskName() + ": iterative search failed");
-			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": iterative search failed");
-
-			return false;
-		}
+		// Base implementation: library-search workflows (Target, Seed Direct) use provided libraries; no self-library.
+		logger.info("Skipping sample-specific library (use provided libraries).");
+		return true;
 	}
 
 	protected boolean iden() {
@@ -405,209 +357,71 @@ public class MetaDiaTask extends MetaPilotMagTask {
 			logger.info(getTaskName() + ": library search started");
 			logger.info("[{}] library search started", getTaskName());
 
-			if (libSearch) {
+			updateProgress(10, 100);
+			diannPar.setExportDecoy(true);
 
-				updateProgress(10, 100);
-
-				diannPar.setExportDecoy(true);
-
-				if (metaPar instanceof MetaParameterDiaTg) {
-					String libraryPath = ((MetaParameterDiaTg) metaPar).getLibraryPath();
-					diaNNTask.addTask(diannPar, diaLibSearchPar, combineParquetFile.getAbsolutePath(),
-							new String[] { libraryPath });
-				} else {
-					File magDbFile = this.magDb.getCurrentFile();
-					File libFolderFile = new File(magDbFile, "libraries");
-
-					String[] usedLibs = ((MetaParameterDia) metaPar).getLibrary();
-					String[] libPath = new String[usedLibs.length];
-					for (int i = 0; i < usedLibs.length; i++) {
-						File directLibFile = new File(usedLibs[i]);
-						if (directLibFile.exists()) {
-							libPath[i] = directLibFile.getAbsolutePath();
-						} else {
-							File libFile = new File(new File(libFolderFile, usedLibs[i]), usedLibs[i] + ".speclib");
-							File libTsvFile = new File(new File(libFolderFile, usedLibs[i]), usedLibs[i] + ".tsv");
-							if (libPath.length == 1) {
-								libPath[i] = libFile.getAbsolutePath();
-								if (!libFile.exists()) {
-									logger.error(getTaskName() + ": library file doesn't exist in " + libFile);
-									System.err.println(format.format(new Date()) + "\t" + getTaskName()
-											+ ": library file doesn't exist in " + libFile);
-
-									return false;
-								}
-							} else {
-								libPath[i] = libTsvFile.getAbsolutePath();
-								if (!libTsvFile.exists()) {
-									logger.error(getTaskName() + ": library file doesn't exist in " + libTsvFile);
-									System.err.println(format.format(new Date()) + "\t" + getTaskName()
-											+ ": library file doesn't exist in " + libTsvFile);
-
-									return false;
-								}
-							}
-						}
-					}
-					diaNNTask.addTask(diannPar, diaLibSearchPar, combineParquetFile.getAbsolutePath(), libPath);
-				}
-				diaNNTask.run(diaFiles.length * 12);
+			String[] libPath = null;
+			if (metaPar instanceof MetaParameterDiaTg) {
+				String libraryPath = ((MetaParameterDiaTg) metaPar).getLibraryPath();
+				libPath = new String[] { libraryPath };
+				diaNNTask.addTask(diannPar, diaLibSearchPar, combineParquetFile.getAbsolutePath(), libPath);
 			} else {
+				File magDbFile = this.magDb.getCurrentFile();
+				File libFolderFile = new File(magDbFile, "libraries");
 
-				updateProgress(75, 100);
-
-				HashSet<String> pepSet = new HashSet<String>();
-				for (int i = 0; i < separateResultFolders.length; i++) {
-
-					File firstFile = new File(new File(separateResultFolders[i], "firstSearch"), "firstSearch.parquet");
-					if (firstFile.exists()) {
-						try {
-							pepSet.addAll(DiaNNParquetReader.getPeptideSet(firstFile.getAbsolutePath()));
-						} catch (IOException e) {
-							logger.error(
-									getTaskName() + ": error in reading the library search result file " + firstFile,
-									e);
-							System.err.println(format.format(new Date()) + "\t" + getTaskName()
-									+ ": error in reading the library search result file " + firstFile);
-							return false;
-						}
-					}
-
-					File secondFile = new File(new File(separateResultFolders[i], "secondSearch"),
-							"secondSearch.parquet");
-					if (secondFile.exists()) {
-						try {
-							pepSet.addAll(DiaNNParquetReader.getPeptideSet(secondFile.getAbsolutePath()));
-						} catch (IOException e) {
-							logger.error(
-									getTaskName() + ": error in reading the library search result file " + secondFile,
-									e);
-							System.err.println(format.format(new Date()) + "\t" + getTaskName()
-									+ ": error in reading the library search result file " + secondFile);
-
-							return false;
-						}
-					}
-
-					File thirdFile = new File(new File(separateResultFolders[i], "thirdSearch"), "thirdSearch.parquet");
-					if (thirdFile.exists()) {
-						try {
-							pepSet.addAll(DiaNNParquetReader.getPeptideSet(thirdFile.getAbsolutePath()));
-						} catch (IOException e) {
-							logger.error(
-									getTaskName() + ": error in reading the library search result file " + thirdFile,
-									e);
-							System.err.println(format.format(new Date()) + "\t" + getTaskName()
-									+ ": error in reading the library search result file " + thirdFile);
-
-							return false;
-						}
-					}
-
-					File lastFile = new File(separateResultFolders[i], separateResultFolders[i].getName() + ".parquet");
-					if (!lastFile.exists()) {
-						lastFile = new File(separateResultFolders[i], "lastSearch.parquet");
-					}
-					if (lastFile.exists()) {
-						try {
-							pepSet.addAll(DiaNNParquetReader.getPeptideSet(lastFile.getAbsolutePath()));
-						} catch (IOException e) {
-							logger.error(
-									getTaskName() + ": error in reading the library search result file " + lastFile, e);
-							System.err.println(format.format(new Date()) + "\t" + getTaskName()
-									+ ": error in reading the library search result file " + lastFile);
-
-							return false;
-						}
-					}
-				}
-
-				File hostFile = new File(resultFolderFile, "host");
-				File hostTsvFile = new File(hostFile, "host.parquet");
-				if (hostTsvFile.exists()) {
-					try {
-						pepSet.addAll(DiaNNParquetReader.getPeptideSet(hostTsvFile.getAbsolutePath()));
-					} catch (IOException e) {
-						logger.error(getTaskName() + ": error in reading the library search result file " + hostTsvFile,
-								e);
-						System.err.println(format.format(new Date()) + "\t" + getTaskName()
-								+ ": error in reading the library search result file " + hostTsvFile);
-
-						return false;
-					}
-				}
-
-				File fastaFile = new File(combinedFile, "combined.fasta");
-				if (!fastaFile.exists() || fastaFile.length() == 0) {
-					try (PrintWriter fastaWriter = new PrintWriter(fastaFile)) {
-
-						int id = 0;
-						for (String pep : pepSet) {
-
-							fastaWriter.println(">pro" + id + " pro" + id);
-							fastaWriter.println(pep);
-							id++;
-						}
-						fastaWriter.close();
-					} catch (IOException e) {
-						logger.error(getTaskName() + ": error in writing the protein database file " + fastaFile, e);
-						System.err.println(format.format(new Date()) + "\t" + getTaskName()
-								+ ": error in writing the protein database file " + fastaFile);
-
-						return false;
-					}
-				}
-
-				File combineLibFile = new File(combinedFile, "combined.speclib");
-
-				if (!combineLibFile.exists() || combineLibFile.length() == 0) {
-
-					File tempLibFile = new File(combinedFile, "combined.predicted.speclib");
-					if (tempLibFile.exists()) {
-						tempLibFile.renameTo(combineLibFile);
+				String[] usedLibs = ((MetaParameterDia) metaPar).getLibrary();
+				libPath = new String[usedLibs.length];
+				for (int i = 0; i < usedLibs.length; i++) {
+					File directLibFile = new File(usedLibs[i]);
+					if (directLibFile.exists()) {
+						libPath[i] = directLibFile.getAbsolutePath();
 					} else {
-						diannPar.setExportDecoy(true);
-						diaNNTask.addTask(diannPar, fastaFile.getAbsolutePath(), combineLibFile.getAbsolutePath(),
-								false);
-						diaNNTask.run(2);
+						File libFolder = new File(libFolderFile, usedLibs[i]);
+						File speclibFile = new File(libFolder, usedLibs[i] + ".speclib");
+						File tsvFile = new File(libFolder, usedLibs[i] + ".tsv");
+						File parquetFile = new File(libFolder, usedLibs[i] + ".parquet");
 
-						if (tempLibFile.exists()) {
-							tempLibFile.renameTo(combineLibFile);
-						} else {
+						File chosen = null;
+						if (speclibFile.exists()) {
+							chosen = speclibFile;
+						} else if (tsvFile.exists()) {
+							chosen = tsvFile;
+						} else if (parquetFile.exists()) {
+							chosen = parquetFile;
+						}
 
-							logger.error(
-									getTaskName() + ": error in writing the combined library file " + combineLibFile);
+						if (chosen == null) {
+							logger.error(getTaskName() + ": no library file (.speclib/.tsv/.parquet) found for library '{}'", usedLibs[i]);
 							System.err.println(format.format(new Date()) + "\t" + getTaskName()
-									+ ": error in writing the combined library file " + combineLibFile);
-
+									+ ": no library file (.speclib/.tsv/.parquet) found for library '" + usedLibs[i] + "'");
 							return false;
 						}
+
+						libPath[i] = chosen.getAbsolutePath();
 					}
-
-				} else {
-
-					logger.info(getTaskName() + ": find the combined library file in " + combineLibFile
-							+ ", go to the next step");
-					logger.info("[{}] find the combined library file in {}, go to the next step", getTaskName(),
-							combineLibFile);
 				}
+				diaNNTask.addTask(diannPar, diaLibSearchPar, combineParquetFile.getAbsolutePath(), libPath);
+			}
+			diaNNTask.run(diaFiles.length * 12);
 
-				// Set up WatchService to monitor parquet file generation
-				FileFilter filter = new FileFilter() {
-					@Override
-					public boolean accept(File file) {
-						return file.getName().equals("combined.parquet");
+			// If combined result missing (e.g. one damaged raw file), retry by searching each file separately
+			if (!combineParquetFile.exists() && diaFiles != null && diaFiles.length > 1) {
+				String[] fallbackLibPath = metaPar instanceof MetaParameterDiaTg
+						? new String[] { ((MetaParameterDiaTg) metaPar).getLibraryPath() }
+						: libPath;
+				if (fallbackLibPath != null) {
+					List<String> damaged = runPerFileFallbackAndRetryCombined(combineParquetFile.getAbsolutePath(), fallbackLibPath);
+					if (!damaged.isEmpty()) {
+						logger.warn(getTaskName() + ": The following raw files produced no results (may be damaged): {}", damaged);
+						System.err.println(format.format(new Date()) + "\t" + getTaskName()
+								+ ": The following raw files produced no results (may be damaged): " + String.join(", ", damaged));
 					}
-				};
+				}
+			}
 
-				// Use the generic WatchServiceLoop from the superclass
-				logger.info("Starting WatchService monitoring for DIA identification");
-				File[] foldersToMonitor = { combinedFile };
-				startWatchServiceLoop(foldersToMonitor, "", filter, 1, 20, 85);
-
-				diaNNTask.addTask(diannPar, diaFiles, combineParquetFile.getAbsolutePath(),
-						combineLibFile.getAbsolutePath());
-				diaNNTask.run(diaFiles.length * 4);
+			if (!combineParquetFile.exists()) {
+				logger.error(getTaskName() + ": identification failed - result files not created");
+				return false;
 			}
 
 			logger.info(getTaskName() + ": library search finished");
@@ -622,6 +436,183 @@ public class MetaDiaTask extends MetaPilotMagTask {
 		updateProgress(85, 100);
 
 		return true;
+	}
+
+	/**
+	 * When combined search produced no output (e.g. one damaged raw file), run each raw file
+	 * separately, then re-run combined search with only successful files. Caller should log
+	 * the returned damaged list to the user.
+	 *
+	 * @param combinedParquetPath path for the final combined.parquet
+	 * @param libPath              library path(s) for the search
+	 * @return list of raw file paths that produced no result (may be damaged)
+	 */
+	protected List<String> runPerFileFallbackAndRetryCombined(String combinedParquetPath, String[] libPath) {
+		if (diaFiles == null || diaFiles.length == 0 || libPath == null || libPath.length == 0) {
+			return new ArrayList<>();
+		}
+		File combinedDir = new File(combinedParquetPath).getParentFile();
+		if (combinedDir == null || !combinedDir.exists()) {
+			return new ArrayList<>();
+		}
+		logger.info(getTaskName() + ": combined search produced no output; retrying with per-file search to isolate damaged files");
+		System.out.println(format.format(new Date()) + "\t" + getTaskName()
+				+ ": retrying with per-file search (some raw files may be damaged)");
+
+		// Run one search per raw file, but skip those that already have a non-empty per-file result
+		int queued = 0;
+		for (int i = 0; i < diaFiles.length; i++) {
+			File pf = new File(combinedDir, "per_file_" + i + ".parquet");
+			if (pf.exists() && pf.length() > 0) {
+				continue; // already completed in a previous attempt
+			}
+			String perOut = pf.getAbsolutePath();
+			diaLibSearchPar.setDiaFiles(new String[] { diaFiles[i] });
+			diaNNTask.addTask(diannPar, diaLibSearchPar, perOut, libPath);
+			queued++;
+		}
+		if (queued > 0) {
+			diaNNTask.run(queued * 12);
+		} else {
+			logger.info(getTaskName() + ": all per-file parquet outputs already exist; skipping new per-file DIA-NN runs");
+		}
+
+		List<String> goodFiles = new ArrayList<>();
+		List<String> damaged = new ArrayList<>();
+		for (int i = 0; i < diaFiles.length; i++) {
+			File pf = new File(combinedDir, "per_file_" + i + ".parquet");
+			if (pf.exists() && pf.length() > 0) {
+				goodFiles.add(diaFiles[i]);
+			} else {
+				damaged.add(diaFiles[i]);
+			}
+		}
+
+		if (goodFiles.isEmpty()) {
+			logger.error(getTaskName() + ": per-file fallback found no successful files");
+			return damaged;
+		}
+		logger.info(getTaskName() + ": re-running combined search with {} successful file(s) ({} damaged or empty)",
+				goodFiles.size(), damaged.size());
+		diaLibSearchPar.setDiaFiles(goodFiles.toArray(new String[0]));
+		diaNNTask.addTask(diannPar, diaLibSearchPar, combinedParquetPath, libPath);
+		diaNNTask.run(goodFiles.size() * 12);
+		return damaged;
+	}
+
+	/**
+	 * Same as {@link #runPerFileFallbackAndRetryCombined(String, String[])} but uses addNoQuantLibTask
+	 * (for first search: marker library or user library, no quantification).
+	 * <p>
+	 * NOTE: Unlike {@link #runPerFileFallbackAndRetryCombined(String, String[])}, this helper
+	 * does <b>not</b> re-run a combined search. It only runs per-file searches and returns
+	 * which raw files were damaged. Callers are expected to consume the per-file parquet
+	 * outputs directly (e.g. by reading per_file_*.parquet).
+	 */
+	protected List<String> runPerFileFallbackAndRetryCombinedNoQuant(String outputParquetPath, String[] libPath) {
+		if (diaFiles == null || diaFiles.length == 0 || libPath == null || libPath.length == 0) {
+			return new ArrayList<>();
+		}
+		File outDir = new File(outputParquetPath).getParentFile();
+		if (outDir == null || !outDir.exists()) {
+			return new ArrayList<>();
+		}
+		logger.info(getTaskName() + ": first search produced no output; retrying with per-file search to isolate damaged files");
+		System.out.println(format.format(new Date()) + "\t" + getTaskName()
+				+ ": retrying with per-file search (some raw files may be damaged)");
+
+		int queued = 0;
+		for (int i = 0; i < diaFiles.length; i++) {
+			File pf = new File(outDir, "per_file_" + i + ".parquet");
+			if (pf.exists() && pf.length() > 0) {
+				continue; // this raw file already has a per-file result
+			}
+			String perOut = pf.getAbsolutePath();
+			diaLibSearchPar.setDiaFiles(new String[] { diaFiles[i] });
+			diaNNTask.addNoQuantLibTask(diannPar, diaLibSearchPar, perOut, libPath);
+			queued++;
+		}
+		if (queued > 0) {
+			diaNNTask.run(queued * 12);
+		} else {
+			logger.info(getTaskName() + ": per-file fallback: all per_file_*.parquet already exist; no new DIA-NN runs scheduled");
+		}
+
+		List<String> goodFiles = new ArrayList<>();
+		List<String> damaged = new ArrayList<>();
+		for (int i = 0; i < diaFiles.length; i++) {
+			File pf = new File(outDir, "per_file_" + i + ".parquet");
+			if (pf.exists() && pf.length() > 0) {
+				goodFiles.add(diaFiles[i]);
+			} else {
+				damaged.add(diaFiles[i]);
+			}
+		}
+
+		if (goodFiles.isEmpty()) {
+			logger.error(getTaskName() + ": per-file fallback found no successful files");
+			return damaged;
+		}
+		logger.info(getTaskName() + ": per-file fallback completed with {} successful file(s) ({} damaged or empty); callers should consume per_file_*.parquet directly",
+				goodFiles.size(), damaged.size());
+		return damaged;
+	}
+
+	/**
+	 * Same as {@link #runPerFileFallbackAndRetryCombinedNoQuant(String, String[])} but uses
+	 * addTask with genLib (for first search with --out-lib, e.g. mixed microbiome+standalone).
+	 * <p>
+	 * NOTE: This helper also only runs per-file searches and does not re-run a combined
+	 * first search. Callers are expected to read per_file_*.parquet (and any corresponding
+	 * libraries) directly instead of relying on a single combined parquet.
+	 */
+	protected List<String> runPerFileFallbackAndRetryCombinedWithGenLib(String outputParquetPath, String[] libPath) {
+		if (diaFiles == null || diaFiles.length == 0 || libPath == null || libPath.length == 0) {
+			return new ArrayList<>();
+		}
+		File outDir = new File(outputParquetPath).getParentFile();
+		if (outDir == null || !outDir.exists()) {
+			return new ArrayList<>();
+		}
+		logger.info(getTaskName() + ": first search produced no output; retrying with per-file search to isolate damaged files");
+		System.out.println(format.format(new Date()) + "\t" + getTaskName()
+				+ ": retrying with per-file search (some raw files may be damaged)");
+
+		int queued = 0;
+		for (int i = 0; i < diaFiles.length; i++) {
+			File pf = new File(outDir, "per_file_" + i + ".parquet");
+			if (pf.exists() && pf.length() > 0) {
+				continue; // already completed
+			}
+			String perOut = pf.getAbsolutePath();
+			diaLibSearchPar.setDiaFiles(new String[] { diaFiles[i] });
+			diaNNTask.addTask(diannPar, diaLibSearchPar, perOut, false, true, true, libPath);
+			queued++;
+		}
+		if (queued > 0) {
+			diaNNTask.run(queued * 12);
+		} else {
+			logger.info(getTaskName() + ": per-file fallback with genLib: all per_file_*.parquet already exist; no new DIA-NN runs scheduled");
+		}
+
+		List<String> goodFiles = new ArrayList<>();
+		List<String> damaged = new ArrayList<>();
+		for (int i = 0; i < diaFiles.length; i++) {
+			File pf = new File(outDir, "per_file_" + i + ".parquet");
+			if (pf.exists() && pf.length() > 0) {
+				goodFiles.add(diaFiles[i]);
+			} else {
+				damaged.add(diaFiles[i]);
+			}
+		}
+
+		if (goodFiles.isEmpty()) {
+			logger.error(getTaskName() + ": per-file fallback found no successful files");
+			return damaged;
+		}
+		logger.info(getTaskName() + ": per-file fallback (with genLib) completed with {} successful file(s) ({} damaged or empty); callers should consume per_file_*.parquet directly",
+				goodFiles.size(), damaged.size());
+		return damaged;
 	}
 
 	@SuppressWarnings("unused")
@@ -899,1009 +890,11 @@ public class MetaDiaTask extends MetaPilotMagTask {
 		logger.info("[{}] protein report has been exported to {}", getTaskName(), final_pro_txt.getName());
 	}
 
-	private void buildSelfModel() {
-
-		logger.info(getTaskName() + ": building self-model started");
-		logger.info("[{}] building self-model started", getTaskName());
-
-		logger.info(getTaskName() + ": reading round1 information finished, model generation started");
-		logger.info("[{}] reading round1 information finished, model generation started", getTaskName());
-
-		long totalMemorySize = ((OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean())
-				.getTotalMemorySize() / 1024 / 1024 / 1024;
-		final int maxBathCount = (int) (totalMemorySize / 31);
-
-		logger.info(getTaskName() + ": the memory size is " + totalMemorySize + "GB, the maximum batch count is set as "
-				+ maxBathCount);
-		logger.info("[{}] the memory size is {}GB, the maximum batch count is set as {}", getTaskName(),
-				totalMemorySize, maxBathCount);
-
-		MetaParameterDia diaPar = (MetaParameterDia) metaPar;
-		int modelNumber = separateResultFolders.length;
-		ExecutorService executor;
-
-		if (modelNumber < maxBathCount) {
-			executor = Executors.newFixedThreadPool(modelNumber);
-		} else {
-			if (maxBathCount == 0) {
-				executor = Executors.newFixedThreadPool(1);
-			} else {
-				executor = Executors.newFixedThreadPool(maxBathCount);
-			}
-		}
-
-		for (int i = 0; i < separateResultFolders.length; i++) {
-			File modelFolder = new File(separateResultFolders[i], "model");
-			if (!modelFolder.exists()) {
-				modelFolder.mkdir();
-			}
-			File rankFile = new File(modelFolder, "model_pep_rank.tsv");
-			if (rankFile.exists()) {
-				logger.info(getTaskName() + ": model files have been found in " + separateResultFolders[i].getName());
-				logger.info("[{}] model files have been found in {}", getTaskName(),
-						separateResultFolders[i].getName());
-			} else {
-				HashMap<String, Double> pepIntenMap = new HashMap<String, Double>();
-				File firstFile = new File(separateResultFolders[i], "firstSearch");
-				File round1parquetFile = new File(firstFile, "firstSearch.parquet");
-				if (round1parquetFile.exists()) {
-					try {
-						pepIntenMap = DiaNNParquetReader.getPeptideMap(round1parquetFile.getAbsolutePath());
-					} catch (IOException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-				}
-
-				int batchThreadCount = threadCount / maxBathCount + 1;
-
-				DiaPyTorchModelTask diaModelTask = new DiaPyTorchModelTask(diaPar, mrp, secondBar, logger, pepIntenMap,
-						modelFolder, batchThreadCount);
-
-				executor.submit(diaModelTask);
-			}
-		}
-
-		executor.shutdown();
-
-		try {
-			executor.awaitTermination(separateResultFolders.length * 12, TimeUnit.HOURS);
-		} catch (InterruptedException e) {
-			logger.error(getTaskName() + ": building models failed", e);
-			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": building models failed");
-		}
-	}
-
+	/**
+	 * Default: no implementation. Subclasses (Marker, Seed, Target, etc.) override for their workflows.
+	 */
 	protected boolean iterativeSearch() {
-		logger.info("Starting iterative search process...");
-		logger.info("[{}] parsing peptide from the libraries started", getTaskName());
-
-		MetaParameterDia diaPar = (MetaParameterDia) metaPar;
-		logger.info("Retrieved MetaParameterDia from metaPar");
-		String[] usedLibs = diaPar.getLibrary();
-
-		File magDbFile = this.magDb.getCurrentFile();
-		File predictedFolder = new File(magDbFile, "predicted");
-		File funcFolder = new File(magDbFile, "eggNOG");
-		File libFolderFile = new File(magDbFile, "libraries");
-		File modelFolderFile = new File(magDbFile, "models");
-
-		ArrayList<String> libPathList = new ArrayList<String>();
-
-		for (int i = 0; i < usedLibs.length; i++) {
-			if (usedLibs[i].equals("host")) {
-
-				logger.info(getTaskName() + ": host library search started");
-				logger.info("[{}] host library search started", getTaskName());
-
-				File libFile = new File(new File(libFolderFile, "host"), "host.speclib");
-
-				File hostFile = new File(resultFolderFile, "host");
-				if (!hostFile.exists()) {
-					hostFile.mkdirs();
-				}
-
-				File hostTsvFile = new File(hostFile, "host.parquet");
-				if (!hostTsvFile.exists()) {
-
-					DiaLibSearchPar diaLibSearchPar = new DiaLibSearchPar();
-					diaLibSearchPar.setDiaFiles(diaFiles);
-					diaLibSearchPar.setThreadCount(threadCount);
-					diaLibSearchPar.setMbr(false);
-					diaLibSearchPar.setqValue(0.01);
-
-					DiannParameter diannPar = new DiannParameter();
-					diannPar.setThreads(threadCount);
-					diannPar.setMatrices(false);
-					diannPar.setRelaxed_prot_inf(true);
-
-					diaNNTask.addTask(diannPar, diaLibSearchPar, hostTsvFile.getAbsolutePath(),
-							libFile.getAbsolutePath());
-					diaNNTask.run(1, diaFiles.length * 12);
-				} else {
-					logger.info(getTaskName() + ": host library search result already existed in " + hostFile);
-					logger.info("[{}] host library search result already existed in {}", getTaskName(), hostFile);
-				}
-
-				updateProgress(15, 100);
-
-				logger.info(getTaskName() + ": host library search finished");
-				logger.info("[{}] host library search finished", getTaskName());
-
-			} else {
-				libPathList.add(usedLibs[i]);
-			}
-		}
-
-		String[] libPath = new String[libPathList.size()];
-		for (int i = 0; i < libPathList.size(); i++) {
-			String usedLibIString = libPathList.get(i);
-			File libTsvFile = new File(new File(libFolderFile, usedLibIString), usedLibIString + ".parquet");
-			File libFile = new File(new File(libFolderFile, usedLibIString), usedLibIString + ".speclib");
-			if (libPath.length == 1) {
-				libPath[i] = libFile.getAbsolutePath();
-			} else {
-				libPath[i] = libTsvFile.getAbsolutePath();
-			}
-		}
-
-		logger.info(getTaskName() + ": parsing peptide from the libraries finished");
-		logger.info("[{}] parsing peptide from the libraries finished", getTaskName());
-
-		logger.info(getTaskName() + ": round 1 library search started");
-		logger.info("[{}] round 1 library search started", getTaskName());
-
-		int firstTaskCount = 0;
-		if (diaFiles != null && diaFiles.length > 0) {
-			this.separateResultFolders = new File[diaFiles.length];
-			for (int i = 0; i < diaFiles.length; i++) {
-				String name = diaFiles[i].substring(diaFiles[i].lastIndexOf("\\") + 1, diaFiles[i].lastIndexOf("."));
-				if (name.endsWith(".d")) {
-					name = name.substring(0, name.length() - 2);
-				} else if (name.endsWith(".raw")) {
-					name = name.substring(0, name.length() - 4);
-				} else if (name.endsWith(".mzML")) {
-					name = name.substring(0, name.length() - 5);
-				}
-				this.separateResultFolders[i] = new File(resultFolderFile, name);
-
-				if (!this.separateResultFolders[i].exists()) {
-					this.separateResultFolders[i].mkdir();
-				}
-
-				File firstFile = new File(separateResultFolders[i], "firstSearch");
-				if (!firstFile.exists()) {
-					firstFile.mkdirs();
-				}
-
-				File round1TsvFile = new File(firstFile, "firstSearch.parquet");
-				if (!round1TsvFile.exists()) {
-					firstTaskCount++;
-				}
-			}
-		}
-
-		if (firstTaskCount > 0) {
-			int eachThreadCount = firstTaskCount < maxTaskCount ? threadCount / firstTaskCount + 1
-					: threadCount / maxTaskCount + 1;
-
-			for (int i = 0; i < this.separateResultFolders.length; i++) {
-				File firstFile = new File(separateResultFolders[i], "firstSearch");
-				File round1TsvFile = new File(firstFile, "firstSearch.parquet");
-				if (!round1TsvFile.exists()) {
-
-					DiaLibSearchPar diaLibSearchPar = new DiaLibSearchPar();
-					diaLibSearchPar.setDiaFiles(new String[] { diaFiles[i] });
-					diaLibSearchPar.setThreadCount(eachThreadCount);
-					diaLibSearchPar.setMbr(false);
-					diaLibSearchPar.setqValue(0.01);
-
-					DiannParameter diannPar = new DiannParameter();
-					diannPar.setThreads(eachThreadCount);
-					diannPar.setMatrices(false);
-					diannPar.setRelaxed_prot_inf(true);
-					diaNNTask.addTask(diannPar, diaLibSearchPar, round1TsvFile.getAbsolutePath(), libPath);
-				}
-			}
-
-			// Set up WatchService to monitor first round parquet file generation
-			FileFilter filter = new FileFilter() {
-				@Override
-				public boolean accept(File file) {
-					return file.getName().equals("firstSearch.parquet");
-				}
-			};
-
-			// Use the generic WatchServiceLoop from the superclass
-			logger.info("Starting WatchService monitoring for first round iterative search");
-			startWatchServiceLoop(separateResultFolders, "firstSearch", filter, firstTaskCount, 15, 20);
-
-			if (firstTaskCount < maxTaskCount) {
-				diaNNTask.run(firstTaskCount, firstTaskCount * 12);
-			} else {
-				diaNNTask.run(maxTaskCount, firstTaskCount * 12);
-			}
-		}
-
-		// Stop the watch service thread
-		stopWatchServiceThread();
-
-		updateProgress(20, 100);
-
-		logger.info(getTaskName() + ": round 1 library search finished");
-		logger.info("[{}] round 1 library search finished", getTaskName());
-
-		String[] usedModels = diaPar.getModels();
-		ArrayList<String> modelPathList = new ArrayList<String>();
-		for (int i = 0; i < usedModels.length; i++) {
-			File modelFile = new File(new File(modelFolderFile, usedModels[i]), usedModels[i] + "_pep_rank.tsv");
-			modelPathList.add(modelFile.getAbsolutePath());
-		}
-
-		if (this.selfModelSearch) {
-			this.buildSelfModel();
-		}
-
-		updateProgress(35, 100);
-
-		firstTaskCount = 0;
-		for (int i = 0; i < separateResultFolders.length; i++) {
-			File firstFile = new File(separateResultFolders[i], "firstSearch");
-			File round1DbFile = new File(firstFile, "firstSearch.fasta");
-			if (!round1DbFile.exists() || round1DbFile.length() == 0) {
-				firstTaskCount++;
-			}
-		}
-
-		if (firstTaskCount > 0) {
-			int eachThreadCount = firstTaskCount < maxTaskCount ? threadCount / firstTaskCount + 1
-					: threadCount / maxTaskCount + 1;
-			ExecutorService executor = threadCount > eachThreadCount
-					? Executors.newFixedThreadPool(threadCount / eachThreadCount)
-					: Executors.newSingleThreadExecutor();
-
-			for (int i = 0; i < separateResultFolders.length; i++) {
-				final int index = i;
-				File firstFile = new File(separateResultFolders[index], "firstSearch");
-				File modelFile = new File(separateResultFolders[index], "model");
-				File round1DbFile = new File(firstFile, "firstSearch.fasta");
-				File round1TsvFile = new File(firstFile, "firstSearch.parquet");
-				if (!round1DbFile.exists() || round1DbFile.length() == 0) {
-					executor.submit(new Runnable() {
-						@Override
-						public void run() {
-							// TODO Auto-generated method stub
-							HashSet<String> pepSet1 = null;
-
-							try {
-								pepSet1 = DiaNNParquetReader.getPeptideSet(round1TsvFile.getAbsolutePath());
-							} catch (Exception e) {
-								logger.error(getTaskName() + ": error in reading " + round1TsvFile, e);
-								System.err.println(format.format(new Date()) + "\t" + getTaskName()
-										+ ": error in reading " + round1TsvFile);
-								return;
-							}
-
-							ArrayList<String> modelListI = new ArrayList<String>(modelPathList);
-							if (modelFile.exists()) {
-								File pepRankFile = new File(modelFile, "model_pep_rank.tsv");
-								if (pepRankFile.exists()) {
-									modelListI.add(pepRankFile.getAbsolutePath());
-								}
-							}
-
-							HashSet<String> notUsedSet = new HashSet<String>();
-							for (int i = 0; i < libPathList.size(); i++) {
-								String usedLibIString = libPathList.get(i);
-								File libTsvFile = new File(new File(libFolderFile, usedLibIString),
-										usedLibIString + ".parquet");
-								try {
-									notUsedSet.addAll(DiaNNParquetReader.getPeptideSet(libTsvFile.getAbsolutePath()));
-								} catch (IOException e) {
-									// TODO Auto-generated catch block
-									logger.error(getTaskName() + ": error in reading " + libTsvFile, e);
-									System.err.println(format.format(new Date()) + "\t" + getTaskName()
-											+ ": error in reading " + libTsvFile);
-								}
-							}
-
-							String[] modelPath = modelListI.toArray(String[]::new);
-							if (modelPath.length > 0) {
-								// MODELS DETECTED - Using ML model-based approach
-								logger.info(getTaskName() + ": *** USING ML MODELS *** - Found " + modelPath.length
-										+ " models for iterative search");
-								logger.info("[{}] *** USING ML MODELS *** - Found {} models for iterative search",
-										getTaskName(), modelPath.length);
-
-								// Log which models are being used
-								for (int m = 0; m < modelPath.length; m++) {
-									logger.info(getTaskName() + ": Model " + (m + 1) + ": " + modelPath[m]);
-									logger.info("[{}] Model {}: {}", getTaskName(), (m + 1), modelPath[m]);
-								}
-
-								HashSet<String> genomeSet1 = getGenomeSet(firstFile, 1.0, pepSet1, 5, false,
-										eachThreadCount);
-
-								logger.info(getTaskName() + ": generating database for " + separateResultFolders[index]
-										+ " using ML models, " + pepSet1.size() + " peptide sequences were identified, "
-										+ genomeSet1.size() + " MAGs were used in this step");
-								logger.info(
-										"[{}] generating database for {} using ML models, {} peptide sequences were identified, {} MAGs were used in this step",
-										getTaskName(), separateResultFolders[index], pepSet1.size(), genomeSet1.size());
-								dbFromModelPeptide(modelPath, genomeSet1, pepSet1, notUsedSet, round1DbFile, 2000000);
-							} else {
-								// NO MODELS DETECTED - Using traditional predicted peptide approach
-								logger.info(getTaskName()
-										+ ": *** NO ML MODELS FOUND *** - Using traditional predicted peptide approach for iterative search");
-								logger.info(
-										"[{}] *** NO ML MODELS FOUND *** - Using traditional predicted peptide approach for iterative search",
-										getTaskName());
-
-								HashSet<String> genomeSet1 = getGenomeSet(firstFile, 1.0, pepSet1, 5, true,
-										eachThreadCount);
-
-								logger.info(getTaskName() + ": generating database for " + separateResultFolders[index]
-										+ " using predicted peptides (no models), " + pepSet1.size()
-										+ " peptide sequences were identified, " + genomeSet1.size()
-										+ " MAGs were used in this step");
-								logger.info(
-										"[{}] generating database for {} using predicted peptides (no models), {} peptide sequences were identified, {} MAGs were used in this step",
-										getTaskName(), separateResultFolders[index], pepSet1.size(), genomeSet1.size());
-								dbFromPredictedPeptideFunc(predictedFolder, funcFolder, round1DbFile, genomeSet1,
-										pepSet1, notUsedSet, 2000000, true);
-							}
-						}
-					});
-				} else {
-
-					logger.info(getTaskName() + ": the refined database already exists in " + round1DbFile);
-					logger.info("[{}] the refined database already exists in {}", getTaskName(), round1DbFile);
-				}
-			}
-
-			try {
-				executor.shutdown();
-				boolean finish = executor.awaitTermination(diaFiles.length, TimeUnit.HOURS);
-				if (finish) {
-					logger.info(getTaskName() + ": analyzing round 1 search result finished");
-					logger.info("[{}] analyzing round 1 search result finished", getTaskName());
-				} else {
-					logger.info(getTaskName() + ": analyzing round 1 search result failed");
-					logger.error("[{}] analyzing round 1 search result failed", getTaskName());
-					return false;
-				}
-
-			} catch (InterruptedException e) {
-				// TODO Auto-generated catch block
-				logger.error(getTaskName() + ": analyzing round 1 search result failed", e);
-				logger.error("[{}] analyzing round 1 search result failed", getTaskName());
-				return false;
-			}
-		}
-
-		logger.info(getTaskName() + ": round 2 library search started");
-		logger.info("[{}] round 2 library search started", getTaskName());
-
-		int secondTaskCount = 0;
-		for (int i = 0; i < separateResultFolders.length; i++) {
-			File secondFile = new File(separateResultFolders[i], "secondSearch");
-			if (!secondFile.exists()) {
-				secondFile.mkdirs();
-			}
-
-			File round2TsvFile = new File(secondFile, "secondSearch.parquet");
-			if (!round2TsvFile.exists()) {
-				secondTaskCount++;
-			}
-		}
-
-		if (secondTaskCount > 0) {
-			int eachThreadCount = secondTaskCount < maxTaskCount ? threadCount / secondTaskCount + 1
-					: threadCount / maxTaskCount + 1;
-			for (int i = 0; i < this.separateResultFolders.length; i++) {
-				File firstFile = new File(separateResultFolders[i], "firstSearch");
-				File round1DbFile = new File(firstFile, "firstSearch.fasta");
-
-				File secondFile = new File(separateResultFolders[i], "secondSearch");
-				File round2LibFile = new File(secondFile, "secondSearch.speclib");
-				if (!round2LibFile.exists()) {
-					File tempLibFile = new File(secondFile, "secondSearch.predicted.speclib");
-					if (tempLibFile.exists()) {
-						tempLibFile.renameTo(round2LibFile);
-					} else {
-						diannPar.setThreads(eachThreadCount);
-						diaNNTask.addTask(diannPar, round1DbFile.getAbsolutePath(), round2LibFile.getAbsolutePath(),
-								false);
-					}
-				}
-			}
-
-			// Set up WatchService to monitor second round parquet file generation
-			FileFilter filter2 = new FileFilter() {
-				@Override
-				public boolean accept(File file) {
-					return file.getName().equals("secondSearch.parquet");
-				}
-			};
-
-			// Use the generic WatchServiceLoop from the superclass
-			logger.info("Starting WatchService monitoring for second round iterative search");
-			startWatchServiceLoop(separateResultFolders, "secondSearch", filter2, secondTaskCount, 20, 35);
-
-			if (secondTaskCount < maxTaskCount) {
-				diaNNTask.run(secondTaskCount, secondTaskCount * 12);
-			} else {
-				diaNNTask.run(maxTaskCount, secondTaskCount * 12);
-			}
-
-			for (int i = 0; i < this.separateResultFolders.length; i++) {
-				File secondFile = new File(separateResultFolders[i], "secondSearch");
-				File round2TsvFile = new File(secondFile, "secondSearch.parquet");
-				File round2LibFile = new File(secondFile, "secondSearch.speclib");
-				if (!round2LibFile.exists()) {
-					File tempLibFile = new File(secondFile, "secondSearch.predicted.speclib");
-					if (tempLibFile.exists()) {
-						tempLibFile.renameTo(round2LibFile);
-					} else {
-						logger.error(getTaskName() + ": library file " + round2LibFile + " is not found");
-						logger.error("[{}] library file {} is not found", getTaskName(), round2LibFile);
-						return false;
-					}
-				}
-				if (!round2TsvFile.exists()) {
-					DiaLibSearchPar diaLibSearchPar = new DiaLibSearchPar();
-					diaLibSearchPar.setDiaFiles(new String[] { diaFiles[i] });
-					diaLibSearchPar.setThreadCount(eachThreadCount);
-					diaLibSearchPar.setMbr(false);
-					diaLibSearchPar.setqValue(0.01);
-
-					DiannParameter diannPar = new DiannParameter();
-					diannPar.setThreads(eachThreadCount);
-					diannPar.setMatrices(false);
-					diannPar.setRelaxed_prot_inf(true);
-					diaNNTask.addTask(diannPar, diaLibSearchPar, round2TsvFile.getAbsolutePath(),
-							round2LibFile.getAbsolutePath());
-				}
-			}
-			if (secondTaskCount < maxTaskCount) {
-				diaNNTask.run(secondTaskCount, secondTaskCount * 12);
-			} else {
-				diaNNTask.run(maxTaskCount, secondTaskCount * 12);
-			}
-		}
-
-		// Stop the watch service thread
-		stopWatchServiceThread();
-
-		updateProgress(50, 100);
-
-		logger.info(getTaskName() + ": round 2 library search finished");
-		logger.info("[{}] round 2 library search finished", getTaskName());
-
-		secondTaskCount = 0;
-		for (int i = 0; i < this.separateResultFolders.length; i++) {
-			File secondFile = new File(separateResultFolders[i], "secondSearch");
-			File round2DbFile = new File(secondFile, "secondSearch.fasta");
-			if (!round2DbFile.exists() || round2DbFile.length() == 0) {
-				secondTaskCount++;
-			}
-		}
-
-		if (secondTaskCount > 0) {
-
-			int eachThreadCount = secondTaskCount < maxTaskCount ? threadCount / secondTaskCount + 1
-					: threadCount / maxTaskCount + 1;
-			ExecutorService executor = threadCount > eachThreadCount
-					? Executors.newFixedThreadPool(threadCount / eachThreadCount)
-					: Executors.newSingleThreadExecutor();
-
-			for (int i = 0; i < this.separateResultFolders.length; i++) {
-				final int index = i;
-				File modelFile = new File(separateResultFolders[index], "model");
-				File firstFile = new File(separateResultFolders[index], "firstSearch");
-				File round1TsvFile = new File(firstFile, "firstSearch.parquet");
-				File secondFile = new File(separateResultFolders[index], "secondSearch");
-				File round2DbFile = new File(secondFile, "secondSearch.fasta");
-				File round2TsvFile = new File(secondFile, "secondSearch.parquet");
-				if (!round2DbFile.exists() || round2DbFile.length() == 0) {
-					executor.submit(new Runnable() {
-						@Override
-						public void run() {
-							// TODO Auto-generated method stub
-							HashSet<String> pepSet2 = new HashSet<String>();
-							try {
-								pepSet2.addAll(DiaNNParquetReader.getPeptideSet(round1TsvFile.getAbsolutePath()));
-							} catch (Exception e) {
-								logger.error(getTaskName() + ": error in reading " + round1TsvFile, e);
-								System.err.println(format.format(new Date()) + "\t" + getTaskName()
-										+ ": error in reading " + round1TsvFile);
-							}
-							try {
-								pepSet2.addAll(DiaNNParquetReader.getPeptideSet(round2TsvFile.getAbsolutePath()));
-							} catch (Exception e) {
-								logger.error(getTaskName() + ": error in reading " + round2TsvFile, e);
-								System.err.println(format.format(new Date()) + "\t" + getTaskName()
-										+ ": error in reading " + round2TsvFile);
-							}
-
-							HashSet<String> notUsedSet = new HashSet<String>();
-							for (int i = 0; i < libPathList.size(); i++) {
-								String usedLibIString = libPathList.get(i);
-								File libTsvFile = new File(new File(libFolderFile, usedLibIString),
-										usedLibIString + ".parquet");
-								try {
-									notUsedSet.addAll(DiaNNParquetReader.getPeptideSet(libTsvFile.getAbsolutePath()));
-								} catch (IOException e) {
-									// TODO Auto-generated catch block
-									logger.error(getTaskName() + ": error in reading " + libTsvFile, e);
-									System.err.println(format.format(new Date()) + "\t" + getTaskName()
-											+ ": error in reading " + libTsvFile);
-								}
-							}
-
-							try (BufferedReader firstLibReader = new BufferedReader(
-									new FileReader(new File(firstFile, "firstSearch.fasta")))) {
-
-								String pline = null;
-								while ((pline = firstLibReader.readLine()) != null) {
-									if (!pline.startsWith(">")) {
-										notUsedSet.add(pline);
-									}
-								}
-								firstLibReader.close();
-
-							} catch (Exception e) {
-								logger.error(getTaskName() + ": error in reading fasta file from " + firstFile, e);
-								System.err.println(format.format(new Date()) + "\t" + getTaskName()
-										+ ": error in reading fasta file from " + firstFile);
-							}
-
-							ArrayList<String> modelListI = new ArrayList<String>(modelPathList);
-							if (modelFile.exists()) {
-								File pepRankFile = new File(modelFile, "model_pep_rank");
-								if (pepRankFile.exists()) {
-									modelListI.add(pepRankFile.getAbsolutePath());
-								}
-							}
-
-							String[] modelPath = modelListI.toArray(String[]::new);
-							if (modelPath.length > 0) {
-								// MODELS DETECTED - Using ML model-based approach (Round 2)
-								logger.info(getTaskName() + ": *** USING ML MODELS (ROUND 2) *** - Found "
-										+ modelPath.length + " models for iterative search");
-								logger.info(
-										"[{}] *** USING ML MODELS (ROUND 2) *** - Found {} models for iterative search",
-										getTaskName(), modelPath.length);
-
-								// Log which models are being used
-								for (int m = 0; m < modelPath.length; m++) {
-									logger.info(getTaskName() + ": Model " + (m + 1) + ": " + modelPath[m]);
-									logger.info("[{}] Model {}: {}", getTaskName(), (m + 1), modelPath[m]);
-								}
-
-								HashSet<String> genomeSet2 = getGenomeSet(secondFile, 1.0, pepSet2, 5, false,
-										eachThreadCount);
-								logger.info(getTaskName() + ": generating database for " + separateResultFolders[index]
-										+ " using ML models (Round 2), " + pepSet2.size()
-										+ " peptide sequences were identified, " + genomeSet2.size()
-										+ " MAGs were used in this step, the size of the excluded set is "
-										+ notUsedSet.size());
-								logger.info(
-										"[{}] generating database for {} using ML models (Round 2), {} peptide sequences were identified, {} MAGs were used in this step, the size of the excluded set is {}",
-										getTaskName(), separateResultFolders[index], pepSet2.size(), genomeSet2.size(),
-										notUsedSet.size());
-
-								dbFromModelPeptide(modelPath, genomeSet2, pepSet2, notUsedSet, round2DbFile, 2000000);
-							} else {
-								// NO MODELS DETECTED - Using traditional predicted peptide approach (Round 2)
-								logger.info(getTaskName()
-										+ ": *** NO ML MODELS FOUND (ROUND 2) *** - Using traditional predicted peptide approach for iterative search");
-								logger.info(
-										"[{}] *** NO ML MODELS FOUND (ROUND 2) *** - Using traditional predicted peptide approach for iterative search",
-										getTaskName());
-
-								HashSet<String> genomeSet2 = getGenomeSet(secondFile, 1.0, pepSet2, 5, true,
-										eachThreadCount);
-								logger.info(getTaskName() + ": generating database for " + separateResultFolders[index]
-										+ " using predicted peptides (no models, Round 2), " + pepSet2.size()
-										+ " peptide sequences were identified, " + genomeSet2.size()
-										+ " MAGs were used in this step, the size of the excluded set is "
-										+ notUsedSet.size());
-								logger.info(
-										"[{}] generating database for {} using predicted peptides (no models, Round 2), {} peptide sequences were identified, {} MAGs were used in this step, the size of the excluded set is {}",
-										getTaskName(), separateResultFolders[index], pepSet2.size(), genomeSet2.size(),
-										notUsedSet.size());
-								dbFromPredictedPeptideFunc(predictedFolder, funcFolder, round2DbFile, genomeSet2,
-										pepSet2, notUsedSet, 2000000, false);
-							}
-						}
-					});
-				} else {
-					logger.info(getTaskName() + ": refined database already exists in " + round2DbFile);
-					logger.info("[{}] refined database already exists in {}", getTaskName(), round2DbFile);
-				}
-			}
-
-			try {
-				executor.shutdown();
-				boolean finish = executor.awaitTermination(diaFiles.length, TimeUnit.HOURS);
-				if (finish) {
-					logger.info(getTaskName() + ": analyzing round 2 search result finished");
-					logger.info("[{}] analyzing round 2 search result finished", getTaskName());
-				} else {
-					logger.info(getTaskName() + ": analyzing round 2 search result failed");
-					logger.error("[{}] analyzing round 2 search result failed", getTaskName());
-					return false;
-				}
-
-			} catch (InterruptedException e) {
-				// TODO Auto-generated catch block
-				logger.error(getTaskName() + ": analyzing round 2 search result failed", e);
-				logger.error("[{}] analyzing round 2 search result failed", getTaskName());
-				return false;
-			}
-		}
-
-		logger.info(getTaskName() + ": round 3 library search started");
-		logger.info("[{}] round 3 library search started", getTaskName());
-
-		int thirdTaskCount = 0;
-		for (int i = 0; i < separateResultFolders.length; i++) {
-			File thirdFile = new File(separateResultFolders[i], "thirdSearch");
-			if (!thirdFile.exists()) {
-				thirdFile.mkdirs();
-			}
-
-			File round3TsvFile = new File(thirdFile, "thirdSearch.parquet");
-			if (!round3TsvFile.exists()) {
-				thirdTaskCount++;
-			}
-		}
-
-		if (thirdTaskCount > 0) {
-			int eachThreadCount = thirdTaskCount < maxTaskCount ? threadCount / thirdTaskCount + 1
-					: threadCount / maxTaskCount + 1;
-			for (int i = 0; i < this.separateResultFolders.length; i++) {
-
-				File secondFile = new File(separateResultFolders[i], "secondSearch");
-				File round2DbFile = new File(secondFile, "secondSearch.fasta");
-
-				File thirdFile = new File(separateResultFolders[i], "thirdSearch");
-				File round3LibFile = new File(thirdFile, "thirdSearch.speclib");
-
-				if (!round3LibFile.exists()) {
-					File tempLibFile = new File(thirdFile, "thirdSearch.predicted.speclib");
-					if (tempLibFile.exists()) {
-						tempLibFile.renameTo(round3LibFile);
-					} else {
-						diannPar.setThreads(eachThreadCount);
-						diaNNTask.addTask(diannPar, round2DbFile.getAbsolutePath(), round3LibFile.getAbsolutePath(),
-								false);
-					}
-				}
-			}
-			if (thirdTaskCount < maxTaskCount) {
-				diaNNTask.run(thirdTaskCount, thirdTaskCount * 12);
-			} else {
-				diaNNTask.run(maxTaskCount, thirdTaskCount * 12);
-			}
-
-			for (int i = 0; i < this.separateResultFolders.length; i++) {
-				File thirdFile = new File(separateResultFolders[i], "thirdSearch");
-				File round3TsvFile = new File(thirdFile, "thirdSearch.parquet");
-				File round3LibFile = new File(thirdFile, "thirdSearch.speclib");
-				if (!round3LibFile.exists()) {
-					File tempLibFile = new File(thirdFile, "thirdSearch.predicted.speclib");
-					if (tempLibFile.exists()) {
-						tempLibFile.renameTo(round3LibFile);
-					} else {
-						logger.error(getTaskName() + ": library file " + round3LibFile + " is not found");
-						logger.error("[{}] library file {} is not found", getTaskName(), round3LibFile);
-						return false;
-					}
-				}
-
-				if (!round3TsvFile.exists()) {
-
-					DiaLibSearchPar diaLibSearchPar = new DiaLibSearchPar();
-					diaLibSearchPar.setDiaFiles(new String[] { diaFiles[i] });
-					diaLibSearchPar.setThreadCount(eachThreadCount);
-					diaLibSearchPar.setMbr(false);
-					diaLibSearchPar.setqValue(0.01);
-
-					DiannParameter diannPar = new DiannParameter();
-					diannPar.setThreads(eachThreadCount);
-					diannPar.setMatrices(false);
-					diannPar.setRelaxed_prot_inf(true);
-					diaNNTask.addTask(diannPar, diaLibSearchPar, round3TsvFile.getAbsolutePath(),
-							round3LibFile.getAbsolutePath());
-				}
-			}
-			if (thirdTaskCount < maxTaskCount) {
-				diaNNTask.run(thirdTaskCount, thirdTaskCount * 12);
-			} else {
-				diaNNTask.run(maxTaskCount, thirdTaskCount * 12);
-			}
-		}
-
-		logger.info(getTaskName() + ": round 3 library search finished");
-		logger.info("[{}] round 3 library search finished", getTaskName());
-
-		thirdTaskCount = 0;
-		for (int i = 0; i < this.separateResultFolders.length; i++) {
-			File thirdFile = new File(separateResultFolders[i], "thirdSearch");
-			File round3DbFile = new File(thirdFile, "thirdSearch.fasta");
-			if (!round3DbFile.exists() || round3DbFile.length() == 0) {
-				thirdTaskCount++;
-			}
-		}
-
-		if (thirdTaskCount > 0) {
-			int eachThreadCount = thirdTaskCount < maxTaskCount ? threadCount / thirdTaskCount + 1
-					: threadCount / maxTaskCount + 1;
-			ExecutorService executor = threadCount > eachThreadCount
-					? Executors.newFixedThreadPool(threadCount / eachThreadCount)
-					: Executors.newSingleThreadExecutor();
-			for (int i = 0; i < this.separateResultFolders.length; i++) {
-				final int index = i;
-				File modelFile = new File(separateResultFolders[index], "model");
-				File firstFile = new File(separateResultFolders[index], "firstSearch");
-				File secondFile = new File(separateResultFolders[index], "secondSearch");
-				File thirdFile = new File(separateResultFolders[index], "thirdSearch");
-				File round1TsvFile = new File(firstFile, "firstSearch.parquet");
-				File round2TsvFile = new File(secondFile, "secondSearch.parquet");
-				File round3TsvFile = new File(thirdFile, "thirdSearch.parquet");
-				File round3DbFile = new File(thirdFile, "thirdSearch.fasta");
-				if (!round3DbFile.exists() || round3DbFile.length() == 0) {
-					executor.submit(new Runnable() {
-						@Override
-						public void run() {
-							// TODO Auto-generated method stub
-							HashSet<String> pepSet3 = new HashSet<String>();
-							try {
-								pepSet3.addAll(DiaNNParquetReader.getPeptideSet(round1TsvFile.getAbsolutePath()));
-							} catch (Exception e) {
-								logger.error(getTaskName() + ": error in reading " + round1TsvFile, e);
-								System.err.println(format.format(new Date()) + "\t" + getTaskName()
-										+ ": error in reading " + round1TsvFile);
-							}
-							try {
-								pepSet3.addAll(DiaNNParquetReader.getPeptideSet(round2TsvFile.getAbsolutePath()));
-							} catch (Exception e) {
-								logger.error(getTaskName() + ": error in reading " + round2TsvFile, e);
-								System.err.println(format.format(new Date()) + "\t" + getTaskName()
-										+ ": error in reading " + round2TsvFile);
-							}
-							try {
-								pepSet3.addAll(DiaNNParquetReader.getPeptideSet(round3TsvFile.getAbsolutePath()));
-							} catch (Exception e) {
-								logger.error(getTaskName() + ": error in reading " + round3TsvFile, e);
-								System.err.println(format.format(new Date()) + "\t" + getTaskName()
-										+ ": error in reading " + round3TsvFile);
-							}
-
-							HashSet<String> notUsedSet = new HashSet<String>();
-							for (int i = 0; i < libPathList.size(); i++) {
-								String usedLibIString = libPathList.get(i);
-								File libTsvFile = new File(new File(libFolderFile, usedLibIString),
-										usedLibIString + ".parquet");
-								try {
-									notUsedSet.addAll(DiaNNParquetReader.getPeptideSet(libTsvFile.getAbsolutePath()));
-								} catch (IOException e) {
-									// TODO Auto-generated catch block
-									logger.error(getTaskName() + ": error in reading " + libTsvFile, e);
-									System.err.println(format.format(new Date()) + "\t" + getTaskName()
-											+ ": error in reading " + libTsvFile);
-								}
-							}
-
-							try (BufferedReader firstLibReader = new BufferedReader(
-									new FileReader(new File(firstFile, "firstSearch.fasta")))) {
-
-								String pline = null;
-								while ((pline = firstLibReader.readLine()) != null) {
-									if (!pline.startsWith(">")) {
-										notUsedSet.add(pline);
-									}
-								}
-								firstLibReader.close();
-
-							} catch (Exception e) {
-								logger.error(getTaskName() + ": error in reading fasta file from " + firstFile, e);
-								System.err.println(format.format(new Date()) + "\t" + getTaskName()
-										+ ": error in reading fasta file from " + firstFile);
-							}
-
-							try (BufferedReader secondLibReader = new BufferedReader(
-									new FileReader(new File(secondFile, "secondSearch.fasta")))) {
-
-								String pline = null;
-								while ((pline = secondLibReader.readLine()) != null) {
-									if (!pline.startsWith(">")) {
-										notUsedSet.add(pline);
-									}
-								}
-								secondLibReader.close();
-
-							} catch (Exception e) {
-								logger.error(getTaskName() + ": error in reading fasta file from " + firstFile, e);
-								System.err.println(format.format(new Date()) + "\t" + getTaskName()
-										+ ": error in reading fasta file from " + firstFile);
-							}
-
-							ArrayList<String> modelListI = new ArrayList<String>(modelPathList);
-							if (modelFile.exists()) {
-								File pepRankFile = new File(modelFile, "model_pep_rank");
-								if (pepRankFile.exists()) {
-									modelListI.add(pepRankFile.getAbsolutePath());
-								}
-							}
-
-							String[] modelPath = modelListI.toArray(String[]::new);
-							if (modelPath.length > 0) {
-								// MODELS DETECTED - Using ML model-based approach (Round 3)
-								logger.info(getTaskName() + ": *** USING ML MODELS (ROUND 3) *** - Found "
-										+ modelPath.length + " models for iterative search");
-								logger.info(
-										"[{}] *** USING ML MODELS (ROUND 3) *** - Found {} models for iterative search",
-										getTaskName(), modelPath.length);
-
-								// Log which models are being used
-								for (int m = 0; m < modelPath.length; m++) {
-									logger.info(getTaskName() + ": Model " + (m + 1) + ": " + modelPath[m]);
-									logger.info("[{}] Model {}: {}", getTaskName(), (m + 1), modelPath[m]);
-								}
-
-								HashSet<String> genomeSet3 = getGenomeSet(thirdFile, 1.0, pepSet3, 5, false,
-										eachThreadCount);
-								logger.info(getTaskName() + ": generating database for " + separateResultFolders[index]
-										+ " using ML models (Round 3), " + genomeSet3.size()
-										+ " MAGs were used in this step, the size of the excluded set is "
-										+ notUsedSet.size());
-								logger.info(
-										"[{}] generating database for {} using ML models (Round 3), {} peptide sequences were identified, {} MAGs were used in this step, the size of the excluded set is {}",
-										getTaskName(), separateResultFolders[index], pepSet3.size(), genomeSet3.size(),
-										notUsedSet.size());
-								dbFromModelPeptide(modelPath, genomeSet3, pepSet3, notUsedSet, round3DbFile, 2000000);
-							} else {
-								// NO MODELS DETECTED - Using traditional predicted peptide approach (Round 3)
-								logger.info(getTaskName()
-										+ ": *** NO ML MODELS FOUND (ROUND 3) *** - Using traditional predicted peptide approach for iterative search");
-								logger.info(
-										"[{}] *** NO ML MODELS FOUND (ROUND 3) *** - Using traditional predicted peptide approach for iterative search",
-										getTaskName());
-
-								HashSet<String> genomeSet3 = getGenomeSet(thirdFile, 1.0, pepSet3, 5, true,
-										eachThreadCount);
-								logger.info(getTaskName() + ": generating database for " + separateResultFolders[index]
-										+ " using predicted peptides (no models, Round 3), " + genomeSet3.size()
-										+ " MAGs were used in this step, the size of the excluded set is "
-										+ notUsedSet.size());
-								System.out.println(format.format(new Date()) + "\t" + getTaskName()
-										+ ": generating database for " + separateResultFolders[index]
-										+ " using predicted peptides (no models, Round 3), " + genomeSet3.size()
-										+ " MAGs were used in this step, the size of the excluded set is "
-										+ notUsedSet.size());
-								dbFromPredictedPeptideFunc(predictedFolder, funcFolder, round3DbFile, genomeSet3,
-										pepSet3, notUsedSet, 2000000, false);
-							}
-						}
-					});
-				} else {
-					logger.info(getTaskName() + ": refined database already exists in " + round3DbFile);
-					System.out.println(format.format(new Date()) + "\t" + getTaskName()
-							+ ": refined database already exists in " + round3DbFile);
-				}
-			}
-
-			try {
-				executor.shutdown();
-				boolean finish = executor.awaitTermination(diaFiles.length, TimeUnit.HOURS);
-				if (finish) {
-					logger.info(getTaskName() + ": analyzing round 3 search result finished");
-					System.out.println(format.format(new Date()) + "\t" + getTaskName()
-							+ ": analyzing round 3 search result finished");
-				} else {
-					logger.info(getTaskName() + ": analyzing round 3 search result failed");
-					System.out.println(format.format(new Date()) + "\t" + getTaskName()
-							+ ": analyzing round 3 search result failed");
-					return false;
-				}
-
-			} catch (InterruptedException e) {
-				// TODO Auto-generated catch block
-				logger.error(getTaskName() + ": analyzing round 3 search result failed", e);
-				System.out.println(
-						format.format(new Date()) + "\t" + getTaskName() + ": analyzing round 3 search result failed");
-				return false;
-			}
-		}
-		updateProgress(65, 100);
-
-		logger.info(getTaskName() + ": round 4 library search started");
-		logger.info("[{}] round 4 library search started", getTaskName());
-
-		int lastTaskCount = 0;
-		for (int i = 0; i < separateResultFolders.length; i++) {
-			File lastTsvFile = new File(separateResultFolders[i], "lastSearch.parquet");
-			if (!lastTsvFile.exists()) {
-				lastTsvFile = new File(separateResultFolders[i], separateResultFolders[i].getName() + ".parquet");
-				if (!lastTsvFile.exists()) {
-					lastTaskCount++;
-				}
-			}
-		}
-
-		if (lastTaskCount > 0) {
-			int eachThreadCount = lastTaskCount < maxTaskCount ? threadCount / lastTaskCount + 1
-					: threadCount / maxTaskCount + 1;
-
-			for (int i = 0; i < this.separateResultFolders.length; i++) {
-
-				File thirdFile = new File(separateResultFolders[i], "thirdSearch");
-				File round3DbFile = new File(thirdFile, "thirdSearch.fasta");
-
-				File round4LibFile = new File(separateResultFolders[i], "lastSearch.speclib");
-				if (!round4LibFile.exists()) {
-					File tempLibFile = new File(separateResultFolders[i], "lastSearch.predicted.speclib");
-					if (tempLibFile.exists()) {
-						tempLibFile.renameTo(round4LibFile);
-					} else {
-						diannPar.setThreads(eachThreadCount);
-						diaNNTask.addTask(diannPar, round3DbFile.getAbsolutePath(), round4LibFile.getAbsolutePath(),
-								false);
-					}
-				}
-			}
-			if (lastTaskCount < maxTaskCount) {
-				diaNNTask.run(lastTaskCount, lastTaskCount * 12);
-			} else {
-				diaNNTask.run(maxTaskCount, lastTaskCount * 12);
-			}
-
-			for (int i = 0; i < this.separateResultFolders.length; i++) {
-				File round4TsvFile = new File(separateResultFolders[i], "lastSearch.parquet");
-				File round4LibFile = new File(separateResultFolders[i], "lastSearch.speclib");
-				if (!round4LibFile.exists()) {
-					File tempLibFile = new File(separateResultFolders[i], "lastSearch.predicted.speclib");
-					if (tempLibFile.exists()) {
-						tempLibFile.renameTo(round4LibFile);
-					} else {
-						logger.error(getTaskName() + ": library file " + round4LibFile + " is not found");
-						logger.error("[{}] library file {} is not found", getTaskName(), round4LibFile);
-						return false;
-					}
-				}
-
-				if (!round4TsvFile.exists()) {
-
-					DiaLibSearchPar diaLibSearchPar = new DiaLibSearchPar();
-					diaLibSearchPar.setDiaFiles(new String[] { diaFiles[i] });
-					diaLibSearchPar.setThreadCount(eachThreadCount);
-					diaLibSearchPar.setMbr(false);
-					diaLibSearchPar.setqValue(0.01);
-
-					DiannParameter diannPar = new DiannParameter();
-					diannPar.setThreads(eachThreadCount);
-					diannPar.setMatrices(false);
-					diannPar.setRelaxed_prot_inf(true);
-					diaNNTask.addTask(diannPar, diaLibSearchPar, round4TsvFile.getAbsolutePath(),
-							round4LibFile.getAbsolutePath());
-				}
-			}
-			if (lastTaskCount < maxTaskCount) {
-				diaNNTask.run(lastTaskCount, lastTaskCount * 12);
-			} else {
-				diaNNTask.run(maxTaskCount, lastTaskCount * 12);
-			}
-		}
-
-		logger.info(getTaskName() + ": round 4 library search finished");
-		logger.info("[{}] round 4 library search finished", getTaskName());
-
-		updateProgress(80, 100);
-
-		return true;
+		return false;
 	}
 
 	protected String getVersion() {
@@ -2132,6 +1125,7 @@ public class MetaDiaTask extends MetaPilotMagTask {
 		DecimalFormat dfe4 = FormatTool.getDFE4();
 
 		int fileCount = fileSet.size();
+		if (genomeScoreFile != null) {
 		try (PrintWriter writer = new PrintWriter(genomeScoreFile)) {
 			writer.println("Genome\tUnique_peptide_count\tDecoy_peptide_count\tTarget_mean\tDecoy_mean\tCohen's_d"
 					+ "\tMann-Whitney_U\tMann-Whitney U p-value\tCliff's_delta");
@@ -2187,6 +1181,7 @@ public class MetaDiaTask extends MetaPilotMagTask {
 					format.format(new Date()) + "\t" + getTaskName() + ": error in calculating the genome score");
 			return;
 		}
+		}
 
 		String[] genomes = genomeScoreMap.keySet().toArray(String[]::new);
 		Arrays.sort(genomes, Comparator.comparingDouble(genome -> genomeScoreMap.get(genome)[0]));
@@ -2235,6 +1230,7 @@ public class MetaDiaTask extends MetaPilotMagTask {
 			}
 		}
 
+		if (proteinScoreFile != null) {
 		try (PrintWriter writer = new PrintWriter(proteinScoreFile)) {
 			writer.println("Protein\tUnique_PSM_count\tDecoy_peptide_count\tTarget_mean\tDecoy_mean\tCohen's_d"
 					+ "\tMann-Whitney_U\tMann-Whitney U p-value\tCliff's_delta");
@@ -2283,6 +1279,7 @@ public class MetaDiaTask extends MetaPilotMagTask {
 			System.out.println(
 					format.format(new Date()) + "\t" + getTaskName() + ": error in calculating the protein score");
 			return;
+		}
 		}
 
 		String[] proteins = proteinScoreMap.keySet().toArray(String[]::new);
@@ -2460,6 +1457,11 @@ public class MetaDiaTask extends MetaPilotMagTask {
 
 	@SuppressWarnings("unchecked")
 	protected boolean exportReport() {
+		return doExportReportInternal();
+	}
+
+	@SuppressWarnings("unchecked")
+	protected boolean exportReportLegacy() {
 
 		logger.info(getTaskName() + ": protein inference started");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": protein inference started");
@@ -2812,12 +1814,10 @@ public class MetaDiaTask extends MetaPilotMagTask {
 		}
 
 		DiaNNPrecursor[] filteredPPS = genomeFilteredList.toArray(DiaNNPrecursor[]::new);
-		File genomeScoreFile = new File(combinedFile, "genomes_score.tsv");
-		File proteinScoreFile = new File(combinedFile, "proteins_score.tsv");
 
 		HashMap<String, double[]> genomeScoreMap = new HashMap<String, double[]>();
 		HashMap<String, double[]> proteinScoreMap = new HashMap<String, double[]>();
-		calGenomeProteinScore(filteredPPS, genomeScoreMap, proteinScoreMap, genomeScoreFile, proteinScoreFile);
+		calGenomeProteinScore(filteredPPS, genomeScoreMap, proteinScoreMap, null, null);
 
 		HashSet<String> tempPepHashSet = new HashSet<String>();
 		ArrayList<DiaNNPrecursor> finalFilteredList = new ArrayList<DiaNNPrecursor>();
@@ -3509,6 +2509,45 @@ public class MetaDiaTask extends MetaPilotMagTask {
 			taxScoreMaps[i] = new HashMap<String, Double>();
 		}
 
+		// Core/mid/tail from ranked.tsv (same as DDA: prefer combined result)
+		HashMap<String, String> genomeSelectionLabel = new HashMap<>();
+		MetaDiaMarkerTask.ensureCombinedRankedFromPrecursors(this, resultFolderFile);
+		File rankedFile = new File(resultFolderFile, "combined/ranked.tsv");
+		if (!rankedFile.exists()) rankedFile = new File(resultFolderFile, "marker/genome_ranked.tsv");
+		if (!rankedFile.exists()) rankedFile = new File(resultFolderFile, "seed/genome_ranked.tsv");
+		if (rankedFile.exists()) {
+			MetaDiaMarkerTask.readCoreMidTailFromRankedTsv(rankedFile, genomeSelectionLabel, genomeIntensityMap.keySet());
+			MetaPilotMagTask.RankedGenomeSelectionResult rankedAll =
+					MetaPilotMagTask.buildExportSelectionFromRankedTsv(rankedFile, null);
+			int contributingAll = rankedAll.orderedGenomes.size();
+			int labeledWithIntensity = genomeSelectionLabel.size();
+			int coreCount = 0, midCount = 0, tailCount = 0;
+			for (String lbl : genomeSelectionLabel.values()) {
+				if ("core".equals(lbl)) coreCount++;
+				else if ("mid".equals(lbl)) midCount++;
+				else tailCount++;
+			}
+			java.util.HashSet<String> contributingSet = new java.util.HashSet<>(rankedAll.orderedGenomes);
+			java.util.HashSet<String> intensitySet = new java.util.HashSet<>(genomeIntensityMap.keySet());
+			java.util.HashSet<String> inWindowNoIntensity = new java.util.HashSet<>(contributingSet);
+			inWindowNoIntensity.removeAll(intensitySet);
+			java.util.HashSet<String> intensityBeyondWindow = new java.util.HashSet<>(intensitySet);
+			intensityBeyondWindow.removeAll(contributingSet);
+			logger.info("{}: Genome export summary – ranked_window={}, labeled_with_intensity={}, core={}, mid={}, tail={}, window_no_intensity={}, intensity_beyond_window={}",
+					getTaskName(), Integer.valueOf(contributingAll), Integer.valueOf(labeledWithIntensity),
+					Integer.valueOf(coreCount), Integer.valueOf(midCount), Integer.valueOf(tailCount),
+					Integer.valueOf(inWindowNoIntensity.size()), Integer.valueOf(intensityBeyondWindow.size()));
+		}
+		if (rankedFile.exists() && !genomeSelectionLabel.isEmpty()) {
+			ArrayList<String> filteredGenomes = new ArrayList<>();
+			for (String genome : genomes) {
+				if (genomeSelectionLabel.containsKey(genome)) {
+					filteredGenomes.add(genome);
+				}
+			}
+			genomes = filteredGenomes.toArray(new String[0]);
+		}
+
 		File genomeFile = new File(taxFile, "Genome.tsv");
 		PrintWriter genomeWriter = null;
 		try {
@@ -3520,6 +2559,7 @@ public class MetaDiaTask extends MetaPilotMagTask {
 			genomeTitlesb.append("PSM count\t");
 			genomeTitlesb.append("Peptide count\t");
 			genomeTitlesb.append("Razor peptide count\t");
+			genomeTitlesb.append("Selection_label\t");
 			genomeTitlesb.append("GTDB_Name\t");
 			genomeTitlesb.append("GTDB_Rank\t");
 
@@ -3575,6 +2615,8 @@ public class MetaDiaTask extends MetaPilotMagTask {
 					} else {
 						genomeTaxaSb.append("0");
 					}
+
+					genomeTaxaSb.append("\t").append(genomeSelectionLabel.getOrDefault(genomes[i], "tail"));
 
 					for (int j = 1; j < taxaContent.length; j++) {
 						genomeTaxaSb.append("\t").append(taxaContent[j]);
@@ -5802,8 +4844,6 @@ public class MetaDiaTask extends MetaPilotMagTask {
 		logger.info("Workflow parameters:");
 		logger.info("  Result directory: " + metaPar.getResult());
 		logger.info("  Thread count: " + metaPar.getThreadCount());
-		logger.info("  Library search: " + libSearch);
-		logger.info("  Self model search: " + selfModelSearch);
 		if (metadata != null) {
 			String[] rawFiles = metadata.getRawFiles();
 			logger.info("  Raw files count: " + (rawFiles != null ? rawFiles.length : 0));
@@ -5973,1795 +5013,6 @@ public class MetaDiaTask extends MetaPilotMagTask {
 		}
 	}
 
-	@SuppressWarnings("unused")
-	private static void compareTest(String in, String combined) {
-		File firstFolder = new File(in, "firstSearch");
-		File secondFolder = new File(in, "secondSearch");
-		File thirdFolder = new File(in, "thirdSearch");
-
-		HashSet<String> firstPepSet = new HashSet<String>();
-		HashSet<String> firstFindSet = new HashSet<String>();
-
-		compare(firstFolder, firstPepSet, firstFindSet);
-
-		HashSet<String> secondPepSet = new HashSet<String>();
-		HashSet<String> secondFindSet = new HashSet<String>();
-		compare(secondFolder, secondPepSet, secondFindSet);
-
-		HashSet<String> all12Set = new HashSet<String>();
-		all12Set.addAll(firstPepSet);
-		all12Set.addAll(secondPepSet);
-		int common12 = firstPepSet.size() + secondPepSet.size() - all12Set.size();
-		System.out.println("first second\t" + firstPepSet.size() + "\t" + common12 + "\t" + secondPepSet.size());
-
-		HashSet<String> thirdPepSet = new HashSet<String>();
-		HashSet<String> thirdFindSet = new HashSet<String>();
-		compare(thirdFolder, thirdPepSet, thirdFindSet);
-
-		HashSet<String> all23Set = new HashSet<String>();
-		all23Set.addAll(secondPepSet);
-		all23Set.addAll(thirdFindSet);
-		int common23 = secondPepSet.size() + thirdFindSet.size() - all23Set.size();
-		System.out.println("first second\t" + secondPepSet.size() + "\t" + common23 + "\t" + thirdFindSet.size());
-
-		HashSet<String> combinedSet = new HashSet<String>();
-		try (BufferedReader reader = new BufferedReader(new FileReader(combined))) {
-			String pline;
-			while ((pline = reader.readLine()) != null) {
-				if (!pline.startsWith(">")) {
-					combinedSet.add(pline);
-				}
-			}
-			reader.close();
-		} catch (IOException e) {
-
-		}
-
-		HashSet<String> combined1Set = new HashSet<String>();
-		combined1Set.addAll(firstPepSet);
-		combined1Set.addAll(combinedSet);
-		int common1 = firstPepSet.size() + combinedSet.size() - combined1Set.size();
-		System.out.println("first\t" + firstPepSet.size() + "\t" + common1 + "\t" + combined1Set.size());
-
-		HashSet<String> combined2Set = new HashSet<String>();
-		combined2Set.addAll(secondPepSet);
-		combined2Set.addAll(combinedSet);
-		int common2 = secondPepSet.size() + combined1Set.size() - combined2Set.size();
-		System.out.println("second\t" + secondPepSet.size() + "\t" + common2 + "\t" + combined2Set.size());
-
-		HashSet<String> combined3Set = new HashSet<String>();
-		combined3Set.addAll(thirdPepSet);
-		combined3Set.addAll(combinedSet);
-		int common3 = thirdPepSet.size() + combined1Set.size() - combined1Set.size();
-		System.out.println("third\t" + thirdPepSet.size() + "\t" + common3 + "\t" + combined3Set.size());
-
-	}
-
-	private static void compare(File firstFolder, HashSet<String> firstPepSet, HashSet<String> firstFindSet) {
-		DiaNNResultReader firstReader = new DiaNNResultReader(firstFolder.getAbsolutePath(), firstFolder.getName(),
-				"K*,R*");
-		DiaNNPrecursor[] firstPPs = firstReader.getDiaNNPrecursors();
-
-		for (DiaNNPrecursor pp : firstPPs) {
-			firstPepSet.add(pp.getSeqString());
-		}
-
-		File firstFastaFile = new File(firstFolder, firstFolder.getName() + ".fasta");
-
-		try (BufferedReader reader = new BufferedReader(new FileReader(firstFastaFile))) {
-			String pline;
-			while ((pline = reader.readLine()) != null) {
-				if (!pline.startsWith(">")) {
-					firstFindSet.add(pline);
-				}
-			}
-			reader.close();
-		} catch (IOException e) {
-
-		}
-
-		HashSet<String> allSet = new HashSet<String>();
-		allSet.addAll(firstPepSet);
-		allSet.addAll(firstFindSet);
-		int common = firstPepSet.size() + firstFindSet.size() - allSet.size();
-		System.out.println(
-				firstFolder.getName() + "\t" + firstPepSet.size() + "\t" + common + "\t" + firstFindSet.size());
-	}
-
-	@SuppressWarnings("unused")
-	private static void compare2(String pep1, String pep2) {
-		DiaNNResultReader diannReader1 = new DiaNNResultReader(pep1, (new File(pep1)).getName(), "K*,R*");
-		DiaNNPrecursor[] pps1 = diannReader1.getDiaNNPrecursors();
-		HashSet<String> pepSet1 = new HashSet<String>();
-		for (DiaNNPrecursor pp : pps1) {
-			pepSet1.add(pp.getSeqString());
-		}
-
-		DiaNNResultReader diannReader2 = new DiaNNResultReader(pep2, (new File(pep2)).getName(), "K*,R*");
-		DiaNNPrecursor[] pps2 = diannReader2.getDiaNNPrecursors();
-		HashSet<String> pepSet2 = new HashSet<String>();
-		for (DiaNNPrecursor pp : pps2) {
-			pepSet2.add(pp.getSeqString());
-		}
-
-		HashSet<String> allSet = new HashSet<String>();
-		allSet.addAll(pepSet1);
-		allSet.addAll(pepSet2);
-		int common = pepSet1.size() + pepSet2.size() - allSet.size();
-		System.out.println(pepSet1.size() + "\t" + common + "\t" + pepSet2.size());
-
-	}
-
-	@SuppressWarnings("unused")
-	private static void compare3(String fasta1, String fasta2) {
-		HashSet<String> proSet1 = new HashSet<String>();
-		try (BufferedReader frReader = new BufferedReader(new FileReader(fasta1))) {
-			String pline;
-			while ((pline = frReader.readLine()) != null) {
-				if (!pline.startsWith(">")) {
-					proSet1.add(pline);
-				}
-			}
-			frReader.close();
-		} catch (IOException e) {
-
-		}
-
-		HashSet<String> proSet2 = new HashSet<String>();
-		try (BufferedReader frReader = new BufferedReader(new FileReader(fasta2))) {
-			String pline;
-			while ((pline = frReader.readLine()) != null) {
-				if (!pline.startsWith(">")) {
-					proSet2.add(pline);
-				}
-			}
-			frReader.close();
-		} catch (IOException e) {
-
-		}
-
-		HashSet<String> allSet = new HashSet<String>();
-		allSet.addAll(proSet1);
-		allSet.addAll(proSet2);
-		int common = proSet1.size() + proSet2.size() - allSet.size();
-		System.out.println(proSet1.size() + "\t" + common + "\t" + proSet2.size());
-
-		try (PrintWriter writer = new PrintWriter(new File(fasta2 + ".test.fasta"))) {
-			int count = 0;
-			for (String seq : proSet2) {
-				if (!proSet1.contains(seq)) {
-					writer.println(">pro" + count + " pro" + count);
-					writer.println(seq);
-					count++;
-				}
-			}
-
-			System.out.println(count);
-			writer.close();
-		} catch (IOException e) {
-
-		}
-	}
-
-	@SuppressWarnings("unused")
-	private static void greedProtein(HashMap<String, HashSet<String>> pepProMap) {
-		System.out.println("Greed peptide count: " + pepProMap.size());
-		HashSet<String> selectedProteins = new HashSet<>();
-		HashSet<String> selectedGenomes = new HashSet<>();
-		HashSet<String> uncoveredPeptides = new HashSet<>(pepProMap.keySet()); // Start with all peptides
-
-		while (!uncoveredPeptides.isEmpty()) {
-			String bestProtein = null;
-			int maxCoverage = 0;
-
-			// Iterate through all proteins that *could* be relevant (from pepProMap values)
-			HashSet<String> candidateProteins = new HashSet<>();
-			for (HashSet<String> proteins : pepProMap.values()) {
-				candidateProteins.addAll(proteins);
-			}
-
-			for (String protein : candidateProteins) {
-				if (selectedProteins.contains(protein)) {
-					continue; // Skip already selected proteins
-				}
-
-				int currentCoverage = 0;
-				// Check peptides this protein can produce
-				for (Map.Entry<String, HashSet<String>> entry : pepProMap.entrySet()) {
-					String peptide = entry.getKey();
-					HashSet<String> proteinsForPeptide = entry.getValue();
-					if (uncoveredPeptides.contains(peptide) && proteinsForPeptide.contains(protein)) {
-						currentCoverage++;
-					}
-				}
-
-				if (currentCoverage > maxCoverage) {
-					maxCoverage = currentCoverage;
-					bestProtein = protein;
-				}
-			}
-
-			if (bestProtein != null) {
-				selectedProteins.add(bestProtein);
-				String genomeId = bestProtein.split("_")[0]; // Extract genome ID
-				selectedGenomes.add(genomeId);
-
-				// Update uncoveredPeptides
-				HashSet<String> coveredByBestProtein = new HashSet<>();
-				for (Map.Entry<String, HashSet<String>> entry : pepProMap.entrySet()) {
-					String peptide = entry.getKey();
-					HashSet<String> proteinsForPeptide = entry.getValue();
-					if (uncoveredPeptides.contains(peptide) && proteinsForPeptide.contains(bestProtein)) {
-						coveredByBestProtein.add(peptide);
-					}
-				}
-				uncoveredPeptides.removeAll(coveredByBestProtein);
-			} else {
-				// Should not happen in a valid case, but as a safety break to avoid infinite
-				// loop if no protein can cover any more uncovered peptides.
-				break;
-			}
-		}
-
-		System.out.println("Minimal set of Proteins: " + selectedProteins.size());
-		System.out.println("Minimal set of Genomes: " + selectedGenomes.size());
-
-		HashMap<String, HashSet<String>> genomePepMap = new HashMap<String, HashSet<String>>();
-		HashMap<String, HashSet<String>> proteinPepMap = new HashMap<String, HashSet<String>>();
-		for (Map.Entry<String, HashSet<String>> entry : pepProMap.entrySet()) {
-			String peptide = entry.getKey();
-			HashSet<String> proteinsForPeptide = entry.getValue();
-			for (String pro : proteinsForPeptide) {
-				String genome = pro.split("_")[0];
-				if (genomePepMap.containsKey(genome) && proteinPepMap.containsKey(pro)) {
-					if (genomePepMap.containsKey(genome)) {
-						genomePepMap.get(genome).add(peptide);
-					} else {
-						HashSet<String> set = new HashSet<String>();
-						set.add(peptide);
-						genomePepMap.put(genome, set);
-					}
-					if (proteinPepMap.containsKey(pro)) {
-						proteinPepMap.get(pro).add(peptide);
-					} else {
-						HashSet<String> set = new HashSet<String>();
-						set.add(peptide);
-						proteinPepMap.put(pro, set);
-					}
-				}
-			}
-		}
-
-		HashSet<String> remainPepSet = new HashSet<String>();
-		HashSet<String> discardGenomeSet = new HashSet<>();
-		for (Map.Entry<String, HashSet<String>> entry : genomePepMap.entrySet()) {
-			if (entry.getValue().size() < 2) {
-				discardGenomeSet.add(entry.getKey());
-			} else {
-				remainPepSet.addAll(entry.getValue());
-			}
-		}
-		HashSet<String> discardProteinSet = new HashSet<>();
-		for (Map.Entry<String, HashSet<String>> entry : proteinPepMap.entrySet()) {
-			String genome = entry.getKey().split("_")[0];
-			if (discardGenomeSet.contains(genome)) {
-				discardProteinSet.add(entry.getKey());
-			}
-		}
-
-		System.out.println("Minimal set of Proteins: " + (selectedProteins.size() - discardProteinSet.size()));
-		System.out.println("Minimal set of Genomes: " + (selectedGenomes.size() - discardGenomeSet.size()));
-		System.out.println("Remain peptide: " + remainPepSet.size());
-	}
-
-	@SuppressWarnings({ "unused", "unchecked" })
-	private static void getTaxFuncFromPeptide(String in, String dbfile, String defDbPath, MagDbItem magDb)
-			throws Exception {
-		HashMap<String, double[]> pepIntensityMap = new HashMap<String, double[]>();
-		/*
-		 * String[] title = null; try (BufferedReader reader = new BufferedReader(new
-		 * FileReader(in))) { String line = reader.readLine(); String[] cs =
-		 * line.split("\t"); title = new String[cs.length - 1]; System.arraycopy(cs, 1,
-		 * title, 0, title.length); while ((line = reader.readLine()) != null) { cs =
-		 * line.split("\t"); double[] intensity = new double[cs.length - 1]; for (int i
-		 * = 0; i < intensity.length; i++) { if(cs[i+1].equals("NaN")) { intensity[i] =
-		 * 0.0; }else { intensity[i] = Double.parseDouble(cs[i + 1]); } }
-		 * pepIntensityMap.put(cs[0], intensity); } reader.close(); } catch (IOException
-		 * e) {
-		 * 
-		 * }
-		 */
-
-		String[] title = null;
-		try (BufferedReader reader = new BufferedReader(new FileReader(in))) {
-			String line = reader.readLine();
-			String[] cs = line.split("\t");
-			title = new String[] { cs[10] };
-
-			while ((line = reader.readLine()) != null) {
-				cs = line.split("\t");
-				double[] intensity;
-				if (pepIntensityMap.containsKey(cs[6])) {
-					intensity = pepIntensityMap.get(cs[6]);
-//					intensity[0] += Double.parseDouble(cs[10]);
-				} else {
-//					intensity = new double[] { Double.parseDouble(cs[10]) };
-				}
-				pepIntensityMap.put(cs[6], new double[] { 0.0 });
-			}
-			reader.close();
-		} catch (IOException e) {
-
-		}
-
-		if (title == null) {
-			return;
-		}
-		System.out.println("Peptide\t" + pepIntensityMap.size());
-
-		ConcurrentHashMap<String, HashMap<String, HashSet<String>>> genomeProPepMap = new ConcurrentHashMap<String, HashMap<String, HashSet<String>>>();
-		HashSet<String> matchedPepSet = new HashSet<String>();
-		ExecutorService executor = Executors.newFixedThreadPool(12);
-		File predictPepFile = new File(dbfile, "predicted");
-		File[] files = predictPepFile.listFiles();
-		for (File file : files) {
-			executor.execute(() -> {
-				if (file.getName().endsWith(".predicted.tsv")) {
-					try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
-						HashMap<String, HashSet<String>> proPepMap = new HashMap<String, HashSet<String>>();
-						String pline = reader.readLine();
-						while ((pline = reader.readLine()) != null) {
-							String[] cs = pline.split("\t");
-							if (pepIntensityMap.containsKey(cs[1])) {
-								matchedPepSet.add(cs[1]);
-								if (proPepMap.containsKey(cs[0])) {
-									proPepMap.get(cs[0]).add(cs[1]);
-								} else {
-									HashSet<String> pepSet = new HashSet<String>();
-									pepSet.add(cs[1]);
-									proPepMap.put(cs[0], pepSet);
-								}
-							}
-						}
-						if (proPepMap.size() > 0) {
-							String preFileName = file.getName();
-							String genome = preFileName.substring(0, preFileName.length() - ".predicted.tsv".length());
-							genomeProPepMap.put(genome, proPepMap);
-						}
-					} catch (IOException e) {
-
-					}
-				}
-			});
-		}
-
-		executor.shutdown();
-
-		try {
-			if (executor.awaitTermination(1, TimeUnit.HOURS)) {
-
-			} else {
-
-			}
-		} catch (InterruptedException e) {
-
-		}
-		System.out.println("Genome\t" + genomeProPepMap.size());
-		HashMap<String, HashSet<String>> genomePepMap = new HashMap<String, HashSet<String>>();
-		HashMap<String, HashSet<String>> greedProPepMap = new HashMap<String, HashSet<String>>();
-		HashMap<String, HashSet<String>> greedPepProMap = new HashMap<String, HashSet<String>>();
-		for (String genome : genomeProPepMap.keySet()) {
-			HashSet<String> pepSet = new HashSet<String>();
-			HashMap<String, HashSet<String>> proPepMap = genomeProPepMap.get(genome);
-			for (String pro : proPepMap.keySet()) {
-				pepSet.addAll(proPepMap.get(pro));
-
-				HashSet<String> greedPepSet = proPepMap.get(pro);
-				for (String pep : greedPepSet) {
-					if (greedPepProMap.containsKey(pep)) {
-						greedPepProMap.get(pep).add(pro);
-					} else {
-						HashSet<String> greedProSet = new HashSet<String>();
-						greedProSet.add(pro);
-						greedPepProMap.put(pep, greedProSet);
-					}
-				}
-
-				if (greedProPepMap.containsKey(pro)) {
-					greedProPepMap.get(pro).addAll(greedPepSet);
-				} else {
-					HashSet<String> set = new HashSet<String>();
-					set.addAll(greedPepSet);
-					greedProPepMap.put(pro, set);
-				}
-
-			}
-			genomePepMap.put(genome, pepSet);
-		}
-
-//		refineGenomeProteins(genomePepMap, greedPepProMap);
-//		refineGenomeProteins2(greedProPepMap, greedPepProMap);
-//		greedProtein(greedPepProMap);
-
-		if (greedPepProMap.size() > 0) {
-			return;
-		}
-
-		String[] genomes = genomePepMap.keySet().toArray(new String[genomePepMap.size()]);
-		Arrays.sort(genomes, (g1, g2) -> {
-			int s1 = genomePepMap.get(g1).size();
-			int s2 = genomePepMap.get(g2).size();
-			return s2 - s1;
-		});
-
-		for (int iteratorCount = 0; iteratorCount < 5; iteratorCount++) {
-			HashSet<String> totalSet = new HashSet<String>();
-			HashMap<String, Integer> orderMap = new HashMap<String, Integer>();
-			for (int i = 0; i < genomes.length; i++) {
-				int currentSize = totalSet.size();
-				totalSet.addAll(genomePepMap.get(genomes[i]));
-				int increaseSize = totalSet.size() - currentSize;
-				orderMap.put(genomes[i], increaseSize);
-			}
-
-			Arrays.sort(genomes, (g1, g2) -> {
-				return orderMap.get(g2) - orderMap.get(g1);
-			});
-		}
-
-		HashSet<String> genomeSet = new HashSet<String>();
-		HashSet<String> genomePepSet = new HashSet<String>();
-
-		try (PrintWriter writer = new PrintWriter(in + "_razorGenome.tsv")) {
-			writer.println(
-					"Rank\tGenome\tPeptide_count\tTotal_covered_peptide_count\tPercentage\tIncrement\tIncrement ratio");
-			for (int i = 0; i < genomes.length; i++) {
-
-				int currentSize = genomePepSet.size();
-				genomePepSet.addAll(genomePepMap.get(genomes[i]));
-				int add = genomePepSet.size() - currentSize;
-				double additional = ((double) add / (double) matchedPepSet.size());
-
-				double percentage = ((double) genomePepSet.size() / (double) matchedPepSet.size());
-
-				writer.println(i + "\t" + genomes[i] + "\t" + genomePepMap.get(genomes[i]).size() + "\t"
-						+ genomePepSet.size() + "\t" + percentage + "\t" + add + "\t" + additional);
-
-				if (add > 2) {
-					genomeSet.add(genomes[i]);
-				}
-			}
-			writer.close();
-		} catch (IOException e) {
-
-		}
-		System.out.println("Filtered genome\t" + genomeSet.size());
-		HashMap<String, HashSet<String>> proPepMap = new HashMap<String, HashSet<String>>();
-		for (String genome : genomeProPepMap.keySet()) {
-			if (genomeSet.contains(genome)) {
-				proPepMap.putAll(genomeProPepMap.get(genome));
-			}
-		}
-
-		String[] proteins = proPepMap.keySet().toArray(new String[proPepMap.size()]);
-		Arrays.sort(proteins, (g1, g2) -> {
-			int s1 = proPepMap.get(g1).size();
-			int s2 = proPepMap.get(g2).size();
-			return s2 - s1;
-		});
-
-		for (int iteratorCount = 0; iteratorCount < 5; iteratorCount++) {
-			HashSet<String> totalSet = new HashSet<String>();
-			HashMap<String, Integer> orderMap = new HashMap<String, Integer>();
-			for (int i = 0; i < proteins.length; i++) {
-				int currentSize = totalSet.size();
-				totalSet.addAll(proPepMap.get(proteins[i]));
-				int increaseSize = totalSet.size() - currentSize;
-				orderMap.put(proteins[i], increaseSize);
-			}
-
-			Arrays.sort(proteins, (g1, g2) -> {
-				return orderMap.get(g2) - orderMap.get(g1);
-			});
-		}
-
-		HashSet<String> proteinSet = new HashSet<String>();
-		HashSet<String> proteinPepSet = new HashSet<String>();
-
-		try (PrintWriter writer = new PrintWriter(in + "_razorProtein.tsv")) {
-			writer.println(
-					"Rank\tProtein\tPeptide_count\tTotal_covered_peptide_count\tPercentage\tIncrement\tIncrement ratio");
-			for (int i = 0; i < proteins.length; i++) {
-
-				int currentSize = proteinPepSet.size();
-				proteinPepSet.addAll(proPepMap.get(proteins[i]));
-				int add = proteinPepSet.size() - currentSize;
-				double additional = ((double) add / (double) matchedPepSet.size());
-
-				double percentage = ((double) proteinPepSet.size() / (double) matchedPepSet.size());
-
-				writer.println(i + "\t" + proteins[i] + "\t" + proPepMap.get(proteins[i]).size() + "\t"
-						+ proteinPepSet.size() + "\t" + percentage + "\t" + add + "\t" + additional);
-
-				if (add > 0) {
-					proteinSet.add(proteins[i]);
-				}
-			}
-			writer.close();
-		} catch (IOException e) {
-
-		}
-
-		if (proteinSet.size() > 0) {
-			return;
-		}
-
-		HashMap<String, HashSet<String>> pepGenomeMap = new HashMap<String, HashSet<String>>();
-		HashMap<String, HashSet<String>> pepProMap = new HashMap<String, HashSet<String>>();
-		for (String genome : genomeProPepMap.keySet()) {
-			if (genomeSet.contains(genome)) {
-				HashMap<String, HashSet<String>> map = genomeProPepMap.get(genome);
-				for (String pro : map.keySet()) {
-					if (proteinSet.contains(pro)) {
-						HashSet<String> set = map.get(pro);
-						for (String pep : set) {
-							if (pepGenomeMap.containsKey(pep)) {
-								pepGenomeMap.get(pep).add(genome);
-							} else {
-								HashSet<String> gSet = new HashSet<String>();
-								gSet.add(genome);
-								pepGenomeMap.put(pep, gSet);
-							}
-
-							if (pepProMap.containsKey(pep)) {
-								pepProMap.get(pep).add(pro);
-							} else {
-								HashSet<String> pSet = new HashSet<String>();
-								pSet.add(pro);
-								pepProMap.put(pep, pSet);
-							}
-						}
-					}
-				}
-			}
-		}
-
-		DecimalFormat df4 = FormatTool.getDF4();
-		HashMap<String, double[]> genomeIntensityMap = new HashMap<String, double[]>();
-		for (String pep : pepGenomeMap.keySet()) {
-			double[] pepIntensity = pepIntensityMap.get(pep);
-			HashSet<String> gSet = pepGenomeMap.get(pep);
-			for (String genome : gSet) {
-				double[] genomeIntensity;
-				if (genomeIntensityMap.containsKey(genome)) {
-					genomeIntensity = genomeIntensityMap.get(genome);
-				} else {
-					genomeIntensity = new double[pepIntensity.length];
-				}
-				for (int i = 0; i < pepIntensity.length; i++) {
-					genomeIntensity[i] += pepIntensity[i] / ((double) gSet.size());
-				}
-				genomeIntensityMap.put(genome, genomeIntensity);
-			}
-		}
-
-		HashMap<String, double[]> proteinIntensityMap = new HashMap<String, double[]>();
-		for (String pep : pepProMap.keySet()) {
-			double[] pepIntensity = pepIntensityMap.get(pep);
-			HashSet<String> pSet = pepProMap.get(pep);
-			for (String protein : pSet) {
-				double[] proIntensity;
-				if (proteinIntensityMap.containsKey(protein)) {
-					proIntensity = proteinIntensityMap.get(protein);
-				} else {
-					proIntensity = new double[pepIntensity.length];
-				}
-				for (int i = 0; i < pepIntensity.length; i++) {
-					proIntensity[i] += pepIntensity[i] / ((double) pSet.size());
-				}
-				proteinIntensityMap.put(protein, proIntensity);
-			}
-		}
-		PrintWriter proteinWriter = new PrintWriter(in + ".protein.tsv");
-		StringBuilder proteinTitleSb = new StringBuilder();
-		proteinTitleSb.append("Protein");
-		for (String t : title) {
-			proteinTitleSb.append("\t").append(t);
-		}
-		proteinWriter.println(proteinTitleSb);
-		for (String protein : proteinIntensityMap.keySet()) {
-			StringBuilder sb = new StringBuilder();
-			sb.append(protein);
-			double[] intensity = proteinIntensityMap.get(protein);
-			for (int i = 0; i < intensity.length; i++) {
-				sb.append("\t").append(df4.format(intensity[i]));
-			}
-			proteinWriter.println(sb);
-		}
-		proteinWriter.close();
-
-		MagFuncSearcher searcher = new MagFuncSearcher(dbfile, defDbPath, magDb);
-		HashMap<String, String[]> genomeTaxaMap = searcher
-				.matchGenome(genomeIntensityMap.keySet().toArray(String[]::new));
-		System.out.println("Genome taxa\t" + genomeTaxaMap.size());
-
-		TaxonomyRanks[] mainRanks = TaxonomyRanks.getMainRanks();
-		HashMap<String, double[]>[] taxaIntensityMaps = new HashMap[mainRanks.length];
-		for (int i = 0; i < taxaIntensityMaps.length; i++) {
-			taxaIntensityMaps[i] = new HashMap<String, double[]>();
-		}
-
-		HashSet<String> cogSet = new HashSet<String>();
-		HashSet<String> nogSet = new HashSet<String>();
-		HashSet<String> keggSet = new HashSet<String>();
-		HashSet<String> goSet = new HashSet<String>();
-		HashSet<String> ecSet = new HashSet<String>();
-		ArrayList<MetaProteinAnnoMag> mpaList = new ArrayList<MetaProteinAnnoMag>();
-
-		PrintWriter genomeWriter = new PrintWriter(in + ".genome.tsv");
-		StringBuilder genomeTitleSb = new StringBuilder();
-		genomeTitleSb.append("Genome\tGTDB_Name\tGTDB_Rank");
-		for (int i = 0; i < mainRanks.length; i++) {
-			genomeTitleSb.append("\tGTDB_").append(mainRanks[i].getName());
-		}
-		genomeTitleSb.append("NCBI_Name\t");
-		genomeTitleSb.append("NCBI_Rank");
-		for (int i = 0; i < mainRanks.length; i++) {
-			genomeTitleSb.append("\tNCBI_").append(mainRanks[i].getName());
-		}
-		for (String t : title) {
-			genomeTitleSb.append("\t").append(t);
-		}
-		genomeWriter.println(genomeTitleSb);
-
-		for (String genome : genomeIntensityMap.keySet()) {
-			double[] intensity = genomeIntensityMap.get(genome);
-			String[] taxa = genomeTaxaMap.get(genome);
-
-			StringBuilder sb = new StringBuilder();
-			for (int i = 0; i < taxa.length; i++) {
-				sb.append(taxa[i]).append("\t");
-			}
-			for (int i = 0; i < intensity.length; i++) {
-				sb.append(df4.format(intensity[i])).append("\t");
-			}
-			sb.deleteCharAt(sb.length() - 1);
-			genomeWriter.println(sb);
-
-			for (int i = 0; i < taxaIntensityMaps.length; i++) {
-				double[] taxaIntensity;
-				if (taxaIntensityMaps[i].containsKey(taxa[i + 3])) {
-					taxaIntensity = taxaIntensityMaps[i].get(taxa[i + 3]);
-				} else {
-					taxaIntensity = new double[intensity.length];
-				}
-				for (int j = 0; j < intensity.length; j++) {
-					taxaIntensity[j] += intensity[j];
-				}
-				taxaIntensityMaps[i].put(taxa[i + 3], taxaIntensity);
-			}
-
-			File originalDbFolder = new File(dbfile, "original_db");
-			File eggnogFolder = new File(dbfile, "eggNOG");
-			HashMap<String, HashSet<String>> gProPepMap = genomeProPepMap.get(genome);
-			if (gProPepMap != null) {
-				HashMap<String, String> nameMap = new HashMap<String, String>();
-
-				File fastaFile = new File(originalDbFolder, genome + ".faa");
-				if (!fastaFile.exists()) {
-					fastaFile = new File(originalDbFolder, genome + ".1.faa");
-				}
-				if (fastaFile.exists()) {
-					BufferedReader reader = new BufferedReader(new FileReader(fastaFile));
-					String line = null;
-					while ((line = reader.readLine()) != null) {
-						if (line.startsWith(">")) {
-							int id = line.indexOf(" ");
-							String proIdString = line.substring(1, id);
-							String proNameString = line.substring(id + 1);
-
-							if (gProPepMap.containsKey(proIdString)) {
-								nameMap.put(proIdString, proNameString);
-							}
-						}
-					}
-					reader.close();
-				}
-
-				File eggnogFile = null;
-				File[] eggnogFiles = eggnogFolder.listFiles();
-				for (int i = 0; i < eggnogFiles.length; i++) {
-					String name = eggnogFiles[i].getName();
-					if (name.startsWith(genome)) {
-						eggnogFile = eggnogFiles[i];
-					}
-				}
-
-				if (eggnogFile != null && eggnogFile.exists()) {
-					BufferedReader reader = new BufferedReader(new FileReader(eggnogFile));
-					String line = reader.readLine();
-					while ((line = reader.readLine()) != null) {
-						String[] content = line.split("\t");
-						if (gProPepMap.containsKey(content[0]) && proteinIntensityMap.containsKey(content[0])) {
-							String[] cognogs = content[MetaProteinAnnoMag.nogID].split(",");
-							String cogRoot = "";
-							String cogBacteria = "";
-
-							StringBuilder nogSb = new StringBuilder();
-
-							for (int i = 0; i < cognogs.length; i++) {
-								if (cognogs[i].startsWith("COG")) {
-
-									if (cognogs[i].endsWith("root")) {
-										cogRoot = cognogs[i].split("@")[0];
-									} else if (cognogs[i].endsWith("Bacteria")) {
-										cogBacteria = cognogs[i].split("@")[0];
-									}
-								} else {
-									String nog = cognogs[i].split("\\|")[0];
-									nogSb.append(cognogs[i]).append(",");
-									nogSet.add(nog);
-								}
-							}
-
-							String cog = "";
-							if (cogRoot.length() > 0) {
-								if (cogBacteria.length() > 0) {
-									if (cogRoot.equals(cogBacteria)) {
-										cog = cogRoot;
-										cogSet.add(cogRoot);
-									} else {
-										cog = cogRoot + "," + cogBacteria;
-										cogSet.add(cogRoot);
-										cogSet.add(cogBacteria);
-									}
-								} else {
-									cog = cogRoot;
-									cogSet.add(cogRoot);
-								}
-							} else {
-								if (cogBacteria.length() > 0) {
-									cog = cogBacteria;
-									cogSet.add(cogBacteria);
-								}
-							}
-
-							String nog = "";
-							if (nogSb.length() > 0) {
-								nog = nogSb.substring(0, nogSb.length() - 1);
-							}
-
-							String[] gos = content[MetaProteinAnnoMag.goID].split(",");
-							for (int i = 0; i < gos.length; i++) {
-								goSet.add(gos[i]);
-							}
-
-							String[] ecs = content[MetaProteinAnnoMag.ecID].split(",");
-							for (int i = 0; i < ecs.length; i++) {
-								ecSet.add(ecs[i]);
-							}
-
-							String[] keggs = content[MetaProteinAnnoMag.pathwayID].split(",");
-							for (int i = 0; i < keggs.length; i++) {
-								keggSet.add(keggs[i]);
-							}
-							MetaProtein mp = new MetaProtein(content[0], proteinIntensityMap.get(content[0]));
-							MetaProteinAnnoMag mpa = new MetaProteinAnnoMag(mp, content, nameMap.get(content[0]), cog,
-									nog);
-							mpaList.add(mpa);
-						}
-
-					}
-					reader.close();
-				} else {
-					genomeWriter.close();
-					System.out.println("Functional annotation file " + eggnogFile + " was not found.");
-					throw new IOException("Functional annotation file " + eggnogFile + " was not found.");
-				}
-			}
-		}
-		genomeWriter.close();
-
-		PrintWriter taxaWriter = new PrintWriter(in + ".taxa.tsv");
-		StringBuilder taxaTitleSb = new StringBuilder();
-		taxaTitleSb.append("Taxa\tRank");
-		for (String t : title) {
-			taxaTitleSb.append("\t").append(t);
-		}
-		taxaWriter.println(taxaTitleSb);
-		for (int i = 0; i < taxaIntensityMaps.length; i++) {
-			for (String taxon : taxaIntensityMaps[i].keySet()) {
-				if (taxon.length() > 0) {
-					StringBuilder sb = new StringBuilder();
-					sb.append(taxon).append("\t").append(mainRanks[i].getName());
-					double[] intensity = taxaIntensityMaps[i].get(taxon);
-					for (int j = 0; j < intensity.length; j++) {
-						sb.append("\t").append(df4.format(intensity[j]));
-					}
-					taxaWriter.println(sb);
-				}
-			}
-		}
-
-		taxaWriter.close();
-
-		String cogDbName = "cog_20_def_tab";
-		String nogDbName = "nog_e5_og_annotations";
-		String ecDbName = "enzyme";
-		String goDbName = "go_obo";
-		String keggDbName = "kegg_pathway";
-		HashMap<String, String[]> usedCogMap = new HashMap<String, String[]>();
-		HashMap<String, String[]> usedNogMap = new HashMap<String, String[]>();
-		HashMap<String, String> usedKeggMap = new HashMap<String, String>();
-		HashMap<String, GoObo> usedGoMap = new HashMap<String, GoObo>();
-		HashMap<String, EnzymeCommission> usedEcMap = new HashMap<String, EnzymeCommission>();
-
-		Connection defDbConn = DriverManager.getConnection("jdbc:sqlite:" + defDbPath);
-		Statement defDbStmt = defDbConn.createStatement();
-
-		if (cogSet.size() > 0) {
-			StringBuilder cogsb = new StringBuilder();
-			cogsb.append("(");
-			for (String cog : cogSet) {
-				cogsb.append("\"").append(cog).append("\"").append(",");
-			}
-			cogsb.deleteCharAt(cogsb.length() - 1);
-			cogsb.append(")");
-
-			StringBuilder sqlsb = new StringBuilder();
-			sqlsb.append("select * from ").append(cogDbName).append(" where id IN ").append(cogsb);
-
-			ResultSet cogRs = defDbStmt.executeQuery(sqlsb.toString());
-			while (cogRs.next()) {
-				String id = cogRs.getString("id");
-				String category = cogRs.getString("category");
-				String des = cogRs.getString("description");
-
-				usedCogMap.put(id, new String[] { category, des });
-			}
-		}
-
-		if (nogSet.size() > 0) {
-			StringBuilder nogsb = new StringBuilder();
-			nogsb.append("(");
-			for (String nog : nogSet) {
-				nogsb.append("\"").append(nog).append("\"").append(",");
-			}
-			nogsb.deleteCharAt(nogsb.length() - 1);
-			nogsb.append(")");
-
-			StringBuilder sqlsb = new StringBuilder();
-			sqlsb.append("select * from ").append(nogDbName).append(" where id IN ").append(nogsb);
-
-			ResultSet nogRs = defDbStmt.executeQuery(sqlsb.toString());
-			while (nogRs.next()) {
-				String id = nogRs.getString("id");
-				String category = nogRs.getString("category");
-				String des = nogRs.getString("description");
-
-				usedNogMap.put(id, new String[] { category, des });
-			}
-		}
-
-		if (ecSet.size() > 0) {
-			StringBuilder ecsb = new StringBuilder();
-			ecsb.append("(");
-			for (String ec : ecSet) {
-				ecsb.append("\"").append(ec).append("\"").append(",");
-			}
-			ecsb.deleteCharAt(ecsb.length() - 1);
-			ecsb.append(")");
-
-			StringBuilder sqlsb = new StringBuilder();
-			sqlsb.append("select * from ").append(ecDbName).append(" where id IN ").append(ecsb);
-
-			ResultSet ecRs = defDbStmt.executeQuery(sqlsb.toString());
-			while (ecRs.next()) {
-				String id = ecRs.getString("id");
-				String de = ecRs.getString("de");
-				String ca = ecRs.getString("ca");
-				String[] ans = ecRs.getString("an").split(";");
-
-				ArrayList<String> anList = new ArrayList<String>();
-				for (String an : ans) {
-					anList.add(an);
-				}
-				EnzymeCommission ec = new EnzymeCommission(id, de, ca, anList);
-
-				usedEcMap.put(id, ec);
-			}
-		}
-
-		if (goSet.size() > 0) {
-			StringBuilder gosb = new StringBuilder();
-			gosb.append("(");
-			for (String go : goSet) {
-				gosb.append("\"").append(go).append("\"").append(",");
-			}
-			gosb.deleteCharAt(gosb.length() - 1);
-			gosb.append(")");
-
-			StringBuilder sqlsb = new StringBuilder();
-			sqlsb.append("select * from ").append(goDbName).append(" where id IN ").append(gosb);
-
-			ResultSet goRs = defDbStmt.executeQuery(sqlsb.toString());
-			while (goRs.next()) {
-				String id = goRs.getString("id");
-				String name = goRs.getString("name");
-				String namespace = goRs.getString("namespace");
-
-				GoObo goObo = new GoObo(id, name, namespace);
-
-				usedGoMap.put(id, goObo);
-			}
-		}
-
-		if (keggSet.size() > 0) {
-			StringBuilder keggsb = new StringBuilder();
-			keggsb.append("(");
-			for (String kegg : keggSet) {
-				keggsb.append("\"").append(kegg).append("\"").append(",");
-			}
-			keggsb.deleteCharAt(keggsb.length() - 1);
-			keggsb.append(")");
-
-			StringBuilder sqlsb = new StringBuilder();
-			sqlsb.append("select * from ").append(keggDbName).append(" where name IN ").append(keggsb);
-
-			ResultSet keggRs = defDbStmt.executeQuery(sqlsb.toString());
-			while (keggRs.next()) {
-				String name = keggRs.getString("name");
-				String des = keggRs.getString("description");
-
-				usedKeggMap.put(name, des);
-			}
-		}
-
-		defDbStmt.close();
-		defDbConn.close();
-
-		PrintWriter funcWriter = new PrintWriter(in + ".func.tsv");
-
-		StringBuilder funcTitleSb = new StringBuilder();
-		funcTitleSb.append("Protein\t");
-		for (String t : title) {
-			funcTitleSb.append(t).append("\t");
-		}
-
-		funcTitleSb.append("Protein name").append("\t");
-		funcTitleSb.append("Seed ortholog").append("\t");
-		funcTitleSb.append("Description").append("\t");
-
-		funcTitleSb.append("Taxonomy Id").append("\t");
-		funcTitleSb.append("Taxonomy name").append("\t");
-		funcTitleSb.append("Preferred name").append("\t");
-
-		funcTitleSb.append("Gene_Ontology_id").append("\t");
-		funcTitleSb.append("Gene_Ontology_name").append("\t");
-		funcTitleSb.append("Gene_Ontology_namespace").append("\t");
-
-		funcTitleSb.append("EC_id").append("\t");
-		funcTitleSb.append("EC_de").append("\t");
-		funcTitleSb.append("EC_an").append("\t");
-		funcTitleSb.append("EC_ca").append("\t");
-
-		funcTitleSb.append("KEGG_ko").append("\t");
-		funcTitleSb.append("KEGG_Pathway_Entry").append("\t");
-		funcTitleSb.append("KEGG_Pathway_Name").append("\t");
-		funcTitleSb.append("KEGG_Module").append("\t");
-		funcTitleSb.append("KEGG_Reaction").append("\t");
-		funcTitleSb.append("KEGG_rclass").append("\t");
-		funcTitleSb.append("BRITE").append("\t");
-		funcTitleSb.append("KEGG_TC").append("\t");
-		funcTitleSb.append("CAZy").append("\t");
-		funcTitleSb.append("BiGG_Reaction").append("\t");
-
-		funcTitleSb.append("PFAMs").append("\t");
-
-		funcTitleSb.append("COG accession").append("\t");
-		funcTitleSb.append("COG category").append("\t");
-		funcTitleSb.append("COG name").append("\t");
-
-		funcTitleSb.append("NOG accession").append("\t");
-		funcTitleSb.append("NOG category").append("\t");
-		funcTitleSb.append("NOG name");
-
-		funcWriter.println(funcTitleSb);
-
-		for (MetaProteinAnnoMag mpa : mpaList) {
-
-			MetaProtein protein = mpa.getPro();
-			StringBuilder sb = new StringBuilder();
-			String[] funcs = mpa.getFuncArrays(usedCogMap, usedNogMap, usedKeggMap, usedGoMap, usedEcMap);
-			sb.append(protein.getName());
-			for (double intensity : protein.getIntensities()) {
-				sb.append("\t").append(df4.format(intensity));
-			}
-
-			for (int j = 0; j < funcs.length; j++) {
-				sb.append("\t").append(funcs[j]);
-			}
-			funcWriter.println(sb);
-		}
-
-		funcWriter.close();
-
-	}
-
-	@SuppressWarnings({ "unused", "unchecked" })
-	private static void dbFromPredictTest(String dbFile, String parquetFile, String previousDb) throws IOException {
-
-		HashSet<String>[] allPepSet = new HashSet[1];
-		try {
-			allPepSet[0] = DiaNNParquetReader.getPeptideSet(parquetFile);
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-
-		File predictedFolder = new File(dbFile, "predicted");
-		File funcFolder = new File(dbFile, "eggNOG");
-
-		ConcurrentHashMap<String, HashSet<String>> genomePepMap = new ConcurrentHashMap<String, HashSet<String>>();
-		HashSet<String> matchedPepSet = new HashSet<String>();
-		ExecutorService executor = Executors.newFixedThreadPool(12);
-
-		File[] files = predictedFolder.listFiles();
-		for (File file : files) {
-			executor.execute(() -> {
-				if (file.getName().endsWith(".predicted.tsv")) {
-					try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
-						HashSet<String> pepSet = new HashSet<String>();
-						String pline = reader.readLine();
-						while ((pline = reader.readLine()) != null) {
-							String[] cs = pline.split("\t");
-							if (allPepSet[0].contains(cs[1])) {
-								matchedPepSet.add(cs[1]);
-								pepSet.add(cs[1]);
-							}
-						}
-						if (pepSet.size() > 0) {
-							String preFileName = file.getName();
-							String genome = preFileName.substring(0, preFileName.length() - ".predicted.tsv".length());
-							genomePepMap.put(genome, pepSet);
-						}
-					} catch (IOException e) {
-
-					}
-				}
-			});
-		}
-
-		executor.shutdown();
-
-		try {
-			if (executor.awaitTermination(1, TimeUnit.HOURS)) {
-
-			} else {
-
-			}
-		} catch (InterruptedException e) {
-
-		}
-		System.out.println("7675\t" + allPepSet[0].size() + "\t" + matchedPepSet.size());
-
-		String[] genomes = genomePepMap.keySet().toArray(new String[genomePepMap.size()]);
-		Arrays.sort(genomes, (g1, g2) -> {
-			int s1 = genomePepMap.get(g1).size();
-			int s2 = genomePepMap.get(g2).size();
-			return s2 - s1;
-		});
-
-		for (int iteratorCount = 0; iteratorCount < 5; iteratorCount++) {
-			HashSet<String> totalSet = new HashSet<String>();
-			HashMap<String, Integer> orderMap = new HashMap<String, Integer>();
-			for (int i = 0; i < genomes.length; i++) {
-				int currentSize = totalSet.size();
-				totalSet.addAll(genomePepMap.get(genomes[i]));
-				int increaseSize = totalSet.size() - currentSize;
-				orderMap.put(genomes[i], increaseSize);
-			}
-
-			Arrays.sort(genomes, (g1, g2) -> {
-				return orderMap.get(g2) - orderMap.get(g1);
-			});
-		}
-
-		double[] percentage = new double[genomes.length];
-		HashSet<String> genomeSet = new HashSet<String>();
-		HashSet<String> totalSet = new HashSet<String>();
-		int breakPoint1 = -1;
-		int breakPoint2 = -1;
-
-		for (int i = 0; i < genomes.length; i++) {
-
-			int currentSize = totalSet.size();
-			totalSet.addAll(genomePepMap.get(genomes[i]));
-			int add = totalSet.size() - currentSize;
-			double additional = ((double) add / (double) matchedPepSet.size());
-
-			percentage[i] = ((double) totalSet.size() / (double) matchedPepSet.size());
-
-			if (add > 1) {
-				breakPoint1 = i;
-			}
-			if (additional > 0.0002) {
-				breakPoint2 = i;
-			}
-		}
-
-		for (int i = 0; i < genomes.length; i++) {
-			genomeSet.add(genomes[i]);
-			if (percentage[i] >= 1.0) {
-				break;
-			}
-			if (i == breakPoint1 || i == breakPoint2) {
-				break;
-			}
-			if (genomeSet.size() > 240) {
-				break;
-			}
-		}
-		System.out.println("7734 genomeset\t" + genomeSet.size());
-
-		HashSet<String>[] funcSets = new HashSet[11];
-		for (int i = 0; i < funcSets.length; i++) {
-			funcSets[i] = new HashSet<String>();
-		}
-		for (String genome : genomeSet) {
-			File predictedFile = new File(predictedFolder, genome + ".predicted.tsv");
-			HashSet<String> proSet = new HashSet<String>();
-			if (predictedFile.exists()) {
-				try (BufferedReader reader = new BufferedReader(new FileReader(predictedFile))) {
-					String pline = reader.readLine();
-					while ((pline = reader.readLine()) != null) {
-						String[] cs = pline.split("\t");
-						if (matchedPepSet.contains(cs[1])) {
-							proSet.add(cs[0]);
-						}
-					}
-					reader.close();
-				} catch (IOException e) {
-
-				}
-			}
-
-			File funcFile = new File(funcFolder, genome + "_eggNOG.tsv");
-			if (funcFile.exists()) {
-				HashSet<String> nogSet = new HashSet<String>();
-				try (BufferedReader reader = new BufferedReader(new FileReader(funcFile))) {
-					String pline = reader.readLine();
-					String[] title = pline.split("\t");
-					int startId = -1;
-					for (int i = 0; i < title.length; i++) {
-						if (title[i].equals("GOs")) {
-							startId = i;
-							break;
-						}
-					}
-
-					while ((pline = reader.readLine()) != null) {
-						String[] cs = pline.split("\t");
-						if (proSet.contains(cs[0])) {
-							String[] nogs = cs[4].split(",");
-							for (String nog : nogs) {
-								nogSet.add(nog);
-							}
-							/*
-							 * for (int i = startId; i < startId + funcSets.length; i++) { if (i < cs.length
-							 * && !cs[i].equals("-")) { String[] funcs = cs[i].split(","); for (int j = 0; j
-							 * < funcs.length; j++) { funcSets[i - startId].add(funcs[j]); } } }
-							 */
-						}
-					}
-					reader.close();
-				} catch (IOException e) {
-
-				}
-				System.out.println("7825NOG\t" + nogSet.size());
-
-				HashSet<String> proSet2 = new HashSet<String>();
-				HashSet<String> proSet3 = new HashSet<String>();
-				try (BufferedReader reader = new BufferedReader(new FileReader(funcFile))) {
-					String pline = reader.readLine();
-					while ((pline = reader.readLine()) != null) {
-						String[] cs = pline.split("\t");
-						boolean have = false;
-						String[] nogs = cs[4].split(",");
-						for (String nog : nogs) {
-							if (nogSet.contains(nog)) {
-								have = true;
-								break;
-							}
-						}
-						if (have) {
-							proSet2.add(cs[0]);
-						}
-						proSet3.add(cs[0]);
-					}
-					reader.close();
-				} catch (IOException e) {
-
-				}
-
-				System.out.println("7850PRO\t" + proSet.size() + "\t" + proSet2.size() + "\t" + proSet3.size() + "\t"
-						+ ((double) proSet2.size() / (double) proSet3.size()));
-			}
-		}
-		if (genomeSet.size() > 1) {
-			return;
-		}
-
-		HashMap<String, HashSet<String>> genomeProMap = new HashMap<String, HashSet<String>>();
-		for (String genome : genomeSet) {
-			HashSet<String> proSet = new HashSet<String>();
-			File funcFile = new File(funcFolder, genome + "_eggNOG.tsv");
-			try (BufferedReader reader = new BufferedReader(new FileReader(funcFile))) {
-				String pline = reader.readLine();
-				String[] title = pline.split("\t");
-				int startId = -1;
-				for (int j = 0; j < title.length; j++) {
-					if (title[j].equals("GOs")) {
-						startId = j;
-						break;
-					}
-				}
-				L: while ((pline = reader.readLine()) != null) {
-					String[] cs = pline.split("\t");
-					proSet.add(cs[0]);
-					/*
-					 * for (int j = startId; j < startId + funcSets.length; j++) { String[] funcs =
-					 * cs[j].split(","); for (int k = 0; k < funcs.length; k++) { if (funcSets[j -
-					 * startId].contains(funcs[k])) { proSet.add(cs[0]); continue L; } } }
-					 */
-				}
-				reader.close();
-			} catch (IOException e) {
-
-			}
-			if (proSet.size() > 0) {
-				genomeProMap.put(genome, proSet);
-			}
-		}
-
-		for (int i = 0; i < funcSets.length; i++) {
-			System.out.println("7827 func\t" + i + "\t" + funcSets[i].size());
-		}
-		System.out.println("7829 genomemap\t" + genomeProMap.size());
-
-		HashSet<String> previousDbSet = new HashSet<String>();
-		try (BufferedReader reader = new BufferedReader(new FileReader(previousDb))) {
-			String pline = null;
-			while ((pline = reader.readLine()) != null) {
-				String[] cs = pline.split("\t");
-				if (!pline.startsWith(">")) {
-					previousDbSet.add(pline);
-				}
-			}
-			reader.close();
-		} catch (IOException e) {
-
-		}
-
-		HashMap<String, Float> finalPepMap = new HashMap<String, Float>(1000000000);
-		for (String genome : genomeProMap.keySet()) {
-			HashSet<String> proSet = genomeProMap.get(genome);
-			File predictedFile = new File(predictedFolder, genome + ".predicted.tsv");
-			if (predictedFile.exists()) {
-				try (BufferedReader reader = new BufferedReader(new FileReader(predictedFile))) {
-					String pline = reader.readLine();
-					while ((pline = reader.readLine()) != null) {
-						String[] cs = pline.split("\t");
-						if (proSet.contains(cs[0]) && !previousDbSet.contains(cs[1])) {
-							float score = Float.parseFloat(cs[2]);
-							if (score > 0.1) {
-								if (finalPepMap.containsKey(cs[1])) {
-									if (score > finalPepMap.get(cs[1])) {
-										finalPepMap.put(cs[1], score);
-									}
-								} else {
-									finalPepMap.put(cs[1], score);
-								}
-							}
-						}
-					}
-					reader.close();
-				} catch (IOException e) {
-
-				}
-			}
-		}
-		System.out.println("7859 finalPepMap\t" + finalPepMap.size());
-
-		PrintWriter writer = new PrintWriter(parquetFile + ".wideGenome.fasta");
-		int[] detectabilities = new int[101];
-		int count = 0;
-		String[] peps = finalPepMap.keySet().toArray(String[]::new);
-		Arrays.sort(peps, new Comparator<String>() {
-
-			@Override
-			public int compare(String o1, String o2) {
-				// TODO Auto-generated method stub
-				if (finalPepMap.get(o1) > finalPepMap.get(o2))
-					return -1;
-				if (finalPepMap.get(o1) < finalPepMap.get(o2))
-					return 1;
-				return 0;
-			}
-		});
-		for (String pep : peps) {
-//			float score = finalPepMap.get(pep);
-
-//			int id = (int) (score * 100);
-//			for (int i = 0; i <= id; i++) {
-//				detectabilities[i]++;
-//			}
-			if (!allPepSet[0].contains(pep)) {
-				writer.println(">pro" + count + " pro" + count);
-				writer.println(pep);
-				count++;
-			}
-			if (count > 2500000) {
-				break;
-			}
-		}
-		for (String pep : allPepSet[0]) {
-			writer.println(">pro" + count + " pro" + count);
-			writer.println(pep);
-			count++;
-		}
-		writer.close();
-	}
-
-	protected static void dbFromModelPeptideTest3(String[] modelRankFiles, String folder, String libTsvFile,
-			int upperLimit) {
-
-		File genomeFile = new File(new File(folder, "thirdSearch"), "usedMags.tsv");
-		HashSet<String> genomeSet = new HashSet<String>();
-		try (BufferedReader reader = new BufferedReader(new FileReader(genomeFile))) {
-			String pline = reader.readLine();
-			while ((pline = reader.readLine()) != null) {
-				if (pline.length() > 0) {
-					genomeSet.add(pline);
-				}
-			}
-			reader.close();
-		} catch (IOException e) {
-
-		}
-		System.out.println("genomeSet\t" + genomeSet.size());
-
-		HashSet<String> pepSet = new HashSet<String>();
-		File firstParquetFile = new File(new File(folder, "firstSearch"), "firstSearch.parquet");
-		File secondParquetFile = new File(new File(folder, "secondSearch"), "secondSearch.parquet");
-		File thirdParquetFile = new File(new File(folder, "thirdSearch"), "thirdSearch.parquet");
-		try {
-			pepSet.addAll(DiaNNParquetReader.getPeptideSet(firstParquetFile.getAbsolutePath()));
-			pepSet.addAll(DiaNNParquetReader.getPeptideSet(secondParquetFile.getAbsolutePath()));
-			pepSet.addAll(DiaNNParquetReader.getPeptideSet(thirdParquetFile.getAbsolutePath()));
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-		System.out.println("pepSet\t" + pepSet.size());
-
-		File firstFastaFile = new File(new File(folder, "firstSearch"), "firstSearch.fasta");
-		File secondFastaFile = new File(new File(folder, "secondSearch"), "secondSearch.fasta");
-		HashSet<String> excludeSet = new HashSet<String>();
-		HashSet<String> firstSet = new HashSet<String>();
-		try (BufferedReader reader = new BufferedReader(new FileReader(firstFastaFile))) {
-			String pline = null;
-			while ((pline = reader.readLine()) != null) {
-				if (!pline.startsWith(">")) {
-					firstSet.add(pline);
-					excludeSet.add(pline);
-				}
-			}
-			reader.close();
-		} catch (IOException e) {
-
-		}
-		System.out.println("firstSet\t" + firstSet.size());
-
-		HashSet<String> secondSet = new HashSet<String>();
-		try (BufferedReader reader = new BufferedReader(new FileReader(secondFastaFile))) {
-			String pline = null;
-			while ((pline = reader.readLine()) != null) {
-				if (!pline.startsWith(">")) {
-					secondSet.add(pline);
-					excludeSet.add(pline);
-				}
-			}
-			reader.close();
-		} catch (IOException e) {
-
-		}
-		System.out.println("secondSet\t" + secondSet.size());
-
-		HashSet<String> initialLibPepSet = new HashSet<String>();
-		try (BufferedReader reader = new BufferedReader(new FileReader(libTsvFile))) {
-			String pline = reader.readLine();
-			String[] title = pline.split("\t");
-			int seqid = -1;
-			for (int j = 0; j < title.length; j++) {
-				if (title[j].equals("PeptideSequence")) {
-					seqid = j;
-				}
-			}
-			while ((pline = reader.readLine()) != null) {
-				String[] cs = pline.split("\t");
-				initialLibPepSet.add(cs[seqid]);
-			}
-			reader.close();
-		} catch (Exception e) {
-
-		}
-		System.out.println("excludeSet\t" + excludeSet.size());
-		System.out.println("initialLibPepSet\t" + initialLibPepSet.size());
-		excludeSet.retainAll(initialLibPepSet);
-		System.out.println("excludeSet\t" + excludeSet.size());
-
-		firstSet.retainAll(secondSet);
-		excludeSet.addAll(firstSet);
-		System.out.println("firstSet\t" + firstSet.size());
-		System.out.println("excludeSet\t" + excludeSet.size());
-
-		Iterator<String> it = excludeSet.iterator();
-		while (it.hasNext()) {
-			String pep = it.next();
-			if (pepSet.contains(pep)) {
-				it.remove();
-			}
-		}
-		System.out.println("excludeSet\t" + excludeSet.size());
-
-		HashSet<String> newSet = new HashSet<String>();
-		newSet.addAll(excludeSet);
-		newSet.retainAll(pepSet);
-
-		System.out.println("newSet\t" + newSet.size());
-
-		HashSet<String> totalPepSet = new HashSet<String>();
-		totalPepSet.addAll(pepSet);
-
-		for (int i = 0; i < modelRankFiles.length; i++) {
-			File modelRankFile = new File(modelRankFiles[i]);
-			File modelIntensityFile = new File(modelRankFiles[i].replace("_pep_rank.tsv", "_pytorch_predictions.tsv"));
-
-			HashMap<String, Double> pepIntensityMap = new HashMap<String, Double>();
-			HashMap<String, HashSet<String>> pepGenomeMap = new HashMap<String, HashSet<String>>();
-
-			try (BufferedReader reader = new BufferedReader(new FileReader(modelRankFile))) {
-				String pline = reader.readLine();
-				String genome = "";
-				while ((pline = reader.readLine()) != null) {
-					if (pline.startsWith("pro")) {
-						continue;
-					} else {
-						String[] cs = pline.split("\t");
-						genome = cs[0].substring(0, cs[0].indexOf("_"));
-						if (genomeSet.contains(genome)) {
-
-							pepIntensityMap.put(cs[1], 0.0);
-
-							if (pepGenomeMap.containsKey(cs[1])) {
-								pepGenomeMap.get(cs[1]).add(genome);
-							} else {
-								HashSet<String> gset = new HashSet<String>();
-								gset.add(genome);
-								pepGenomeMap.put(cs[1], gset);
-							}
-						}
-					}
-				}
-				reader.close();
-			} catch (IOException e) {
-
-			}
-
-			try (BufferedReader reader = new BufferedReader(new FileReader(modelIntensityFile))) {
-				String line = reader.readLine();
-				while ((line = reader.readLine()) != null) {
-					String[] cs = line.split(",");
-					if (pepIntensityMap.containsKey(cs[1])) {
-						double intensity = Double.parseDouble(cs[2]);
-						if (intensity > pepIntensityMap.get(cs[1])) {
-							pepIntensityMap.put(cs[1], intensity);
-						}
-					}
-				}
-				reader.close();
-			} catch (IOException e) {
-
-			}
-
-			HashMap<String, Double> genomeCountMap = new HashMap<String, Double>();
-			for (String pep : pepGenomeMap.keySet()) {
-				if (pepGenomeMap.containsKey(pep)) {
-					HashSet<String> set = pepGenomeMap.get(pep);
-					double score = 1.0 / (double) set.size();
-					for (String genome : set) {
-						if (genomeCountMap.containsKey(genome)) {
-							genomeCountMap.put(genome, genomeCountMap.get(genome) + score);
-						} else {
-							genomeCountMap.put(genome, score);
-						}
-					}
-				}
-			}
-
-			HashMap<String, Double> pepScoreMap = new HashMap<String, Double>();
-			for (String pep : pepIntensityMap.keySet()) {
-				if (pepGenomeMap.containsKey(pep)) {
-					HashSet<String> set = pepGenomeMap.get(pep);
-					double score = 0;
-
-					for (String genome : set) {
-						score += genomeCountMap.get(genome);
-					}
-
-					score = score / (double) set.size() * pepIntensityMap.get(pep);
-
-					pepScoreMap.put(pep, score);
-				}
-			}
-
-			String[] peps = pepScoreMap.keySet().toArray(String[]::new);
-			Arrays.sort(peps, new Comparator<String>() {
-
-				@Override
-				public int compare(String o1, String o2) {
-					// TODO Auto-generated method stub
-
-					if (pepScoreMap.get(o1) < pepScoreMap.get(o2)) {
-						return 1;
-					}
-					if (pepScoreMap.get(o1) > pepScoreMap.get(o2)) {
-						return -1;
-					}
-
-					return 0;
-				}
-			});
-
-			System.out.println("pepGenomeMap\t" + pepGenomeMap.size());
-			System.out.println("genomeCountMap\t" + genomeCountMap.size());
-			System.out.println("pepScoreMap\t" + pepScoreMap.size());
-			System.out.println("peps\t" + peps.length);
-
-			for (int j = 0; j < peps.length; j++) {
-				if (!excludeSet.contains(peps[j])) {
-					totalPepSet.add(peps[j]);
-					if (totalPepSet.size() > upperLimit) {
-						break;
-					}
-				}
-			}
-		}
-
-		System.out.println("Total peptide set: " + totalPepSet.size());
-	}
-
-	protected static void calGenomeProteinScoreTest(File parquetFile, File genomeScoreFile, File proteinScoreFile) {
-
-		DiaNNParquetReader reader = new DiaNNParquetReader(parquetFile.getAbsolutePath(), "KR");
-		DiaNNPrecursor[] pps = reader.getDiaNNPrecursors(0.01);
-		HashMap<String, double[]> genomeScoreMap = new HashMap<String, double[]>();
-		HashMap<String, double[]> proteinScoreMap = new HashMap<String, double[]>();
-		ArrayList<Double> globalDecoyList = new ArrayList<Double>();
-		HashSet<String> fileSet = new HashSet<>();
-		HashMap<String, ArrayList<Double>> genomeTDMap = new HashMap<String, ArrayList<Double>>();
-
-		L: for (int i = 0; i < pps.length; i++) {
-			double PEPi = pps[i].getPreQuan();
-			if (PEPi == 0) {
-				continue;
-			}
-			fileSet.add(pps[i].getRunString());
-
-			boolean isTarget = true;
-			String genome;
-			String[] proteins = pps[i].getProGroups();
-			if (proteins[0].startsWith(FastaManager.shuffle)) {
-				genome = FastaManager.shuffle + (proteins[0].substring(FastaManager.shuffle.length()).split("_")[0]);
-				isTarget = false;
-			} else {
-				genome = proteins[0].split("_")[0];
-			}
-
-			for (int j = 1; j < proteins.length; j++) {
-				if (!proteins[j].startsWith(genome)) {
-					continue L;
-				}
-			}
-
-			if (!isTarget) {
-				globalDecoyList.add(PEPi);
-			}
-
-			if (genomeTDMap.containsKey(genome)) {
-				genomeTDMap.get(genome).add(PEPi);
-			} else {
-				ArrayList<Double> list = new ArrayList<Double>();
-				list.add(PEPi);
-				genomeTDMap.put(genome, list);
-			}
-		}
-
-		double[] globalDecoys = new double[globalDecoyList.size()];
-		for (int i = 0; i < globalDecoys.length; i++) {
-			globalDecoys[i] = Math.log10(globalDecoyList.get(i));
-		}
-		DescriptiveStatistics decoyStats = new DescriptiveStatistics(globalDecoys);
-		double decoyMean = decoyStats.getMean();
-		double decoySd = decoyStats.getStandardDeviation();
-
-		MannWhitneyUTest mwTest = new MannWhitneyUTest();
-
-		HashSet<String> proset1 = new HashSet<String>();
-		DecimalFormat df4 = FormatTool.getDF4();
-		DecimalFormat dfe4 = FormatTool.getDFE4();
-
-		int fileCount = fileSet.size();
-		try (PrintWriter writer = new PrintWriter(genomeScoreFile)) {
-			writer.println("Genome\tUnique_peptide_count\tDecoy_peptide_count\tTarget_mean\tDecoy_mean\tCohen's_d"
-					+ "\tMann-Whitney_U\tMann-Whitney U p-value\tCliff's_delta");
-			for (String genome : genomeTDMap.keySet()) {
-				ArrayList<Double> targetList = genomeTDMap.get(genome);
-				double[] targetLogInten = new double[targetList.size()];
-				for (int i = 0; i < targetLogInten.length; i++) {
-					targetLogInten[i] = Math.log10(targetList.get(i));
-				}
-
-				double[] usedLogInten;
-				if (targetLogInten.length > fileCount) {
-					Arrays.sort(targetLogInten);
-
-					usedLogInten = new double[fileCount];
-					for (int i = 0; i < fileCount; i++) {
-						usedLogInten[i] = targetLogInten[targetLogInten.length - 1 - i];
-					}
-				} else {
-					usedLogInten = targetLogInten;
-				}
-
-				if (usedLogInten.length > 0) {
-					DescriptiveStatistics stats1 = new DescriptiveStatistics(usedLogInten);
-					double mean1 = stats1.getMean();
-					double sd1 = stats1.getStandardDeviation();
-					double pooledSD = Math
-							.sqrt(((stats1.getN() - 1) * sd1 * sd1 + (decoyStats.getN() - 1) * decoySd * decoySd)
-									/ (stats1.getN() + decoyStats.getN() - 2));
-					double cohensD = (mean1 - decoyMean) / pooledSD;
-					double mwU = mwTest.mannWhitneyU(usedLogInten, globalDecoys);
-					double mwPValue = mwTest.mannWhitneyUTest(usedLogInten, globalDecoys); // p-value
-					System.out.println("8325\t" + genome + "\t" + usedLogInten.length + "\t" + mean1 + "\t" + sd1 + "\t"
-							+ mwPValue);
-					if (mean1 > decoyMean) {
-						writer.println(genome + "\t" + targetLogInten.length + "\t" + globalDecoys.length + "\t"
-								+ df4.format(mean1) + "\t" + df4.format(decoyMean) + "\t" + df4.format(cohensD) + "\t"
-								+ df4.format(mwU) + "\t" + dfe4.format(mwPValue) + "\t"
-								+ df4.format(MathTool.calculateCliffsDelta(usedLogInten, globalDecoys)));
-
-						if (mwPValue < 0.01) {
-							genomeScoreMap.put(genome, new double[] { mwPValue, 0.0 });
-						}
-					}
-				}
-			}
-			writer.close();
-		} catch (Exception e) {
-
-		}
-
-		String[] genomes = genomeScoreMap.keySet().toArray(String[]::new);
-		Arrays.sort(genomes, Comparator.comparingDouble(genome -> genomeScoreMap.get(genome)[0]));
-		int[] genomeTDCount = new int[2];
-		for (String genome : genomes) {
-			if (genome.startsWith(FastaManager.shuffle)) {
-				genomeTDCount[0]++;
-			} else {
-				genomeTDCount[1]++;
-			}
-			double ratio = genomeTDCount[1] == 0 ? 1.0 : (double) genomeTDCount[0] / (double) genomeTDCount[1];
-			if (ratio < 0.05) {
-				genomeScoreMap.get(genome)[1] = ratio;
-			} else {
-				genomeScoreMap.remove(genome);
-			}
-		}
-
-		HashMap<String, ArrayList<Double>> proteinTDMap = new HashMap<String, ArrayList<Double>>();
-		for (int i = 0; i < pps.length; i++) {
-			double PEPi = pps[i].getPreQuan();
-			if (PEPi == 0) {
-				continue;
-			}
-
-			String[] proteins = pps[i].getProGroups();
-			for (int j = 0; j < proteins.length; j++) {
-				String genome;
-				if (proteins[j].startsWith(FastaManager.shuffle)) {
-					genome = FastaManager.shuffle
-							+ (proteins[j].substring(FastaManager.shuffle.length()).split("_")[0]);
-
-				} else {
-					genome = proteins[j].split("_")[0];
-				}
-
-				if (genomeScoreMap.containsKey(genome)) {
-					if (proteinTDMap.containsKey(proteins[j])) {
-						proteinTDMap.get(proteins[j]).add(PEPi);
-					} else {
-						ArrayList<Double> list = new ArrayList<Double>();
-						list.add(PEPi);
-						proteinTDMap.put(proteins[j], list);
-					}
-				}
-			}
-		}
-
-		try (PrintWriter writer = new PrintWriter(proteinScoreFile)) {
-			writer.println("Protein\tUnique_PSM_count\tDecoy_peptide_count\tTarget_mean\tDecoy_mean\tCohen's_d"
-					+ "\tMann-Whitney_U\tMann-Whitney U p-value\tCliff's_delta");
-			for (String protein : proteinTDMap.keySet()) {
-				ArrayList<Double> targetList = proteinTDMap.get(protein);
-				double[] targetLogInten = new double[targetList.size()];
-				for (int i = 0; i < targetLogInten.length; i++) {
-					targetLogInten[i] = Math.log10(targetList.get(i));
-				}
-
-				double[] usedLogInten;
-				if (targetLogInten.length > fileCount) {
-					Arrays.sort(targetLogInten);
-
-					usedLogInten = new double[fileCount];
-					for (int i = 0; i < fileCount; i++) {
-						usedLogInten[i] = targetLogInten[targetLogInten.length - 1 - i];
-					}
-				} else {
-					usedLogInten = targetLogInten;
-				}
-
-				if (usedLogInten.length > 0) {
-					DescriptiveStatistics stats1 = new DescriptiveStatistics(targetLogInten);
-					double mean1 = stats1.getMean();
-					double sd1 = stats1.getStandardDeviation();
-					double pooledSD = Math
-							.sqrt(((stats1.getN() - 1) * sd1 * sd1 + (decoyStats.getN() - 1) * decoySd * decoySd)
-									/ (stats1.getN() + decoyStats.getN() - 2));
-					double cohensD = (mean1 - decoyMean) / pooledSD;
-					double mwU = mwTest.mannWhitneyU(targetLogInten, globalDecoys);
-					double mwPValue = mwTest.mannWhitneyUTest(targetLogInten, globalDecoys); // p-value
-					proset1.add(protein);
-					if (mean1 > decoyMean) {
-						writer.println(protein + "\t" + targetLogInten.length + "\t" + globalDecoys.length + "\t"
-								+ df4.format(mean1) + "\t" + df4.format(decoyMean) + "\t" + df4.format(cohensD) + "\t"
-								+ df4.format(mwU) + "\t" + dfe4.format(mwPValue) + "\t"
-								+ df4.format(MathTool.calculateCliffsDelta(targetLogInten, globalDecoys)));
-						proteinScoreMap.put(protein, new double[] { mwPValue, 0.0 });
-					}
-				}
-			}
-			writer.close();
-		} catch (Exception e) {
-
-		}
-
-		String[] proteins = proteinScoreMap.keySet().toArray(String[]::new);
-		Arrays.sort(proteins, Comparator.comparingDouble(pro -> proteinScoreMap.get(pro)[0]));
-		int[] proTDCount = new int[2];
-		for (String pro : proteins) {
-			if (pro.startsWith(FastaManager.shuffle)) {
-				proTDCount[0]++;
-			} else {
-				proTDCount[1]++;
-			}
-			double ratio = proTDCount[1] == 0 ? 1.0 : (double) proTDCount[0] / (double) proTDCount[1];
-			proteinScoreMap.get(pro)[1] = ratio;
-		}
-	}
-
 	/**
 	 * Static method to copy first search results from input folder to output folder
 	 * This is useful for testing different workflows where the initial search
@@ -7902,22 +5153,6 @@ public class MetaDiaTask extends MetaPilotMagTask {
 			System.err.println(format.format(new Date()) + "\t" + taskName + ": Error generating bubble chart report: "
 					+ e.getMessage());
 		}
-	}
-
-	public static void main(String[] args) {
-
-		MetaDiaTask.copyFirstSearchResults(
-				new File("Z:\\PRIDE_dataset\\PXD050781\\MetaPilot_DIA_S48\\iterative_analysis_nomodel"),
-				new File("Z:\\PRIDE_dataset\\PXD050781\\MetaPilot_DIA_S48\\self_model_analysis"));
-//		MetaDiaTask.calGenomeProteinScoreTest(new File("Z:\\Kai\\20250425\\MetaLab_it\\mag_result\\combined.parquet"),
-//				new File("Z:\\Kai\\20250425\\MetaLab_it\\mag_result\\gs.tsv"),
-//				new File("Z:\\Kai\\20250425\\MetaLab_it\\mag_result\\ps.tsv"));
-
-		// Example usage of copyFirstSearchResults method:
-		// File inputFolder = new File("path/to/input/results");
-		// File outputFolder = new File("path/to/output/results");
-		// boolean success = copyFirstSearchResults(inputFolder, outputFolder);
-		// System.out.println("Copy successful: " + success);
 	}
 
 	/**
@@ -8287,18 +5522,12 @@ public class MetaDiaTask extends MetaPilotMagTask {
 	}
 
 	/**
-	 * New genome/protein scoring export (S, p_emp, q_value from
-	 * PEP/CScore+intensity, decoy resampling). Uses {@link #getExportFastaFolder()}
-	 * and {@link #getExportParquetFolder()} for paths. Used by MetaDiaMarkerTask
-	 * and MetaDiaSeedDirectTask.
-	 * <p>
-	 * Contract: DIA workflows must set {@link #quan_pep_file} (and, where
-	 * applicable, {@link #getExportParquetFolder()}) in their combine/iden step
-	 * before calling exportReport(). This method prefers the already-set
-	 * {@link #getExportQuanPepFile()} when valid; otherwise derives the path from
-	 * {@link #getExportParquetFolder()}.
+	 * Core DIA export implementation (new genome/protein scoring: S, p_emp,
+	 * q_value from PEP/CScore+intensity, decoy resampling). Uses
+	 * {@link #getExportFastaFolder()} and {@link #getExportParquetFolder()} for
+	 * paths. Called by {@link #exportReport()} and shared across DIA workflows.
 	 */
-	protected boolean exportReportWithNewGenomeScoring() {
+	protected boolean doExportReportInternal() {
 
 		// Prefer workflow-set peptide matrix file when already set and valid
 		if (this.quan_pep_file != null && this.quan_pep_file.exists() && this.quan_pep_file.canRead()) {
@@ -8335,6 +5564,11 @@ public class MetaDiaTask extends MetaPilotMagTask {
 		if (precursorsQ01 == null)
 			precursorsQ01 = new DiaNNPrecursor[0];
 		precursorsQ01 = mapPrecursorsToGenomes(precursorsQ01);
+		if (precursorsQ01 == null)
+			precursorsQ01 = new DiaNNPrecursor[0];
+		// Allow subclasses (e.g. deep marker/seed) to enrich ProGroups (peptide→protein mapping)
+		// from their own intermediate round outputs before scoring.
+		precursorsQ01 = applyPostParquetTransforms(precursorsQ01, parquetFolder);
 		if (precursorsQ01 == null)
 			precursorsQ01 = new DiaNNPrecursor[0];
 		HashMap<String, double[]> genomeScoreMapForFilter = computeGenomeScoreMap(precursorsQ01, true);
@@ -8393,34 +5627,6 @@ public class MetaDiaTask extends MetaPilotMagTask {
 			}
 		}
 		this.diaPp = finalFilteredList.toArray(new DiaNNPrecursor[0]);
-		File genomesScoreFile = new File(resultFolderFile, "genomes_score.tsv");
-		File proteinsScoreFile = new File(resultFolderFile, "proteins_score.tsv");
-		try (PrintWriter gw = new PrintWriter(genomesScoreFile)) {
-			gw.println("Genome\tS\tp_emp\tq_value");
-			String[] gOrder = genomeScoreMap.keySet().toArray(new String[0]);
-			Arrays.sort(gOrder, Comparator.comparingDouble(g -> -genomeScoreMap.get(g)[IDX_S]));
-			for (String g : gOrder) {
-				double[] row = genomeScoreMap.get(g);
-				gw.println(g + "\t" + FormatTool.getDFE4().format(row[IDX_S]) + "\t"
-						+ FormatTool.getDF4().format(row[IDX_P_EMP]) + "\t"
-						+ FormatTool.getDF4().format(row[IDX_Q_VALUE]));
-			}
-		} catch (IOException e) {
-			logger.warn(getTaskName() + ": could not write " + genomesScoreFile.getAbsolutePath(), e);
-		}
-		try (PrintWriter pw = new PrintWriter(proteinsScoreFile)) {
-			pw.println("Protein\tS\tp_emp\tq_value");
-			String[] pOrder = proteinScoreMap.keySet().toArray(new String[0]);
-			Arrays.sort(pOrder, Comparator.comparingDouble(p -> -proteinScoreMap.get(p)[IDX_S]));
-			for (String p : pOrder) {
-				double[] row = proteinScoreMap.get(p);
-				pw.println(p + "\t" + FormatTool.getDFE4().format(row[IDX_S]) + "\t"
-						+ FormatTool.getDF4().format(row[IDX_P_EMP]) + "\t"
-						+ FormatTool.getDF4().format(row[IDX_Q_VALUE]));
-			}
-		} catch (IOException e) {
-			logger.warn(getTaskName() + ": could not write " + proteinsScoreFile.getAbsolutePath(), e);
-		}
 		// Delegate the rest of report generation (peptide report, HTML, etc.) to the
 		// existing export flow in subclasses if they override it; otherwise run the
 		// same downstream as Marker.
@@ -8537,6 +5743,25 @@ public class MetaDiaTask extends MetaPilotMagTask {
 	 */
 	protected DiaNNPrecursor[] mapPrecursorsToGenomes(DiaNNPrecursor[] precursors) {
 		return precursors;
+	}
+
+	/**
+	 * Hook to apply additional transformations to precursors after reading the combined parquet
+	 * and optional genome mapping, but before genome/protein scoring and report export.
+	 * Default: invoke {@link #enrichPrecursorsWithPeptideProteinMapping(DiaNNPrecursor[], File)}
+	 * and return the same array.
+	 */
+	protected DiaNNPrecursor[] applyPostParquetTransforms(DiaNNPrecursor[] precursors, File parquetFolder) {
+		enrichPrecursorsWithPeptideProteinMapping(precursors, parquetFolder);
+		return precursors;
+	}
+
+	/**
+	 * Optional hook for subclasses (e.g. deep marker/seed) to rebuild peptide→protein mapping
+	 * from their own iterative round outputs. Default: no-op.
+	 */
+	protected void enrichPrecursorsWithPeptideProteinMapping(DiaNNPrecursor[] precursors, File parquetFolder) {
+		// default: do nothing
 	}
 
 	/**

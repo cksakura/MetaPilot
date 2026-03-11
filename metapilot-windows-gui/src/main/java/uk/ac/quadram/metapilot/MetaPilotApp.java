@@ -100,7 +100,8 @@ import uk.ac.quadram.metapilot.task.par.ParameterIORegistry;
  * 
  * <h3>Data-Independent Acquisition (DIA) Workflows:</h3>
  * <ul>
- *   <li><strong>DIA Normal:</strong> Standard DIA analysis with spectral libraries</li>
+ *   <li><strong>DIA Marker:</strong> Marker-based genome selection (Focus/Comprehensive)</li>
+ *   <li><strong>DIA Seed:</strong> Seed library workflow (Direct or Iterative)</li>
  *   <li><strong>DIA Target:</strong> Targeted DIA analysis for specific proteins</li>
  *   <li><strong>DIA Real-time:</strong> Real-time DIA analysis and monitoring</li>
  * </ul>
