@@ -1038,11 +1038,21 @@ public class PFindPsmReader {
 	public static void cleanFolder(String in) {
 		File[] files = (new File(in)).listFiles();
 		for (int i = 0; i < files.length; i++) {
-			File hapFile = new File(files[i], "predict_dataset.tsv");
+			File hapFile = new File(files[i], "hap");
 			if (hapFile.exists()) {
-				File spFIle = new File(files[i], "pFind.summary");
-				FileUtils.deleteQuietly(hapFile);
+				File[] subFiles = hapFile.listFiles();
+				for (int j = 0; j < subFiles.length; j++) {
+					if (!subFiles[j].getName().startsWith("marker_genome")) {
+						FileUtils.deleteQuietly(subFiles[j]);
+					}
+					
+					if(subFiles[j].getName().endsWith("fasta")) {
+						FileUtils.deleteQuietly(subFiles[j]);
+					}
+				}
 
+//				FileUtils.deleteQuietly(new File(files[i], "pFind-Filtered.spectra"));
+//				FileUtils.deleteQuietly(new File(files[i], "pFind.spectra"));
 //				File fastaFile = new File(hapFile, files[i].getName() + ".fasta");
 //				FileUtils.deleteQuietly(fastaFile);
 			} else {
@@ -1497,9 +1507,67 @@ public class PFindPsmReader {
 		}
 	}
 	
+	private static void copyCfg(String in, String out) {
+		File[] files = (new File(in)).listFiles();
+		for (int i = 0; i < files.length; i++) {
+			File hapFile = new File(files[i], "hap");
+			if (hapFile.exists()) {
+				File toFile = new File(out, files[i].getName());
+				File toHapFile = new File(toFile, "hap");
+				toHapFile.mkdirs();
+
+				File[] hapFiles = hapFile.listFiles();
+				for (int j = 0; j < hapFiles.length; j++) {
+					String name = hapFiles[j].getName();
+					if (name.startsWith("pFind")) {
+						try {
+							FileUtils.copyFile(hapFiles[j], new File(toHapFile, name));
+						} catch (IOException e) {
+							// TODO Auto-generated catch block
+							e.printStackTrace();
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	private static void sihumixTest(String in) {
+		try {
+			HashSet<String> set = new HashSet<String>();
+			BufferedReader reader = new BufferedReader(new FileReader(in));
+			String line = reader.readLine();
+			String[] title = line.split("\t");
+			int msms = -1;
+			for (int i = 0; i < title.length; i++) {
+				if (title[i].equals("MS/MS count S03")) {
+//				if (title[i].equals("PS_SIHUMIx_S08")) {
+					msms = i;
+				}
+			}
+			while ((line = reader.readLine()) != null) {
+				String[] cs = line.split("\t");
+				if(!cs[msms].equals("0")) {
+//					String seq = cs[1].replaceAll("I", "L");
+					set.add(cs[1]);
+				}
+			}
+			reader.close();
+
+			System.out.println(set.size());
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
 
 	public static void main(String[] args) {
 		// TODO Auto-generated method stub
+		PFindPsmReader.sihumixTest("C:\\Users\\daz25hak\\Documents\\data\\data\\marker4_focus.tsv");
+//		PFindPsmReader.sihumixTest("C:\\Users\\daz25hak\\Documents\\data\\data\\SIHUMIx_peptide_paperdata.txt");
+//		PFindPsmReader.copyCfg(
+//				"Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DDA\\MetaPilot\\pfind_MAG_search_marker4_comp", 
+//				"Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DDA\\MetaPilot\\pfind_MAG_search");
 //		PFindPsmReader.match300drugPeptide("Z:\\PRIDE_dataset\\PXD056930_300drug\\search\\peptides.txt", 
 //				"Z:\\PRIDE_dataset\\PXD056930_300drug\\search\\mgnify_peptides.txt", 
 //				"C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-gut\\v2.0.2\\predicted");
@@ -1507,7 +1575,7 @@ public class PFindPsmReader {
 //				"Z:\\PRIDE_dataset\\PXD056930_300drug\\selected.tsv", 
 //				"Z:\\PRIDE_dataset\\PXD056930_300drug\\peptides.tsv");
 //		PFindPsmReader.getProCount("Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\pool\\DIA\\MetaPilot\\marker_focus\\marker");
-		PFindPsmReader.cleanFolder("Z:\\PRIDE_dataset\\PXD050781_haonan\\DIA48\\MetaPilot\\deep_comprehensive");
+//		PFindPsmReader.cleanFolder("Z:\\Test\\BellAshley\\MetaPilot\\fragpipe_MAG_search");
 //		PFindPsmReader.getProCount("C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-gut\\v2.0.2\\original_db");
 		String folder = "Z:\\PRIDE_dataset\\PXD012724_rapidAim1\\MetaPilot\\";
 		String file = "\\Leyuan_20170610_V1_ATRV\\hap\\pFind-Filtered.spectra";

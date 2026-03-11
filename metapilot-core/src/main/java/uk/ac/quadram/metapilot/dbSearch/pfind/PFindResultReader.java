@@ -17,6 +17,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 
+import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -2057,7 +2058,78 @@ public class PFindResultReader {
 		}
 	}
 	
+	protected static void batchPrintSelectedGenomes(String in, String workflow) throws IOException {
+		File[] files = (new File(in)).listFiles();
+		System.out.println("Workflow\tRaw file\tRank\tGenome\tReason");
+		for (int i = 0; i < files.length; i++) {
+			if (files[i].isDirectory()) {
+				File hapFile = new File(files[i], "hap");
+				if (hapFile.exists() && hapFile.isDirectory()) {
+					File summaryFile = new File(hapFile, "marker_genome_selected.tsv");
+					if (summaryFile.exists()) {
+						BufferedReader reader = new BufferedReader(new FileReader(summaryFile));
+						String line = null;
+						int rank = 1;
+						while ((line = reader.readLine()) != null) {
+							if (line.startsWith("MGYG")) {
+								String[] cs = line.split("\t");
+								System.out.println(workflow + "\t" + files[i].getName() + "\t" + (rank++) + "\t" + cs[0]
+										+ "\t" + cs[1]);
+							}
+						}
+						reader.close();
+					}
+				}
+			}
+		}
+	}
+
+	protected static void copyHapResult(String in, String out) {
+
+		File[] files = (new File(in)).listFiles();
+		for (int i = 0; i < files.length; i++) {
+			File hapFile = new File(files[i], "hap");
+			if (hapFile.exists() && hapFile.isDirectory()) {
+				File toFile = new File(out, files[i].getName());
+				File toHapFile = new File(toFile, "hap");
+				toHapFile.mkdirs();
+
+				File[] resultFiles = hapFile.listFiles();
+				for (int j = 0; j < resultFiles.length; j++) {
+					String name = resultFiles[j].getName();
+					if (name.startsWith("pFind")) {
+						File copyFile = new File(toHapFile, name);
+						try {
+							FileUtils.copyFile(resultFiles[j], copyFile);
+						} catch (IOException e) {
+							// TODO Auto-generated catch block
+							e.printStackTrace();
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	private static void removeResult(String in) {
+		File[] files = (new File(in)).listFiles();
+		for(int i=0;i<files.length;i++) {
+			File spFile = new File(files[i], "pFind.spectra");
+			FileUtils.deleteQuietly(spFile);
+		}
+	}
+	
+	private static void copyResult(String in, String out) {
+		File[] files = (new File(in)).listFiles();
+		for(int i=0;i<files.length;i++) {
+			File summaryFile = new File(files[i], "final_summary.tsv");
+			File peptideFile = new File(files[i], "final_peptides.tsv");
+			
+		}
+	}
+	
 	public static void main(String[] args) {
+		/*
 		PFindResultReader reader = new PFindResultReader(new File("Z:\\Kai\\Raw_files\\PXD008738\\8mix\\MetaLab_dda\\mag_result\\160822_8Mix_DDA_6ul_01"), 
 				new File("Z:\\Kai\\Raw_files\\PXD008738\\8mix\\MetaLab_dda\\spectra"));
 		try {
@@ -2073,5 +2145,24 @@ public class PFindResultReader {
 		System.out.println(psms.length);
 		
 		reader.extractPSMs();
+		*/
+//		PFindResultReader.removeResult("Z:\\PRIDE_dataset\\PXD023217_campi\\SIHUMIx\\MetaPilot\\pfind_MAG_search");
+//		PFindResultReader.copyHapResult("Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\12mix\\DDA\\MetaPilot\\pfind_MAG_search_core", 
+//				"Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\12mix\\DDA\\MetaPilot\\pfind_MAG_search");
+		/*
+		try {
+			PFindResultReader.batchPrintHapId("Z:\\PRIDE_dataset\\PXD023217_campi\\SIHUMIx\\MetaPilot\\pfind_MAG_search");
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		*/
+		try {
+			PFindResultReader.batchPrintSelectedGenomes(
+					"Z:\\PRIDE_dataset\\PXD023217_campi\\fecal\\MetaPilot\\pfind_MAG_search_marker4_comprehensive", "Marker4_comp");
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 	}
 }

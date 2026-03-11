@@ -25,6 +25,9 @@ public class MarkerGenomeSelector {
 	public static final String KNEE_MODE_FOCUS = "Focus";
 	public static final String KNEE_MODE_COMPREHENSIVE = "Comprehensive";
 
+	/** When marker peptides are less than this fraction of total identified peptides, genome selection uses all peptides (no privilege, no representative, greedy only). */
+	public static final double MARKER_PEPTIDE_RATIO_THRESHOLD = 0.05;
+
 	public enum RepresentativeLevel {
 		GENUS, FAMILY, ORDER, CLASS, PHYLUM
 	}
@@ -39,6 +42,14 @@ public class MarkerGenomeSelector {
 	private static final Pattern GROWTH_PATTERN = Pattern.compile("(?i)\\belongation\\s+factor\\b|\\bef[-\\s]?(tu|g|ts|p|4|1a|2)\\b");
 	private static final Pattern STABILITY_PATTERN = Pattern.compile(
 			"(?i)(aminoacyl[-\\s]?trna|aa[-\\s]?trna|trna)[-\\s]*[^a-zA-Z0-9]{0,2}\\s*(ligase|synthetase)\\b");
+	
+	
+	private static final Pattern HIGH_RES_GENE_PATTERN = Pattern.compile("(?i)^(gyr[ab]|rpo[abc]|dna[eq])$");
+	private static final Pattern GROWTH_GENE_PATTERN = Pattern.compile("(?i)^(tuf|tufa|tufb|tsf|fusa|efp)$");
+	private static final Pattern ANCHOR_GENE_PATTERN = Pattern
+			.compile("(?i)^(rpl[a-z]{1,2}|rps[a-z]{1,2}|rpm[a-z]{1,2})$");
+	private static final Pattern STABILITY_GENE_PATTERN = Pattern.compile(
+			"(?i)^(alaS|argS|asnS|aspS|cysS|glnS|gluS|hisS|ileS|leuS|lysS|proS|serS|thrS|trpS|tyrS|valS|metG|pheS|pheT)$");
 
 	// ----------------------------
 	// Taxonomy handling
@@ -265,6 +276,84 @@ public class MarkerGenomeSelector {
 		MetaPSM[] psms = convertDiaNNPrecursorsToMetaPSM(precursors);
 		selectMarkerGenomesWithKnee(psms, null, null, outputGenomeEvidenceTsv, outputRankedTsv, outputSelectedTsv,
 				maximumSelected, enableAutoRep);
+	}
+
+	/** Result of marker vs total unique peptide counts; used to decide whether to use marker-only or all-peptide genome selection. */
+	public static class MarkerPeptideRatioResult {
+		public final int totalUniquePeptides;
+		public final int markerUniquePeptides;
+		public final double ratio;
+
+		public MarkerPeptideRatioResult(int totalUniquePeptides, int markerUniquePeptides, double ratio) {
+			this.totalUniquePeptides = totalUniquePeptides;
+			this.markerUniquePeptides = markerUniquePeptides;
+			this.ratio = ratio;
+		}
+	}
+
+	/**
+	 * Computes the fraction of identified peptides that map to marker proteins (Marker4).
+	 * Used to decide genome selection mode: if ratio &lt; {@link #MARKER_PEPTIDE_RATIO_THRESHOLD}, use all peptides (greedy only).
+	 *
+	 * @param precursors precursors with protein mappings (e.g. from setProteinInfoFromPredictedTsVs)
+	 * @param markerFasta Marker4.fasta (or null to return ratio 1.0)
+	 * @return total unique peptides, marker unique peptides, and ratio (marker/total); if no precursors or no marker file, ratio is 1.0
+	 */
+	public static MarkerPeptideRatioResult computeMarkerPeptideRatio(List<DiaNNPrecursor> precursors, File markerFasta) {
+		if (precursors == null || precursors.isEmpty()) {
+			return new MarkerPeptideRatioResult(0, 0, 1.0);
+		}
+		Set<String> markerProteinIds = new HashSet<>();
+		if (markerFasta != null && markerFasta.isFile()) {
+			try {
+				Map<String, String> catMap = new MarkerGenomeSelector().loadMarkerProteinCategoriesFromFasta(markerFasta);
+				markerProteinIds.addAll(catMap.keySet());
+				// Also allow proteins that match as baseId (genome_protid)
+				for (String id : new ArrayList<>(catMap.keySet())) {
+					int last = id.lastIndexOf('_');
+					if (last > 0) {
+						markerProteinIds.add(id.substring(0, last));
+					}
+				}
+			} catch (IOException e) {
+				LOGGER.warn("Could not load marker FASTA for ratio: {}", markerFasta, e);
+				return new MarkerPeptideRatioResult(0, 0, 1.0);
+			}
+		}
+		if (markerProteinIds.isEmpty()) {
+			return new MarkerPeptideRatioResult(0, 0, 1.0);
+		}
+		Set<String> allUnique = new HashSet<>();
+		Set<String> markerUnique = new HashSet<>();
+		for (DiaNNPrecursor p : precursors) {
+			if (p == null) continue;
+			String seq = p.getSeqString();
+			if (seq == null || seq.isEmpty()) continue;
+			String[] pros = p.getProGroups();
+			if (pros == null || pros.length == 0) continue;
+			allUnique.add(seq);
+			boolean hasMarker = false;
+			for (String pro : pros) {
+				if (pro == null) continue;
+				String lookupId = pro.startsWith("REV_") ? pro.substring(4) : pro;
+				if (markerProteinIds.contains(lookupId)) {
+					hasMarker = true;
+					break;
+				}
+				int last = lookupId.lastIndexOf('_');
+				if (last > 0 && markerProteinIds.contains(lookupId.substring(0, last))) {
+					hasMarker = true;
+					break;
+				}
+			}
+			if (hasMarker) {
+				markerUnique.add(seq);
+			}
+		}
+		int total = allUnique.size();
+		int marker = markerUnique.size();
+		double ratio = total > 0 ? (double) marker / total : 1.0;
+		return new MarkerPeptideRatioResult(total, marker, ratio);
 	}
 
 	public void selectMarkerGenomesWithKnee(MetaPSM[] psms, File markerFasta, File genomesTaxaTsv,
@@ -1114,10 +1203,28 @@ public class MarkerGenomeSelector {
 			boolean usePrivilegeSpecies, boolean applyHardFilter) {
 
 		// 0) Hard filter (marker4 only)
+		boolean fullCoverageFallback = false;
 		List<GenomeRow> filtered = applyHardFilter
 				? rows.stream().filter(GenomeRow::passesHardFilter).collect(Collectors.toList())
 				: new ArrayList<>(rows);
 		LOGGER.info("Hard filter genomes: {}", filtered.size());
+
+		// Fallback: if hard-filter removes everything, switch to greedy-only selection (no privilege/rep)
+		// and keep selecting until peptide coverage reaches 100%.
+		boolean effectiveUsePrivilegeSpecies = usePrivilegeSpecies;
+		int effectiveMaximumSelected = maximumSelected;
+		if (applyHardFilter && filtered.isEmpty() && rows != null && !rows.isEmpty()) {
+			fullCoverageFallback = true;
+			filtered = new ArrayList<>(rows);
+			effectiveUsePrivilegeSpecies = false;
+			effectiveMaximumSelected = Integer.MAX_VALUE;
+			LOGGER.warn("Hard filter removed all genomes (no genome has Ribosomal+Replication+Elongation evidence). "
+					+ "Falling back to greedy-only full-coverage selection without hard filter.");
+		}
+		// Ensure we can always select at least 1 genome when there is evidence.
+		if (effectiveMaximumSelected < 1) {
+			effectiveMaximumSelected = 1;
+		}
 
 		// Maps for greedy set cover
 		HashMap<String, HashSet<String>> genomeToPeps = new HashMap<>();
@@ -1147,7 +1254,7 @@ public class MarkerGenomeSelector {
 		res.totalPeptides = effectiveTotalPeptides.size();
 
 		HashSet<String> coveredDuringRep = new HashSet<>();
-		if (usePrivilegeSpecies) {
+		if (effectiveUsePrivilegeSpecies) {
 			// 1) Privileged genomes: >=3 unique marker TYPES
 			// Comparator: TotalMarkers desc (for rep selection)
 			Comparator<GenomeRow> UNIQUE_FIRST_REP = (a, b) -> {
@@ -1262,7 +1369,7 @@ public class MarkerGenomeSelector {
 		HashSet<String> remaining = new HashSet<>(genomeToPeps.keySet());
 		remaining.removeAll(res.seedIncluded);
 
-		while (!remaining.isEmpty() && res.seedIncluded.size() + greedyOrder.size() < maximumSelected) {
+		while (!remaining.isEmpty() && res.seedIncluded.size() + greedyOrder.size() < effectiveMaximumSelected) {
 			String best = null;
 			int bestGain = -1;
 			int bestTotalMarkers = -1;
@@ -1298,14 +1405,53 @@ public class MarkerGenomeSelector {
 			remaining.remove(best);
 		}
 
-		// Compute moving-average ratio curve for greedy steps only
-		int totalCount = effectiveTotalPeptides.size();
 		int T = greedyOrder.size();
 		if (T == 0) {
 			res.selected.addAll(res.seedIncluded);
+			// Guarantee: if there is any evidence (filtered not empty), selected is non-empty.
+			if (res.selected.isEmpty() && !filtered.isEmpty()) {
+				GenomeRow best = filtered.stream()
+						.max(Comparator.<GenomeRow>comparingInt(r -> r.allMarkerPeptides == null ? 0 : r.allMarkerPeptides.size())
+								.thenComparingInt(r -> r.totalMarkers)
+								.thenComparingInt(r -> r.totalPsm)
+								.thenComparing(r -> r.genome))
+						.orElse(null);
+				if (best != null) {
+					res.selected.add(best.genome);
+					res.reason.put(best.genome, "FALLBACK_MIN1");
+					res.marginalGain.put(best.genome, best.allMarkerPeptides == null ? 0 : best.allMarkerPeptides.size());
+				}
+			}
+			List<String> leftovers = new ArrayList<>(remaining);
+			Collections.sort(leftovers);
+			for (String g : leftovers) {
+				res.marginalGain.put(g, 0);
+			}
+			res.ranked = new ArrayList<>(greedyOrder);
+			res.ranked.addAll(leftovers);
 			return res;
 		}
 
+		// Fallback (limited identifications): no knee — select all greedy steps until 100% coverage
+		if (fullCoverageFallback) {
+			res.selected.addAll(res.seedIncluded);
+			for (String g : greedyOrder) {
+				res.selected.add(g);
+				res.reason.putIfAbsent(g, "GREEDY_FULL_COVERAGE");
+			}
+			List<String> leftovers = new ArrayList<>(remaining);
+			Collections.sort(leftovers);
+			for (String g : leftovers) {
+				res.marginalGain.put(g, 0);
+			}
+			res.ranked = new ArrayList<>(greedyOrder);
+			res.ranked.addAll(leftovers);
+			LOGGER.info("Full-coverage fallback: selected={} genomes (no knee, 100% coverage)", res.selected.size());
+			return res;
+		}
+
+		// Compute moving-average ratio curve for greedy steps only (knee strategy)
+		int totalCount = effectiveTotalPeptides.size();
 		double[] ratio = new double[T];
 		for (int i = 0; i < T; i++) {
 			int totalCovered = (i < totalCoveredList.size()) ? totalCoveredList.get(i) : totalCount;
@@ -1379,9 +1525,8 @@ public class MarkerGenomeSelector {
 		res.ranked = new ArrayList<>(greedyOrder);
 		res.ranked.addAll(leftovers);
 
-		int selectedStepLog = selectKneeStep(res, kneeStep, T, kneeSelectionMode);
 		LOGGER.info("Greedy (knee) complete: selected={}, mode={}, selectedStep={}, kneeStep={}, greedySteps={}",
-				res.selected.size(), kneeSelectionMode, selectedStepLog, kneeStep, T);
+				res.selected.size(), kneeSelectionMode, selectStep, kneeStep, T);
 
 		return res;
 	}
@@ -1720,6 +1865,8 @@ public class MarkerGenomeSelector {
 		return kneeSelectionMode;
 	}
 
+	private static final String PREDICTED_TSV_SUFFIX = ".predicted.tsv";
+
 	/**
 	 * Sets protein information on precursors from MAG predicted TSV files (peptide→protein mapping).
 	 * User-provided library search parquet does not contain genome/protein info; this method fills
@@ -1732,6 +1879,20 @@ public class MarkerGenomeSelector {
 	 */
 	public static List<DiaNNPrecursor> setProteinInfoFromPredictedTsVs(DiaNNPrecursor[] precursors,
 			File predictedFolder) {
+		return setProteinInfoFromPredictedTsVs(precursors, predictedFolder, null);
+	}
+
+	/**
+	 * Sets protein information on precursors from MAG predicted TSV files, using only genomes in the given set.
+	 * Only files named {@code <genomeId>.predicted.tsv} with {@code genomeId} in {@code genomeSet} are read.
+	 *
+	 * @param precursors      precursors from parquet, may have empty proGroups
+	 * @param predictedFolder MAG database folder containing *.predicted.tsv files
+	 * @param genomeSet       if non-null and non-empty, only TSV files for these genome IDs are used; if null or empty, all *.predicted.tsv files are used
+	 * @return list of precursors that have at least one matching protein; others are skipped
+	 */
+	public static List<DiaNNPrecursor> setProteinInfoFromPredictedTsVs(DiaNNPrecursor[] precursors,
+			File predictedFolder, Set<String> genomeSet) {
 		if (precursors == null || precursors.length == 0 || predictedFolder == null || !predictedFolder.isDirectory()) {
 			return precursors != null && precursors.length > 0
 					? new ArrayList<>(Arrays.asList(precursors))
@@ -1748,22 +1909,30 @@ public class MarkerGenomeSelector {
 		if (files != null && files.length > 0) {
 			ExecutorService executor = Executors.newFixedThreadPool(Math.min(20, files.length));
 			for (File file : files) {
-				if (file.isFile() && file.getName().endsWith(".predicted.tsv")) {
-					executor.execute(() -> {
-						try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
-							reader.readLine(); // header
-							String pline;
-							while ((pline = reader.readLine()) != null) {
-								String[] cs = pline.split("\t");
-								if (cs.length > 1 && pepProMap.containsKey(cs[1])) {
-									pepProMap.get(cs[1]).add(cs[0]);
-								}
-							}
-						} catch (IOException e) {
-							LOGGER.warn("Error reading predicted TSV: {}", file.getAbsolutePath(), e);
-						}
-					});
+				if (!file.isFile() || !file.getName().endsWith(PREDICTED_TSV_SUFFIX)) {
+					continue;
 				}
+				if (genomeSet != null && !genomeSet.isEmpty()) {
+					String genomeId = file.getName().substring(0, file.getName().length() - PREDICTED_TSV_SUFFIX.length());
+					if (!genomeSet.contains(genomeId)) {
+						continue;
+					}
+				}
+				File f = file;
+				executor.execute(() -> {
+					try (BufferedReader reader = new BufferedReader(new FileReader(f))) {
+						reader.readLine(); // header
+						String pline;
+						while ((pline = reader.readLine()) != null) {
+							String[] cs = pline.split("\t");
+							if (cs.length > 1 && pepProMap.containsKey(cs[1])) {
+								pepProMap.get(cs[1]).add(cs[0]);
+							}
+						}
+					} catch (IOException e) {
+						LOGGER.warn("Error reading predicted TSV: {}", f.getAbsolutePath(), e);
+					}
+				});
 			}
 			executor.shutdown();
 			try {
@@ -1782,6 +1951,89 @@ public class MarkerGenomeSelector {
 			if (proSet != null && !proSet.isEmpty()) {
 				pp.setProGroups(proSet.toArray(new String[0]));
 				result.add(pp);
+			}
+		}
+		return result;
+	}
+
+	/**
+	 * Sets protein information on PSMs from MAG predicted TSV files (peptide→protein mapping).
+	 * Predicted TSV format: column 0 = protein ID, column 1 = peptide sequence.
+	 *
+	 * @param psms            PSMs (e.g. from library search), may have empty or null proteins
+	 * @param predictedFolder MAG database folder containing *.predicted.tsv files
+	 * @return list of PSMs that have at least one matching protein (proteins set); others are skipped
+	 */
+	public static List<MetaPSM> setProteinInfoFromPredictedTsVs(MetaPSM[] psms, File predictedFolder) {
+		return setProteinInfoFromPredictedTsVs(psms, predictedFolder, null);
+	}
+
+	/**
+	 * Sets protein information on PSMs from MAG predicted TSV files, using only genomes in the given set.
+	 * Only files named {@code <genomeId>.predicted.tsv} with {@code genomeId} in {@code genomeSet} are read.
+	 *
+	 * @param psms            PSMs, may have empty or null proteins
+	 * @param predictedFolder MAG database folder containing *.predicted.tsv files
+	 * @param genomeSet       if non-null and non-empty, only TSV files for these genome IDs are used; if null or empty, all *.predicted.tsv files are used
+	 * @return list of PSMs that have at least one matching protein; others are skipped
+	 */
+	public static List<MetaPSM> setProteinInfoFromPredictedTsVs(MetaPSM[] psms, File predictedFolder, Set<String> genomeSet) {
+		if (psms == null || psms.length == 0 || predictedFolder == null || !predictedFolder.isDirectory()) {
+			return psms != null && psms.length > 0 ? new ArrayList<>(Arrays.asList(psms)) : new ArrayList<>();
+		}
+		ConcurrentHashMap<String, Set<String>> pepProMap = new ConcurrentHashMap<>();
+		for (MetaPSM psm : psms) {
+			String sequence = psm != null ? psm.getSequence() : null;
+			if (sequence != null && !sequence.isEmpty()) {
+				pepProMap.put(sequence, ConcurrentHashMap.newKeySet());
+			}
+		}
+		File[] files = predictedFolder.listFiles();
+		if (files != null && files.length > 0) {
+			ExecutorService executor = Executors.newFixedThreadPool(Math.min(20, files.length));
+			for (File file : files) {
+				if (!file.isFile() || !file.getName().endsWith(PREDICTED_TSV_SUFFIX)) {
+					continue;
+				}
+				if (genomeSet != null && !genomeSet.isEmpty()) {
+					String genomeId = file.getName().substring(0, file.getName().length() - PREDICTED_TSV_SUFFIX.length());
+					if (!genomeSet.contains(genomeId)) {
+						continue;
+					}
+				}
+				File f = file;
+				executor.execute(() -> {
+					try (BufferedReader reader = new BufferedReader(new FileReader(f))) {
+						reader.readLine(); // header
+						String pline;
+						while ((pline = reader.readLine()) != null) {
+							String[] cs = pline.split("\t");
+							if (cs.length > 1 && pepProMap.containsKey(cs[1])) {
+								pepProMap.get(cs[1]).add(cs[0]);
+							}
+						}
+					} catch (IOException e) {
+						LOGGER.warn("Error reading predicted TSV: {}", f.getAbsolutePath(), e);
+					}
+				});
+			}
+			executor.shutdown();
+			try {
+				executor.awaitTermination(1, TimeUnit.HOURS);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+				LOGGER.warn("Interrupted while reading predicted TSVs");
+			}
+		}
+		ArrayList<MetaPSM> result = new ArrayList<>();
+		for (MetaPSM psm : psms) {
+			if (psm == null) continue;
+			String sequence = psm.getSequence();
+			if (sequence == null || sequence.isEmpty()) continue;
+			Set<String> proSet = pepProMap.get(sequence);
+			if (proSet != null && !proSet.isEmpty()) {
+				psm.setProteins(proSet.toArray(new String[0]));
+				result.add(psm);
 			}
 		}
 		return result;
@@ -1807,7 +2059,7 @@ public class MarkerGenomeSelector {
 				}
 				String[] parts = trimmed.split("\\s+", 2);
 				String proteinId = parts[0];
-				String category = categorize(line.toLowerCase(Locale.ROOT));
+				String category = categorizeMarkerHeader(proteinId, line);
 				if (category != null) {
 					map.put(proteinId, category);
 				}
@@ -1827,7 +2079,17 @@ public class MarkerGenomeSelector {
 		return proteinId;
 	}
 
-	private String categorize(String lineLower) {
+	/**
+	 * Categorizes a marker protein header into one of the 4 categories used by Marker4:
+	 * Ribosomal (Anchor), Replication (HighRes), Elongation (Abundance), Synthetase (Stability).
+	 * Supports both descriptive protein names and gene-name-only FASTA headers.
+	 */
+	public static String categorizeMarkerHeader(String proteinId, String headerLine) {
+		String header = headerLine == null ? "" : headerLine;
+		String lineLower = header.toLowerCase(Locale.ROOT);
+
+		// 1) Protein name-based categorization (descriptive headers)
+		// Uses word boundaries in patterns to avoid partial matches.
 		if (ANCHOR_PATTERN.matcher(lineLower).find()) {
 			return "Ribosomal";
 		}
@@ -1839,6 +2101,40 @@ public class MarkerGenomeSelector {
 		}
 		if (STABILITY_PATTERN.matcher(lineLower).find()) {
 			return "Synthetase";
+		}
+
+		// 2) Gene name-based categorization (headers without protein names)
+		// Use token-level matches to avoid matching substrings inside longer words.
+		ArrayList<String> tokens = new ArrayList<>();
+		if (proteinId != null && !proteinId.isEmpty()) {
+			tokens.add(proteinId);
+		}
+		if (!header.isEmpty()) {
+			String cleaned = header.startsWith(">") ? header.substring(1) : header;
+			String[] ts = cleaned.split("[^A-Za-z0-9]+");
+			for (String t : ts) {
+				if (t != null && !t.isEmpty()) {
+					tokens.add(t);
+				}
+			}
+		}
+
+		for (String t : tokens) {
+			if (t == null || t.isEmpty()) {
+				continue;
+			}
+			if (ANCHOR_GENE_PATTERN.matcher(t).matches()) {
+				return "Ribosomal";
+			}
+			if (HIGH_RES_GENE_PATTERN.matcher(t).matches()) {
+				return "Replication";
+			}
+			if (GROWTH_GENE_PATTERN.matcher(t).matches()) {
+				return "Elongation";
+			}
+			if (STABILITY_GENE_PATTERN.matcher(t).matches()) {
+				return "Synthetase";
+			}
 		}
 		return null;
 	}
@@ -2187,7 +2483,7 @@ public class MarkerGenomeSelector {
 			String line = null;
 			while ((line = reader.readLine()) != null) {
 				if (line.startsWith(">")) {
-					String catalog = categorize(line);
+					String catalog = categorizeMarkerHeader(null, line);
 					writer.println(catalog+"\t"+line.substring(1));
 				}
 			}
@@ -2333,7 +2629,7 @@ public class MarkerGenomeSelector {
 							sb.append(protein).append("\t");
 
 							String proteinName = line.substring(id + 1);
-							String categorize = categorize(proteinName);
+							String categorize = categorizeMarkerHeader(null, proteinName);
 							sb.append(proteinName).append("\t");
 							if (categorize == null) {
 								sb.append("None");
@@ -2403,18 +2699,51 @@ public class MarkerGenomeSelector {
 				(new File(parquetFolder, "marker.parquet")).getAbsolutePath(), "KR");
 
 		MarkerGenomeSelector selector = new MarkerGenomeSelector();
-//		selector.setKneeSelectionMode(KNEE_MODE_COMPREHENSIVE);
-		selector.setKneeSelectionMode(KNEE_MODE_FOCUS);
+		selector.setKneeSelectionMode(KNEE_MODE_COMPREHENSIVE);
+//		selector.setKneeSelectionMode(KNEE_MODE_FOCUS);
 
 		File evidenceTsv = new File(parquetFolder, "genome_score_evidence.tsv");
 		File rankedTsv = new File(parquetFolder, "genome_score_ranked.tsv");
 		File selectedTsv = new File(parquetFolder, "genome_score_selected.tsv");
 
-		selector.selectMarkerGenomesWithKnee(parquetReader.getDiaNNPrecursors(), markerFasta, taxaTsv,
+		selector.selectMarkerGenomesWithKnee(parquetReader.getDiaNNPrecursors(0.01), markerFasta, taxaTsv,
 				evidenceTsv.getAbsolutePath(), rankedTsv.getAbsolutePath(), selectedTsv.getAbsolutePath(), 300, true);
 		
 //		File fastaFile = new File(parquetFolder, "focus.fasta");
 //		selector.writeFasta(selectedTsv.getAbsolutePath(), fastaFile.getAbsolutePath(), dbFilder.getAbsolutePath());
+		
+		File originalFile = new File(parquetFolder, "genome_selected.tsv");
+		if(originalFile.exists()) {
+			HashSet<String> s1 = new HashSet<String>();
+			HashSet<String> s2 = new HashSet<String>();
+			HashSet<String> s3 = new HashSet<String>();
+			try {
+				BufferedReader reader = new BufferedReader(new FileReader(selectedTsv));
+				String line = null;
+				while((line=reader.readLine())!=null) {
+					if(line.startsWith("MGYG")) {
+						String[] cs = line.split("\t");
+						s1.add(cs[0]);
+						s3.add(cs[0]);
+					}
+				}
+				reader.close();
+				
+				reader = new BufferedReader(new FileReader(originalFile));
+				while((line=reader.readLine())!=null) {
+					if(line.startsWith("MGYG")) {
+						String[] cs = line.split("\t");
+						s2.add(cs[0]);
+						s3.add(cs[0]);
+					}
+				}
+				reader.close();
+				System.out.print(s1.size()+"\t"+s2.size()+"\t"+s3.size());
+				
+			}catch(IOException e) {
+				
+			}
+		}
 	}
 	
 	private static void testParquet2(String parquetFolder) {
@@ -2502,10 +2831,10 @@ public class MarkerGenomeSelector {
 		File dbFilder = new File(
 				"C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-gut\\v2.0.2\\original_db");
 
-		MarkerGenomeSelector.testParquet2("Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\pool\\MetaPilot\\focus\\marker");
+		MarkerGenomeSelector.testParquet("Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\12mix\\DIA\\MetaPilot\\marker_comprehensive\\marker");
 		
-		MarkerGenomeSelector selector = new MarkerGenomeSelector();
-		selector.setKneeSelectionMode(KNEE_MODE_COMPREHENSIVE);
+//		MarkerGenomeSelector selector = new MarkerGenomeSelector();
+//		selector.setKneeSelectionMode(KNEE_MODE_COMPREHENSIVE);
 //		selector.writeFasta("Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\pool\\MetaPilot\\focus\\marker\\marker_comp_selected.tsv", 
 //				"Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\pool\\MetaPilot\\focus\\marker\\genome_selected.tsv",
 //				"Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\pool\\MetaPilot\\focus\\marker\\other_combined.fasta", 
@@ -2518,8 +2847,8 @@ public class MarkerGenomeSelector {
 //				"Z:\\PRIDE_dataset\\PXD056930_300drug\\evidence.tsv", "Z:\\PRIDE_dataset\\PXD056930_300drug\\ranked.tsv", 
 //				"Z:\\PRIDE_dataset\\PXD056930_300drug\\selected.tsv",
 //				300, true);
-//		selector.copyFolder("Z:\\PRIDE_dataset\\PXD023217_campi\\MetaPilot\\pfind_MAG_search_marker2_comp", 
-//				"Z:\\PRIDE_dataset\\PXD023217_campi\\MetaPilot\\pfind_MAG_search");
+//		selector.copyFolder("Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\pool\\DDA\\MetaPilot\\pfind_MAG_search_marker4_comprehensive", 
+//				"Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\pool\\DDA\\MetaPilot\\pfind_MAG_search");
 		//"Z:\\PRIDE_dataset\\PXD023217_campi\\SIHUMIx\\MetaPilot\\pfind_MAG_search"
 		//"Z:\\PRIDE_dataset\\PXD023217_campi\\MetaPilot\\pfind_MAG_search"
 		
@@ -2531,7 +2860,7 @@ public class MarkerGenomeSelector {
 //				SagePsmReader reader = new SagePsmReader(new File(resultFolder, "results.sage.tsv"));
 //				System.out.println(folders[i].getName() + "\t" + reader.getPsms().length);
 				
-				PFindPsmReader reader = new PFindPsmReader(new File(resultFolder, "pFind-Filtered.spectra"));
+//				PFindPsmReader reader = new PFindPsmReader(new File(resultFolder, "pFind-Filtered.spectra"));
 				
 //				File newResultFolder = new File(folders[i], "marker4_all");
 //				newResultFolder.mkdir();

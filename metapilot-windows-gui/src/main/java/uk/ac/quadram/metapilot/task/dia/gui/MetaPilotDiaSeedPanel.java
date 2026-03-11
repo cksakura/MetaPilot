@@ -27,12 +27,11 @@ import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.task.dia.par.DiaParameterIO;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
-import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaFocus;
+import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaMarker;
 import uk.ac.quadram.metapilot.task.dia.MetaDiaTask;
 import uk.ac.quadram.metapilot.task.dia.MetaDiaSeedDirectTask;
 import uk.ac.quadram.metapilot.task.dia.MetaDiaSeedIterativeTask;
 import uk.ac.quadram.metapilot.task.dia.MetaDiaDeepComprehensiveTask;
-import uk.ac.quadram.metapilot.task.mag.MarkerGenomeSelector;
 import uk.ac.quadram.metapilot.dbSearch.deepDetect.DeepDetectTask;
 import uk.ac.quadram.metapilot.dbSearch.deepDetect.DeepDetectParameter;
 import org.apache.logging.log4j.LogManager;
@@ -200,7 +199,7 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 				}
 			}
 
-			// Workflow: 0 = Direct search, 1 = Focus search, 2 = Comprehensive search
+			// Workflow: 0 = Direct search, 1 = Focus search, 2 = Comprehensive search, 3 = Deep comprehensive
 			int modeIndex = modeSelectionComboBox != null ? modeSelectionComboBox.getSelectionModel().getSelectedIndex() : 0;
 			boolean librarySearch = (modeIndex == 0); // Direct search only
 			boolean selfModelSearch = false;
@@ -209,6 +208,17 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 
 			MetaParameterDia metaParameterDia = new MetaParameterDia(
 					metaBasePar, selectedMagDb, librarySearch, selfModelSearch, library, useModel, models);
+			
+			// Persist seed workflow mode so CLI can reproduce GUI behaviour
+			if (modeIndex == 0) {
+				metaParameterDia.setSeedMode("DIRECT");
+			} else if (modeIndex == 1) {
+				metaParameterDia.setSeedMode("FOCUS");
+			} else if (modeIndex == 2) {
+				metaParameterDia.setSeedMode("COMPREHENSIVE");
+			} else {
+				metaParameterDia.setSeedMode("DEEP");
+			}
 
 			// Modifications (used for library generation and DIA-NN search)
 			if (mExcisionCheckBox != null) metaParameterDia.setMExcision(mExcisionCheckBox.isSelected());
@@ -265,6 +275,15 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 			libraryPanel = new DiaLibraryPanelNoModel(initialParams, resourceParams, new File("MAGDB_1_0.json"));
 			libraryPanel.setParameterUpdateCallback(() -> updateParameterView());
 			libraryPanel.setParentPanel(this);
+			// Ensure saved library selections are applied even when the panel is created after load
+			try {
+				Object loaded = parameterIO.loadLastUsedParameters();
+				if (loaded instanceof MetaParameterDia) {
+					libraryPanel.updateMetaParameter((MetaParameterDia) loaded);
+				}
+			} catch (Exception e) {
+				LOGGER.debug("Failed to apply saved library selections to library panel: {}", e.getMessage());
+			}
 
 			replaceLibraryPlaceholders();
 		}
@@ -654,8 +673,9 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 				updateParameterView();
 			} else if (newTab == consoleTab) {
 				updateParameterView();
+				// Auto-save without validation or alerts (validation/alert only when user clicks Run)
 				try {
-					MetaParameterDia currentParams = collectParametersFromUI();
+					MetaParameterDia currentParams = collectParametersFromUIForAutoSave();
 					if (currentParams == null) {
 						currentParams = generateMetaParameterDiaForLibraryGeneration();
 					}
@@ -740,13 +760,117 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 		consolePanel.setParameterText(sb.toString());
 
 		if (libraryPanel != null) {
-			MetaParameterDia currentMetaParameter = collectParametersFromUI();
+			// Use lenient collect (no validation/alert) so switching to Parameters tab does not pop up alerts
+			MetaParameterDia currentMetaParameter = collectParametersFromUIForAutoSave();
 			if (currentMetaParameter == null) {
 				currentMetaParameter = generateMetaParameterDiaForLibraryGeneration();
 			}
 			if (currentMetaParameter != null) {
 				libraryPanel.updateMetaParameter(currentMetaParameter);
 			}
+		}
+	}
+
+	/**
+	 * Collect parameters from UI without validation or alerts. Used for auto-save on tab switch
+	 * and for updating the library panel. Validation and alerts only run when user clicks Run.
+	 */
+	private MetaParameterDia collectParametersFromUIForAutoSave() {
+		try {
+			if (ioPanel == null || ioPanel.getExperimentData().isEmpty()) {
+				return null;
+			}
+			String result = ioPanel.getOutputDirectory();
+			if (result == null || result.trim().isEmpty()) {
+				return null;
+			}
+			MagDbItem selectedMagDb = magDatabasePanel != null ? magDatabasePanel.getSelectedMagDatabase() : null;
+			if (selectedMagDb == null) {
+				return null;
+			}
+			MagVersion selectedVersion = magDatabasePanel != null ? magDatabasePanel.getSelectedMagVersion() : null;
+			if (selectedVersion == null) {
+				return null;
+			}
+			selectedMagDb.setUsedVersion(selectedVersion);
+
+			ObservableList<MetaPilotIOPanelFX.ExperimentRow> fileRows = ioPanel.getExperimentData();
+			String[] rawFiles = new String[fileRows.size()];
+			String[] expNames = new String[fileRows.size()];
+			int[] fractions = new int[fileRows.size()];
+			int[] replicates = new int[fileRows.size()];
+			for (int i = 0; i < fileRows.size(); i++) {
+				MetaPilotIOPanelFX.ExperimentRow row = fileRows.get(i);
+				rawFiles[i] = row.getFilePath();
+				expNames[i] = row.getExperimentName();
+				try {
+					fractions[i] = Integer.parseInt(row.getFraction());
+					if (fractions[i] <= 0) fractions[i] = 1;
+				} catch (NumberFormatException e) {
+					fractions[i] = 1;
+				}
+				replicates[i] = 1;
+			}
+			MetaData metaData = new MetaData(rawFiles, expNames, fractions, replicates);
+			List<String> colNames = metadataConfigurationPanel != null ? metadataConfigurationPanel.getMetadataColumnNames() : java.util.Collections.emptyList();
+			List<MetaPilotDdaIgcMaxQuantPanel.MetadataRow> metadataTableData = metadataConfigurationPanel != null ? metadataConfigurationPanel.getMetadataTableData() : java.util.Collections.emptyList();
+			int rowCount = metadataTableData.size();
+			int metaTypeCount = Math.max(1, colNames.size());
+			String[][] metaInfo = new String[rowCount][metaTypeCount];
+			if (!colNames.isEmpty()) {
+				for (int i = 0; i < rowCount; i++) {
+					MetaPilotDdaIgcMaxQuantPanel.MetadataRow row = metadataTableData.get(i);
+					for (int j = 0; j < colNames.size(); j++) {
+						String v = row.getValueByColumnName(colNames.get(j));
+						metaInfo[i][j] = v != null ? v : "";
+					}
+				}
+			}
+			metaData.setMetaTypeCount(metaTypeCount);
+			metaData.setMetaInfo(metaInfo);
+			if (!colNames.isEmpty()) {
+				metaData.setMetaTypeTitles(colNames.toArray(new String[0]));
+			}
+
+			boolean appendHostDb = magDatabasePanel != null && magDatabasePanel.isAppendHostDb();
+			String hostDB = magDatabasePanel != null ? magDatabasePanel.getHostDatabase() : "";
+			int threadCount = threadsComboBox != null && threadsComboBox.getValue() != null ? threadsComboBox.getValue() : 4;
+			MetaBaseParameter metaBasePar = new MetaBaseParameter(
+					uk.ac.quadram.metapilot.workflow.WorkflowType.DIA_SEED.getAnalysisType(),
+					metaData, result, selectedMagDb.getCurrentFile() != null ? selectedMagDb.getCurrentFile().getAbsolutePath() : "",
+					appendHostDb, hostDB, "DIA", 1, threadCount, true);
+
+			String[] library = new String[0];
+			if (libraryPanel != null) {
+				String[] selectedLibs = libraryPanel.getSelectedLibraryNames();
+				if (selectedLibs != null && selectedLibs.length > 0) {
+					library = selectedLibs;
+				}
+			}
+			int modeIndex = modeSelectionComboBox != null ? modeSelectionComboBox.getSelectionModel().getSelectedIndex() : 0;
+			boolean librarySearch = (modeIndex == 0);
+			MetaParameterDia metaParameterDia = new MetaParameterDia(
+					metaBasePar, selectedMagDb, librarySearch, false, library, false, new String[0]);
+			// Keep auto-saved mode consistent with Run-mode parameter collection
+			if (modeIndex == 0) {
+				metaParameterDia.setSeedMode("DIRECT");
+			} else if (modeIndex == 1) {
+				metaParameterDia.setSeedMode("FOCUS");
+			} else if (modeIndex == 2) {
+				metaParameterDia.setSeedMode("COMPREHENSIVE");
+			} else {
+				metaParameterDia.setSeedMode("DEEP");
+			}
+			if (mExcisionCheckBox != null) metaParameterDia.setMExcision(mExcisionCheckBox.isSelected());
+			if (carbamiCCheckBox != null) metaParameterDia.setCarbamiC(carbamiCCheckBox.isSelected());
+			if (oxidationMCheckBox != null) metaParameterDia.setOxidationM(oxidationMCheckBox.isSelected());
+			if (acetyProNCheckBox != null) metaParameterDia.setAcetyProN(acetyProNCheckBox.isSelected());
+			if (phosphoSTYCheckBox != null) metaParameterDia.setPhosphoSTY(phosphoSTYCheckBox.isSelected());
+			if (kGGCheckBox != null) metaParameterDia.setKGG(kGGCheckBox.isSelected());
+			return metaParameterDia;
+		} catch (Exception e) {
+			LOGGER.debug("Lenient parameter collect failed: " + e.getMessage());
+			return null;
 		}
 	}
 
@@ -822,23 +946,25 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 			} else if (modeIndex == 3) {
 				// Deep comprehensive search (seed strategy only)
 				consolePanel.appendConsoleText("Workflow: Deep comprehensive search\n");
-				MetaParameterDiaFocus focusParams = new MetaParameterDiaFocus(
+				MetaParameterDiaMarker focusParams = new MetaParameterDiaMarker(
 						metaParameterDia, metaParameterDia.getMagDbItem(),
 						false, false, metaParameterDia.getLibrary(), false, new String[0]);
-				focusParams.setGenomeSelectionStrategy(MarkerGenomeSelector.KNEE_MODE_COMPREHENSIVE);
+				focusParams.setMarkerMode("DEEP");
 				this.currentAnalysisParams = focusParams;
 				currentTask = new MetaDiaDeepComprehensiveTask(focusParams, mrp,
 						consolePanel.getOverallProgressBar(), consolePanel.getCurrentTaskProgressBar());
 			} else {
 				// Focus search (1) or Comprehensive search (2) – iterative seed workflow
-				String strategy = (modeIndex == 2) ? MarkerGenomeSelector.KNEE_MODE_COMPREHENSIVE
-						: MarkerGenomeSelector.KNEE_MODE_FOCUS;
 				consolePanel.appendConsoleText(
 						"Workflow: " + (modeIndex == 2 ? "Comprehensive" : "Focus") + " search\n");
-				MetaParameterDiaFocus focusParams = new MetaParameterDiaFocus(
+				MetaParameterDiaMarker focusParams = new MetaParameterDiaMarker(
 						metaParameterDia, metaParameterDia.getMagDbItem(),
 						false, false, metaParameterDia.getLibrary(), false, new String[0]);
-				focusParams.setGenomeSelectionStrategy(strategy);
+				if (modeIndex == 2) {
+					focusParams.setMarkerMode("COMPREHENSIVE");
+				} else {
+					focusParams.setMarkerMode("FOCUS");
+				}
 				this.currentAnalysisParams = focusParams;
 				currentTask = new MetaDiaSeedIterativeTask(focusParams, mrp,
 						consolePanel.getOverallProgressBar(), consolePanel.getCurrentTaskProgressBar());
@@ -1169,19 +1295,23 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 		}
 
 		if (modeSelectionComboBox != null) {
-			if (params instanceof MetaParameterDiaFocus) {
-				String strategy = ((MetaParameterDiaFocus) params).getGenomeSelectionStrategy();
-				if (MarkerGenomeSelector.KNEE_MODE_COMPREHENSIVE.equals(strategy)) {
-					modeSelectionComboBox.setValue("Comprehensive search");
-				} else {
-					modeSelectionComboBox.setValue("Focus search");
-				}
+			// Prefer explicit seed mode if available
+			String seedMode = params.getSeedMode();
+			if ("FOCUS".equalsIgnoreCase(seedMode)) {
+				modeSelectionComboBox.setValue("Focus search");
+			} else if ("COMPREHENSIVE".equalsIgnoreCase(seedMode)) {
+				modeSelectionComboBox.setValue("Comprehensive search");
+			} else if ("DEEP".equalsIgnoreCase(seedMode)) {
+				modeSelectionComboBox.setValue("Deep comprehensive search");
+			} else if ("DIRECT".equalsIgnoreCase(seedMode)) {
+				modeSelectionComboBox.setValue("Direct search");
 			} else {
+				// Final fallback based on librarySearch flag
 				modeSelectionComboBox.setValue(params.isLibrarySearch() ? "Direct search" : "Focus search");
 			}
 		}
 
-		// Modifications (MetaParameterDia and MetaParameterDiaFocus both have getters)
+		// Modifications (MetaParameterDia and MetaParameterDiaMarker both have getters)
 		if (mExcisionCheckBox != null) mExcisionCheckBox.setSelected(params.isMExcision());
 		if (carbamiCCheckBox != null) carbamiCCheckBox.setSelected(params.isCarbamiC());
 		if (oxidationMCheckBox != null) oxidationMCheckBox.setSelected(params.isOxidationM());

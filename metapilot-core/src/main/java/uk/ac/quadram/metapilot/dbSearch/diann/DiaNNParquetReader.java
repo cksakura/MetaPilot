@@ -151,7 +151,6 @@ public class DiaNNParquetReader {
 				Group group = recordReader.read();
 				String sequence = group.getBinary("Stripped.Sequence", 0).toStringUsingUTF8();
 				String[] proteins = group.getBinary("Protein.Ids", 0).toStringUsingUTF8().split(";");
-
 				for (int j = 0; j < proteins.length; j++) {
 					HashSet<String> set;
 					if (map.containsKey(proteins[j])) {
@@ -306,7 +305,7 @@ public class DiaNNParquetReader {
 					if (run.lastIndexOf(".") > 0) {
 						run = run.substring(0, run.lastIndexOf("."));
 					}
-					String[] proteins = group.getBinary("Protein.Group", 0).toStringUsingUTF8().split(";");
+					String[] proteins = group.getBinary("Protein.Ids", 0).toStringUsingUTF8().split(";");
 					String modSeq = group.getBinary("Modified.Sequence", 0).toStringUsingUTF8();
 					String sequence = group.getBinary("Stripped.Sequence", 0).toStringUsingUTF8();
 					int missCleavage = 0;
@@ -593,9 +592,23 @@ public class DiaNNParquetReader {
 		System.out.println("decoy\t" + genomePepMap.size() + "\t" + matchedPepSet.size());
 	}
 	
+	private static void changeName(String in) {
+		File[] files = (new File(in)).listFiles();
+		for (int i = 0; i < files.length; i++) {
+			String name = files[i].getName();
+			if (name.endsWith(".parquet.parquet")) {
+				String newName = name.substring(0, name.length() - ".parquet".length());
+				files[i].renameTo(new File(in, newName));
+			}
+		}
+	}
+	
 	public static void main(String[] args) throws IOException {
-//		DiaNNParquetReader.getPeptideSet("Z:\\Test\\Pekka_20251201\\Metapilot_MGYG_lib\\library_analysis\\combined\\"
-//				+ "combined.parquet");
+//		DiaNNParquetReader.changeName("Z:\\PRIDE_dataset\\PXD051104_metaExpertPro\\MetaPilot_DIA_MPW\\MetaPilot\\marker_deep\\marker");
+		DiaNNParquetReader
+				.getProPepMap("Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\12mix\\DIA\\MetaPilot\\marker_focus\\marker"
+						+ "\\combined.parquet");
+//		System.out.println("peptide count\t"+set.size());
 //		DiaNNParquetReader.matchGenome("Z:\\Kai\\Database\\human-gut\\v2.0.2", 
 //				"E:\\20250423\\20250422_MetaLAB_DIA_search\\selfModel\\mag_result\\combined.parquet");
 /*		
@@ -650,21 +663,6 @@ public class DiaNNParquetReader {
 			}
 		}
 		*/
-		
-		try {
-			BufferedReader reader = new BufferedReader(new FileReader("Z:\\Test\\S2_top_1000_genomes_prodigal_proteins_cluster90_rep_seq_filtered_uniprot.fasta"));
-			String line = null;
-			int count = 0;
-			while((line=reader.readLine())!=null) {
-				System.out.println(line);
-				if(count++==100) {
-					break;
-				}
-			}
-			reader.close();
-		} catch (Exception e) {
-
-		}
 	}
 
 }

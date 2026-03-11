@@ -1,6 +1,4 @@
 {
-  "models": [],
-  "useModel": false,
   "workflow": "DIA_REALTIME",
   "baseParameters": {
     "result": "",
@@ -13,7 +11,7 @@
       "replicates": []
     },
     "threadCount": 20,
-    "workflowType": "DIA_NORMAL",
+    "workflowType": "DIA_SEED",
     "hostDB": "",
     "coreCount": 1,
     "metaWorkflow": true,
@@ -21,7 +19,10 @@
     "appendHostDb": false
   },
   "description": "Last used parameters",
-  "librarySearch": true,
+  "librarySearch": false,
+  "kGG": false,
+  "rtWorkflowMode": "MARKER_FOCUS",
+  "oxidationM": false,
   "version": "1.0",
   "stopComplete": false,
   "magDatabase": {
@@ -34,12 +35,15 @@
       "speciesCount": 4744
     }
   },
-  "selfModelSearch": false,
+  "acetyProN": false,
   "taskCount": 0,
   "library": [],
-  "generated_at": "2026-02-09 14:10:58",
+  "phosphoSTY": false,
+  "generated_at": "2026-03-11 09:23:04",
+  "mExcision": true,
   "combineResult": false,
+  "carbamiC": true,
   "workflowType": "DIA_REALTIME",
   "stopNow": false,
-  "timestamp": 1770646258936
+  "timestamp": 1773220984181
 }

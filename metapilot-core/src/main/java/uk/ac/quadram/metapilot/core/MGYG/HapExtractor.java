@@ -12,20 +12,15 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Pattern;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class HapExtractor {
+import uk.ac.quadram.metapilot.task.mag.MarkerGenomeSelector;
 
-	// Regex patterns for marker categories (case-insensitive)
-	private static final Pattern ANCHOR_PATTERN = Pattern.compile("(?i)\\bribosomal\\s+protein\\b");
-	private static final Pattern HIGH_RES_PATTERN = Pattern.compile("(?i)\\b(gyrase|gyr[ab])\\b|\\brna\\s+polymerase\\b|\\bdna\\s+polymerase\\b|\\brpo[abc]\\b|\\bdna[eq]\\b");
-	private static final Pattern ABUNDANCE_PATTERN = Pattern.compile("(?i)\\belongation\\s+factor\\b|\\bef[-\\s]?(tu|g|ts|p|4|1a|2)\\b");
-	private static final Pattern STABILITY_PATTERN = Pattern.compile("(?i)(aminoacyl[-\\s]?trna|aa[-\\s]?trna|trna)[-\\s]*[^a-zA-Z0-9]{0,2}\\s*(ligase|synthetase)\\b");
+public class HapExtractor {
 
 	public HapExtractor() {
 	}
@@ -50,8 +45,7 @@ public class HapExtractor {
 				while ((lineString = reader.readLine()) != null) {
 					if (lineString.startsWith(">")) {
 						proCounts[0]++;
-						String lineLower = lineString.toLowerCase();
-						boolean find = isAnchor(lineLower) || isAbundance(lineLower);
+						boolean find = isAnchor(lineString) || isAbundance(lineString);
 
 						if (find) {
 							proCounts[1]++;
@@ -129,8 +123,7 @@ public class HapExtractor {
 				while ((lineString = reader.readLine()) != null) {
 					if (lineString.startsWith(">")) {
 						proteinCount++;
-						String lineLower = lineString.toLowerCase();
-						if (isAnchor(lineLower) || isAbundance(lineLower)) {
+						if (isAnchor(lineString) || isAbundance(lineString)) {
 							matchingCount++;
 						}
 					}
@@ -630,20 +623,24 @@ public class HapExtractor {
 		}
 	}
 	
-	private boolean isAnchor(String lineLower) {
-		return ANCHOR_PATTERN.matcher(lineLower).find();
+	private boolean isAnchor(String headerLine) {
+		String cat = MarkerGenomeSelector.categorizeMarkerHeader(null, headerLine);
+		return "Ribosomal".equals(cat);
 	}
 	
-	private boolean isHighRes(String lineLower) {
-		return HIGH_RES_PATTERN.matcher(lineLower).find();
+	private boolean isHighRes(String headerLine) {
+		String cat = MarkerGenomeSelector.categorizeMarkerHeader(null, headerLine);
+		return "Replication".equals(cat);
 	}
 	
-	private boolean isAbundance(String lineLower) {
-		return ABUNDANCE_PATTERN.matcher(lineLower).find();
+	private boolean isAbundance(String headerLine) {
+		String cat = MarkerGenomeSelector.categorizeMarkerHeader(null, headerLine);
+		return "Elongation".equals(cat);
 	}
 	
-	private boolean isStability(String lineLower) {
-		return STABILITY_PATTERN.matcher(lineLower).find();
+	private boolean isStability(String headerLine) {
+		String cat = MarkerGenomeSelector.categorizeMarkerHeader(null, headerLine);
+		return "Synthetase".equals(cat);
 	}
 	
 	/**
@@ -917,11 +914,12 @@ public class HapExtractor {
 		return map;
 	}
 
-	private String categorize(String lineLower) {
-		if (isAnchor(lineLower)) return "Anchor";
-		if (isHighRes(lineLower)) return "HighRes";
-		if (isAbundance(lineLower)) return "Abundance";
-		if (isStability(lineLower)) return "Stability";
+	private String categorize(String headerLine) {
+		String cat = MarkerGenomeSelector.categorizeMarkerHeader(null, headerLine);
+		if ("Ribosomal".equals(cat)) return "Anchor";
+		if ("Replication".equals(cat)) return "HighRes";
+		if ("Elongation".equals(cat)) return "Abundance";
+		if ("Synthetase".equals(cat)) return "Stability";
 		return null;
 	}
 

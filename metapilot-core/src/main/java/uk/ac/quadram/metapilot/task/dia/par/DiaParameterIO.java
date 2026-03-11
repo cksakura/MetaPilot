@@ -189,12 +189,10 @@ public class DiaParameterIO extends BaseParameterIO {
 
             json.put("input_output", ioSettings);
 
-            // DIA-specific settings
+            // DIA-specific settings (simplified: no self_model_search / use_model / models for now)
             JSONObject diaSettings = new JSONObject();
             diaSettings.put("library_search", params.isLibrarySearch());
-            diaSettings.put("self_model_search", params.isSelfModelSearch());
-            diaSettings.put("use_model", params.isUseModel());
-            
+
             // Library information
             JSONArray libraries = new JSONArray();
             if (params.getLibrary() != null) {
@@ -203,16 +201,22 @@ public class DiaParameterIO extends BaseParameterIO {
                 }
             }
             diaSettings.put("libraries", libraries);
-            
-            // Model information
-            JSONArray models = new JSONArray();
-            if (params.getModels() != null) {
-                for (String model : params.getModels()) {
-                    models.put(model);
-                }
+
+            // Modification settings (for DIA-NN / library generation)
+            diaSettings.put("mExcision", params.isMExcision());
+            diaSettings.put("carbamiC", params.isCarbamiC());
+            diaSettings.put("oxidationM", params.isOxidationM());
+            diaSettings.put("acetyProN", params.isAcetyProN());
+            diaSettings.put("phosphoSTY", params.isPhosphoSTY());
+            diaSettings.put("kGG", params.isKGG());
+
+            // Seed mode (DIRECT, FOCUS, COMPREHENSIVE, DEEP)
+            String seedMode = params.getSeedMode();
+            if (seedMode == null || seedMode.isEmpty()) {
+                seedMode = "DIRECT";
             }
-            diaSettings.put("models", models);
-            
+            diaSettings.put("seed_mode", seedMode);
+
             json.put("dia_settings", diaSettings);
 
             // MAG database information
@@ -369,17 +373,23 @@ public class DiaParameterIO extends BaseParameterIO {
 
             // Load DIA-specific settings
             boolean librarySearch = false;
-            boolean selfModelSearch = false;
-            boolean useModel = false;
             String[] library = new String[0];
-            String[] models = new String[0];
-            
+
+            // Modification defaults (match DIA Marker defaults)
+            boolean mExcision = true;
+            boolean carbamiC = true;
+            boolean oxidationM = false;
+            boolean acetyProN = false;
+            boolean phosphoSTY = false;
+            boolean kGG = false;
+
+            // Seed mode default
+            String seedMode = "DIRECT";
+
             if (json.has("dia_settings")) {
                 JSONObject diaSettings = json.getJSONObject("dia_settings");
                 librarySearch = diaSettings.optBoolean("library_search", false);
-                selfModelSearch = diaSettings.optBoolean("self_model_search", false);
-                useModel = diaSettings.optBoolean("use_model", false);
-                
+
                 // Load libraries
                 if (diaSettings.has("libraries")) {
                     JSONArray libraries = diaSettings.getJSONArray("libraries");
@@ -388,27 +398,40 @@ public class DiaParameterIO extends BaseParameterIO {
                         library[i] = libraries.getString(i);
                     }
                 }
-                
-                // Load models
-                if (diaSettings.has("models")) {
-                    JSONArray modelsArray = diaSettings.getJSONArray("models");
-                    models = new String[modelsArray.length()];
-                    for (int i = 0; i < modelsArray.length(); i++) {
-                        models[i] = modelsArray.getString(i);
-                    }
-                }
+
+                // Load modification settings if present
+                mExcision   = diaSettings.optBoolean("mExcision",   mExcision);
+                carbamiC    = diaSettings.optBoolean("carbamiC",    carbamiC);
+                oxidationM  = diaSettings.optBoolean("oxidationM",  oxidationM);
+                acetyProN   = diaSettings.optBoolean("acetyProN",   acetyProN);
+                phosphoSTY  = diaSettings.optBoolean("phosphoSTY",  phosphoSTY);
+                kGG         = diaSettings.optBoolean("kGG",         kGG);
+
+                // Load seed mode if present
+                seedMode = diaSettings.optString("seed_mode", seedMode);
             }
 
-            // Create MetaParameterDia
+            // Create MetaParameterDia (no self model / external models for now)
             MetaParameterDia params = new MetaParameterDia(
                 metaBasePar,
                 magDbItem,
                 librarySearch,
-                selfModelSearch,
+                false,      // selfModelSearch (unused)
                 library,
-                useModel,
-                models
+                false,      // useModel (unused)
+                new String[0]  // models (unused)
             );
+
+            // Apply modification settings to the parameters
+            params.setMExcision(mExcision);
+            params.setCarbamiC(carbamiC);
+            params.setOxidationM(oxidationM);
+            params.setAcetyProN(acetyProN);
+            params.setPhosphoSTY(phosphoSTY);
+            params.setKGG(kGG);
+
+            // Apply seed mode
+            params.setSeedMode(seedMode);
 
             LOGGER.info("Successfully loaded parameters from {}", paramFile.getAbsolutePath());
             return params;

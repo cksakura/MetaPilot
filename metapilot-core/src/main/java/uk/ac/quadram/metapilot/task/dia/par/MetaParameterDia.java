@@ -16,13 +16,16 @@ public class MetaParameterDia extends MetaBaseParameter {
 
 	private MagDbItem magDbItem;
 
-	// Modification settings (DIA-NN / library generation; same as MetaParameterDiaFocus)
+	// Modification settings (DIA-NN / library generation)
 	private boolean mExcision = true;
 	private boolean carbamiC = true;
 	private boolean oxidationM = false;
 	private boolean acetyProN = false;
 	private boolean phosphoSTY = false;
 	private boolean kGG = false;
+	
+	// Seed workflow mode: DIRECT, FOCUS, COMPREHENSIVE, DEEP
+	private String seedMode = "DIRECT";
 	
 	public MetaParameterDia() {
 		super(uk.ac.quadram.metapilot.workflow.WorkflowType.DIA_SEED.getAnalysisType(), new MetaData(), "", "",
@@ -132,4 +135,12 @@ public class MetaParameterDia extends MetaBaseParameter {
 	public void setPhosphoSTY(boolean phosphoSTY) { this.phosphoSTY = phosphoSTY; }
 	public boolean isKGG() { return kGG; }
 	public void setKGG(boolean kGG) { this.kGG = kGG; }
+	
+	public String getSeedMode() {
+		return seedMode;
+	}
+	
+	public void setSeedMode(String seedMode) {
+		this.seedMode = seedMode;
+	}
 }

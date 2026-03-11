@@ -34,11 +34,32 @@ public class MetaDiaSeedDirectTask extends MetaDiaTask {
 
 	public MetaDiaSeedDirectTask(MetaParameterDia metaPar, MetaResourceParameters mrp, ProgressBar bar1, ProgressBar bar2) {
 		super(metaPar, mrp, bar1, bar2);
+		initResultFolderIfNeeded();
 	}
 
 	@Override
 	protected String getTaskName() {
 		return TASK_NAME;
+	}
+
+	@Override
+	protected void initResultFolderIfNeeded() {
+		if (metaPar == null) {
+			return;
+		}
+		if (metaPar.getDbSearchResultFile() != null) {
+			this.resultFolderFile = metaPar.getDbSearchResultFile();
+			return;
+		}
+		// Direct seed library search: seed_direct under result
+		File base = new File(metaPar.getResult() != null ? metaPar.getResult() : ".");
+		File dir = new File(base, "seed_direct");
+		if (!dir.exists()) {
+			dir.mkdirs();
+			logger.info("Created result directory for DIA Seed Direct workflow: {}", dir.getAbsolutePath());
+		}
+		metaPar.setDbSearchResultFile(dir);
+		this.resultFolderFile = dir;
 	}
 
 	/**
@@ -129,7 +150,7 @@ public class MetaDiaSeedDirectTask extends MetaDiaTask {
 	/** Use new genome/protein scoring scheme (S, p_emp, q_value) like MetaDiaMarkerTask. */
 	@Override
 	protected boolean exportReport() {
-		return exportReportWithNewGenomeScoring();
+		return super.exportReport();
 	}
 
 	/**
@@ -214,21 +235,27 @@ public class MetaDiaSeedDirectTask extends MetaDiaTask {
 					libPath[i] = directLibFile.getAbsolutePath();
 					matchToMag[i] = false; // external path → treat as standalone
 				} else {
-					File libFile = new File(new File(libFolderFile, usedLibs[i]), usedLibs[i] + ".speclib");
-					File libTsvFile = new File(new File(libFolderFile, usedLibs[i]), usedLibs[i] + ".tsv");
-					if (usedLibs.length == 1) {
-						libPath[i] = libFile.getAbsolutePath();
-						if (!libFile.exists()) {
-							logger.error(getTaskName() + ": library file doesn't exist in " + libFile);
-							return false;
-						}
-					} else {
-						libPath[i] = libTsvFile.getAbsolutePath();
-						if (!libTsvFile.exists()) {
-							logger.error(getTaskName() + ": library file doesn't exist in " + libTsvFile);
-							return false;
-						}
+					File libFolder = new File(libFolderFile, usedLibs[i]);
+					File speclibFile = new File(libFolder, usedLibs[i] + ".speclib");
+					File tsvFile = new File(libFolder, usedLibs[i] + ".tsv");
+					File parquetFile = new File(libFolder, usedLibs[i] + ".parquet");
+
+					File chosen = null;
+					if (speclibFile.exists()) {
+						chosen = speclibFile;
+					} else if (tsvFile.exists()) {
+						chosen = tsvFile;
+					} else if (parquetFile.exists()) {
+						chosen = parquetFile;
 					}
+
+					if (chosen == null) {
+						logger.error(getTaskName() + ": no library file (.speclib/.tsv/.parquet) found for library '{}'", usedLibs[i]);
+						return false;
+					}
+
+					libPath[i] = chosen.getAbsolutePath();
+
 					boolean micro = false;
 					for (MagPepLib lib : allLibs) {
 						if (lib.getLibName().equals(usedLibs[i])) {

@@ -21,6 +21,9 @@ import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagPepLib;
 import java.io.File;
 import java.util.Optional;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 
 import org.apache.logging.log4j.LogManager;
 
@@ -59,6 +62,7 @@ public class DiaLibraryPanelNoModel extends VBox {
 
 	private MagDbItem currentMagDbItem;
 	private TextArea consoleOutput;
+	private Button generateLibraryButton;
 	private ProgressBar libraryProgressBar;
 	private Label progressLabel;
 
@@ -102,6 +106,7 @@ public class DiaLibraryPanelNoModel extends VBox {
 
 	public void setMetaParameter(MetaParameterDia metaParameter) {
 		this.metaParameter = metaParameter;
+		applyLibrarySelectionFromParameters();
 	}
 
 	public void setResourceParameters(MetaResourceParameters resourceParameters) {
@@ -114,6 +119,7 @@ public class DiaLibraryPanelNoModel extends VBox {
 
 	public void updateMetaParameter(MetaParameterDia metaParameter) {
 		this.metaParameter = metaParameter;
+		applyLibrarySelectionFromParameters();
 	}
 
 	/** Returns the controls section (input type, file, enzyme, generate button, progress) for left column. */
@@ -349,9 +355,11 @@ public class DiaLibraryPanelNoModel extends VBox {
 		libraryNameField.setPromptText("Library name");
 		libraryNameField.setPrefWidth(150);
 
-		Button generateLibraryButton = new Button("Generate Library");
-		generateLibraryButton.setPrefWidth(130);
-		generateLibraryButton.setOnAction(e -> generateLibrary());
+		if (generateLibraryButton == null) {
+			generateLibraryButton = new Button("Generate Library");
+			generateLibraryButton.setPrefWidth(130);
+			generateLibraryButton.setOnAction(e -> generateLibrary());
+		}
 
 		box.getChildren().addAll(new Label("Library Name:"), libraryNameField, generateLibraryButton);
 		return box;
@@ -464,6 +472,12 @@ public class DiaLibraryPanelNoModel extends VBox {
 
 		libCreateTask.setOnRunning(e -> Platform.runLater(() -> {
 			currentStep = 0;
+			if (generateLibraryButton != null) {
+				generateLibraryButton.setDisable(true);
+			}
+			if (libraryProgressBar != null) {
+				libraryProgressBar.setProgress(-1.0); // indeterminate while tasks initialize
+			}
 			updateProgressStep(0, "Starting library generation...");
 			if (consoleOutput != null) {
 				consoleOutput.appendText("=== Library Generation Started ===\n");
@@ -474,7 +488,12 @@ public class DiaLibraryPanelNoModel extends VBox {
 
 		libCreateTask.setOnSucceeded(e -> Platform.runLater(() -> {
 			updateProgressStep(totalSteps, "Library generation completed successfully!");
-			libraryProgressBar.setProgress(1.0);
+			if (libraryProgressBar != null) {
+				libraryProgressBar.setProgress(1.0);
+			}
+			if (generateLibraryButton != null) {
+				generateLibraryButton.setDisable(false);
+			}
 			if (consoleOutput != null) {
 				consoleOutput.appendText("=== Library Generation Completed ===\n");
 				consoleOutput.appendText("✓ Library '" + libraryName + "' generated successfully!\n");
@@ -501,7 +520,12 @@ public class DiaLibraryPanelNoModel extends VBox {
 
 		libCreateTask.setOnFailed(e -> Platform.runLater(() -> {
 			updateProgressStep(0, "Library generation failed!");
-			libraryProgressBar.setProgress(0);
+			if (libraryProgressBar != null) {
+				libraryProgressBar.setProgress(0);
+			}
+			if (generateLibraryButton != null) {
+				generateLibraryButton.setDisable(false);
+			}
 			Throwable exception = libCreateTask.getException();
 			String errorMessage = exception != null ? exception.getMessage() : "Unknown error occurred";
 			if (consoleOutput != null) {
@@ -513,7 +537,12 @@ public class DiaLibraryPanelNoModel extends VBox {
 
 		libCreateTask.setOnCancelled(e -> Platform.runLater(() -> {
 			updateProgressStep(0, "Library generation was cancelled");
-			libraryProgressBar.setProgress(0);
+			if (libraryProgressBar != null) {
+				libraryProgressBar.setProgress(0);
+			}
+			if (generateLibraryButton != null) {
+				generateLibraryButton.setDisable(false);
+			}
 		}));
 
 		libCreateTask.messageProperty().addListener((obs, oldMsg, newMsg) -> {
@@ -667,9 +696,31 @@ public class DiaLibraryPanelNoModel extends VBox {
 			for (MagPepLib pepLib : magPepLibs) {
 				libraryData.add(new LibraryRow(false, pepLib));
 			}
+			applyLibrarySelectionFromParameters();
 			if (consoleOutput != null) {
 				consoleOutput.appendText("Loaded " + magPepLibs.length + " libraries from MAG database.\n");
 			}
+		}
+	}
+
+	/**
+	 * Apply saved library names (MetaParameterDia.library) to table checkboxes.
+	 * This is critical for round-trip persistence: file -> UI -> file.
+	 */
+	private void applyLibrarySelectionFromParameters() {
+		if (metaParameter == null || libraryData == null || libraryData.isEmpty()) {
+			return;
+		}
+		String[] selected = metaParameter.getLibrary();
+		Set<String> selectedNames = new HashSet<>();
+		if (selected != null && selected.length > 0) {
+			selectedNames.addAll(Arrays.asList(selected));
+		}
+		for (LibraryRow row : libraryData) {
+			row.setUse(selectedNames.contains(row.getLibName()));
+		}
+		if (libraryTable != null) {
+			libraryTable.refresh();
 		}
 	}
 

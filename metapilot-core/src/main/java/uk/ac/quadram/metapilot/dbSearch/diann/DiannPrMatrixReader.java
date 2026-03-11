@@ -126,9 +126,10 @@ public class DiannPrMatrixReader extends FlashLfqQuanPepReader {
 				} else {
 					intensity[i] = 0;
 				}
-				idenType[i] = 0;
+				idenType[i] = (intensity[i] > 0) ? 1 : 0; // MS/MS when quantified, else unmatched
 			} else {
 				intensity[i] = 0;
+				idenType[i] = 0;
 			}
 		}
 
@@ -166,11 +167,7 @@ public class DiannPrMatrixReader extends FlashLfqQuanPepReader {
 						int[] idenType = new int[intensity0.length];
 						for (int i = 0; i < intensity0.length; i++) {
 							intensity0[i] += intensity[i];
-							if (intensity0[i] > 0) {
-								idenType[i] = 0;
-							} else {
-								idenType[i] = 2;
-							}
+							idenType[i] = (intensity0[i] > 0) ? 1 : 0; // MS/MS when quantified, else unmatched
 						}
 						pep0.setIdenType(idenType);
 
@@ -180,11 +177,7 @@ public class DiannPrMatrixReader extends FlashLfqQuanPepReader {
 						double[] intensity = pep.getIntensity();
 						int[] idenType = new int[intensity.length];
 						for (int i = 0; i < intensity.length; i++) {
-							if (intensity[i] > 0) {
-								idenType[i] = 0;
-							} else {
-								idenType[i] = 2;
-							}
+							idenType[i] = (intensity[i] > 0) ? 1 : 0; // MS/MS when quantified, else unmatched
 						}
 						pep.setIdenType(idenType);
 					}
@@ -227,11 +220,7 @@ public class DiannPrMatrixReader extends FlashLfqQuanPepReader {
 							int[] idenType = new int[intensity0.length];
 							for (int i = 0; i < intensity0.length; i++) {
 								intensity0[i] += intensity[i];
-								if (intensity0[i] > 0) {
-									idenType[i] = 0;
-								} else {
-									idenType[i] = 2;
-								}
+								idenType[i] = (intensity0[i] > 0) ? 1 : 0; // MS/MS when quantified, else unmatched
 							}
 							pep0.setIdenType(idenType);
 						} else {
@@ -240,11 +229,7 @@ public class DiannPrMatrixReader extends FlashLfqQuanPepReader {
 							double[] intensity = pep.getIntensity();
 							int[] idenType = new int[intensity.length];
 							for (int i = 0; i < intensity.length; i++) {
-								if (intensity[i] > 0) {
-									idenType[i] = 0;
-								} else {
-									idenType[i] = 2;
-								}
+								idenType[i] = (intensity[i] > 0) ? 1 : 0; // MS/MS when quantified, else unmatched
 							}
 							pep.setIdenType(idenType);
 						}
@@ -305,13 +290,11 @@ public class DiannPrMatrixReader extends FlashLfqQuanPepReader {
 							int[] idenType = pep0.getIdenType();
 							for (int i = 0; i < spCount.length; i++) {
 								if (spCount[i] > 0) {
-									idenType[i] = 0;
+									idenType[i] = 1; // MS/MS
+								} else if (intensity0[i] > 0) {
+									idenType[i] = 2; // MBR
 								} else {
-									if (intensity0[i] > 0) {
-										idenType[i] = 1;
-									} else {
-										idenType[i] = 2;
-									}
+									idenType[i] = 0; // unmatched
 								}
 							}
 							peptide.setIdenType(idenType);
@@ -367,13 +350,11 @@ public class DiannPrMatrixReader extends FlashLfqQuanPepReader {
 							
 							for (int i = 0; i < spCount.length; i++) {
 								if (spCount[i] > 0) {
-									idenType[i] = 0;
+									idenType[i] = 1; // MS/MS
+								} else if (intensity[i] > 0) {
+									idenType[i] = 2; // MBR
 								} else {
-									if (intensity[i] > 0) {
-										idenType[i] = 1;
-									} else {
-										idenType[i] = 2;
-									}
+									idenType[i] = 0; // unmatched
 								}
 							}
 							peptide.setIdenType(idenType);

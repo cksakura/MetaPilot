@@ -19,7 +19,9 @@
     "appendHostDb": false
   },
   "description": "Last used parameters",
-  "taxonomicLevel": "Choose the taxonomic level",
+  "taxonomicLevel": "Species",
+  "kGG": false,
+  "oxidationM": false,
   "version": "1.0",
   "magDatabase": {
     "identifier": "MGYG",
@@ -31,11 +33,15 @@
       "speciesCount": 154
     }
   },
+  "acetyProN": false,
   "selectedFunctions": [],
-  "generated_at": "2026-02-12 11:23:45",
+  "phosphoSTY": false,
+  "generated_at": "2026-03-09 12:20:58",
+  "mExcision": true,
+  "carbamiC": true,
   "workflowType": "DIA_TARGET",
   "targetLibraryName": "target_library",
-  "functionalLevel": "Choose the functional level",
+  "functionalLevel": "KEGG_rclass",
   "selectedTaxa": [],
-  "timestamp": 1770895425352
+  "timestamp": 1773058858724
 }

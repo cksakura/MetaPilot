@@ -53,6 +53,8 @@ public class DDAMagFragPipeParameters extends MetaBaseParameter {
     // MAG-specific fields
     private String magDbCatalogueId = "";
     private String magDbVersion = "";
+    private String genomeSelectorMode = MagDbItem.MARKER2;
+    private String genomeSelectionStrategy = "Focus";
     
     // Isotopic labeling
     private List<String> lightLabels = new ArrayList<>();
@@ -179,6 +181,21 @@ public class DDAMagFragPipeParameters extends MetaBaseParameter {
     
     public String getMagDbVersion() { return magDbVersion; }
     public void setMagDbVersion(String magDbVersion) { this.magDbVersion = magDbVersion; }
+
+    public String getGenomeSelectorMode() { return genomeSelectorMode; }
+    public void setGenomeSelectorMode(String genomeSelectorMode) {
+        this.genomeSelectorMode = genomeSelectorMode != null && !genomeSelectorMode.trim().isEmpty()
+                ? genomeSelectorMode.trim() : MagDbItem.MARKER2;
+    }
+
+    public String getGenomeSelectionStrategy() { return genomeSelectionStrategy; }
+    public void setGenomeSelectionStrategy(String genomeSelectionStrategy) {
+        if (genomeSelectionStrategy == null || genomeSelectionStrategy.trim().isEmpty()) {
+            this.genomeSelectionStrategy = "Focus";
+        } else {
+            this.genomeSelectionStrategy = genomeSelectionStrategy.trim();
+        }
+    }
     
     // Isotopic labeling getters and setters
     public List<String> getLightLabels() { return lightLabels; }

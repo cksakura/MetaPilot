@@ -27,6 +27,7 @@ import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.util.Duration;
 import uk.ac.quadram.metapilot.task.dia.DiaLibCreateTask;
+import uk.ac.quadram.metapilot.task.common.gui.AbstractWorkflowPanel;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.mag.MagDbConfigIO;
@@ -60,6 +61,9 @@ public class DiaLibraryGenerationPanel extends VBox {
 	private int currentStep = 0;
 	private int totalSteps = 4;
 
+	/** When true, sections are not added to this panel; parent uses getControlsSection() and getTableSection(). */
+	private boolean splitMode;
+
 	// Callback interface for parameter updates
 	public interface ParameterUpdateCallback {
 		void onParametersChanged();
@@ -71,7 +75,7 @@ public class DiaLibraryGenerationPanel extends VBox {
 	private MetaParameterDia metaParameter;
 	private MetaResourceParameters resourceParameters;
 	private File configFile;
-	private MetaPilotDiaNormalPanel parentPanel;
+	private AbstractWorkflowPanel<MetaParameterDia> parentPanel;
 
 	public DiaLibraryGenerationPanel() {
 		initializeUI();
@@ -79,6 +83,13 @@ public class DiaLibraryGenerationPanel extends VBox {
 
 	public DiaLibraryGenerationPanel(TextArea consoleOutput) {
 		this.consoleOutput = consoleOutput;
+		initializeUI();
+	}
+
+	/** For use in split layout (e.g. real-time panel): controls and table are placed in parent's columns. */
+	public DiaLibraryGenerationPanel(TextArea consoleOutput, boolean splitMode) {
+		this.consoleOutput = consoleOutput;
+		this.splitMode = splitMode;
 		initializeUI();
 	}
 
@@ -150,13 +161,16 @@ public class DiaLibraryGenerationPanel extends VBox {
 		this.configFile = configFile;
 	}
 
-	public void setParentPanel(MetaPilotDiaNormalPanel parentPanel) {
+	public void setParentPanel(AbstractWorkflowPanel<MetaParameterDia> parentPanel) {
 		this.parentPanel = parentPanel;
 	}
 
 	public void updateMetaParameter(MetaParameterDia metaParameter) {
 		this.metaParameter = metaParameter;
 	}
+
+	private VBox controlsSectionVBox;
+	private VBox tableSectionVBox;
 
 	private void initializeUI() {
 		setSpacing(10);
@@ -179,14 +193,30 @@ public class DiaLibraryGenerationPanel extends VBox {
 		// Generation controls
 		HBox generationBox = createGenerationControls();
 
-		// Available libraries table
-		VBox tableSection = createLibraryTable();
-
 		// Progress and console section
 		VBox progressSection = createProgressSection();
 
-		getChildren().addAll(titleLabel, inputTypeBox, fileBox, enzymeBox, generationBox, tableSection,
+		// Available libraries table
+		tableSectionVBox = createLibraryTable();
+
+		// Left section: title + controls + progress
+		controlsSectionVBox = new VBox(10);
+		controlsSectionVBox.setPadding(new Insets(0));
+		controlsSectionVBox.getChildren().addAll(titleLabel, inputTypeBox, fileBox, enzymeBox, generationBox,
 				progressSection);
+		VBox.setVgrow(progressSection, Priority.ALWAYS);
+
+		if (!splitMode) {
+			getChildren().addAll(controlsSectionVBox, tableSectionVBox);
+		}
+	}
+
+	public VBox getControlsSection() {
+		return controlsSectionVBox;
+	}
+
+	public VBox getTableSection() {
+		return tableSectionVBox;
 	}
 
 	private HBox createInputTypeSelection() {
@@ -578,7 +608,7 @@ public class DiaLibraryGenerationPanel extends VBox {
 			// Try to get it from the parent panel
 			if (parentPanel != null) {
 				System.out.println("DEBUG: Using parent panel to generate MetaParameterDia");
-				metaParameter = parentPanel.collectParametersFromUI();
+				metaParameter = parentPanel.getCollectedParameters();
 				System.out.println("DEBUG: MetaParameterDia generated: " + (metaParameter != null));
 			}
 

@@ -797,12 +797,19 @@ public class MagDbConfigPanelJavaFX extends BorderPane {
 						+ "   - eggNOG: Files must start with the genomeID\n"
 						+ "3. File Pairing: Each genomeID must have a matching pair (one in original_db, one in eggNOG)\n"
 						+ "4. FASTA Format: All protein headers must follow the format:\n"
-						+ "   >genomeID_proteinID protein name\n"
+						+ "   >genomeID_proteinID protein/gene name\n"
 						+ "   - The genomeID in the header must match the filename\n"
-						+ "   - Protein name is mandatory\n"
+						+ "   - Protein/gene name is mandatory\n"
 						+ "5. eggNOG Format: Files must be in eggnogMapper exported format (tab-separated)\n"
-						+ "6. HAP Database: After validation, a HAP (High Abundant Proteins) database will be\n"
-						+ "   automatically generated from the original_db folder. This file (4markers_highpep.fasta)\n"
+						+ "6. Taxonomic information Format: A file contains the taxonomic information named\n "
+						+ "   'genomes-all_metadata.tsv' (tab-separated) must be included,\n"
+						+ "   at least two columns 'Species_rep' and 'Lineage' are required in this file, for example\n"
+						+ "   ---------------------------------\n"
+						+ "   Species_rep    Lineage\n"
+						+ "   MGYG000000001 d__Bacteria;p__Firmicutes_A;c__Clostridia;o__Peptostreptococcales;f__Peptostreptococcaceae;g__GCA-900066495;s__GCA-900066495 sp902362365\n"
+						+ "   ---------------------------------\n"
+						+ "7. HAP Database: After validation, a HAP (High Abundant Proteins) database will be\n"
+						+ "   automatically generated from the original_db folder. This file (Marker4.fasta)\n"
 						+ "   must be created successfully for the database to be added.");
 		instructionsText.setStyle("-fx-background-color: white;");
 
@@ -1478,36 +1485,53 @@ public class MagDbConfigPanelJavaFX extends BorderPane {
 				// 4-markers: Anchor, HighRes, Abundance, Stability (use extractFourCategories)
 				HapExtractor extractor = new HapExtractor();
 
-				// Output file should be 4markers_highpep.fasta in the dbFolder (version
-				// directory)
-				File hapFile = new File(dbFolder, "4markers_highpep.fasta");
+				File marker2File = new File(dbFolder, "Marker2.fasta");
+				File marker4File = new File(dbFolder, "Marker4.fasta");
 
-				Platform.runLater(() -> console.appendText("Extracting 4-marker proteins from original_db...\n"));
-				Platform.runLater(() -> console.appendText("Output file: " + hapFile.getAbsolutePath() + "\n"));
+				Platform.runLater(() -> console.appendText("Extracting Marker2 proteins from original_db...\n"));
+				Platform.runLater(() -> console.appendText("Output file: " + marker2File.getAbsolutePath() + "\n"));
 
-				// Extract 4-markers (ribosomal, polymerase/gyrase, elongation, tRNA ligase)
-				extractor.extractFourCategories(originalDbDir, hapFile);
+				extractor.extractTwoMarkers(originalDbDir, marker2File);
+
+				Platform.runLater(() -> console.appendText("Extracting Marker4 proteins from original_db...\n"));
+				Platform.runLater(() -> console.appendText("Output file: " + marker4File.getAbsolutePath() + "\n"));
+
+				extractor.extractFourCategories(originalDbDir, marker4File);
 
 				// Verify the file was created and is not empty
-				if (!hapFile.exists()) {
-					Platform.runLater(() -> console
-							.appendText("✗ ERROR: HAP file was not created: " + hapFile.getAbsolutePath() + "\n"));
+				if (!marker2File.exists()) {
+					Platform.runLater(() -> console.appendText(
+							"✗ ERROR: Marker2 file was not created: " + marker2File.getAbsolutePath() + "\n"));
 					return false;
 				}
 
-				if (hapFile.length() == 0) {
+				// Verify the file was created and is not empty
+				if (!marker4File.exists()) {
+					Platform.runLater(() -> console.appendText(
+							"✗ ERROR: Marker4 file was not created: " + marker4File.getAbsolutePath() + "\n"));
+					return false;
+				}
+
+				if (marker2File.length() == 0) {
 					Platform.runLater(() -> console
-							.appendText("✗ ERROR: HAP file is empty: " + hapFile.getAbsolutePath() + "\n"));
-					hapFile.delete(); // Clean up empty file
+							.appendText("✗ ERROR: Marker2 file is empty: " + marker2File.getAbsolutePath() + "\n"));
+					marker2File.delete(); // Clean up empty file
+					return false;
+				}
+
+				if (marker4File.length() == 0) {
+					Platform.runLater(() -> console
+							.appendText("✗ ERROR: Marker4 file is empty: " + marker4File.getAbsolutePath() + "\n"));
+					marker4File.delete(); // Clean up empty file
 					return false;
 				}
 
 				// Check if file has content (at least some headers)
-				final int[] headerCount = { 0 };
-				try (BufferedReader reader = new BufferedReader(new FileReader(hapFile))) {
+				final int[] headerCount = new int[2];
+				try (BufferedReader reader = new BufferedReader(new FileReader(marker2File))) {
 					// Re-read to count headers
 					String line;
-					while ((line = reader.readLine()) != null && headerCount[0] < 10) {
+					while ((line = reader.readLine()) != null) {
 						if (line.startsWith(">")) {
 							headerCount[0]++;
 						}
@@ -1515,16 +1539,35 @@ public class MagDbConfigPanelJavaFX extends BorderPane {
 				}
 
 				if (headerCount[0] == 0) {
-					Platform.runLater(() -> console.appendText("✗ ERROR: HAP file contains no protein sequences\n"));
-					hapFile.delete(); // Clean up invalid file
+					Platform.runLater(
+							() -> console.appendText("✗ ERROR: Marker2 file contains no protein sequences\n"));
+					marker2File.delete(); // Clean up invalid file
 					return false;
 				}
 
-				final int finalHeaderCount = headerCount[0];
-				Platform.runLater(() -> console.appendText("✓ HAP database generated successfully\n"));
-				Platform.runLater(() -> console.appendText("  File size: " + hapFile.length() + " bytes\n"));
-				Platform.runLater(
-						() -> console.appendText("  Found at least " + finalHeaderCount + " protein sequences\n"));
+				try (BufferedReader reader = new BufferedReader(new FileReader(marker4File))) {
+					// Re-read to count headers
+					String line;
+					while ((line = reader.readLine()) != null) {
+						if (line.startsWith(">")) {
+							headerCount[1]++;
+						}
+					}
+				}
+
+				if (headerCount[1] == 0) {
+					Platform.runLater(
+							() -> console.appendText("✗ ERROR: Marker4 file contains no protein sequences\n"));
+					marker4File.delete(); // Clean up invalid file
+					return false;
+				}
+
+				Platform.runLater(() -> console.appendText("✓ Marker2 and Marker4 database generated successfully\n"));
+				Platform.runLater(() -> console.appendText("  File size: " + marker2File.length() + " bytes\n"
+						+ "  File size: \" + marker4File.length() + \" bytes"));
+				Platform.runLater(() -> console
+						.appendText("  Found at least " + headerCount[0] + " protein sequences in Marker2\n"
+								+ "  Found at least \" + headerCount[1] + \" protein sequences in Marker4"));
 
 				return true;
 

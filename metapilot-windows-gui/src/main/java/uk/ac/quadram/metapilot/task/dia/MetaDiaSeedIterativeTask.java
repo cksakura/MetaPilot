@@ -17,7 +17,7 @@ import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNParquetReader;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNPrecursor;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
-import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaFocus;
+import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaMarker;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagPepLib;
 import uk.ac.quadram.metapilot.task.mag.MarkerGenomeSelector;
 
@@ -52,20 +52,24 @@ public class MetaDiaSeedIterativeTask extends MetaDiaMarkerTask {
 	/** When mixed, standalone library paths for the final combined search (null otherwise). */
 	protected String[] standaloneSearchLibPaths;
 
-	public MetaDiaSeedIterativeTask(MetaParameterDiaFocus focusParams, MetaResourceParameters mrp, ProgressBar bar1,
+	public MetaDiaSeedIterativeTask(MetaParameterDiaMarker markerParams, MetaResourceParameters mrp, ProgressBar bar1,
 			ProgressBar bar2) {
-		super(focusParams, mrp, bar1, bar2);
+		super(markerParams, mrp, bar1, bar2);
 
 		if (diannPar != null) {
-			diannPar.setM_excision(focusParams.isMExcision());
-			diannPar.setCarbami_C(focusParams.isCarbamiC());
-			diannPar.setOxidation_M(focusParams.isOxidationM());
-			diannPar.setAcety_proN(focusParams.isAcetyProN());
-			diannPar.setPhospho_STY(focusParams.isPhosphoSTY());
-			diannPar.setK_GG(focusParams.isKGG());
+			diannPar.setM_excision(markerParams.isMExcision());
+			diannPar.setCarbami_C(markerParams.isCarbamiC());
+			diannPar.setOxidation_M(markerParams.isOxidationM());
+			diannPar.setAcety_proN(markerParams.isAcetyProN());
+			diannPar.setPhospho_STY(markerParams.isPhosphoSTY());
+			diannPar.setK_GG(markerParams.isKGG());
 		}
+		// Initialize result folder for seed iterative workflows if not already set:
+		// seed_focus / seed_comprehensive, based on genome selection strategy.
+		initResultFolderIfNeeded();
+
 		logger.info("DIA Seed iterative workflow ({} mode) initialized",
-				focusParams.getGenomeSelectionStrategy());
+				markerParams.getMarkerMode());
 	}
 
 	@Override
@@ -205,39 +209,34 @@ public class MetaDiaSeedIterativeTask extends MetaDiaMarkerTask {
 		}
 		File magDbFile = magDb.getCurrentFile();
 		File libFolderFile = new File(magDbFile, "libraries");
-		MagPepLib[] allLibs = magDb.getMagPepLibs();
 
 		String[] libPath = new String[usedLibs.length];
-		boolean[] matchToMag = new boolean[usedLibs.length];
 		for (int i = 0; i < usedLibs.length; i++) {
 			File directLibFile = new File(usedLibs[i]);
 			if (directLibFile.exists()) {
 				libPath[i] = directLibFile.getAbsolutePath();
-				matchToMag[i] = false;
 			} else {
-				File libFile = new File(new File(libFolderFile, usedLibs[i]), usedLibs[i] + ".speclib");
-				File libTsvFile = new File(new File(libFolderFile, usedLibs[i]), usedLibs[i] + ".tsv");
-				if (usedLibs.length == 1) {
-					libPath[i] = libFile.getAbsolutePath();
-					if (!libFile.exists()) {
-						logger.error(getTaskName() + ": library file doesn't exist: " + libFile);
-						return null;
-					}
-				} else {
-					libPath[i] = libTsvFile.getAbsolutePath();
-					if (!libTsvFile.exists()) {
-						logger.error(getTaskName() + ": library file doesn't exist: " + libTsvFile);
-						return null;
-					}
+				File libFolder = new File(libFolderFile, usedLibs[i]);
+				File speclibFile = new File(libFolder, usedLibs[i] + ".speclib");
+				File tsvFile = new File(libFolder, usedLibs[i] + ".tsv");
+				File parquetFile = new File(libFolder, usedLibs[i] + ".parquet");
+
+				File chosen = null;
+				if (speclibFile.exists()) {
+					chosen = speclibFile;
+				} else if (tsvFile.exists()) {
+					chosen = tsvFile;
+				} else if (parquetFile.exists()) {
+					chosen = parquetFile;
 				}
-				boolean micro = false;
-				for (MagPepLib lib : allLibs) {
-					if (lib.getLibName().equals(usedLibs[i])) {
-						micro = lib.isMatchToMag();
-						break;
-					}
+
+				if (chosen == null) {
+					logger.error(getTaskName() + ": no library file (.speclib/.tsv/.parquet) found for library '{}'", usedLibs[i]);
+					return null;
 				}
-				matchToMag[i] = micro;
+
+				libPath[i] = chosen.getAbsolutePath();
+
 			}
 		}
 		return libPath;
@@ -347,9 +346,12 @@ public class MetaDiaSeedIterativeTask extends MetaDiaMarkerTask {
 
 	/**
 	 * Runs the first search with user-selected (or microbiome-only) libraries and writes
-	 * result to {@link #getIterativeResultFolder()}/seed.parquet. Subclasses can call this
-	 * to reuse the same first step (e.g. Deep Comprehensive).
-	 * @return true if seed.parquet exists after the step (or already existed)
+	 * result to {@link #getIterativeResultFolder()}/seed.parquet when possible. If the
+	 * combined search fails due to one or more damaged raw files, a per-file fallback is
+	 * executed and per_file_*.parquet files are produced instead; subclasses can consume
+	 * those directly (e.g. Deep Comprehensive).
+	 * @return true if either seed.parquet exists or at least one non-empty per_file_*.parquet
+	 *         exists under the iterative result folder
 	 */
 	protected boolean runFirstSearchUserLibrary() {
 		File iterativeFolder = getIterativeResultFolder();
@@ -376,18 +378,46 @@ public class MetaDiaSeedIterativeTask extends MetaDiaMarkerTask {
 			diannPar.setExportDecoy(true);
 
 			if (addOutLibForInitialSearch) {
+				diannPar.setMatrices(false);
 				diaNNTask.addTask(diannPar, diaLibSearchPar, tempParquetFile.getAbsolutePath(),
 						false, true, true, initialSearchLibPaths);
 			} else {
-				diaNNTask.addTask(diannPar, diaLibSearchPar, tempParquetFile.getAbsolutePath(),
+				diaNNTask.addNoQuantLibTask(diannPar, diaLibSearchPar, tempParquetFile.getAbsolutePath(),
 						initialSearchLibPaths);
 			}
 			diaNNTask.run(diaFiles.length * 12);
 		}
-		if (!tempParquetFile.exists()) {
-			logger.error(getTaskName() + ": First search failed - parquet file not created");
+		if (!tempParquetFile.exists() && diaFiles != null && diaFiles.length > 1 && initialSearchLibPaths != null) {
+			List<String> damaged = addOutLibForInitialSearch
+					? runPerFileFallbackAndRetryCombinedWithGenLib(tempParquetFile.getAbsolutePath(), initialSearchLibPaths)
+					: runPerFileFallbackAndRetryCombinedNoQuant(tempParquetFile.getAbsolutePath(), initialSearchLibPaths);
+			if (!damaged.isEmpty()) {
+				logger.warn(getTaskName() + ": The following raw files produced no results (may be damaged): {}", damaged);
+				System.err.println(format.format(new Date()) + "\t" + getTaskName()
+						+ ": The following raw files produced no results (may be damaged): " + String.join(", ", damaged));
+			}
+		}
+		if (tempParquetFile.exists()) {
+			return true;
+		}
+
+		// No combined seed.parquet, check whether per-file fallback produced any usable outputs.
+		boolean hasPerFile = false;
+		if (diaFiles != null && diaFiles.length > 0) {
+			for (int i = 0; i < diaFiles.length; i++) {
+				File pf = new File(iterativeFolder, "per_file_" + i + ".parquet");
+				if (pf.exists() && pf.length() > 0) {
+					hasPerFile = true;
+					break;
+				}
+			}
+		}
+		if (!hasPerFile) {
+			logger.error(getTaskName() + ": First search failed - no seed.parquet and no per-file parquet outputs");
 			return false;
 		}
+		logger.info(getTaskName()
+				+ ": seed.parquet was not created, but per-file parquet outputs exist; will use them directly for downstream steps");
 		return true;
 	}
 
@@ -395,9 +425,9 @@ public class MetaDiaSeedIterativeTask extends MetaDiaMarkerTask {
 	protected boolean iterativeSearch() {
 		logger.info("Starting iterative search for DIA Seed (user library)...");
 
-		MetaParameterDiaFocus focusParams = (metaPar instanceof MetaParameterDiaFocus) ? (MetaParameterDiaFocus) metaPar : null;
-		if (focusParams == null || magDb == null) {
-			logger.error(getTaskName() + ": MetaParameterDiaFocus and MAG database required for iterative seed workflow");
+		MetaParameterDiaMarker markerParams = (metaPar instanceof MetaParameterDiaMarker) ? (MetaParameterDiaMarker) metaPar : null;
+		if (markerParams == null || magDb == null) {
+			logger.error(getTaskName() + ": MetaParameterDiaMarker and MAG database required for iterative seed workflow");
 			return false;
 		}
 
@@ -410,8 +440,16 @@ public class MetaDiaSeedIterativeTask extends MetaDiaMarkerTask {
 
 		// Step 2: Read precursors and set protein info from MAG predicted TSVs
 		logger.info("Reading precursors and setting protein information from MAG predicted TSVs...");
-		DiaNNParquetReader parquetReader = new DiaNNParquetReader(tempParquetFile.getAbsolutePath(), diannPar.getCut());
-		DiaNNPrecursor[] precursors = parquetReader.getDiaNNPrecursors();
+		DiaNNPrecursor[] precursors;
+		if (tempParquetFile.exists()) {
+			DiaNNParquetReader parquetReader = new DiaNNParquetReader(tempParquetFile.getAbsolutePath(),
+					diannPar.getCut());
+			precursors = parquetReader.getDiaNNPrecursors();
+		} else {
+			logger.warn(getTaskName()
+					+ ": seed.parquet not found after fallback; aggregating precursors from per_file_*.parquet instead");
+			precursors = readPrecursorsFromPerFileParquets(iterativeFolder, null);
+		}
 		if (precursors == null || precursors.length == 0) {
 			logger.warn(getTaskName() + ": No precursors found in user library search");
 			return false;
@@ -432,8 +470,11 @@ public class MetaDiaSeedIterativeTask extends MetaDiaMarkerTask {
 		logger.info("Mapped {} / {} precursors to MAG proteins", precursorsWithPro.size(), precursors.length);
 
 		// Step 3: MarkerGenomeSelector (Focus or Comprehensive)
-		String mode = focusParams.getGenomeSelectionStrategy();
-		if (mode == null || mode.trim().isEmpty()) {
+		String markerMode = markerParams.getMarkerMode();
+		String mode;
+		if ("COMPREHENSIVE".equalsIgnoreCase(markerMode) || "DEEP".equalsIgnoreCase(markerMode)) {
+			mode = MarkerGenomeSelector.KNEE_MODE_COMPREHENSIVE;
+		} else {
 			mode = MarkerGenomeSelector.KNEE_MODE_FOCUS;
 		}
 		logger.info("Selecting genomes using MarkerGenomeSelector ({} mode)...", mode);
@@ -445,21 +486,29 @@ public class MetaDiaSeedIterativeTask extends MetaDiaMarkerTask {
 			return false;
 		}
 
+		// If marker peptides are < 5% of total identified peptides, use all peptides for genome selection (no privilege, no representative, greedy only)
+		MarkerGenomeSelector.MarkerPeptideRatioResult ratioResult = MarkerGenomeSelector.computeMarkerPeptideRatio(precursorsWithPro, markerFasta);
+		File effectiveMarkerFasta = markerFasta;
+		if (ratioResult.ratio < MarkerGenomeSelector.MARKER_PEPTIDE_RATIO_THRESHOLD) {
+			effectiveMarkerFasta = null;
+			logger.info("Marker peptides ({}) are {}% of total identified peptides ({}); using all peptides for genome selection (greedy only, no PRIVILEGE/representative)",
+					ratioResult.markerUniquePeptides, String.format("%.1f", ratioResult.ratio * 100), ratioResult.totalUniquePeptides);
+		} else {
+			logger.info("Marker peptide ratio: {} / {} = {}% (using marker-based genome selection)", ratioResult.markerUniquePeptides, ratioResult.totalUniquePeptides, String.format("%.1f", ratioResult.ratio * 100));
+		}
+
 		MarkerGenomeSelector selector = new MarkerGenomeSelector();
 		selector.setKneeSelectionMode(mode);
 
+		HashSet<String> genomeSet = new HashSet<>();
 		File evidenceFile = new File(iterativeFolder, "genome_evidence.tsv");
 		File rankedFile = new File(iterativeFolder, "genome_ranked.tsv");
 		File selectedFile = new File(iterativeFolder, "genome_selected.tsv");
-
 		selector.selectMarkerGenomesWithKnee(
 				precursorsWithPro.toArray(new DiaNNPrecursor[0]),
-				markerFasta, genomesTaxaTsv,
+				effectiveMarkerFasta, genomesTaxaTsv,
 				evidenceFile.getAbsolutePath(), rankedFile.getAbsolutePath(), selectedFile.getAbsolutePath(),
 				300, true);
-
-		// Step 4: Read selected genomes and build combined FASTA
-		HashSet<String> genomeSet = new HashSet<>();
 		if (selectedFile.exists()) {
 			try (BufferedReader reader = new BufferedReader(new FileReader(selectedFile))) {
 				reader.readLine();
@@ -477,6 +526,7 @@ public class MetaDiaSeedIterativeTask extends MetaDiaMarkerTask {
 				return false;
 			}
 		}
+
 		if (genomeSet.isEmpty()) {
 			logger.warn(getTaskName() + ": No genomes selected");
 			return false;
@@ -565,6 +615,7 @@ public class MetaDiaSeedIterativeTask extends MetaDiaMarkerTask {
 			File magParquetFile = new File(combinedFile, "mag.parquet");
 			if (!magParquetFile.exists()) {
 				logger.info("Generating mag.parquet and library (microbiome libs with --out-lib)...");
+				diannPar.setMatrices(false);
 				diaNNTask.addTask(diannPar, diaLibSearchPar, magParquetFile.getAbsolutePath(),
 						false, true, true, initialSearchLibPaths);
 				diaNNTask.run(diaFiles.length * 12);
@@ -575,8 +626,9 @@ public class MetaDiaSeedIterativeTask extends MetaDiaMarkerTask {
 				logger.error(getTaskName() + ": MAG library file not found: " + magLibFile.getAbsolutePath());
 				return false;
 			}
-			// Combined search: mag.parquet.lib + all standalone libraries -> combined.parquet (skip if already exists)
+			// Combined search: mag.parquet.lib + all standalone libraries -> combined.parquet (skip if already exists) — final search with quantification
 			if (!quan_pep_file.exists() || !combineParquetFile.exists()) {
+				diannPar.setMatrices(true);
 				List<String> combinedLibPaths = new ArrayList<>();
 				combinedLibPaths.add(magLibFile.getAbsolutePath());
 				if (standaloneSearchLibPaths != null) {
@@ -610,5 +662,45 @@ public class MetaDiaSeedIterativeTask extends MetaDiaMarkerTask {
 		}
 		logger.info("Identification completed successfully");
 		return true;
+	}
+
+	/**
+	 * Aggregate DiaNN precursors from per_file_*.parquet files in the given directory.
+	 *
+	 * @param dir    directory containing per_file_*.parquet
+	 * @param qValue optional q-value cutoff; if null, use default reader behaviour
+	 * @return concatenated precursors or null if none
+	 */
+	private DiaNNPrecursor[] readPrecursorsFromPerFileParquets(File dir, Double qValue) {
+		if (dir == null || !dir.isDirectory()) {
+			return null;
+		}
+		String cut = diannPar != null && diannPar.getCut() != null ? diannPar.getCut() : "KR";
+		List<DiaNNPrecursor> all = new ArrayList<>();
+		for (int i = 0; i < (diaFiles != null ? diaFiles.length : Integer.MAX_VALUE); i++) {
+			File pf = new File(dir, "per_file_" + i + ".parquet");
+			if (!pf.exists()) {
+				break;
+			}
+			if (pf.length() <= 0) {
+				continue;
+			}
+			try {
+				DiaNNParquetReader reader = new DiaNNParquetReader(pf.getAbsolutePath(), cut);
+				DiaNNPrecursor[] prec = (qValue == null)
+						? reader.getDiaNNPrecursors()
+						: reader.getDiaNNPrecursors(qValue);
+				if (prec != null) {
+					for (DiaNNPrecursor p : prec) {
+						if (p != null) {
+							all.add(p);
+						}
+					}
+				}
+			} catch (Exception e) {
+				logger.warn(getTaskName() + ": failed to read per-file parquet " + pf.getAbsolutePath(), e);
+			}
+		}
+		return all.isEmpty() ? null : all.toArray(new DiaNNPrecursor[0]);
 	}
 }

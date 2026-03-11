@@ -80,12 +80,14 @@ public class DDAMagFragPipeParameterIO extends BaseParameterIO {
 			// Load Input/Output settings
 			String result = "";
 			String microDb = "";
+			String magDbVersion = "";
 			boolean appendHostDb = false;
 			String hostDB = "";
 			if (json.has("input_output")) {
 				JSONObject ioSettings = json.getJSONObject("input_output");
 				result = ioSettings.optString("output_directory", "");
 				microDb = ioSettings.optString("mag_database", "");
+				magDbVersion = ioSettings.optString("mag_db_version", "");
 				appendHostDb = ioSettings.optBoolean("append_host_db", false);
 				hostDB = ioSettings.optString("host_database", "");
 			}
@@ -93,10 +95,14 @@ public class DDAMagFragPipeParameterIO extends BaseParameterIO {
 			// Load additional parameters
 			String ms2ScanMode = "HCD-FTMS";
 			int threadCount = 4;
+			String genomeSelectorMode = uk.ac.quadram.metapilot.task.mag.MagDbItem.MARKER2;
+			String genomeSelectionStrategy = "Focus";
 			if (json.has("additional_parameters")) {
 				JSONObject additionalParams = json.getJSONObject("additional_parameters");
 				ms2ScanMode = additionalParams.optString("ms2_scan_mode", "HCD-FTMS");
 				threadCount = additionalParams.optInt("threads", 4);
+				genomeSelectorMode = additionalParams.optString("genome_selector_mode", genomeSelectorMode);
+				genomeSelectionStrategy = additionalParams.optString("genome_selection_strategy", genomeSelectionStrategy);
 			}
 
 			// Create DDAMagFragPipeParameters
@@ -110,6 +116,12 @@ public class DDAMagFragPipeParameterIO extends BaseParameterIO {
 				ms2ScanMode,
 				threadCount
 			);
+
+			params.setGenomeSelectorMode(genomeSelectorMode);
+			params.setGenomeSelectionStrategy(genomeSelectionStrategy);
+			// Keep MAG DB info in MAG-specific fields for UI restore
+			params.setMagDbCatalogueId(microDb);
+			params.setMagDbVersion(magDbVersion);
 
 			// Load enzyme settings
 			if (json.has("enzyme_settings")) {
@@ -199,6 +211,7 @@ public class DDAMagFragPipeParameterIO extends BaseParameterIO {
 			JSONObject ioSettings = new JSONObject();
 			ioSettings.put("output_directory", params.getResult());
 			ioSettings.put("mag_database", params.getMicroDb());
+			ioSettings.put("mag_db_version", params.getMagDbVersion());
 			ioSettings.put("append_host_db", params.isAppendHostDb());
 			ioSettings.put("host_database", params.getHostDB());
 			LOGGER.info("Added I/O settings - output: {}, mag_db: {}", params.getResult(), params.getMicroDb());
@@ -236,6 +249,8 @@ public class DDAMagFragPipeParameterIO extends BaseParameterIO {
 			additionalParams.put("ms2_scan_mode", params.getMs2ScanMode());
 			additionalParams.put("generate_sample_specific_db", params.isReduceDb());
 			additionalParams.put("spectra_clustering", params.isSpectraCluster());
+			additionalParams.put("genome_selector_mode", params.getGenomeSelectorMode());
+			additionalParams.put("genome_selection_strategy", params.getGenomeSelectionStrategy());
 			json.put("additional_parameters", additionalParams);
 			LOGGER.info("Added additional parameters - threads: {}, ms2_scan_mode: {}", params.getThreadCount(), params.getMs2ScanMode());
 

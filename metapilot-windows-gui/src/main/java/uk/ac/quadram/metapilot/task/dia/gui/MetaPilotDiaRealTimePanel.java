@@ -58,6 +58,16 @@ public class MetaPilotDiaRealTimePanel extends VBox {
 
     // DIA settings
     private ComboBox<Integer> threadsComboBox;
+    /** Real-time workflow mode: 3 marker + 4 seed modes. */
+    private ComboBox<String> rtWorkflowModeComboBox;
+
+    // DIA-NN modification checkboxes (six standard modifications)
+    private CheckBox mExcisionCheckBox;
+    private CheckBox carbamiCCheckBox;
+    private CheckBox oxidationMCheckBox;
+    private CheckBox acetyProNCheckBox;
+    private CheckBox phosphoSTYCheckBox;
+    private CheckBox kGGCheckBox;
 
     // Separate panels for library and model generation
     private DiaLibraryGenerationPanel libraryGenerationPanel;
@@ -132,12 +142,15 @@ public class MetaPilotDiaRealTimePanel extends VBox {
     public void setAvailableMagDatabases(MagDbItem[] magDbItems) {
         if (magDatabasePanel != null) {
             magDatabasePanel.setAvailableMagDatabases(magDbItems);
-            // Update the panels with the selected MAG database
-            if (magDbItems != null && magDbItems.length > 0) {
-                updatePanelsWithMagDb(magDbItems[0]);
-            }
-        } else {
-            System.out.println("DEBUG: magDatabasePanel is null - UI not initialized yet");
+            // Sync library table to the current combobox selection (after selection is established)
+            Platform.runLater(() -> {
+                MagDbItem selected = magDatabasePanel.getSelectedMagDatabase();
+                if (selected != null) {
+                    updatePanelsWithMagDb(selected);
+                } else if (magDbItems != null && magDbItems.length > 0) {
+                    updatePanelsWithMagDb(magDbItems[0]);
+                }
+            });
         }
     }
 
@@ -207,6 +220,50 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         updateParameterView();
     }
 
+    /**
+     * Real-time workflow selection section.
+     * Provides unified choices for marker and seed workflows that will be applied
+     * to each raw file during monitoring.
+     */
+    private VBox createWorkflowSelectionSection() {
+        VBox section = new VBox(10);
+        section.setPadding(new Insets(10));
+        section.setStyle("-fx-background-color: #f0f8ff; -fx-background-radius: 5;");
+
+        Label titleLabel = createSectionTitle("Real-time Workflow");
+
+        Label workflowLabel = new Label("Workflow mode:");
+        workflowLabel.setStyle("-fx-font-weight: bold;");
+
+        rtWorkflowModeComboBox = new ComboBox<>(
+                FXCollections.observableArrayList(
+                        "Marker - Focus",
+                        "Marker - Comprehensive",
+                        "Marker - Deep",
+                        "Seed - Direct search",
+                        "Seed - Focus search",
+                        "Seed - Comprehensive search",
+                        "Seed - Deep comprehensive search"));
+        rtWorkflowModeComboBox.setMinWidth(260);
+        rtWorkflowModeComboBox.setPrefWidth(320);
+        // Default to a simple seed-direct mode
+        rtWorkflowModeComboBox.setValue("Seed - Direct search");
+        rtWorkflowModeComboBox.setOnAction(e -> updateParameterView());
+
+        Tooltip workflowTooltip = new Tooltip(
+                "Select which DIA workflow to apply to each new raw file:\n"
+                + " - Marker modes use Marker4-based genome selection (Focus / Comprehensive / Deep).\n"
+                + " - Seed modes use seed library workflows (Direct / Focus / Comprehensive / Deep comprehensive).\n"
+                + "Per-file searches run in no-quant mode; a final combined quant search is run after monitoring stops.");
+        rtWorkflowModeComboBox.setTooltip(workflowTooltip);
+
+        VBox inner = new VBox(5);
+        inner.getChildren().addAll(workflowLabel, rtWorkflowModeComboBox);
+
+        section.getChildren().addAll(titleLabel, inner);
+        return section;
+    }
+
     // Create IO tab (same as DIA Normal Panel)
 
     // ProcessingRow class removed - now using TableRowData from MetaDiaMonitorTask
@@ -217,56 +274,54 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         tabContent.setMinWidth(960);
         tabContent.setMinHeight(760);
 
-        // Add database settings at the top
-        tabContent.getChildren().addAll(
-            createSectionTitle("Database Settings"),
-            magDatabasePanel
-        );
-
-        // Create main grid layout for parameters with 2-column responsive sizing
+        // 2-column grid like seed panel (no metadata)
         GridPane mainGrid = new GridPane();
         mainGrid.setHgap(15);
         mainGrid.setVgap(15);
         mainGrid.setPadding(new Insets(10));
         mainGrid.setMinWidth(940);
-        mainGrid.setMinHeight(600); // Reduced height since database settings are now above
+        mainGrid.setMinHeight(600);
         VBox.setVgrow(mainGrid, Priority.ALWAYS);
 
-        // Column constraints for 2-column layout
         ColumnConstraints col1 = new ColumnConstraints();
         col1.setPercentWidth(50);
-        col1.setMinWidth(450);
+        col1.setMinWidth(430);
         col1.setHgrow(Priority.ALWAYS);
         ColumnConstraints col2 = new ColumnConstraints();
         col2.setPercentWidth(50);
-        col2.setMinWidth(450);
+        col2.setMinWidth(430);
         col2.setHgrow(Priority.ALWAYS);
         mainGrid.getColumnConstraints().addAll(col1, col2);
 
-        // Row constraints - 2 rows: settings and panels
         RowConstraints row1 = new RowConstraints();
-        row1.setMinHeight(60);
-        row1.setVgrow(Priority.NEVER);
-        RowConstraints row2 = new RowConstraints();
-        row2.setVgrow(Priority.ALWAYS);
-        row2.setMinHeight(400);
-        mainGrid.getRowConstraints().addAll(row1, row2);
+        row1.setVgrow(Priority.ALWAYS);
+        row1.setMinHeight(400);
+        mainGrid.getRowConstraints().add(row1);
 
-        // Thread Count Settings (spans both columns)
-        VBox settingsSection = createThreadCountSection();
-        mainGrid.add(settingsSection, 0, 0, 2, 1);
-
-        // Row 2: Library Generation Panel (left) | Model Generation Panel (right)
-        libraryGenerationPanel = new DiaLibraryGenerationPanel(consoleOutput);
+        // Left column: Database, Workflow & threads, Library controls
+        VBox leftColumn = new VBox(15);
+        leftColumn.setMinWidth(430);
+        leftColumn.getChildren().addAll(
+            createSectionTitle("Database Settings"),
+            magDatabasePanel,
+            createWorkflowAndThreadSection()
+        );
+        libraryGenerationPanel = new DiaLibraryGenerationPanel(consoleOutput, true);
         libraryGenerationPanel.setParameterUpdateCallback(() -> updateParameterView());
-        mainGrid.add(libraryGenerationPanel, 0, 1);
-        GridPane.setVgrow(libraryGenerationPanel, Priority.ALWAYS);
+        leftColumn.getChildren().add(libraryGenerationPanel.getControlsSection());
+        VBox.setVgrow(libraryGenerationPanel.getControlsSection(), Priority.ALWAYS);
+        GridPane.setVgrow(leftColumn, Priority.ALWAYS);
 
-        modelGenerationPanel = new DiaModelGenerationPanel(consoleOutput);
-        modelGenerationPanel.setParameterUpdateCallback(() -> updateParameterView());
-        mainGrid.add(modelGenerationPanel, 1, 1);
-        GridPane.setVgrow(modelGenerationPanel, Priority.ALWAYS);
-        
+        // Right column: Library table only
+        VBox rightColumn = new VBox(10);
+        rightColumn.setMinWidth(430);
+        rightColumn.getChildren().add(libraryGenerationPanel.getTableSection());
+        VBox.setVgrow(libraryGenerationPanel.getTableSection(), Priority.ALWAYS);
+        GridPane.setVgrow(rightColumn, Priority.ALWAYS);
+
+        mainGrid.add(leftColumn, 0, 0);
+        mainGrid.add(rightColumn, 1, 0);
+
         tabContent.getChildren().add(mainGrid);
         return tabContent;
     }
@@ -439,46 +494,23 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         // File Name column
         TableColumn<TableRowData, String> fileCol = new TableColumn<>("File");
         fileCol.setCellValueFactory(new PropertyValueFactory<>("fileName"));
-        fileCol.setMinWidth(150);
-        fileCol.setPrefWidth(200);
+        fileCol.setMinWidth(180);
+        fileCol.setPrefWidth(240);
 
-        // Round 1 column
-        TableColumn<TableRowData, String> round1Col = new TableColumn<>("Round 1");
-        round1Col.setCellValueFactory(new PropertyValueFactory<>("round1Status"));
-        round1Col.setMinWidth(80);
-        round1Col.setPrefWidth(100);
+        TableColumn<TableRowData, String> statusCol = new TableColumn<>("Status");
+        statusCol.setCellValueFactory(new PropertyValueFactory<>("status"));
+        statusCol.setMinWidth(100);
+        statusCol.setPrefWidth(120);
 
-        // Model column
-        TableColumn<TableRowData, String> modelCol = new TableColumn<>("Model");
-        modelCol.setCellValueFactory(new PropertyValueFactory<>("round2Status"));
-        modelCol.setMinWidth(80);
-        modelCol.setPrefWidth(100);
-
-        // Round 2 column
-        TableColumn<TableRowData, String> round2Col = new TableColumn<>("Round 2");
-        round2Col.setCellValueFactory(new PropertyValueFactory<>("round3Status"));
-        round2Col.setMinWidth(80);
-        round2Col.setPrefWidth(100);
-
-        // Round 3 column
-        TableColumn<TableRowData, String> round3Col = new TableColumn<>("Round 3");
-        round3Col.setCellValueFactory(new PropertyValueFactory<>("round4Status"));
-        round3Col.setMinWidth(80);
-        round3Col.setPrefWidth(100);
-
-        // Round 4 column
-        TableColumn<TableRowData, String> round4Col = new TableColumn<>("Round 4");
-        round4Col.setCellValueFactory(new PropertyValueFactory<>("round5Status"));
-        round4Col.setMinWidth(80);
-        round4Col.setPrefWidth(100);
+        TableColumn<TableRowData, String> detailsCol = new TableColumn<>("Details");
+        detailsCol.setCellValueFactory(new PropertyValueFactory<>("details"));
+        detailsCol.setMinWidth(260);
+        detailsCol.setPrefWidth(420);
 
         resultTable.getColumns().clear();
         resultTable.getColumns().add(fileCol);
-        resultTable.getColumns().add(round1Col);
-        resultTable.getColumns().add(modelCol);
-        resultTable.getColumns().add(round2Col);
-        resultTable.getColumns().add(round3Col);
-        resultTable.getColumns().add(round4Col);
+        resultTable.getColumns().add(statusCol);
+        resultTable.getColumns().add(detailsCol);
 
         // Add components only if they're not null
         if (resultTable != null) {
@@ -800,13 +832,12 @@ public class MetaPilotDiaRealTimePanel extends VBox {
                 if (subDirs != null) {
                     for (File subDir : subDirs) {
                         if (!subDir.getName().equals("combined")) {
-                            // Find the last search result file
-                            File lastSearchFile = new File(subDir, "lastSearch.parquet");
-                            if (lastSearchFile.exists()) {
+                            File finalParquet = new File(subDir, subDir.getName() + ".parquet");
+                            if (finalParquet.exists()) {
                                 String baseName = subDir.getName();
-                                // Create raw file mapping: base name -> [raw file path, result folder path]
+                                String rawPath = resolveRawPathForBaseName(baseName);
                                 rawResultFileMap.put(baseName, new String[]{
-                                    new File(monitorFolderField.getText(), baseName + ".raw").getAbsolutePath(),
+                                    rawPath,
                                     subDir.getAbsolutePath()
                                 });
                             }
@@ -1038,6 +1069,40 @@ public class MetaPilotDiaRealTimePanel extends VBox {
             e.printStackTrace();
         }
     }
+
+    /**
+     * Resolve the original monitored file for a base name across supported formats.
+     */
+    private String resolveRawPathForBaseName(String baseName) {
+        if (monitorFolderField == null || monitorFolderField.getText() == null) {
+            return baseName;
+        }
+        File monitorDir = new File(monitorFolderField.getText());
+        File[] candidates = monitorDir.listFiles();
+        if (candidates != null) {
+            for (File candidate : candidates) {
+                String name = candidate.getName();
+                String lower = name.toLowerCase();
+                if (!(lower.endsWith(".raw") || lower.endsWith(".d") || lower.endsWith(".dia") || lower.endsWith(".mzml"))) {
+                    continue;
+                }
+                String normalized = name;
+                if (lower.endsWith(".raw")) {
+                    normalized = name.substring(0, name.length() - 4);
+                } else if (lower.endsWith(".d")) {
+                    normalized = name.substring(0, name.length() - 2);
+                } else if (lower.endsWith(".dia")) {
+                    normalized = name.substring(0, name.length() - 4);
+                } else if (lower.endsWith(".mzml")) {
+                    normalized = name.substring(0, name.length() - 5);
+                }
+                if (baseName.equalsIgnoreCase(normalized)) {
+                    return candidate.getAbsolutePath();
+                }
+            }
+        }
+        return new File(monitorDir, baseName + ".raw").getAbsolutePath();
+    }
     
     
 
@@ -1094,7 +1159,7 @@ public class MetaPilotDiaRealTimePanel extends VBox {
                     consolePanel.appendConsoleText("Result Table Size: " + resultTable.getItems().size() + "\n");
                     for (int i = 0; i < resultTable.getItems().size(); i++) {
                         TableRowData row = resultTable.getItems().get(i);
-                        consolePanel.appendConsoleText("  [" + i + "] " + row.getFileName() + " - Round1: " + row.getRound1Status() + "\n");
+                        consolePanel.appendConsoleText("  [" + i + "] " + row.getFileName() + " - Status: " + row.getStatus() + "\n");
                     }
                     
                     // Check Swing models from monitor task
@@ -1172,22 +1237,50 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         }
     }
 
-    private VBox createThreadCountSection() {
+    private VBox createWorkflowAndThreadSection() {
         VBox section = new VBox(10);
         section.setPadding(new Insets(10));
         section.setStyle("-fx-background-color: #f0f8ff; -fx-background-radius: 5;");
 
-        Label titleLabel = createSectionTitle("Performance Settings");
+        Label titleLabel = createSectionTitle("Workflow, Performance & Modifications");
 
         GridPane settingsGrid = new GridPane();
         settingsGrid.setHgap(20);
         settingsGrid.setVgap(10);
         settingsGrid.setAlignment(Pos.CENTER_LEFT);
 
-        // Threads selection only (database settings are in I/O tab)
+        ColumnConstraints col1 = new ColumnConstraints();
+        col1.setMinWidth(260);
+        col1.setHgrow(Priority.ALWAYS);
+        ColumnConstraints col2 = new ColumnConstraints();
+        col2.setMinWidth(200);
+        col2.setHgrow(Priority.ALWAYS);
+        settingsGrid.getColumnConstraints().addAll(col1, col2);
+
+        // Workflow selection: 3 marker + 4 seed modes
+        Label workflowLabel = new Label("Workflow mode:");
+        workflowLabel.setStyle("-fx-font-weight: bold;");
+        rtWorkflowModeComboBox = new ComboBox<>(FXCollections.observableArrayList(
+                "Marker – Focus",
+                "Marker – Comprehensive",
+                "Marker – Deep",
+                "Seed – Direct",
+                "Seed – Focus",
+                "Seed – Comprehensive",
+                "Seed – Deep"));
+        rtWorkflowModeComboBox.setMinWidth(220);
+        rtWorkflowModeComboBox.setPrefWidth(260);
+        rtWorkflowModeComboBox.setMaxWidth(Double.MAX_VALUE);
+        rtWorkflowModeComboBox.setValue("Seed – Direct");
+        rtWorkflowModeComboBox.setOnAction(e -> updateParameterView());
+
+        VBox workflowBox = new VBox(5);
+        workflowBox.getChildren().addAll(workflowLabel, rtWorkflowModeComboBox);
+        settingsGrid.add(workflowBox, 0, 0);
+
+        // Threads selection (database settings are in Database Settings section)
         Label threadsLabel = new Label("Number of Threads:");
         threadsLabel.setStyle("-fx-font-weight: bold;");
-        settingsGrid.add(threadsLabel, 0, 0);
 
         threadsComboBox = new ComboBox<>();
         for (int i = 1; i <= Runtime.getRuntime().availableProcessors(); i++) {
@@ -1197,7 +1290,53 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         threadsComboBox.setMinWidth(100);
         threadsComboBox.setPrefWidth(120);
         threadsComboBox.setOnAction(e -> updateParameterView());
-        settingsGrid.add(threadsComboBox, 1, 0);
+
+        VBox threadsBox = new VBox(5);
+        threadsBox.getChildren().addAll(threadsLabel, threadsComboBox);
+        settingsGrid.add(threadsBox, 1, 0);
+
+        // Modification row: all six DIA-NN modifications in one line
+        HBox modsBox = new HBox(10);
+        modsBox.setAlignment(Pos.CENTER_LEFT);
+
+        Label modsLabel = new Label("Modifications:");
+        modsLabel.setStyle("-fx-font-weight: bold;");
+
+        mExcisionCheckBox = new CheckBox("M excision");
+        mExcisionCheckBox.setSelected(true);
+        mExcisionCheckBox.setOnAction(e -> updateParameterView());
+
+        carbamiCCheckBox = new CheckBox("Carbamidomethyl C");
+        carbamiCCheckBox.setSelected(true);
+        carbamiCCheckBox.setOnAction(e -> updateParameterView());
+
+        oxidationMCheckBox = new CheckBox("Oxidation M");
+        oxidationMCheckBox.setSelected(false);
+        oxidationMCheckBox.setOnAction(e -> updateParameterView());
+
+        acetyProNCheckBox = new CheckBox("Acetylation protein N-term");
+        acetyProNCheckBox.setSelected(false);
+        acetyProNCheckBox.setOnAction(e -> updateParameterView());
+
+        phosphoSTYCheckBox = new CheckBox("Phosphorylation STY");
+        phosphoSTYCheckBox.setSelected(false);
+        phosphoSTYCheckBox.setOnAction(e -> updateParameterView());
+
+        kGGCheckBox = new CheckBox("K GG");
+        kGGCheckBox.setSelected(false);
+        kGGCheckBox.setOnAction(e -> updateParameterView());
+
+        modsBox.getChildren().addAll(
+                modsLabel,
+                mExcisionCheckBox,
+                carbamiCCheckBox,
+                oxidationMCheckBox,
+                acetyProNCheckBox,
+                phosphoSTYCheckBox,
+                kGGCheckBox);
+
+        // Place modification row spanning both columns underneath workflow/threads
+        settingsGrid.add(modsBox, 0, 1, 2, 1);
 
         section.getChildren().addAll(titleLabel, settingsGrid);
         return section;
@@ -1246,10 +1385,35 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         sb.append("  Perform Analysis: ").append(performAnalysisCheckBox != null ? performAnalysisCheckBox.isSelected() : false).append("\n");
         sb.append("\n");
 
-        // Performance settings
+        // Performance and workflow settings
         sb.append("Performance Settings:\n");
         if (threadsComboBox != null) {
             sb.append("  Thread Count: ").append(threadsComboBox.getValue()).append("\n");
+        }
+        if (rtWorkflowModeComboBox != null && rtWorkflowModeComboBox.getValue() != null) {
+            sb.append("  Workflow Mode: ").append(rtWorkflowModeComboBox.getValue()).append("\n");
+        }
+        sb.append("\n");
+
+        // DIA-NN modification settings
+        sb.append("Modification Settings:\n");
+        if (mExcisionCheckBox != null) {
+            sb.append("  M excision: ").append(mExcisionCheckBox.isSelected()).append("\n");
+        }
+        if (carbamiCCheckBox != null) {
+            sb.append("  Carbamidomethyl C: ").append(carbamiCCheckBox.isSelected()).append("\n");
+        }
+        if (oxidationMCheckBox != null) {
+            sb.append("  Oxidation M: ").append(oxidationMCheckBox.isSelected()).append("\n");
+        }
+        if (acetyProNCheckBox != null) {
+            sb.append("  Acetylation protein N-term: ").append(acetyProNCheckBox.isSelected()).append("\n");
+        }
+        if (phosphoSTYCheckBox != null) {
+            sb.append("  Phosphorylation STY: ").append(phosphoSTYCheckBox.isSelected()).append("\n");
+        }
+        if (kGGCheckBox != null) {
+            sb.append("  K GG: ").append(kGGCheckBox.isSelected()).append("\n");
         }
         sb.append("\n");
 
@@ -1266,22 +1430,6 @@ public class MetaPilotDiaRealTimePanel extends VBox {
             }
         } else {
             sb.append("  Library panel not available\n");
-        }
-        sb.append("\n");
-
-        // Model configuration
-        sb.append("ML Models (Optional):\n");
-        if (modelGenerationPanel != null) {
-            String[] selectedModels = modelGenerationPanel.getSelectedModelNames();
-            if (selectedModels.length > 0) {
-                for (String modelName : selectedModels) {
-                    sb.append("  ").append(modelName).append("\n");
-                }
-            } else {
-                sb.append("  No models selected (models are optional)\n");
-            }
-        } else {
-            sb.append("  Model panel not available\n");
         }
         sb.append("\n");
 
@@ -1370,7 +1518,7 @@ public class MetaPilotDiaRealTimePanel extends VBox {
 					threadCount, true // Meta workflow
 			);
             
-            // Get library information
+            // Get library information (used by seed modes)
             String[] library = new String[0];
             if (libraryGenerationPanel != null) {
                 String[] selectedLibs = libraryGenerationPanel.getSelectedLibraryNames();
@@ -1379,19 +1527,54 @@ public class MetaPilotDiaRealTimePanel extends VBox {
                 }
             }
             
-            // Get model information
-            String[] models = new String[0];
-            if (modelGenerationPanel != null) {
-                String[] selectedModels = modelGenerationPanel.getSelectedModelNames();
-                if (selectedModels != null && selectedModels.length > 0) {
-                    models = selectedModels;
-                }
-            }
-            
-            // For real-time monitoring, assume library search mode (first mode)
-            boolean librarySearch = true;
+            // Workflow selection: map UI label to internal mode code and DIA flags
+            String uiMode = (rtWorkflowModeComboBox != null && rtWorkflowModeComboBox.getValue() != null)
+                    ? rtWorkflowModeComboBox.getValue()
+                    : "Seed \u2013 Direct";
+            String rtModeCode;
+            boolean librarySearch;
             boolean selfModelSearch = false;
-            boolean useModel = models.length > 0;
+            boolean useModel = false;
+            String[] models = new String[0];
+
+            switch (uiMode) {
+                case "Marker \u2013 Focus":
+                case "Marker - Focus":
+                    rtModeCode = "MARKER_FOCUS";
+                    librarySearch = false;
+                    break;
+                case "Marker \u2013 Comprehensive":
+                case "Marker - Comprehensive":
+                    rtModeCode = "MARKER_COMPREHENSIVE";
+                    librarySearch = false;
+                    break;
+                case "Marker \u2013 Deep":
+                case "Marker - Deep":
+                    rtModeCode = "MARKER_DEEP";
+                    librarySearch = false;
+                    break;
+                case "Seed \u2013 Focus":
+                case "Seed - Focus search":
+                    rtModeCode = "SEED_FOCUS";
+                    librarySearch = true;
+                    break;
+                case "Seed \u2013 Comprehensive":
+                case "Seed - Comprehensive search":
+                    rtModeCode = "SEED_COMPREHENSIVE";
+                    librarySearch = true;
+                    break;
+                case "Seed \u2013 Deep":
+                case "Seed - Deep comprehensive search":
+                    rtModeCode = "SEED_DEEP";
+                    librarySearch = true;
+                    break;
+                case "Seed \u2013 Direct":
+                case "Seed - Direct search":
+                default:
+                    rtModeCode = "SEED_DIRECT";
+                    librarySearch = true;
+                    break;
+            }
             
             // Create MetaParameterDiaRT (extends MetaParameterDia)
             MetaParameterDiaRT metaParameterDiaRT = new MetaParameterDiaRT(
@@ -1403,6 +1586,27 @@ public class MetaPilotDiaRealTimePanel extends VBox {
                 useModel,
                 models
             );
+            metaParameterDiaRT.setRtWorkflowMode(rtModeCode);
+
+            // DIA-NN modification settings
+            if (mExcisionCheckBox != null) {
+                metaParameterDiaRT.setMExcision(mExcisionCheckBox.isSelected());
+            }
+            if (carbamiCCheckBox != null) {
+                metaParameterDiaRT.setCarbamiC(carbamiCCheckBox.isSelected());
+            }
+            if (oxidationMCheckBox != null) {
+                metaParameterDiaRT.setOxidationM(oxidationMCheckBox.isSelected());
+            }
+            if (acetyProNCheckBox != null) {
+                metaParameterDiaRT.setAcetyProN(acetyProNCheckBox.isSelected());
+            }
+            if (phosphoSTYCheckBox != null) {
+                metaParameterDiaRT.setPhosphoSTY(phosphoSTYCheckBox.isSelected());
+            }
+            if (kGGCheckBox != null) {
+                metaParameterDiaRT.setKGG(kGGCheckBox.isSelected());
+            }
             
             // Set real-time specific parameters
             if (monitorFolderField != null && monitorFolderField.getText() != null && !monitorFolderField.getText().trim().isEmpty()) {
@@ -1491,6 +1695,61 @@ public class MetaPilotDiaRealTimePanel extends VBox {
             threadsComboBox.setValue(params.getThreadCount());
         }
         
+        // Apply workflow mode selection
+        if (rtWorkflowModeComboBox != null) {
+            String mode = params.getRtWorkflowMode();
+            String label;
+            if (mode == null || mode.isEmpty()) {
+                label = "Seed \u2013 Direct";
+            } else {
+                switch (mode) {
+                    case "MARKER_FOCUS":
+                        label = "Marker \u2013 Focus";
+                        break;
+                    case "MARKER_COMPREHENSIVE":
+                        label = "Marker \u2013 Comprehensive";
+                        break;
+                    case "MARKER_DEEP":
+                        label = "Marker \u2013 Deep";
+                        break;
+                    case "SEED_FOCUS":
+                        label = "Seed \u2013 Focus";
+                        break;
+                    case "SEED_COMPREHENSIVE":
+                        label = "Seed \u2013 Comprehensive";
+                        break;
+                    case "SEED_DEEP":
+                        label = "Seed \u2013 Deep";
+                        break;
+                    case "SEED_DIRECT":
+                    default:
+                        label = "Seed \u2013 Direct";
+                        break;
+                }
+            }
+            rtWorkflowModeComboBox.setValue(label);
+        }
+
+        // Apply DIA-NN modification settings
+        if (mExcisionCheckBox != null) {
+            mExcisionCheckBox.setSelected(params.isMExcision());
+        }
+        if (carbamiCCheckBox != null) {
+            carbamiCCheckBox.setSelected(params.isCarbamiC());
+        }
+        if (oxidationMCheckBox != null) {
+            oxidationMCheckBox.setSelected(params.isOxidationM());
+        }
+        if (acetyProNCheckBox != null) {
+            acetyProNCheckBox.setSelected(params.isAcetyProN());
+        }
+        if (phosphoSTYCheckBox != null) {
+            phosphoSTYCheckBox.setSelected(params.isPhosphoSTY());
+        }
+        if (kGGCheckBox != null) {
+            kGGCheckBox.setSelected(params.isKGG());
+        }
+        
         // Apply MAG database settings
         if (params.getMagDbItem() != null && magDatabasePanel != null) {
             MagDbItem magDbItem = params.getMagDbItem();
@@ -1517,6 +1776,8 @@ public class MetaPilotDiaRealTimePanel extends VBox {
             if (params.getHostDB() != null) {
                 magDatabasePanel.setHostDatabase(params.getHostDB());
             }
+            // Refresh library table to show libraries for the restored MAG database
+            updatePanelsWithMagDb(magDatabasePanel.getSelectedMagDatabase());
         }
         
         // Update parameter view after applying parameters

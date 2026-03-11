@@ -4,15 +4,11 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.PrintWriter;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 
 import org.apache.logging.log4j.Logger;
 
@@ -21,31 +17,55 @@ import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNParquetReader;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNPrecursor;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
-import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaFocus;
+import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaMarker;
 import uk.ac.quadram.metapilot.task.mag.MarkerGenomeSelector;
 
 /**
- * DIA "Deep comprehensive" workflow task for the <b>seed strategy</b> only: reuses the same first step
- * as {@link MetaDiaSeedIterativeTask} (user library → result/seed/seed.parquet under base), then
- * rank-only genome selection, training, prediction, and iterative identification rounds.
- * No focus/ folder; seed output lives at base/seed/ (same folder name as seed comprehensive).
+ * DIA "Seed deep" workflow task for the <b>seed strategy</b>.
+ * <p>
+ * High-level flow:
+ * <ol>
+ * <li>Reuse seed first search from {@link MetaDiaSeedIterativeTask} to generate
+ *     {@code seed.parquet} (or per-file parquets on fallback).</li>
+ * <li>Map identified peptides to MAG proteins via MAG {@code predicted/} TSVs.</li>
+ * <li>Run marker-style genome ranking to produce {@code genome_ranked.tsv}.</li>
+ * <li>Run iterative rounds (shared round logic) to expand evidence.</li>
+ * <li>Build combined FASTA/library and run final quantifying search.</li>
+ * </ol>
+ *
+ * DIA-NN usage map in this class:
+ * <ul>
+ * <li>First search is in parent class ({@code runFirstSearchUserLibrary()}), not reimplemented here.</li>
+ * <li>{@code addTask(... combined.fasta -> combined.speclib ...)}: build predicted library from FASTA.</li>
+ * <li>{@code addNoQuantLibTask(... roundN.parquet ...)}: round-level non-quant identification.</li>
+ * <li>{@code addTask(... combined.parquet ...)}: final quantifying search over DIA files.</li>
+ * </ul>
  */
 public class MetaDiaDeepComprehensiveTask extends MetaDiaSeedIterativeTask {
 
-	private static final String TASK_NAME = "DIA Deep Comprehensive analysis";
-	private static final String BASE_FOLDER = "deep_comprehensive";
+	private static final String TASK_NAME = "DIA Seed Deep analysis";
+	private static final String BASE_FOLDER = "seed_deep";
 	/** Folder name for seed output (same as parent). */
 	private static final String SEED_FOLDER = "seed";
 	private static final String SEED_PARQUET = "seed.parquet";
-	private static final String SEED_PR_MATRIX = "seed.pr_matrix.tsv";
-	private static final String SEED_PG_MATRIX = "seed.pg_matrix.tsv";
 
-	/** Passed from iterativeSearch to iden. */
-	private List<String> deepComprehensiveSelectedGenomes;
+	/** Number of top genomes from genome_ranked.tsv per round. */
+	private static final int GENOMES_PER_ROUND = 5;
+	/** Maximum number of iterative genome rounds. */
+	private static final int MAX_ITERATIVE_ROUNDS = 100;
 
-	public MetaDiaDeepComprehensiveTask(MetaParameterDiaFocus focusParams, MetaResourceParameters mrp,
+	public MetaDiaDeepComprehensiveTask(MetaParameterDiaMarker markerParams, MetaResourceParameters mrp,
 			ProgressBar bar1, ProgressBar bar2) {
-		super(focusParams, mrp, bar1, bar2);
+		super(markerParams, mrp, bar1, bar2);
+	}
+
+	@Override
+	protected void initResultFolderIfNeeded() {
+		// Seed deep manages its own folder structure (seed_deep) in call();
+		// do not change dbSearchResultFile here.
+		if (metaPar != null && metaPar.getDbSearchResultFile() != null) {
+			this.resultFolderFile = metaPar.getDbSearchResultFile();
+		}
 	}
 
 	@Override
@@ -80,58 +100,63 @@ public class MetaDiaDeepComprehensiveTask extends MetaDiaSeedIterativeTask {
 		return true;
 	}
 
-	/** First step: parent's runFirstSearchUserLibrary() → base/seed/seed.parquet. Then map peptides to MAG proteins, rank/training/prediction. */
+	/**
+	 * Seed-specific genome ranking stage.
+	 * First-search itself is delegated to parent ({@link #runFirstSearchUserLibrary()}).
+	 * The key seed-specific difference is peptide→MAG protein mapping using MAG {@code predicted/}
+	 * before running marker-style genome ranking.
+	 */
 	@Override
 	protected boolean iterativeSearch() {
 		if (!runFirstSearchUserLibrary()) {
 			return false;
 		}
-		File base = metaPar.getDbSearchResultFile();
 		File seedFolder = getIterativeResultFolder();
 		File parquetFile = new File(seedFolder, SEED_PARQUET);
-		if (!parquetFile.exists()) {
-			deepComprehensiveSelectedGenomes = null;
-			return true;
-		}
 		String cut = diannPar != null && diannPar.getCut() != null ? diannPar.getCut() : "KR";
-		DiaNNParquetReader reader = new DiaNNParquetReader(parquetFile.getAbsolutePath(), cut);
-		DiaNNPrecursor[] precursors = reader.getDiaNNPrecursors(0.01);
+		DiaNNPrecursor[] precursors;
+		if (parquetFile.exists()) {
+			DiaNNParquetReader reader = new DiaNNParquetReader(parquetFile.getAbsolutePath(), cut);
+			precursors = reader.getDiaNNPrecursors(0.01);
+		} else {
+			logger.warn(getTaskName()
+					+ ": seed.parquet not created for deep seed first step; aggregating precursors from per_file_*.parquet");
+			precursors = readPrecursorsFromPerFileParquets(seedFolder, 0.01);
+		}
 		if (precursors == null || precursors.length == 0) {
-			deepComprehensiveSelectedGenomes = null;
-			return true;
+			logger.warn(getTaskName() + ": No precursors found in seed parquet; cannot rank genomes");
+			return false;
 		}
 		if (magDb == null) {
-			buildTrainingDatasetFromPrecursors(base, precursors, null);
-			deepComprehensiveSelectedGenomes = null;
-			return true;
+			logger.error(getTaskName() + ": MAG database is required for deep seed genome selection");
+			return false;
 		}
 
-		// Map peptides to MAG proteins (genome_proteinId) via predicted TSVs. setProteinInfoFromPredictedTsVs
-		// modifies matched precursors in place (setProGroups to MAG IDs); returns only those that had a match.
+		// Map peptides to MAG proteins (genome_proteinId) via predicted TSVs.
 		File predictedFolder = new File(magDb.getCurrentFile(), "predicted");
-		List<DiaNNPrecursor> precursorsWithPro = null;
-		if (predictedFolder.isDirectory()) {
-			precursorsWithPro = MarkerGenomeSelector.setProteinInfoFromPredictedTsVs(precursors, predictedFolder);
-			if (precursorsWithPro != null && !precursorsWithPro.isEmpty()) {
-				logger.info(getTaskName() + ": mapped {} / {} precursors to MAG proteins", precursorsWithPro.size(), precursors.length);
-			}
+		if (!predictedFolder.isDirectory()) {
+			logger.error(getTaskName() + ": MAG predicted folder not found: " + predictedFolder.getAbsolutePath());
+			return false;
+		}
+		List<DiaNNPrecursor> precursorsWithPro = MarkerGenomeSelector.setProteinInfoFromPredictedTsVs(precursors,
+				predictedFolder);
+		if (precursorsWithPro != null && !precursorsWithPro.isEmpty()) {
+			logger.info(getTaskName() + ": mapped {} / {} precursors to MAG proteins", precursorsWithPro.size(),
+					precursors.length);
 		}
 		if (precursorsWithPro == null || precursorsWithPro.isEmpty()) {
-			logger.warn(getTaskName() + ": no precursors mapped to MAG proteins (check predicted TSVs); skipping genome selection");
-			buildTrainingDatasetFromPrecursors(base, precursors, null);
-			deepComprehensiveSelectedGenomes = null;
-			return true;
+			logger.error(getTaskName() + ": no precursors mapped to MAG proteins (check predicted TSVs); cannot rank genomes");
+			return false;
 		}
 
 		File markerFasta = new File(magDb.getCurrentFile(), "Marker4.fasta");
 		File genomesTaxaTsv = new File(magDb.getCurrentFile(), "genomes-taxa.tsv");
 		if (!markerFasta.exists() || !genomesTaxaTsv.exists()) {
-			buildTrainingDatasetFromPrecursors(base, precursors, null);
-			deepComprehensiveSelectedGenomes = null;
-			return true;
+			logger.error(getTaskName() + ": Marker4.fasta or genomes-taxa.tsv not found for genome selection");
+			return false;
 		}
-		updateMessage(getTaskName() + ": rank-only genome selection, training, prediction...");
-		// Genome selection outputs in seed folder (same as seed comprehensive / seed iterative)
+
+		updateMessage(getTaskName() + ": genome ranking for deep seed workflow...");
 		File evidenceFile = new File(seedFolder, "genome_evidence.tsv");
 		File rankedFile = new File(seedFolder, "genome_ranked.tsv");
 		File selectedFile = new File(seedFolder, "genome_selected.tsv");
@@ -141,30 +166,13 @@ public class MetaDiaDeepComprehensiveTask extends MetaDiaSeedIterativeTask {
 		selector.selectMarkerGenomesWithKnee(withProArray, markerFasta, genomesTaxaTsv,
 				evidenceFile.getAbsolutePath(), rankedFile.getAbsolutePath(), selectedFile.getAbsolutePath(),
 				300, true);
-		List<String> selectedGenomes = selectGenomesUntilMarginalOne(rankedFile, withProArray);
-		int nGenomes = selectedGenomes != null ? selectedGenomes.size() : 0;
-		logger.info(getTaskName() + ": rank-only selection (marginal-one) produced {} genomes", nGenomes);
-		// Use only mapped precursors so training/predict use MAG IDs for genomes-taxa.tsv and {genome}_eggNOG.tsv
-		// (n_genomes, tax_sum_*, fun_sum_*). Unmapped precursors would have wrong keys and yield zeros.
-		buildTrainingDatasetFromPrecursors(base, withProArray, selectedGenomes);
-		runDeepComprehensiveTraining(base);
-		buildPredictDatasetsForRuns(base, withProArray, selectedGenomes);
-		runDeepComprehensivePrediction(base);
-		deepComprehensiveSelectedGenomes = selectedGenomes;
+		logger.info(getTaskName() + ": genome ranking for deep seed completed (genome_evidence.tsv, genome_ranked.tsv, genome_selected.tsv)");
 		return true;
 	}
 
 	@Override
 	protected boolean exportReport() {
-		File base = metaPar.getDbSearchResultFile();
-		if (base == null) {
-			return true;
-		}
-		logger.info(getTaskName() + ": base folder {}", base.getAbsolutePath());
-		logger.info(getTaskName() + ": seed folder {}", getIterativeResultFolder().getAbsolutePath());
-		logger.info(getTaskName() + ": training dataset {}", DeepComprehensivePaths.getTrainingDatasetFile(base).getAbsolutePath());
-		logger.info(getTaskName() + ": model dir {}", DeepComprehensivePaths.getModelDir(base).getAbsolutePath());
-		return true;
+		return super.exportReport();
 	}
 
 	@Override
@@ -178,15 +186,7 @@ public class MetaDiaDeepComprehensiveTask extends MetaDiaSeedIterativeTask {
 		if (!base.exists()) {
 			base.mkdirs();
 		}
-		DeepComprehensivePaths.ensureTrainingFolders(base);
-		if (quanExpNames != null) {
-			for (int i = 0; i < quanExpNames.length; i++) {
-				String runId = (quanExpNames != null && i < quanExpNames.length && quanExpNames[i] != null)
-						? quanExpNames[i]
-						: (rawFiles != null && i < rawFiles.length) ? DeepComprehensivePaths.runIdFromRawFilePath(rawFiles[i]) : "run";
-				DeepComprehensivePaths.ensurePerRunFolder(base, runId);
-			}
-		}
+		// data/ and per-run <runId>/ folders are only for future deep model; not created in current workflow
 		metaPar.setDbSearchResultFile(base);
 		this.resultFolderFile = base;
 		logger.info(getTaskName() + ": using base folder {}", base.getAbsolutePath());
@@ -233,7 +233,7 @@ public class MetaDiaDeepComprehensiveTask extends MetaDiaSeedIterativeTask {
 			return false;
 		}
 
-		logger.info("Step 4: Iterative search (first search + rank/training/prediction)...");
+		logger.info("Step 4: Iterative search (first search + genome rank and identification)...");
 		updateProgress(25, 100);
 		updateMessage(getTaskName() + ": Performing iterative search...");
 		updateSecondaryProgress(ProgressBar.INDETERMINATE_PROGRESS);
@@ -275,474 +275,422 @@ public class MetaDiaDeepComprehensiveTask extends MetaDiaSeedIterativeTask {
 		return true;
 	}
 
+	/**
+	 * Helper to aggregate precursors from per_file_*.parquet in the seed folder when
+	 * seed.parquet could not be generated.
+	 */
+	private DiaNNPrecursor[] readPrecursorsFromPerFileParquets(File dir, Double qValue) {
+		String localCut = diannPar != null && diannPar.getCut() != null ? diannPar.getCut() : "KR";
+		return DeepIterativeCommonSupport.readPrecursorsFromPerFileParquets(dir, qValue, diaFiles, localCut, logger,
+				getTaskName());
+	}
+
 	@Override
 	protected boolean iden() {
 		File base = metaPar.getDbSearchResultFile();
+		if (base == null) {
+			logger.error(getTaskName() + ": base result folder is null");
+			return false;
+		}
 		File seedFolder = getIterativeResultFolder();
-		combinedFile = seedFolder;
+		// Iterative rounds produce base/combined/*. The final quantifying parquet is
+		// created in this method after the shared round loop completes.
+		File rankedFile = new File(seedFolder, "genome_ranked.tsv");
+		if (!rankedFile.exists()) {
+			logger.error(getTaskName() + ": genome_ranked.tsv not found for deep seed workflow: {}", rankedFile.getAbsolutePath());
+			return false;
+		}
+
+		String cut = diannPar != null && diannPar.getCut() != null ? diannPar.getCut() : "KR";
+		DeepIterativeCommonSupport.IterativeRoundLoopResult loop = DeepIterativeCommonSupport.runIterativeRoundLoop(
+				rankedFile, GENOMES_PER_ROUND, MAX_ITERATIVE_ROUNDS, "Deep seed round", cut, this::updateMessage,
+				(round, genomes) -> runSeedRoundAppendPreviousPeptides(round, seedFolder, genomes),
+				(inc) -> {
+					StopRuleResult local = computeStopRoundFromIncrements(inc);
+					return new DeepIterativeStopRule.StopRuleResult(local.stopRound, local.nRounds, local.kChord,
+							local.kPiece, local.kKnee, local.k0, local.tMin);
+				},
+				logger, getTaskName());
+
+		if (loop.lastRound <= 0) {
+			logger.error(getTaskName() + ": no iterative round completed");
+			return false;
+		}
+
+		StopRuleResult lastStopRuleResult = loop.lastStopRuleResult == null ? null
+				: new StopRuleResult(loop.lastStopRuleResult.stopRound, loop.lastStopRuleResult.nRounds,
+						loop.lastStopRuleResult.kChord, loop.lastStopRuleResult.kPiece, loop.lastStopRuleResult.kKnee,
+						loop.lastStopRuleResult.k0, loop.lastStopRuleResult.tMin);
+		int lastRound = loop.lastRound;
+		writeIterativeRoundsInfo(seedFolder, loop.roundsRecord, loop.peptidesInRoundRecord, loop.incrementsPerRound,
+				loop.cumulativeRecord, loop.stopReason, lastStopRuleResult);
+
+		File combinedDir = new File(base, "combined");
+		if (!combinedDir.exists())
+			combinedDir.mkdirs();
+		File combinedParquet = new File(combinedDir, "combined.parquet");
+		File combinedFasta = new File(combinedDir, "combined.fasta");
+		File combinedSpeclib = new File(combinedDir, "combined.speclib");
+
+		HashMap<String, HashSet<String>> pepProMap = buildPepToProteinsFromSeeds(seedFolder, lastRound);
+		if (pepProMap.isEmpty()) {
+			logger.error(getTaskName() + ": no peptides from round parquets for combined FASTA");
+			return false;
+		}
+		if (!DeepIterativeCommonSupport.writeCombinedFastaFromPeptideProteinMap(combinedFasta, pepProMap, logger,
+				getTaskName())) {
+			return false;
+		}
+		if (!DeepIterativeCommonSupport.ensureCombinedSpeclib(combinedDir, combinedSpeclib, () -> {
+				diannPar.setThreads(threadCount);
+				diannPar.setExportDecoy(true);
+				// DIA-NN call purpose: build post-round library for final quantifying search.
+				diaNNTask.addTask(diannPar, combinedFasta.getAbsolutePath(), combinedSpeclib.getAbsolutePath(), false);
+				diaNNTask.run(12);
+			}, logger, getTaskName())) {
+			logger.error(getTaskName() + ": failed to generate combined.speclib at " + combinedSpeclib.getAbsolutePath());
+			return false;
+		}
+		boolean combinedOk = DeepIterativeCommonSupport.ensureCombinedParquet(combinedParquet, () -> {
+			diaLibSearchPar.setMbr(true);
+			diaLibSearchPar.setDiaFiles(diaFiles);
+			diaLibSearchPar.setThreadCount(threadCount);
+			diaLibSearchPar.setqValue(0.01);
+			diannPar.setThreads(threadCount);
+			diannPar.setMatrices(true);
+			diannPar.setRelaxed_prot_inf(true);
+			diannPar.setReanalyse(true);
+			diannPar.setExportDecoy(true);
+			// DIA-NN call purpose: final quantifying search across all configured DIA files.
+			diaNNTask.addTask(diannPar, diaLibSearchPar, combinedParquet.getAbsolutePath(),
+					new String[] { combinedSpeclib.getAbsolutePath() });
+			diaNNTask.run(diaFiles.length * 12);
+		});
+		if (!combinedOk) {
+			return false;
+		}
+
+		if (!combinedParquet.exists()) {
+			logger.error(getTaskName() + ": combined deep seed search failed - combined.parquet not created");
+			return false;
+		}
+		combinedFile = combinedDir;
 		this.resultFolderFile = base;
-		this.quan_pep_file = new File(seedFolder, SEED_PR_MATRIX);
-		this.quan_pro_file = new File(seedFolder, SEED_PG_MATRIX);
-		List<String> selected = deepComprehensiveSelectedGenomes != null ? deepComprehensiveSelectedGenomes : new ArrayList<>();
-		runIterativeSearchRounds(base, selected, SEED_PARQUET);
-		logger.info(getTaskName() + ": Identification (iterative rounds) completed");
+		this.quan_pep_file = new File(combinedDir, "combined.pr_matrix.tsv");
+		this.quan_pro_file = new File(combinedDir, "combined.pg_matrix.tsv");
+		logger.info(getTaskName() + ": deep seed combined search completed: {} ({} bytes)",
+				combinedParquet.getAbsolutePath(), combinedParquet.length());
 		return true;
 	}
 
 	/**
-	 * Read genome_ranked.tsv and select genomes in order until a row has Increment == 1.
-	 * Uses the existing "Increment" column from the ranked file (no precursor-based recomputation).
-	 * Ranked file format: header "Rank\tGenome\t...\tIncrement\t...", genome ID in col 1.
+	 * Writes iterative_rounds_info.tsv so users can see why the round search stopped.
+	 * Columns: Round, Peptides_in_round, New_peptides, Cumulative_peptides, Stop_reason (on last row only).
+	 * Stop is determined by relative gain: New_peptides/Cumulative_peptides < 1.5% (plateau on total discovery).
+	 * If stopRule is non-null (e.g. last evaluation when rounds>=8), writes kChord, kPiece, kKnee, k0, tMin in comment lines.
 	 */
-	private List<String> selectGenomesUntilMarginalOne(File rankedTsv, DiaNNPrecursor[] precursors) {
-		List<String> result = new ArrayList<>();
-		if (rankedTsv == null || !rankedTsv.exists()) {
-			return result;
-		}
-		try (BufferedReader r = new BufferedReader(new FileReader(rankedTsv))) {
-			String headerLine = r.readLine();
-			if (headerLine == null) return result;
-			String[] headers = headerLine.split("\t");
-			int incrementCol = -1;
-			for (int i = 0; i < headers.length; i++) {
-				if ("Increment".equals(headers[i].trim())) {
-					incrementCol = i;
-					break;
-				}
-			}
-			if (incrementCol < 0) {
-				logger.warn(getTaskName() + ": no 'Increment' column in " + rankedTsv.getAbsolutePath());
-				return result;
-			}
-			String line;
-			while ((line = r.readLine()) != null) {
-				line = line.trim();
-				if (line.isEmpty() || line.startsWith("#")) continue;
-				String[] parts = line.split("\t");
-				if (parts.length <= 1 || parts[1].trim().isEmpty()) continue;
-				String genome = parts[1].trim();
-				result.add(genome);
-				if (parts.length > incrementCol) {
-					try {
-						int inc = Integer.parseInt(parts[incrementCol].trim());
-						if (inc == 1) {
-							logger.info(getTaskName() + ": stopping at genome {} (Increment == 1)", genome);
-							break;
-						}
-					} catch (NumberFormatException ignored) { }
-				}
-			}
-		} catch (IOException e) {
-			logger.warn(getTaskName() + ": could not read ranked file " + rankedTsv.getAbsolutePath(), e);
-		}
-		return result;
+	private void writeIterativeRoundsInfo(File resultDir, List<Integer> rounds, List<Integer> peptidesInRound,
+			List<Integer> newPeptides, List<Integer> cumulative, String stopReason, StopRuleResult stopRule) {
+		DeepIterativeStopRule.StopRuleResult shared = stopRule == null ? null
+				: new DeepIterativeStopRule.StopRuleResult(stopRule.stopRound, stopRule.nRounds, stopRule.kChord,
+						stopRule.kPiece, stopRule.kKnee, stopRule.k0, stopRule.tMin);
+		DeepIterativeCommonSupport.writeIterativeRoundsInfo(resultDir, rounds, peptidesInRound, newPeptides, cumulative,
+				stopReason, shared, CONSECUTIVE_ROUNDS_FOR_PLATEAU, logger, getTaskName());
 	}
 
-	private void buildTrainingDatasetFromPrecursors(File base, DiaNNPrecursor[] precursors, List<String> selectedGenomes) {
-		File outTsv = DeepComprehensivePaths.getTrainingDatasetFile(base);
-		if (magDb == null) {
-			logger.warn(getTaskName() + ": cannot build training dataset without MAG DB");
-			return;
-		}
-		try {
-			DeepComprehensiveTrainingDatasetBuilder builder = new DeepComprehensiveTrainingDatasetBuilder();
-			int rows = builder.build(precursors, magDb, outTsv);
-			logger.info(getTaskName() + ": wrote training dataset to {} ({} rows)", outTsv.getAbsolutePath(), rows);
-		} catch (IOException e) {
-			logger.error(getTaskName() + ": failed to write training dataset to " + outTsv.getAbsolutePath(), e);
-		}
-	}
+	// ===== Helper methods for deep seed iterative rounds (adapted from MetaDiaDeepMarkerTask) =====
 
-	/**
-	 * For each raw file (run), filter precursors by runString matching the run, then build
-	 * predict_dataset.tsv in that run's folder using run-specific P_0 and candidate peptides from selected genomes.
-	 */
-	private void buildPredictDatasetsForRuns(File base, DiaNNPrecursor[] precursors, List<String> selectedGenomes) {
-		if (magDb == null || precursors == null || precursors.length == 0) {
-			return;
-		}
-		HashSet<String> genomeSet = new HashSet<>();
-		if (selectedGenomes != null) {
-			genomeSet.addAll(selectedGenomes);
-		}
-		if (genomeSet.isEmpty()) {
-			logger.warn(getTaskName() + ": no selected genomes, skipping predict dataset build");
-			return;
-		}
-		int numRuns = quanExpNames != null ? quanExpNames.length : (rawFiles != null ? rawFiles.length : 0);
-		if (numRuns == 0) {
-			logger.warn(getTaskName() + ": no runs (quanExpNames/rawFiles), skipping predict dataset build");
-			return;
-		}
-		DeepComprehensivePredictDatasetBuilder builder = new DeepComprehensivePredictDatasetBuilder();
-		List<Object[]> runPeptideCounts = new ArrayList<>();
-		for (int i = 0; i < numRuns; i++) {
-			String runId = (quanExpNames != null && i < quanExpNames.length && quanExpNames[i] != null)
-					? quanExpNames[i]
-					: (rawFiles != null && i < rawFiles.length) ? DeepComprehensivePaths.runIdFromRawFilePath(rawFiles[i]) : "run_" + i;
-			String rawFileName = (rawFiles != null && i < rawFiles.length) ? new File(rawFiles[i]).getName() : null;
-			List<DiaNNPrecursor> runList = new ArrayList<>();
-			for (DiaNNPrecursor p : precursors) {
-				if (p == null) continue;
-				String rs = p.getRunString();
-				if (rs == null) continue;
-				if (rs.equals(runId)) { runList.add(p); continue; }
-				if (rawFileName != null && rs.equals(rawFileName)) { runList.add(p); continue; }
-				if (rs.endsWith(runId) || (rawFileName != null && rs.endsWith(rawFileName))) { runList.add(p); }
-			}
-			DiaNNPrecursor[] runPrecursors = runList.toArray(new DiaNNPrecursor[0]);
-			File outTsv = DeepComprehensivePaths.getPredictDatasetFile(base, runId);
-			if (outTsv.isFile() && outTsv.length() > 0) {
-				int existingRows = countTsvDataRows(outTsv);
-				logger.info(getTaskName() + ": predict_dataset.tsv already exists for run {} ({} peptides), skipping build", runId, existingRows);
-				runPeptideCounts.add(new Object[] { runId, Integer.valueOf(existingRows) });
-				continue;
-			}
-			try {
-				int rows = builder.build(runPrecursors, genomeSet, magDb, outTsv);
-				logger.info(getTaskName() + ": wrote predict dataset for run {} to {} ({} peptides)", runId, outTsv.getAbsolutePath(), rows);
-				runPeptideCounts.add(new Object[] { runId, Integer.valueOf(rows) });
-			} catch (IOException e) {
-				logger.error(getTaskName() + ": failed to write predict dataset for run " + runId + " to " + outTsv.getAbsolutePath(), e);
-			}
-		}
-		long totalPeptides = 0;
-		for (Object[] pair : runPeptideCounts) {
-			String runId = (String) pair[0];
-			int count = ((Integer) pair[1]).intValue();
-			totalPeptides += count;
-			logger.info(getTaskName() + ": predict dataset run {}: {} peptides", runId, count);
-		}
-		logger.info(getTaskName() + ": predict dataset total peptides across runs: {}", totalPeptides);
-	}
-
-	/** Count data rows in a TSV (line count minus header). Returns 0 if file missing or empty. */
-	private int countTsvDataRows(File tsvFile) {
-		if (tsvFile == null || !tsvFile.isFile()) return 0;
-		int count = 0;
-		try (BufferedReader r = new BufferedReader(new FileReader(tsvFile))) {
-			if (r.readLine() == null) return 0;
-			while (r.readLine() != null) count++;
-		} catch (IOException e) {
-			return 0;
-		}
-		return count;
-	}
-
-	private static final String RESOURCE_TRAIN_SCRIPT = "/python_scripts/deep_comprehensive_train.py";
-	private static final String RESOURCE_PREDICT_SCRIPT = "/python_scripts/deep_comprehensive_predict.py";
-
-	/**
-	 * Run the Deep Comprehensive training script to produce model.pt and scaler.npz in training/model/.
-	 * Skips if Python is not configured or training_seed.tsv is missing/small.
-	 */
-	private void runDeepComprehensiveTraining(File base) {
-		String python = mrp != null ? mrp.getToolPath(MetaResourceParameters.ToolType.PYTHON) : null;
-		if (python == null || python.trim().isEmpty()) {
-			logger.warn(getTaskName() + ": Python not configured, skipping model training");
-			return;
-		}
-		File trainingDir = DeepComprehensivePaths.getTrainingDir(base);
-		File trainingTsv = DeepComprehensivePaths.getTrainingDatasetFile(base);
-		File modelDir = DeepComprehensivePaths.getModelDir(base);
-		if (!trainingTsv.isFile() || trainingTsv.length() == 0) {
-			logger.warn(getTaskName() + ": no training dataset at {}, skipping model training", trainingTsv.getAbsolutePath());
-			return;
-		}
-		if (!extractScript(RESOURCE_TRAIN_SCRIPT, new File(trainingDir, "deep_comprehensive_train.py"))
-				|| !extractScript(RESOURCE_PREDICT_SCRIPT, new File(trainingDir, "deep_comprehensive_predict.py"))) {
-			logger.warn(getTaskName() + ": could not extract Python scripts, skipping model training");
-			return;
-		}
-		List<String> cmd = new ArrayList<>();
-		cmd.add(python);
-		cmd.add(new File(trainingDir, "deep_comprehensive_train.py").getAbsolutePath());
-		cmd.add("--input_tsv");
-		cmd.add(trainingTsv.getAbsolutePath());
-		cmd.add("--output_dir");
-		cmd.add(modelDir.getAbsolutePath());
-		// Prefer GPU if available (script falls back to CPU when cuda not present)
-		cmd.add("--device");
-		cmd.add("cuda");
-		boolean ok = runPythonProcess(cmd, trainingDir, "training");
-		if (ok) {
-			logger.info(getTaskName() + ": model training completed");
-		} else {
-			logger.warn(getTaskName() + ": model training failed or timed out");
-		}
-	}
-
-	/**
-	 * Run the Deep Comprehensive prediction script for each run that has predict_dataset.tsv.
-	 * Writes predictions.tsv per run. Skips if Python not configured or model not found.
-	 */
-	private void runDeepComprehensivePrediction(File base) {
-		String python = mrp != null ? mrp.getToolPath(MetaResourceParameters.ToolType.PYTHON) : null;
-		if (python == null || python.trim().isEmpty()) {
-			logger.warn(getTaskName() + ": Python not configured, skipping prediction");
-			return;
-		}
-		File modelDir = DeepComprehensivePaths.getModelDir(base);
-		File modelPt = new File(modelDir, "model.pt");
-		File scalerNpz = new File(modelDir, "scaler.npz");
-		if (!modelPt.isFile() || !scalerNpz.isFile()) {
-			logger.warn(getTaskName() + ": model.pt or scaler.npz not found in {}, skipping prediction", modelDir.getAbsolutePath());
-			return;
-		}
-		File trainingDir = DeepComprehensivePaths.getTrainingDir(base);
-		int numRuns = quanExpNames != null ? quanExpNames.length : (rawFiles != null ? rawFiles.length : 0);
-		if (numRuns == 0) return;
-		for (int i = 0; i < numRuns; i++) {
-			String runId = (quanExpNames != null && i < quanExpNames.length && quanExpNames[i] != null)
-					? quanExpNames[i]
-					: (rawFiles != null && i < rawFiles.length) ? DeepComprehensivePaths.runIdFromRawFilePath(rawFiles[i]) : "run_" + i;
-			File predictTsv = DeepComprehensivePaths.getPredictDatasetFile(base, runId);
-			File outTsv = DeepComprehensivePaths.getPredictionsFile(base, runId);
-			if (!predictTsv.isFile() || predictTsv.length() == 0) continue;
-			List<String> cmd = new ArrayList<>();
-			cmd.add(python);
-			cmd.add(new File(trainingDir, "deep_comprehensive_predict.py").getAbsolutePath());
-			cmd.add("--model_dir");
-			cmd.add(modelDir.getAbsolutePath());
-			cmd.add("--predict_tsv");
-			cmd.add(predictTsv.getAbsolutePath());
-			cmd.add("--output_tsv");
-			cmd.add(outTsv.getAbsolutePath());
-			cmd.add("--device");
-			cmd.add("cuda");
-			boolean ok = runPythonProcess(cmd, trainingDir, "predict-" + runId);
-			if (ok) {
-				logger.info(getTaskName() + ": predictions written for run {} to {}", runId, outTsv.getAbsolutePath());
-			} else {
-				logger.warn(getTaskName() + ": prediction failed for run {}", runId);
-			}
-		}
-	}
-
-	private boolean extractScript(String resourcePath, File targetFile) {
-		try (InputStream in = MetaDiaDeepComprehensiveTask.class.getResourceAsStream(resourcePath)) {
-			if (in == null) {
-				logger.warn(getTaskName() + ": resource not found: {}", resourcePath);
-				return false;
-			}
-			targetFile.getParentFile().mkdirs();
-			try (BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
-					PrintWriter writer = new PrintWriter(targetFile, StandardCharsets.UTF_8.name())) {
-				String line;
-				while ((line = reader.readLine()) != null) {
-					writer.println(line);
-				}
-			}
-			return true;
-		} catch (IOException e) {
-			logger.warn(getTaskName() + ": failed to extract " + resourcePath, e);
+	/** Write combined FASTA from genome IDs using MAG DB original folder (genome.faa or genome.fasta). */
+	private boolean writeCombinedFastaFromGenomes(List<String> genomes, File outputFasta) {
+		File dbFolder = magDb.getOriginalDbFolder();
+		if (dbFolder == null || !dbFolder.isDirectory()) {
+			logger.error(getTaskName() + ": MAG original DB folder not available");
 			return false;
 		}
-	}
-
-	private boolean runPythonProcess(List<String> command, File workingDir, String label) {
-		try {
-			ProcessBuilder pb = new ProcessBuilder(command);
-			pb.directory(workingDir);
-			pb.redirectErrorStream(true);
-			Process p = pb.start();
-			try (BufferedReader in = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
-				String line;
-				while ((line = in.readLine()) != null) {
-					logger.info("{} [{}]: {}", getTaskName(), label, line);
+		try (PrintWriter w = new PrintWriter(outputFasta)) {
+			for (String genome : genomes) {
+				File genomeFaa = new File(dbFolder, genome + ".faa");
+				if (!genomeFaa.exists()) {
+					genomeFaa = new File(dbFolder, genome + ".fasta");
 				}
-			}
-			boolean finished = p.waitFor(30, TimeUnit.MINUTES);
-			if (!finished) {
-				p.destroyForcibly();
-				logger.warn(getTaskName() + ": Python process timed out ({})", label);
-				return false;
-			}
-			return p.exitValue() == 0;
-		} catch (Exception e) {
-			logger.warn(getTaskName() + ": Python process failed (" + label + ")", e);
-			return false;
-		}
-	}
-
-	/** Max iterative search rounds (build library from predictions + identified → search). */
-	private static final int MAX_ITERATIVE_ROUNDS = 3;
-	/** Top predicted peptides to add per round (in addition to all previously identified). */
-	private static final int TOP_PREDICTED_PER_ROUND = 5000;
-
-	/**
-	 * Iterative rounds: build library from all peptides identified in the previous round plus top
-	 * predicted peptides, search with that library, stop when no new peptides or max rounds.
-	 * @param initialParquetName parquet file name in seed folder (e.g. "seed.parquet")
-	 */
-	private void runIterativeSearchRounds(File base, List<String> selectedGenomes, String initialParquetName) {
-		if (magDb == null || selectedGenomes == null || selectedGenomes.isEmpty()) {
-			return;
-		}
-		File seedFolder = getIterativeResultFolder();
-		File prevParquet = new File(seedFolder, initialParquetName);
-		if (!prevParquet.isFile()) {
-			logger.warn(getTaskName() + ": no seed parquet at {}, skipping iterative rounds", prevParquet.getAbsolutePath());
-			return;
-		}
-		HashSet<String> genomeSet = new HashSet<>(selectedGenomes);
-		java.util.Map<String, Set<String>> candidatePeptideToProteins = loadCandidatePeptideToProteins(genomeSet);
-		String cut = diannPar != null && diannPar.getCut() != null ? diannPar.getCut() : "KR";
-		for (int round = 1; round <= MAX_ITERATIVE_ROUNDS; round++) {
-			updateMessage(getTaskName() + ": iterative round " + round + " (build library + search)");
-			java.util.Map<String, Set<String>> identifiedPepToProteins = getIdentifiedPeptidesAndProteins(prevParquet, cut, 0.01);
-			Set<String> identifiedPeptides = new HashSet<>(identifiedPepToProteins.keySet());
-			Set<String> toAdd = mergePredictionsAndTakeTop(base, identifiedPeptides, TOP_PREDICTED_PER_ROUND);
-			Set<String> allProteins = new HashSet<>();
-			for (Set<String> prots : identifiedPepToProteins.values()) {
-				allProteins.addAll(prots);
-			}
-			for (String pep : toAdd) {
-				Set<String> prots = candidatePeptideToProteins.get(pep);
-				if (prots != null) allProteins.addAll(prots);
-			}
-			if (allProteins.isEmpty()) {
-				logger.warn(getTaskName() + ": round {} no proteins to build library", round);
-				break;
-			}
-			// Only use protein IDs that exist in the MAG DB (genome.faa/fasta). Drop IDs from user/library search (e.g. pro17511)
-			Set<String> magProteins = DeepComprehensiveLibraryBuilder.filterProteinIdsToMagGenomes(allProteins, magDb);
-			if (magProteins.size() < allProteins.size()) {
-				logger.info(getTaskName() + ": round {} using {} protein IDs from MAG DB (dropped {} from other libraries)",
-						round, magProteins.size(), allProteins.size() - magProteins.size());
-			}
-			if (magProteins.isEmpty()) {
-				logger.warn(getTaskName() + ": round {} no MAG proteins to build library (all IDs were from other sources)", round);
-				break;
-			}
-			File roundDir = new File(base, "round" + round);
-			roundDir.mkdirs();
-			File roundFasta = new File(roundDir, "combined.fasta");
-			File roundSpeclib = new File(roundDir, "combined.speclib");
-			try {
-				DeepComprehensiveLibraryBuilder.writeFastaFromProteinIds(magProteins, magDb, roundFasta);
-			} catch (IOException e) {
-				logger.error(getTaskName() + ": failed to write round FASTA", e);
-				break;
-			}
-			if (!roundFasta.isFile() || roundFasta.length() == 0) {
-				logger.warn(getTaskName() + ": round {} FASTA empty", round);
-				break;
-			}
-			diannPar.setThreads(threadCount);
-			diaNNTask.addTask(diannPar, roundFasta.getAbsolutePath(), roundSpeclib.getAbsolutePath(), false);
-			diaNNTask.run(12);
-			File altLib = new File(roundDir, "combined.predicted.speclib");
-			if (!roundSpeclib.isFile() && altLib.isFile()) {
-				altLib.renameTo(roundSpeclib);
-			}
-			if (!roundSpeclib.isFile()) {
-				logger.warn(getTaskName() + ": round {} speclib not created", round);
-				break;
-			}
-			File roundParquet = new File(roundDir, "combined.parquet");
-			diaNNTask.addTask(diannPar, diaLibSearchPar, roundParquet.getAbsolutePath(),
-					new String[] { roundSpeclib.getAbsolutePath() });
-			diaNNTask.run(diaFiles.length * 12);
-			if (!roundParquet.isFile()) {
-				logger.warn(getTaskName() + ": round {} search did not produce parquet", round);
-				break;
-			}
-			DiaNNParquetReader r = new DiaNNParquetReader(roundParquet.getAbsolutePath(), cut);
-			DiaNNPrecursor[] roundPrecursors = r.getDiaNNPrecursors(0.01);
-			int prevCount = identifiedPeptides.size();
-			Set<String> roundPeptides = new HashSet<>();
-			if (roundPrecursors != null) {
-				for (DiaNNPrecursor p : roundPrecursors) {
-					if (p != null && p.getSeqString() != null) roundPeptides.add(p.getSeqString());
+				if (!genomeFaa.exists()) {
+					logger.warn(getTaskName() + ": genome file not found: {}", genome);
+					continue;
 				}
-			}
-			int newCount = roundPeptides.size();
-			logger.info(getTaskName() + ": round {} identified {} peptides (prev {})", round, newCount, prevCount);
-			if (newCount <= prevCount && round > 1) {
-				logger.info(getTaskName() + ": no new peptides, stopping iterative rounds");
-				break;
-			}
-			prevParquet = roundParquet;
-		}
-	}
-
-	private java.util.Map<String, Set<String>> getIdentifiedPeptidesAndProteins(File parquetFile, String cut, double qMax) {
-		java.util.Map<String, Set<String>> out = new java.util.HashMap<>();
-		try {
-			DiaNNParquetReader reader = new DiaNNParquetReader(parquetFile.getAbsolutePath(), cut);
-			DiaNNPrecursor[] precursors = reader.getDiaNNPrecursors(qMax);
-			if (precursors == null) return out;
-			for (DiaNNPrecursor p : precursors) {
-				if (p == null || p.getIsDecoy()) continue;
-				String pep = p.getSeqString();
-				if (pep == null || pep.isEmpty()) continue;
-				Set<String> prots = out.computeIfAbsent(pep, k -> new HashSet<>());
-				if (p.getProGroups() != null) {
-					for (String pro : p.getProGroups()) {
-						if (pro != null && !pro.isEmpty()) prots.add(pro);
+				try (BufferedReader reader = new BufferedReader(new FileReader(genomeFaa))) {
+					String line;
+					while ((line = reader.readLine()) != null) {
+						w.println(line);
 					}
 				}
 			}
-		} catch (Exception e) {
-			logger.warn(getTaskName() + ": failed to read parquet " + parquetFile.getAbsolutePath(), e);
-		}
-		return out;
-	}
-
-	private java.util.Map<String, Set<String>> loadCandidatePeptideToProteins(HashSet<String> selectedGenomes) {
-		java.util.Map<String, Set<String>> out = new java.util.HashMap<>();
-		File predFolder = magDb != null ? magDb.getPredictedPepFile() : null;
-		if (predFolder == null || !predFolder.isDirectory()) return out;
-		try {
-			java.util.Map<String, DeepComprehensivePredictDatasetBuilder.CandidatePeptide> candidates =
-					DeepComprehensivePredictDatasetBuilder.loadCandidatePeptidesFromPredicted(predFolder, selectedGenomes);
-			for (java.util.Map.Entry<String, DeepComprehensivePredictDatasetBuilder.CandidatePeptide> e : candidates.entrySet()) {
-				out.put(e.getKey(), new HashSet<>(e.getValue().proteins));
-			}
 		} catch (IOException e) {
-			logger.warn(getTaskName() + ": failed to load candidate peptide→proteins", e);
+			logger.error(getTaskName() + ": error writing combined FASTA", e);
+			return false;
 		}
-		return out;
+		return outputFasta.exists() && outputFasta.length() > 0;
 	}
 
-	/** Merge predictions from all runs, sort by prob_detect * (1 + pred_intensity), return top K peptides not in exclude. */
-	private Set<String> mergePredictionsAndTakeTop(File base, Set<String> excludePeptides, int topK) {
-		List<Object[]> withPep = new ArrayList<>();
-		int numRuns = quanExpNames != null ? quanExpNames.length : (rawFiles != null ? rawFiles.length : 0);
-		for (int i = 0; i < numRuns; i++) {
-			String runId = (quanExpNames != null && i < quanExpNames.length && quanExpNames[i] != null)
-					? quanExpNames[i]
-					: (rawFiles != null && i < rawFiles.length) ? DeepComprehensivePaths.runIdFromRawFilePath(rawFiles[i]) : "run_" + i;
-			File predFile = DeepComprehensivePaths.getPredictionsFile(base, runId);
-			if (!predFile.isFile()) continue;
-			try (BufferedReader r = new BufferedReader(new FileReader(predFile))) {
-				String line = r.readLine();
-				if (line == null || !line.contains("peptide")) continue;
-				while ((line = r.readLine()) != null) {
-					line = line.trim();
-					if (line.isEmpty()) continue;
-					String[] cs = line.split("\t");
-					if (cs.length < 3) continue;
-					String pep = cs[0].trim();
-					if (excludePeptides != null && excludePeptides.contains(pep)) continue;
-					double prob, intensity;
-					try {
-						prob = Double.parseDouble(cs[1].trim());
-						intensity = Double.parseDouble(cs[2].trim());
-					} catch (NumberFormatException ignored) { continue; }
-					double score = prob * (1.0 + Math.max(0, intensity));
-					withPep.add(new Object[] { Double.valueOf(score), pep });
+	private int runSeedRoundAppendPreviousPeptides(int round, File seedFolder, List<String> genomes) {
+		return DeepIterativeCommonSupport.runAppendPreviousPeptidesRound(round, seedFolder, genomes, diaFiles, false,
+				"deep seed", this::writeCombinedFastaFromGenomes,
+				this::writeCombinedFastaFromGenomesAndPreviousPeptides,
+				(combinedFasta, combinedSpeclib) -> {
+					diannPar.setThreads(threadCount);
+					// DIA-NN call purpose: round-level library build
+					// (roundN/combined.fasta -> roundN/combined.speclib).
+					diaNNTask.addTask(diannPar, combinedFasta.getAbsolutePath(), combinedSpeclib.getAbsolutePath(), false);
+					diaNNTask.run(12);
+				},
+				(roundParquet, combinedSpeclibPath, files, reanalyse) -> {
+					// DIA-NN call purpose: round-level non-quant identification using the
+					// round-specific library; output is roundN/roundN.parquet.
+					diaLibSearchPar.setMbr(false);
+					diaLibSearchPar.setDiaFiles(files);
+					diaLibSearchPar.setThreadCount(threadCount);
+					diaLibSearchPar.setqValue(0.01);
+					diannPar.setThreads(threadCount);
+					diannPar.setMatrices(false);
+					diannPar.setRelaxed_prot_inf(true);
+					diannPar.setReanalyse(reanalyse);
+					diannPar.setExportDecoy(false);
+					diaNNTask.addNoQuantLibTask(diannPar, diaLibSearchPar, roundParquet.getAbsolutePath(),
+							combinedSpeclibPath);
+					diaNNTask.run(files.length * 12);
+				},
+				this::countIdentifiedPeptides, logger, getTaskName());
+	}
+
+	/**
+	 * Write combined FASTA: genome proteins from the given genomes, then append one entry per unique identified peptide
+	 * from previousRoundParquet (q≤0.01, non-decoy). Protein name = first non-decoy proGroup or a fallback.
+	 */
+	private boolean writeCombinedFastaFromGenomesAndPreviousPeptides(List<String> genomes, File previousRoundParquet,
+			File outputFasta) {
+		File dbFolder = magDb.getOriginalDbFolder();
+		if (dbFolder == null || !dbFolder.isDirectory()) {
+			logger.error(getTaskName() + ": MAG original DB folder not available");
+			return false;
+		}
+		String cut = diannPar != null && diannPar.getCut() != null ? diannPar.getCut() : "KR";
+		Set<String> addedPeptideSequences = new HashSet<>();
+		try (PrintWriter w = new PrintWriter(outputFasta)) {
+			for (String genome : genomes) {
+				File genomeFaa = new File(dbFolder, genome + ".faa");
+				if (!genomeFaa.exists())
+					genomeFaa = new File(dbFolder, genome + ".fasta");
+				if (!genomeFaa.exists()) {
+					logger.warn(getTaskName() + ": genome file not found: {}", genome);
+					continue;
 				}
-			} catch (IOException e) {
-				logger.warn(getTaskName() + ": failed to read predictions " + predFile.getAbsolutePath(), e);
+				try (BufferedReader reader = new BufferedReader(new FileReader(genomeFaa))) {
+					String line;
+					while ((line = reader.readLine()) != null)
+						w.println(line);
+				}
+			}
+			DiaNNParquetReader reader = new DiaNNParquetReader(previousRoundParquet.getAbsolutePath(), cut);
+			DiaNNPrecursor[] precursors = reader.getDiaNNPrecursors(0.01);
+			if (precursors != null) {
+				for (DiaNNPrecursor p : precursors) {
+					if (p == null || p.getIsDecoy())
+						continue;
+					String seq = p.getSeqString();
+					if (seq == null || seq.isEmpty())
+						continue;
+					if (addedPeptideSequences.contains(seq))
+						continue;
+					String[] proGroups = p.getProGroups();
+					String proteinId = null;
+					if (proGroups != null) {
+						for (String pro : proGroups) {
+							if (pro == null || pro.isEmpty())
+								continue;
+							if (pro.startsWith("REV_") || pro.startsWith("rev_"))
+								continue;
+							proteinId = pro;
+							break;
+						}
+					}
+					if (proteinId == null)
+						proteinId = "pep_" + seq.length();
+					w.println(">" + proteinId);
+					w.println(seq);
+					addedPeptideSequences.add(seq);
+				}
+			}
+			logger.info(getTaskName() + ": appended {} unique peptides from previous round to combined.fasta",
+					addedPeptideSequences.size());
+		} catch (IOException e) {
+			logger.error(getTaskName() + ": error writing combined FASTA (genomes + peptides)", e);
+			return false;
+		}
+		return outputFasta.exists() && outputFasta.length() > 0;
+	}
+
+	/** Relative gain threshold: stop when New_peptides/Cumulative_peptides < this (e.g. 0.015 = 1.5%). */
+	private static final double RELATIVE_GAIN_THRESHOLD = 0.015;
+	/** Require this many consecutive rounds below threshold before stopping (trend-based, not single dip). */
+	private static final int CONSECUTIVE_ROUNDS_FOR_PLATEAU = 2;
+
+	/** Result of stop-rule evaluation: stop round (0 = don't stop) plus knee indices for iterative_rounds_info. */
+	public static class StopRuleResult {
+		public final int stopRound;
+		public final int nRounds;
+		public final int kChord;
+		public final int kPiece;
+		public final int kKnee;
+		public final int k0;
+		public final int tMin;
+
+		public StopRuleResult(int stopRound, int nRounds, int kChord, int kPiece, int kKnee, int k0, int tMin) {
+			this.stopRound = stopRound;
+			this.nRounds = nRounds;
+			this.kChord = kChord;
+			this.kPiece = kPiece;
+			this.kKnee = kKnee;
+			this.k0 = k0;
+			this.tMin = tMin;
+		}
+	}
+
+	/**
+	 * Iterative DIA stop rule: plateau on cumulative discovery by trend, not a single dip.
+	 * Stop only when relative gain (New_peptides/Cumulative_peptides) is below 1.5% for CONSECUTIVE_ROUNDS_FOR_PLATEAU consecutive rounds,
+	 * so we do not stop while the trend is still rising (e.g. one round at 4.7% but previous round at 5.3%).
+	 * inc is 0-based list of length n (rounds 1..n). Returns result with stopRound in 1..n, or 0 if no plateau detected yet; knee indices set when n>=8.
+	 */
+	private StopRuleResult computeStopRoundFromIncrements(List<Integer> inc) {
+		DeepIterativeStopRule.StopRuleResult shared = DeepIterativeStopRule.computeStopRoundFromIncrements(inc,
+				RELATIVE_GAIN_THRESHOLD, CONSECUTIVE_ROUNDS_FOR_PLATEAU,
+				DeepIterativeStopRule.AlgorithmProfile.DEEP_COMPREHENSIVE);
+		return new StopRuleResult(shared.stopRound, shared.nRounds, shared.kChord, shared.kPiece, shared.kKnee,
+				shared.k0, shared.tMin);
+	}
+
+	/**
+	 * Build peptide→proteins map by scanning all round{N}/round{N}.parquet files (q≤0.01, non-decoy).
+	 * Deep seed uses seed/roundN folders (next to genome_ranked.tsv).
+	 */
+	private HashMap<String, HashSet<String>> buildPepToProteinsFromSeeds(File seedFolder, int lastRound) {
+		HashMap<String, HashSet<String>> pepProMap = new HashMap<>();
+		if (seedFolder == null || lastRound <= 0) {
+			return pepProMap;
+		}
+		String cut = diannPar != null && diannPar.getCut() != null ? diannPar.getCut() : "KR";
+		for (int round = 1; round <= lastRound; round++) {
+			File roundDir = new File(seedFolder, "round" + round);
+			File roundParquet = new File(roundDir, "round" + round + ".parquet");
+			if (!roundParquet.isFile()) {
+				continue;
+			}
+			try {
+				DiaNNParquetReader reader = new DiaNNParquetReader(roundParquet.getAbsolutePath(), cut);
+				DiaNNPrecursor[] precursors = reader.getDiaNNPrecursors(0.01);
+				if (precursors == null) {
+					continue;
+				}
+				for (DiaNNPrecursor p : precursors) {
+					if (p == null || p.getIsDecoy()) {
+						continue;
+					}
+					String pep = p.getSeqString();
+					if (pep == null || pep.isEmpty()) {
+						continue;
+					}
+					String[] pros = p.getProGroups();
+					if (pros == null || pros.length == 0) {
+						continue;
+					}
+					HashSet<String> set = pepProMap.computeIfAbsent(pep, k -> new HashSet<>());
+					for (String pro : pros) {
+						if (pro != null && !pro.isEmpty()) {
+							set.add(pro);
+						}
+					}
+				}
+			} catch (Exception e) {
+				logger.warn(getTaskName() + ": failed to read deep seed round parquet " + roundParquet.getAbsolutePath(), e);
 			}
 		}
-		withPep.sort((a, b) -> Double.compare(((Double) b[0]).doubleValue(), ((Double) a[0]).doubleValue()));
-		Set<String> result = new HashSet<>();
-		for (int i = 0; i < Math.min(topK, withPep.size()); i++) {
-			result.add((String) withPep.get(i)[1]);
-		}
-		return result;
+		logger.info(getTaskName() + ": aggregated {} peptides from deep seed round parquets for combined FASTA", pepProMap.size());
+		return pepProMap;
 	}
+
+	private int countIdentifiedPeptides(File parquetFile) {
+		String cut = diannPar != null && diannPar.getCut() != null ? diannPar.getCut() : "KR";
+		return DeepIterativeCommonSupport.countIdentifiedPeptides(parquetFile, cut, logger, getTaskName());
+	}
+
+	/**
+	 * Rebuild peptide→protein mapping from deep-seed round parquets in the report phase, so that
+	 * each precursor's ProGroups reflect all proteins from iterative rounds (not just the single
+	 * protein used in the peptide-only combined FASTA).
+	 * Called from exportReport path only.
+	 */
+	@Override
+	protected void enrichPrecursorsWithPeptideProteinMapping(DiaNNPrecursor[] precursors, File parquetFolder) {
+		File seedFolder = getIterativeResultFolder();
+		if (seedFolder == null || !seedFolder.exists()) {
+			return;
+		}
+		int lastRound = 0;
+		for (int r = 1; r <= MAX_ITERATIVE_ROUNDS; r++) {
+			File rd = new File(seedFolder, "round" + r);
+			if (rd.isDirectory() && new File(rd, "round" + r + ".parquet").isFile()) {
+				lastRound = r;
+			}
+		}
+		if (lastRound <= 0) {
+			return;
+		}
+		HashMap<String, HashSet<String>> pepProMap = buildPepToProteinsFromSeeds(seedFolder, lastRound);
+		if (pepProMap.isEmpty() || precursors == null) {
+			return;
+		}
+		// Count distinct proteins before remap
+		HashSet<String> proteinsBefore = new HashSet<>();
+		for (DiaNNPrecursor pp : precursors) {
+			if (pp == null) continue;
+			String[] pros = pp.getProGroups();
+			if (pros == null) continue;
+			for (String p : pros) {
+				if (p != null && !p.isEmpty()) {
+					proteinsBefore.add(p);
+				}
+			}
+		}
+
+		for (DiaNNPrecursor pp : precursors) {
+			if (pp == null) {
+				continue;
+			}
+			String seq = pp.getSeqString();
+			if (seq == null || seq.isEmpty()) {
+				continue;
+			}
+			HashSet<String> pros = pepProMap.get(seq);
+			if (pros != null && !pros.isEmpty()) {
+				pp.setProGroups(pros.toArray(new String[0]));
+			}
+		}
+		// Count distinct proteins after remap
+		HashSet<String> proteinsAfter = new HashSet<>();
+		for (DiaNNPrecursor pp : precursors) {
+			if (pp == null) continue;
+			String[] pros = pp.getProGroups();
+			if (pros == null) continue;
+			for (String p : pros) {
+				if (p != null && !p.isEmpty()) {
+					proteinsAfter.add(p);
+				}
+			}
+		}
+		logger.info("{}: deep-seed remap from seed rounds – peptides with mapping: {}, proteins before remap: {}, proteins after remap: {}",
+				getTaskName(), pepProMap.size(), proteinsBefore.size(), proteinsAfter.size());
+	}
+
+	// (prediction-based candidate peptide helpers removed for the current non-deep implementation)
+
 }
+

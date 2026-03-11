@@ -74,6 +74,13 @@ public abstract class MetaPSM {
 		return proteins;
 	}
 
+	/**
+	 * Sets the protein assignments for this PSM (e.g. after matching to a MAG database).
+	 */
+	public void setProteins(String[] proteins) {
+		this.proteins = proteins;
+	}
+
 	public double getScore() {
 		return score;
 	}

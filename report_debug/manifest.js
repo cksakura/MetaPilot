@@ -1,0 +1,12 @@
+window.METAPILOT_MANIFEST = {
+  "generated_at": "2026-01-31T16:56:07.079259",
+  "reports": [
+    {
+      "title": "Function Summary Report",
+      "file": "reports/report_debug/report_function_summary.html",
+      "created_at": "2026-01-31T16:56:07.079259",
+      "source": "report_function_summary.html",
+      "folder": "report_debug"
+    }
+  ]
+};

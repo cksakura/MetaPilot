@@ -178,11 +178,9 @@ public class DiaRTParameterIO extends BaseParameterIO {
                 json.put("magDatabase", magDbJson);
             }
             
-            // Add DIA-specific parameters
+            // Add DIA-specific parameters (simplified: librarySearch + libraries + modifications)
             System.out.println("DEBUG: Adding DIA-specific parameters...");
             json.put("librarySearch", params.isLibrarySearch());
-            json.put("selfModelSearch", params.isSelfModelSearch());
-            json.put("useModel", params.isUseModel());
             
             // Add library array
             if (params.getLibrary() != null) {
@@ -192,15 +190,14 @@ public class DiaRTParameterIO extends BaseParameterIO {
                 }
                 json.put("library", libraryArray);
             }
-            
-            // Add models array
-            if (params.getModels() != null) {
-                JSONArray modelsArray = new JSONArray();
-                for (String model : params.getModels()) {
-                    modelsArray.put(model);
-                }
-                json.put("models", modelsArray);
-            }
+
+            // DIA-NN modification settings (unified across DIA workflows)
+            json.put("mExcision", params.isMExcision());
+            json.put("carbamiC", params.isCarbamiC());
+            json.put("oxidationM", params.isOxidationM());
+            json.put("acetyProN", params.isAcetyProN());
+            json.put("phosphoSTY", params.isPhosphoSTY());
+            json.put("kGG", params.isKGG());
             System.out.println("DEBUG: DIA-specific parameters added successfully");
             
             // Add DIA Real-Time specific parameters
@@ -209,6 +206,10 @@ public class DiaRTParameterIO extends BaseParameterIO {
             json.put("stopNow", params.isStopNow());
             json.put("stopComplete", params.isStopComplete());
             json.put("taskCount", params.getTaskCount());
+            // Real-time workflow mode (marker / seed variants)
+            if (params.getRtWorkflowMode() != null) {
+                json.put("rtWorkflowMode", params.getRtWorkflowMode());
+            }
             
             // Add monitor and result folders
             if (params.getMonitorFolder() != null) {
@@ -412,8 +413,6 @@ public class DiaRTParameterIO extends BaseParameterIO {
             
             // Parse DIA-specific parameters
             boolean librarySearch = json.optBoolean("librarySearch", true);
-            boolean selfModelSearch = json.optBoolean("selfModelSearch", false);
-            boolean useModel = json.optBoolean("useModel", false);
             
             String[] library = new String[0];
             if (json.has("library")) {
@@ -424,23 +423,35 @@ public class DiaRTParameterIO extends BaseParameterIO {
                 }
             }
             
-            String[] models = new String[0];
-            if (json.has("models")) {
-                JSONArray modelsArray = json.getJSONArray("models");
-                models = new String[modelsArray.length()];
-                for (int i = 0; i < modelsArray.length(); i++) {
-                    models[i] = modelsArray.getString(i);
-                }
-            }
+            // Create MetaParameterDiaRT (no self model / external models for now)
+            MetaParameterDiaRT params = new MetaParameterDiaRT(baseParams, magDbItem, librarySearch, false, library, false, new String[0]);
             
-            // Create MetaParameterDiaRT
-            MetaParameterDiaRT params = new MetaParameterDiaRT(baseParams, magDbItem, librarySearch, selfModelSearch, library, useModel, models);
-            
+            // DIA-NN modification settings (default values match Seed workflow)
+            boolean mExcision = json.optBoolean("mExcision", true);
+            boolean carbamiC = json.optBoolean("carbamiC", true);
+            boolean oxidationM = json.optBoolean("oxidationM", false);
+            boolean acetyProN = json.optBoolean("acetyProN", false);
+            boolean phosphoSTY = json.optBoolean("phosphoSTY", false);
+            boolean kGG = json.optBoolean("kGG", false);
+
+            params.setMExcision(mExcision);
+            params.setCarbamiC(carbamiC);
+            params.setOxidationM(oxidationM);
+            params.setAcetyProN(acetyProN);
+            params.setPhosphoSTY(phosphoSTY);
+            params.setKGG(kGG);
+
             // Set DIA Real-Time specific parameters
             params.setCombineResult(json.optBoolean("combineResult", false));
             params.setStopNow(json.optBoolean("stopNow", false));
             params.setStopComplete(json.optBoolean("stopComplete", false));
             params.setTaskCount(json.optInt("taskCount", 0));
+            // Real-time workflow mode; default to SEED_DIRECT if missing
+            String rtMode = json.optString("rtWorkflowMode", null);
+            if (rtMode == null || rtMode.isEmpty()) {
+                rtMode = "SEED_DIRECT";
+            }
+            params.setRtWorkflowMode(rtMode);
             
             // Set monitor and result folders
             if (json.has("monitorFolder")) {

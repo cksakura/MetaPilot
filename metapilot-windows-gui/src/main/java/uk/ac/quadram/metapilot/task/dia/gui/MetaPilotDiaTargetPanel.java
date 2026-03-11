@@ -74,6 +74,14 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 	// DIA Target-specific components
 	private ComboBox<Integer> threadsComboBox;
 
+	// DIA-NN modification checkboxes (six standard modifications)
+	private CheckBox mExcisionCheckBox;
+	private CheckBox carbamiCCheckBox;
+	private CheckBox oxidationMCheckBox;
+	private CheckBox acetyProNCheckBox;
+	private CheckBox phosphoSTYCheckBox;
+	private CheckBox kGGCheckBox;
+
 	// Library Generation Panel Components
 	private ComboBox<Float> peptideDetectabilityComboBox;
 	private ComboBox<Float> thresholdComboBox; // Alias for peptideDetectabilityComboBox
@@ -104,7 +112,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 
 	// Parameter I/O
 
-	// Task management (following MetaPilotDiaNormalPanel pattern)
+	// Task management (following MetaPilotDiaSeedPanel pattern)
 	private MetaDiaTargetTask currentTask;
 	private MetaResourceParameters resourceParams;
 
@@ -345,8 +353,9 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 		section.setPadding(new Insets(10));
 		section.setStyle("-fx-background-color: #f0f8ff; -fx-background-radius: 5;");
 
-		Label titleLabel = createSectionTitle("Performance Settings");
+		Label titleLabel = createSectionTitle("Performance & Modifications");
 
+		// Performance (threads) row
 		HBox threadBox = new HBox(15);
 		threadBox.setAlignment(Pos.CENTER_LEFT);
 
@@ -360,9 +369,49 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 		threadsComboBox.setMinWidth(100);
 		threadsComboBox.setPrefWidth(120);
 		threadsComboBox.setOnAction(e -> updateParameterView());
-
 		threadBox.getChildren().addAll(threadsLabel, threadsComboBox);
-		section.getChildren().addAll(titleLabel, threadBox);
+
+		// Modification row: all six DIA-NN modifications in one line
+		HBox modsBox = new HBox(10);
+		modsBox.setAlignment(Pos.CENTER_LEFT);
+
+		Label modsLabel = new Label("Modifications:");
+		modsLabel.setStyle("-fx-font-weight: bold;");
+
+		mExcisionCheckBox = new CheckBox("M excision");
+		mExcisionCheckBox.setSelected(true);
+		mExcisionCheckBox.setOnAction(e -> updateParameterView());
+
+		carbamiCCheckBox = new CheckBox("Carbamidomethyl C");
+		carbamiCCheckBox.setSelected(true);
+		carbamiCCheckBox.setOnAction(e -> updateParameterView());
+
+		oxidationMCheckBox = new CheckBox("Oxidation M");
+		oxidationMCheckBox.setSelected(false);
+		oxidationMCheckBox.setOnAction(e -> updateParameterView());
+
+		acetyProNCheckBox = new CheckBox("Acetylation protein N-term");
+		acetyProNCheckBox.setSelected(false);
+		acetyProNCheckBox.setOnAction(e -> updateParameterView());
+
+		phosphoSTYCheckBox = new CheckBox("Phosphorylation STY");
+		phosphoSTYCheckBox.setSelected(false);
+		phosphoSTYCheckBox.setOnAction(e -> updateParameterView());
+
+		kGGCheckBox = new CheckBox("K GG");
+		kGGCheckBox.setSelected(false);
+		kGGCheckBox.setOnAction(e -> updateParameterView());
+
+		modsBox.getChildren().addAll(
+				modsLabel,
+				mExcisionCheckBox,
+				carbamiCCheckBox,
+				oxidationMCheckBox,
+				acetyProNCheckBox,
+				phosphoSTYCheckBox,
+				kGGCheckBox);
+
+		section.getChildren().addAll(titleLabel, threadBox, modsBox);
 		return section;
 	}
 
@@ -1038,10 +1087,31 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 		}
 		sb.append("\n");
 
-		// Performance settings
+		// Performance and modification settings
 		sb.append("Performance Settings:\n");
 		if (threadsComboBox != null) {
 			sb.append("  Thread Count: ").append(threadsComboBox.getValue()).append("\n");
+		}
+		sb.append("\n");
+
+		sb.append("Modification Settings:\n");
+		if (mExcisionCheckBox != null) {
+			sb.append("  M excision: ").append(mExcisionCheckBox.isSelected()).append("\n");
+		}
+		if (carbamiCCheckBox != null) {
+			sb.append("  Carbamidomethyl C: ").append(carbamiCCheckBox.isSelected()).append("\n");
+		}
+		if (oxidationMCheckBox != null) {
+			sb.append("  Oxidation M: ").append(oxidationMCheckBox.isSelected()).append("\n");
+		}
+		if (acetyProNCheckBox != null) {
+			sb.append("  Acetylation protein N-term: ").append(acetyProNCheckBox.isSelected()).append("\n");
+		}
+		if (phosphoSTYCheckBox != null) {
+			sb.append("  Phosphorylation STY: ").append(phosphoSTYCheckBox.isSelected()).append("\n");
+		}
+		if (kGGCheckBox != null) {
+			sb.append("  K GG: ").append(kGGCheckBox.isSelected()).append("\n");
 		}
 		sb.append("\n");
 
@@ -1417,6 +1487,26 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 			MetaParameterDiaTg metaParameterDiaTarget = new MetaParameterDiaTg(metaBasePar, selectedMagDb, true, false,
 					new String[0], false, new String[0]);
 
+			// DIA-NN modification settings
+			if (mExcisionCheckBox != null) {
+				metaParameterDiaTarget.setMExcision(mExcisionCheckBox.isSelected());
+			}
+			if (carbamiCCheckBox != null) {
+				metaParameterDiaTarget.setCarbamiC(carbamiCCheckBox.isSelected());
+			}
+			if (oxidationMCheckBox != null) {
+				metaParameterDiaTarget.setOxidationM(oxidationMCheckBox.isSelected());
+			}
+			if (acetyProNCheckBox != null) {
+				metaParameterDiaTarget.setAcetyProN(acetyProNCheckBox.isSelected());
+			}
+			if (phosphoSTYCheckBox != null) {
+				metaParameterDiaTarget.setPhosphoSTY(phosphoSTYCheckBox.isSelected());
+			}
+			if (kGGCheckBox != null) {
+				metaParameterDiaTarget.setKGG(kGGCheckBox.isSelected());
+			}
+
 			// Set DIA Target specific parameters
 			metaParameterDiaTarget.setTargetLibraryName(
 					libraryPathTextField != null ? libraryPathTextField.getText().trim() : "target_library");
@@ -1501,6 +1591,26 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 			// Create MetaParameterDiaTarget
 			MetaParameterDiaTg metaParameterDiaTarget = new MetaParameterDiaTg(metaBasePar, selectedMagDb, false, false,
 					new String[0], false, new String[0]);
+
+			// DIA-NN modification settings (allow defaults if UI components are null)
+			if (mExcisionCheckBox != null) {
+				metaParameterDiaTarget.setMExcision(mExcisionCheckBox.isSelected());
+			}
+			if (carbamiCCheckBox != null) {
+				metaParameterDiaTarget.setCarbamiC(carbamiCCheckBox.isSelected());
+			}
+			if (oxidationMCheckBox != null) {
+				metaParameterDiaTarget.setOxidationM(oxidationMCheckBox.isSelected());
+			}
+			if (acetyProNCheckBox != null) {
+				metaParameterDiaTarget.setAcetyProN(acetyProNCheckBox.isSelected());
+			}
+			if (phosphoSTYCheckBox != null) {
+				metaParameterDiaTarget.setPhosphoSTY(phosphoSTYCheckBox.isSelected());
+			}
+			if (kGGCheckBox != null) {
+				metaParameterDiaTarget.setKGG(kGGCheckBox.isSelected());
+			}
 
 			// Set DIA Target specific parameters (use defaults if UI components are null)
 			metaParameterDiaTarget.setTargetLibraryName(
@@ -1778,6 +1888,26 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 			// Apply thread count
 			if (threadsComboBox != null) {
 				threadsComboBox.setValue(params.getThreadCount());
+			}
+
+			// Apply DIA-NN modification settings
+			if (mExcisionCheckBox != null) {
+				mExcisionCheckBox.setSelected(params.isMExcision());
+			}
+			if (carbamiCCheckBox != null) {
+				carbamiCCheckBox.setSelected(params.isCarbamiC());
+			}
+			if (oxidationMCheckBox != null) {
+				oxidationMCheckBox.setSelected(params.isOxidationM());
+			}
+			if (acetyProNCheckBox != null) {
+				acetyProNCheckBox.setSelected(params.isAcetyProN());
+			}
+			if (phosphoSTYCheckBox != null) {
+				phosphoSTYCheckBox.setSelected(params.isPhosphoSTY());
+			}
+			if (kGGCheckBox != null) {
+				kGGCheckBox.setSelected(params.isKGG());
 			}
 
 			// Check if the saved database matches the currently selected database

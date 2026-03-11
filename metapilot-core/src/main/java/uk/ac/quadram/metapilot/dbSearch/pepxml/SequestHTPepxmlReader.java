@@ -3,12 +3,16 @@
  */
 package uk.ac.quadram.metapilot.dbSearch.pepxml;
 
+import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileWriter;
 import java.io.FilenameFilter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
+import java.util.Set;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -31,6 +35,7 @@ public class SequestHTPepxmlReader {
 	private File[] files;
 	private int currentFileId;
 
+	private Iterator<Element> summaryIt;
 	private Iterator<Element> it;
 	private Element query;
 
@@ -38,8 +43,15 @@ public class SequestHTPepxmlReader {
 	private HashMap<Double, PostTransModification> ptmMap;
 
 	private SequestHTPSM[] psms;
-	private String rev_symbol = "rev_";
+	private String rev_symbol = "DECOY_";
 	
+	private static class PeptideSummary {
+		String sequence;
+		double bestProbability;
+		int psmCount;
+		Set<String> proteins = new HashSet<String>();
+	}
+
 	public SequestHTPepxmlReader(String xml) {
 		this(new File(xml));
 	}
@@ -67,74 +79,110 @@ public class SequestHTPepxmlReader {
 		}
 		Element root = document.getRootElement();
 
-		Element summary = root.element("msms_run_summary");
-		this.baseName = summary.attributeValue("base_name");
+		// iterator over all msms_run_summary elements in this file
+		this.summaryIt = root.elementIterator("msms_run_summary");
+		this.it = null;
 
-		if (this.ptmMap == null) {
-			Element e_search_summary = summary.element("search_summary");
-			this.ptmMap = new HashMap<Double, PostTransModification>();
+		moveToNextRunSummary();
+	}
 
-			if (e_search_summary != null) {
-				Iterator<Element> modit = e_search_summary.elementIterator("aminoacid_modification");
-				while (modit.hasNext()) {
-					Element emod = modit.next();
-					String site = emod.attributeValue("aminoacid");
-					boolean vari = emod.attributeValue("variable").equals("Y");
+	@SuppressWarnings("unchecked")
+	private boolean moveToNextRunSummary() {
+		if (summaryIt == null) {
+			return false;
+		}
 
-					double massdiff = Double.parseDouble(emod.attributeValue("massdiff"));
-					double mass = Double.parseDouble(emod.attributeValue("mass"));
-					PostTransModification ptm = new PostTransModification(massdiff, "", site, vari);
-					this.ptmMap.put(mass, ptm);
-				}
+		while (summaryIt.hasNext()) {
+			Element summary = summaryIt.next();
+			this.baseName = summary.attributeValue("base_name");
 
-				modit = e_search_summary.elementIterator("terminal_modification");
-				while (modit.hasNext()) {
-					Element emod = modit.next();
+			// initialise PTM map once, using the first run summary that defines it
+			if (this.ptmMap == null) {
+				Element e_search_summary = summary.element("search_summary");
+				this.ptmMap = new HashMap<Double, PostTransModification>();
 
-					boolean pro_term = emod.attributeValue("protein_terminus").equals("Y");
-					boolean n_term = emod.attributeValue("terminus").equals("N");
-					String site = "";
-					if (pro_term) {
-						if (n_term) {
-							site = "[*";
-						} else {
-							site = "]*";
-						}
-					} else {
-						if (n_term) {
-							site = "n*";
-						} else {
-							site = "c*";
-						}
+				if (e_search_summary != null) {
+					Iterator<Element> modit = e_search_summary.elementIterator("aminoacid_modification");
+					while (modit.hasNext()) {
+						Element emod = modit.next();
+						String site = emod.attributeValue("aminoacid");
+						boolean vari = emod.attributeValue("variable").equals("Y");
+
+						double massdiff = Double.parseDouble(emod.attributeValue("massdiff"));
+						double mass = Double.parseDouble(emod.attributeValue("mass"));
+						PostTransModification ptm = new PostTransModification(massdiff, "", site, vari);
+						this.ptmMap.put(mass, ptm);
 					}
-					double massdiff = Double.parseDouble(emod.attributeValue("massdiff"));
-					double mass = Double.parseDouble(emod.attributeValue("mass"));
-					boolean vari = emod.attributeValue("variable").equals("Y");
 
-					PostTransModification ptm = new PostTransModification(massdiff, "", site, vari);
-					this.ptmMap.put(mass, ptm);
+					modit = e_search_summary.elementIterator("terminal_modification");
+					while (modit.hasNext()) {
+						Element emod = modit.next();
+
+						boolean pro_term = emod.attributeValue("protein_terminus").equals("Y");
+						boolean n_term = emod.attributeValue("terminus").equals("N");
+						String site = "";
+						if (pro_term) {
+							if (n_term) {
+								site = "[*";
+							} else {
+								site = "]*";
+							}
+						} else {
+							if (n_term) {
+								site = "n*";
+							} else {
+								site = "c*";
+							}
+						}
+						double massdiff = Double.parseDouble(emod.attributeValue("massdiff"));
+						double mass = Double.parseDouble(emod.attributeValue("mass"));
+						boolean vari = emod.attributeValue("variable").equals("Y");
+
+						PostTransModification ptm = new PostTransModification(massdiff, "", site, vari);
+						this.ptmMap.put(mass, ptm);
+					}
 				}
 			}
+
+			this.it = summary.elementIterator("spectrum_query");
+			if (this.it != null && this.it.hasNext()) {
+				return true;
+			}
+			// otherwise try next run summary
 		}
-		this.it = summary.elementIterator("spectrum_query");
+
+		this.it = null;
+		return false;
 	}
 
 	public boolean hasNext() {
 
-		if (it.hasNext()) {
+		if (it != null && it.hasNext()) {
 			this.query = it.next();
 			return true;
 
-		} else {
-			this.currentFileId++;
-			if (currentFileId < this.files.length) {
-				this.initial(this.files[currentFileId]);
-				return hasNext();
-			} else {
-				return false;
+		}
 
+		// current run summary exhausted, try next run summary in the same file
+		if (moveToNextRunSummary()) {
+			if (it != null && it.hasNext()) {
+				this.query = it.next();
+				return true;
 			}
 		}
+
+		// move to next file
+		this.currentFileId++;
+		while (currentFileId < this.files.length) {
+			this.initial(this.files[currentFileId]);
+			if (it != null && it.hasNext()) {
+				this.query = it.next();
+				return true;
+			}
+			this.currentFileId++;
+		}
+
+		return false;
 	}
 
 	@SuppressWarnings("unchecked")
@@ -157,8 +205,9 @@ public class SequestHTPepxmlReader {
 			int num_matched_ions = Integer.parseInt(peptide.attributeValue("num_matched_ions"));
 			String pro_name = peptide.attributeValue("protein");
 			boolean isTarget = !pro_name.startsWith(rev_symbol);
-			
+
 			double xcorr = -1;
+			double probability = 0.0;
 
 			Iterator<Element> scoreIt = peptide.elementIterator("search_score");
 
@@ -168,11 +217,32 @@ public class SequestHTPepxmlReader {
 				double value = Double.parseDouble(ss.attributeValue("value"));
 				if (scorename.equals("xcorr")) {
 					xcorr = value;
-				} 
+				}
+			}
+
+			// default probability is 0.0; try to read PeptideProphet result if present
+			Iterator<Element> analysisIt = peptide.elementIterator("analysis_result");
+			while (analysisIt.hasNext()) {
+				Element analysis = analysisIt.next();
+				String analysisName = analysis.attributeValue("analysis");
+				if ("peptideprophet".equalsIgnoreCase(analysisName)) {
+					Element pepProphetResult = analysis.element("peptideprophet_result");
+					if (pepProphetResult != null) {
+						String probStr = pepProphetResult.attributeValue("probability");
+						if (probStr != null && !probStr.isEmpty()) {
+							try {
+								probability = Double.parseDouble(probStr);
+							} catch (NumberFormatException e) {
+								// keep default 0.0 if parsing fails
+							}
+						}
+					}
+					break;
+				}
 			}
 
 			SequestHTPSM psm = new SequestHTPSM(baseName, scan, charge, precursorMr, rt, sequence, pepmass, massdiff,
-					num_matched_ions, hit_rank, pro_name, xcorr, isTarget);
+					num_matched_ions, hit_rank, pro_name, xcorr, probability, isTarget);
 
 			return psm;
 		}
@@ -198,7 +268,7 @@ public class SequestHTPepxmlReader {
 			SequestHTPSM[] psms = reader.getPSMs();
 
 			for (int j = 0; j < psms.length; j++) {
-				if(psms[j].getHit_rank()>1) {
+				if (psms[j].getHit_rank() > 1) {
 					continue;
 				}
 				if (psms[j].getProtein().startsWith("rev_")) {
@@ -231,7 +301,7 @@ public class SequestHTPepxmlReader {
 			ArrayList<SequestHTPSM> list = new ArrayList<SequestHTPSM>();
 			while (hasNext()) {
 				SequestHTPSM psm = this.next();
-				if(psm!=null) {
+				if (psm != null) {
 					list.add(psm);
 				}
 			}
@@ -239,5 +309,100 @@ public class SequestHTPepxmlReader {
 			this.psms = list.toArray(new SequestHTPSM[list.size()]);
 		}
 		return psms;
+	}
+
+	/**
+	 * Read a Sequest HT pepXML file, aggregate PSMs to unique peptide sequences
+	 * using the highest PeptideProphet probability per sequence, and export the
+	 * peptide list as a TSV file.
+	 * 
+	 * @param pepxmlPath      path to input pepXML file
+	 * @param tsvPath         path to output TSV file
+	 * @param probThreshold   minimum peptide probability to include
+	 * @param includeDecoy    whether to include decoy PSMs
+	 * @throws IOException if writing the TSV fails
+	 */
+	public static void exportPeptideTsv(String pepxmlPath, String tsvPath, double probThreshold, boolean includeDecoy)
+			throws IOException {
+		SequestHTPepxmlReader reader = new SequestHTPepxmlReader(pepxmlPath);
+		SequestHTPSM[] psms = reader.getPSMs();
+
+		HashMap<String, PeptideSummary> peptideMap = new HashMap<String, PeptideSummary>();
+
+		int[] counts = new int[2];
+		for (SequestHTPSM psm : psms) {
+			if (psm == null) {
+				continue;
+			}
+			double prob = psm.getProbability();
+			// filter by probability threshold
+			if (prob < probThreshold) {
+				continue;
+			}
+
+			if (psm.isTarget()) {
+				counts[0]++;
+			} else {
+				counts[1]++;
+			}
+
+			// filter by decoy/target
+			if (!includeDecoy && !psm.isTarget()) {
+				continue;
+			}
+
+			String seq = psm.getSequence();
+			if (seq == null || seq.isEmpty()) {
+				continue;
+			}
+
+			PeptideSummary summary = peptideMap.get(seq);
+			if (summary == null) {
+				summary = new PeptideSummary();
+				summary.sequence = seq;
+				summary.bestProbability = prob;
+				summary.psmCount = 1;
+				summary.proteins.add(psm.getProtein());
+				peptideMap.put(seq, summary);
+			} else {
+				summary.psmCount++;
+				if (prob > summary.bestProbability) {
+					summary.bestProbability = prob;
+				}
+				summary.proteins.add(psm.getProtein());
+			}
+		}
+		System.out.println(counts[0]+"\t"+counts[1]);
+
+		try (BufferedWriter writer = new BufferedWriter(new FileWriter(tsvPath))) {
+			// header
+			writer.write("Peptide\tBestProbability\tPsmCount\tProteins");
+			writer.newLine();
+
+			for (PeptideSummary summary : peptideMap.values()) {
+				writer.write(summary.sequence);
+				writer.write('\t');
+				writer.write(Double.toString(summary.bestProbability));
+				writer.write('\t');
+				writer.write(Integer.toString(summary.psmCount));
+				writer.write('\t');
+				// join proteins by ';'
+				boolean first = true;
+				for (String protein : summary.proteins) {
+					if (!first) {
+						writer.write(';');
+					}
+					writer.write(protein);
+					first = false;
+				}
+				writer.newLine();
+			}
+		}
+	}
+	
+	public static void main(String[] args) throws IOException {
+		SequestHTPepxmlReader.exportPeptideTsv(
+				"C:\\Users\\daz25hak\\Documents\\papers\\MetaPilot_2025\\reference\\Elo_DIA\\human.peps.xml",
+				"C:\\Users\\daz25hak\\Documents\\papers\\MetaPilot_2025\\reference\\Elo_DIA\\human.DDA.tsv", 0.96, false);
 	}
 }

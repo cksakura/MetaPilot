@@ -4,14 +4,14 @@ import java.io.File;
 import java.util.regex.Pattern;
 
 /**
- * Folder layout for the Deep Comprehensive workflow (like DDA MAG per-run structure).
+ * Folder layout for the Seed Deep workflow (seed_deep result folder).
  * <p>
  * Result folder layout:
  * <ul>
  *   <li>{@code marker/} – Marker4 library search results (parquet, etc.)</li>
  *   <li>{@code focus/} – Focused library search results</li>
- *   <li>{@code training/} – Training dataset TSV and trained model</li>
- *   <li>{@code training/model/} – Trained model artifacts</li>
+ *   <li>{@code data/} – Seed dataset TSV and optional model artifacts</li>
+ *   <li>{@code data/model/} – Optional model artifacts (for future use)</li>
  *   <li>{@code <runId>/} – One folder per raw file: predict dataset and predictions for that run</li>
  * </ul>
  * Run IDs are derived from experiment name or raw file stem and sanitized for use as directory names.
@@ -31,14 +31,14 @@ public final class DeepComprehensivePaths {
 	/** Prefix for iterative search round subfolders under focus (round1, round2, ...). */
 	public static final String FOLDER_ROUND_PREFIX = "round";
 
-	/** Subfolder for training dataset and trained model. */
-	public static final String FOLDER_TRAINING = "training";
+	/** Subfolder for seed dataset and optional model artifacts. */
+	public static final String FOLDER_DATA = "data";
 
-	/** Subfolder under {@link #FOLDER_TRAINING} for the trained model. */
+	/** Subfolder under {@link #FOLDER_DATA} for optional model artifacts. */
 	public static final String FOLDER_MODEL = "model";
 
-	/** Default training dataset filename under {@link #FOLDER_TRAINING}. */
-	public static final String TRAINING_DATASET_TSV = "training_seed.tsv";
+	/** Seed dataset filename under {@link #FOLDER_DATA}. */
+	public static final String SEED_DATASET_TSV = "seed_dataset.tsv";
 
 	/** Default predict dataset filename under each per-run folder. */
 	public static final String PREDICT_DATASET_TSV = "predict_dataset.tsv";
@@ -69,24 +69,24 @@ public final class DeepComprehensivePaths {
 	}
 
 	/**
-	 * Directory for training dataset and trained model.
+	 * Directory for seed dataset and optional model (data folder).
 	 */
-	public static File getTrainingDir(File resultFolder) {
-		return new File(resultFolder, FOLDER_TRAINING);
+	public static File getDataDir(File resultFolder) {
+		return new File(resultFolder, FOLDER_DATA);
 	}
 
 	/**
-	 * Directory for the trained model (under training).
+	 * Directory for the optional model artifacts (under data).
 	 */
 	public static File getModelDir(File resultFolder) {
-		return new File(getTrainingDir(resultFolder), FOLDER_MODEL);
+		return new File(getDataDir(resultFolder), FOLDER_MODEL);
 	}
 
 	/**
-	 * Default file for the training dataset TSV.
+	 * Default file for the seed dataset TSV.
 	 */
-	public static File getTrainingDatasetFile(File resultFolder) {
-		return new File(getTrainingDir(resultFolder), TRAINING_DATASET_TSV);
+	public static File getSeedDatasetFile(File resultFolder) {
+		return new File(getDataDir(resultFolder), SEED_DATASET_TSV);
 	}
 
 	/**
@@ -141,20 +141,20 @@ public final class DeepComprehensivePaths {
 	}
 
 	/**
-	 * Ensure the training folder and model subfolder exist; creates parent dirs if needed.
+	 * Ensure the data folder and optional model subfolder exist; creates parent dirs if needed.
 	 *
-	 * @return training dir
+	 * @return data dir
 	 */
-	public static File ensureTrainingFolders(File resultFolder) {
-		File training = getTrainingDir(resultFolder);
+	public static File ensureDataFolders(File resultFolder) {
+		File data = getDataDir(resultFolder);
 		File model = getModelDir(resultFolder);
-		if (!training.exists()) {
-			training.mkdirs();
+		if (!data.exists()) {
+			data.mkdirs();
 		}
 		if (!model.exists()) {
 			model.mkdirs();
 		}
-		return training;
+		return data;
 	}
 
 	/**
