@@ -135,7 +135,9 @@ public class PepProphetReader {
 		
 		try {
 			HashMap<String, HashSet<String>> spectrumMap = new HashMap<String, HashSet<String>>();
-			PepProphetReader reader = new PepProphetReader("Z:\\Kai\\Raw_files\\PXD008738\\paper_data\\12mix.peps.xml");
+			PepProphetReader reader = new PepProphetReader(
+//					"Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\ai_analysis\\data\\12mix.peps.xml");
+					"Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\ai_analysis\\data\\12mix.peps.xml");
 			PeptideProphehPSM[] psms = reader.getAllPSMs();
 			int[] count = new int[4];
 
@@ -146,7 +148,7 @@ public class PepProphetReader {
 				if(psms[i].getProtein().startsWith("DECOY_")) {
 					count[1]++;
 				}
-//				if (psms[i].getProbability() > 0.99) {
+//				if (psms[i].getProbability() > 0.9) {
 				if (psms[i].getExpect() < 0.01) {
 					count[2]++;
 					if (psms[i].getProtein().startsWith("DECOY_")) {
@@ -163,7 +165,6 @@ public class PepProphetReader {
 						set.add(psms[i].getPeptide());
 						spectrumMap.put(fileString, set);
 					}
-
 				}
 			}
 			System.out.println(psms.length + "\t" + count[0] + "\t" + count[1] + "\t" + count[2] + "\t" + count[3]);
@@ -173,7 +174,13 @@ public class PepProphetReader {
 				totalSet.addAll( spectrumMap.get(file));
 			}
 			System.out.println("total\t"+totalSet.size());
-
+			
+			PrintWriter writer = new PrintWriter("Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\ai_analysis\\data\\paper.12mix.peps.tsv");
+			writer.println("Sequence");
+			for(String seq: totalSet) {
+				writer.println(seq);
+			}
+			writer.close();
 		} catch (DocumentException | IOException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();

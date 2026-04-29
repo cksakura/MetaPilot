@@ -97,4 +97,15 @@ public class DeepDetectParameter {
 		return sb.toString();
 	}
 
+	public String toQuotedString() {
+		StringBuilder sb = new StringBuilder();
+		sb.append("--input=\"").append(input).append("\" ");
+		sb.append("--output=\"").append(output).append("\" ");
+		sb.append("--protease=").append(protease).append(" ");
+		sb.append("--missed_cleavages=").append(missCleavage).append(" ");
+		sb.append("--min_len=").append(minLength).append(" ");
+		sb.append("--max_len=").append(maxLength);
+		return sb.toString();
+	}
+
 }

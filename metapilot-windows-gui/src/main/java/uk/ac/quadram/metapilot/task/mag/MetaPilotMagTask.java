@@ -337,7 +337,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			int[] idenType = quanPeps[i].getIdenType();
 			int idenCount = 0;
 			for (int j = 0; j < idenType.length; j++) {
-				if (idenType[j] == 1) {
+				if (idenType[j] == MetaPeptide.IDEN_MSMS) {
 					idenCount++;
 				}
 			}
@@ -348,7 +348,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 
 			double[] indiPEP = quanPeps[i].getIndividualPEP();
 			for (int j = 0; j < pepIntensity.length; j++) {
-				if (idenType[j] == 1) {
+				if (idenType[j] == MetaPeptide.IDEN_MSMS) {
 					if (indiPEP[j] == 0) {
 						peptideIntensityScore[i] += pepIntensity[j] * 1.0E7;
 					} else {
@@ -2024,9 +2024,32 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 	}
 
 	/**
-	 * Perform taxonomy analysis
+	 * Resolves ranked.tsv or genome_ranked.tsv under the result tree (combined, marker, seed).
 	 */
-	private boolean performTaxonomyAnalysis(HashMap<String, double[]> genomeIntensityMap,
+	private File resolveRankedTsvForTaxonomy() {
+		if (combinedFile != null) {
+			File f = new File(combinedFile, "ranked.tsv");
+			if (f.isFile()) {
+				return f;
+			}
+		}
+		File root = metaPar.getDbSearchResultFile();
+		if (root != null) {
+			File[] candidates = new File[] { new File(root, "combined/ranked.tsv"),
+					new File(root, "marker/genome_ranked.tsv"), new File(root, "seed/genome_ranked.tsv") };
+			for (File c : candidates) {
+				if (c.isFile()) {
+					return c;
+				}
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Perform taxonomy analysis (DDA table schema; DIA workflows should call this with the same maps).
+	 */
+	protected boolean performTaxonomyAnalysis(HashMap<String, double[]> genomeIntensityMap,
 			HashMap<String, Double> genomeScoreMap, HashMap<String, Integer> psmCountMap,
 			HashMap<String, HashSet<String>> totalPepCountMap, HashMap<String, HashSet<String>> razorPepCountMap,
 			HashMap<String, HashSet<String>> uniquePepCountMap,
@@ -2042,17 +2065,13 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			taxFile.mkdir();
 		}
 
-		// If a ranked genome list from MarkerGenomeSelector exists in the combined folder,
-		// copy it into taxonomy_analysis for easier downstream inspection.
-		if (combinedFile != null) {
-			File rankedSource = new File(combinedFile, "ranked.tsv");
+		File rankedTsvForCopy = resolveRankedTsvForTaxonomy();
+		if (rankedTsvForCopy != null) {
 			File rankedDest = new File(taxFile, "genome_ranked.tsv");
-			if (rankedSource.exists()) {
-				try {
-					Files.copy(rankedSource.toPath(), rankedDest.toPath(), StandardCopyOption.REPLACE_EXISTING);
-				} catch (IOException e) {
-					logger.warn(taskName + ": could not copy ranked genome list to taxonomy_analysis", e);
-				}
+			try {
+				Files.copy(rankedTsvForCopy.toPath(), rankedDest.toPath(), StandardCopyOption.REPLACE_EXISTING);
+			} catch (IOException e) {
+				logger.warn(taskName + ": could not copy ranked genome list to taxonomy_analysis", e);
 			}
 		}
 
@@ -2103,18 +2122,18 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 
 		// Export-time labels from ranked.tsv using GreedyGain progression.
 		HashMap<String, String> genomeSelectionLabel = new HashMap<>();
-		if (combinedFile != null) {
-			File rankedFile = new File(combinedFile, "ranked.tsv");
-			if (rankedFile.exists()) {
-				RankedGenomeSelectionResult rankedSel = buildExportSelectionFromRankedTsv(rankedFile, genomeIntensityMap.keySet());
-				if (!rankedSel.orderedGenomes.isEmpty()) {
-					genomes = rankedSel.orderedGenomes.toArray(new String[0]);
-					genomeSelectionLabel.putAll(rankedSel.genomeSelectionLabel);
-					logger.info("Genome list from ranked.tsv (GreedyGain export labels): focusKnee={}, comprehensiveKnee={}, {} genomes",
-							rankedSel.focusKnee, rankedSel.comprehensiveKnee, genomes.length);
-				} else {
-					logger.warn(taskName + ": ranked.tsv was read but no contributing genomes were parsed for export labels");
-				}
+		File rankedFile = resolveRankedTsvForTaxonomy();
+		if (rankedFile != null) {
+			RankedGenomeSelectionResult rankedSel = buildExportSelectionFromRankedTsv(rankedFile,
+					genomeIntensityMap.keySet());
+			if (!rankedSel.orderedGenomes.isEmpty()) {
+				genomes = rankedSel.orderedGenomes.toArray(new String[0]);
+				genomeSelectionLabel.putAll(rankedSel.genomeSelectionLabel);
+				logger.info(
+						"Genome list from ranked.tsv (GreedyGain export labels): focusKnee={}, comprehensiveKnee={}, {} genomes",
+						rankedSel.focusKnee, rankedSel.comprehensiveKnee, Integer.valueOf(genomes.length));
+			} else {
+				logger.warn(taskName + ": ranked.tsv was read but no contributing genomes were parsed for export labels");
 			}
 		}
 
@@ -2172,15 +2191,17 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 						cellularIntensity[j] += genomeIntensity[j];
 					}
 
-					double score = genomeScoreMap.get(genomes[i]);
 					StringBuilder genomeTaxaSb = new StringBuilder();
 					genomeTaxaSb.append(genomes[i]).append("\t");
-					if (useDiaStyleColumns && lastDiaStyleGenomeStats.containsKey(genomes[i])) {
+					if (useDiaStyleColumns && lastDiaStyleGenomeStats != null
+							&& lastDiaStyleGenomeStats.containsKey(genomes[i])) {
 						double[] gStats = lastDiaStyleGenomeStats.get(genomes[i]);
 						genomeTaxaSb.append(FormatTool.getDFE4().format(gStats[IDX_S])).append("\t");
 						genomeTaxaSb.append(FormatTool.getDF4().format(gStats[IDX_P_EMP])).append("\t");
 						genomeTaxaSb.append(FormatTool.getDF4().format(gStats[IDX_Q_VALUE])).append("\t");
 					} else {
+						double score = genomeScoreMap.containsKey(genomes[i]) ? genomeScoreMap.get(genomes[i]).doubleValue()
+								: 1.0;
 						genomeTaxaSb.append(FormatTool.getDF2().format(-Math.log10(score))).append("\t");
 					}
 
@@ -2277,14 +2298,18 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 						}
 						taxIntensityMaps[j].put(taxon, taxIntensity);
 
-						if (useDiaStyleColumns && lastDiaStyleGenomeStats.containsKey(genomes[i])) {
+						if (useDiaStyleColumns && lastDiaStyleGenomeStats != null
+								&& lastDiaStyleGenomeStats.containsKey(genomes[i])) {
 							double S = lastDiaStyleGenomeStats.get(genomes[i])[IDX_S];
 							if (taxScoreMaps[j].containsKey(taxon)) {
-								taxScoreMaps[j].put(taxon, taxScoreMaps[j].get(taxon) * S);
+								taxScoreMaps[j].put(taxon, taxScoreMaps[j].get(taxon) + S);
 							} else {
 								taxScoreMaps[j].put(taxon, S);
 							}
 						} else {
+							double score = genomeScoreMap.containsKey(genomes[i])
+									? genomeScoreMap.get(genomes[i]).doubleValue()
+									: 1.0;
 							if (taxScoreMaps[j].containsKey(taxon)) {
 								taxScoreMaps[j].put(taxon, taxScoreMaps[j].get(taxon) - Math.log10(score));
 							} else {
@@ -2337,7 +2362,9 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 
 			StringBuilder taxaTitlesb1 = new StringBuilder();
 			taxaTitlesb1.append("Name\t");
-			taxaTitlesb1.append("Minus_log(p-value)\t");
+			// For both DIA-style and DDA-style exports, this column is the aggregate per-taxon score:
+			// DIA-style: sum of genome S; DDA-style: sum of genome -log10(p).
+			taxaTitlesb1.append("Score\t");
 			taxaTitlesb1.append("Rank");
 
 			for (int i = 0; i < mainRanks.length; i++) {
@@ -2376,11 +2403,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 					taxaSb.append(taxon).append("\t");
 					double taxonScore = taxScoreMaps[i].get(taxon);
 					if (useDiaStyleColumns) {
-						if (taxonScore == 0) {
-							taxaSb.append("1000").append("\t");
-						} else {
-							taxaSb.append(FormatTool.getDF4().format(-Math.log10(taxonScore))).append("\t");
-						}
+						taxaSb.append(FormatTool.getDFE4().format(taxonScore)).append("\t");
 					} else {
 						taxaSb.append(FormatTool.getDF2().format(taxonScore)).append("\t");
 					}

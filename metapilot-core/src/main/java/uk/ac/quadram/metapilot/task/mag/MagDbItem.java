@@ -3,16 +3,25 @@ package uk.ac.quadram.metapilot.task.mag;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 
 import org.apache.commons.io.FileUtils;
+
+import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNParquetReader;
 
 public class MagDbItem {
 
 	public static final String MARKER2 = "Marker2";
 	public static final String MARKER4 = "Marker4";
+	/** Subdirectory of a MAG database folder holding named spectral libraries (DIA Seed, etc.). */
+	public static final String LIBRARIES_FOLDER_NAME = "libraries";
 
 	private String catalogueID;
 	private String identifier;
@@ -370,10 +379,62 @@ public class MagDbItem {
 	}
 
 	/**
-	 * Returns the Marker4 library file path: Marker4_highpep.predicted.speclib if Marker4_highpep.fasta exists,
-	 * otherwise Marker4.predicted.speclib.
+	 * {@code libraries} under the current MAG database folder, or null if unavailable.
+	 */
+	public File getLibrariesRootFolder() {
+		if (repositoryFile == null || !repositoryFile.exists()) {
+			return null;
+		}
+		if (currentFile == null || !currentFile.exists()) {
+			return null;
+		}
+		return new File(currentFile, LIBRARIES_FOLDER_NAME);
+	}
+
+	/**
+	 * Canonical folder for the Marker4 spectral library ({@code libraries/Marker4}), discoverable as library id
+	 * {@link #MARKER4} by DIA Seed.
+	 */
+	public File getMarker4LibraryFolder() {
+		File libRoot = getLibrariesRootFolder();
+		if (libRoot == null) {
+			return null;
+		}
+		return new File(libRoot, MARKER4);
+	}
+
+	/**
+	 * Canonical Marker4 spectral library path: {@code libraries/Marker4/Marker4.speclib}. Used when generating
+	 * the library and after migration from legacy root-level files.
 	 */
 	public File getMarker4LibFile() {
+		File folder = getMarker4LibraryFolder();
+		if (folder == null) {
+			return null;
+		}
+		return new File(folder, MARKER4 + ".speclib");
+	}
+
+	/**
+	 * Creates {@code libraries/Marker4} (and {@code libraries} if needed) before writing the speclib, parquet, or
+	 * info files. Legacy move also mkdirs, but fresh generation from FASTA must call this first.
+	 *
+	 * @return false if paths are invalid or the directory could not be created
+	 */
+	public boolean ensureMarker4LibraryFolderExists() {
+		File folder = getMarker4LibraryFolder();
+		if (folder == null) {
+			return false;
+		}
+		try {
+			FileUtils.forceMkdir(folder);
+			return folder.isDirectory();
+		} catch (IOException e) {
+			return false;
+		}
+	}
+
+	private File getMarker4LibLegacyPredictedFile() {
 		if (repositoryFile == null || !repositoryFile.exists()) {
 			return null;
 		}
@@ -385,6 +446,137 @@ public class MagDbItem {
 			return new File(currentFile, "Marker4_highpep.predicted.speclib");
 		}
 		return new File(currentFile, "Marker4.predicted.speclib");
+	}
+
+	/**
+	 * Removes legacy root-level predicted speclibs when the canonical library already lives under {@code libraries/Marker4}.
+	 */
+	private void deleteLegacyMarker4PredictedSpeclibsInParent() {
+		if (currentFile == null || !currentFile.exists()) {
+			return;
+		}
+		FileUtils.deleteQuietly(new File(currentFile, "Marker4.predicted.speclib"));
+		FileUtils.deleteQuietly(new File(currentFile, "Marker4_highpep.predicted.speclib"));
+	}
+
+	/**
+	 * If {@code libraries/Marker4/Marker4.speclib} already exists, deletes any legacy root-level
+	 * {@code Marker4*.predicted.speclib}. Otherwise, if a legacy predicted speclib exists in the MAG folder root,
+	 * moves it into {@code libraries/Marker4/Marker4.speclib} (previous MetaPilot layout).
+	 *
+	 * @return true if {@link #getMarker4LibFile()} exists after the call
+	 */
+	public boolean moveLegacyMarker4SpeclibToCanonical() {
+		File canonical = getMarker4LibFile();
+		if (canonical == null) {
+			return false;
+		}
+		if (canonical.exists()) {
+			deleteLegacyMarker4PredictedSpeclibsInParent();
+			return true;
+		}
+		File legacy = getMarker4LibLegacyPredictedFile();
+		if (legacy == null || !legacy.exists()) {
+			return false;
+		}
+		try {
+			FileUtils.forceMkdir(canonical.getParentFile());
+			Files.move(legacy.toPath(), canonical.toPath(), StandardCopyOption.REPLACE_EXISTING);
+		} catch (IOException e) {
+			return canonical.exists();
+		}
+		return canonical.exists();
+	}
+
+	/**
+	 * Resolves an existing Marker4 spectral library for DiaNN: canonical {@code libraries/Marker4} (.speclib,
+	 * .tsv, .parquet) first, then legacy root-level {@code Marker4*.predicted.speclib}.
+	 *
+	 * @return an existing file, or null
+	 */
+	public File resolveMarker4LibraryFile() {
+		File canonicalFolder = getMarker4LibraryFolder();
+		if (canonicalFolder != null && canonicalFolder.isDirectory()) {
+			for (String ext : new String[] { ".speclib", ".tsv", ".parquet" }) {
+				File f = new File(canonicalFolder, MARKER4 + ext);
+				if (f.exists()) {
+					return f;
+				}
+			}
+		}
+		File legacy = getMarker4LibLegacyPredictedFile();
+		if (legacy != null && legacy.exists()) {
+			return legacy;
+		}
+		return null;
+	}
+
+	/**
+	 * Resolves a spectral library id under this MAG database to an existing file. Callers should treat an absolute
+	 * path first ({@code new File(name).exists()}). For {@link #MARKER4}, applies canonical layout and legacy
+	 * fallback ({@link #resolveMarker4LibraryFile()}).
+	 */
+	public File resolveSpectralLibraryFile(String libraryName) {
+		if (libraryName == null || libraryName.isEmpty()) {
+			return null;
+		}
+		if (MARKER4.equals(libraryName)) {
+			moveLegacyMarker4SpeclibToCanonical();
+			return resolveMarker4LibraryFile();
+		}
+		if (repositoryFile == null || !repositoryFile.exists()) {
+			return null;
+		}
+		if (currentFile == null || !currentFile.exists()) {
+			return null;
+		}
+		File libFolder = new File(new File(currentFile, LIBRARIES_FOLDER_NAME), libraryName);
+		for (String ext : new String[] { ".speclib", ".tsv", ".parquet" }) {
+			File f = new File(libFolder, libraryName + ext);
+			if (f.exists()) {
+				return f;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Moves legacy Marker4 speclib into {@code libraries/Marker4} if needed, then refreshes {@link #getMagPepLibs()}
+	 * from {@code Marker4_info.txt} or {@code Marker4.parquet} when present. The info file and parquet are produced
+	 * when a Marker DIA task completes spectral library setup in the GUI module.
+	 */
+	public void registerMarker4SpectralLibraryIfPresent() {
+		moveLegacyMarker4SpeclibToCanonical();
+		File folder = getMarker4LibraryFolder();
+		if (folder == null || !folder.isDirectory()) {
+			return;
+		}
+		File infoFile = new File(folder, MARKER4 + "_info.txt");
+		if (infoFile.exists()) {
+			addPepLibFromFile(folder);
+			return;
+		}
+		File parquet = new File(folder, MARKER4 + ".parquet");
+		if (parquet.exists()) {
+			writeMarker4InfoAndRegisterFromParquet(parquet, folder);
+		}
+	}
+
+	private void writeMarker4InfoAndRegisterFromParquet(File parquet, File libraryFolder) {
+		try {
+			HashSet<String> pepSet = DiaNNParquetReader.getPeptideSet(parquet.getAbsolutePath());
+			int n = pepSet != null ? pepSet.size() : 0;
+			File infoFile = new File(libraryFolder, MARKER4 + "_info.txt");
+			try (PrintWriter writer = new PrintWriter(infoFile)) {
+				writer.println("Data set size:\t" + n);
+				writer.println("Enzyme:\tTrypsin/P");
+				writer.println("Miss cleavages:\t1");
+				writer.println("MatchToMag:\ttrue");
+			}
+			addPepLib(MARKER4, n, "Trypsin/P", 1, true);
+		} catch (Exception e) {
+			System.err.println("Failed to sync Marker4 library from parquet: " + e.getMessage());
+		}
 	}
 
 	public File getHapLibFile(String selectorMode) {

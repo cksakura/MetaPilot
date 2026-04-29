@@ -8,6 +8,7 @@ import java.io.PrintWriter;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 
@@ -51,6 +52,11 @@ public class MetaDiaSeedIterativeTask extends MetaDiaMarkerTask {
 	protected boolean addOutLibForInitialSearch;
 	/** When mixed, standalone library paths for the final combined search (null otherwise). */
 	protected String[] standaloneSearchLibPaths;
+
+	/** True when the initial (first) search fell back to per-file search. */
+	protected boolean initialSearchSeparate;
+	/** Subset of diaFiles that produced results (excludes damaged files). Set when initialSearchSeparate is true. */
+	protected String[] goodDiaFiles;
 
 	public MetaDiaSeedIterativeTask(MetaParameterDiaMarker markerParams, MetaResourceParameters mrp, ProgressBar bar1,
 			ProgressBar bar2) {
@@ -207,36 +213,18 @@ public class MetaDiaSeedIterativeTask extends MetaDiaMarkerTask {
 		if (usedLibs == null || usedLibs.length == 0) {
 			return null;
 		}
-		File magDbFile = magDb.getCurrentFile();
-		File libFolderFile = new File(magDbFile, "libraries");
-
 		String[] libPath = new String[usedLibs.length];
 		for (int i = 0; i < usedLibs.length; i++) {
 			File directLibFile = new File(usedLibs[i]);
 			if (directLibFile.exists()) {
 				libPath[i] = directLibFile.getAbsolutePath();
 			} else {
-				File libFolder = new File(libFolderFile, usedLibs[i]);
-				File speclibFile = new File(libFolder, usedLibs[i] + ".speclib");
-				File tsvFile = new File(libFolder, usedLibs[i] + ".tsv");
-				File parquetFile = new File(libFolder, usedLibs[i] + ".parquet");
-
-				File chosen = null;
-				if (speclibFile.exists()) {
-					chosen = speclibFile;
-				} else if (tsvFile.exists()) {
-					chosen = tsvFile;
-				} else if (parquetFile.exists()) {
-					chosen = parquetFile;
-				}
-
-				if (chosen == null) {
+				File chosen = magDb.resolveSpectralLibraryFile(usedLibs[i]);
+				if (chosen == null || !chosen.exists()) {
 					logger.error(getTaskName() + ": no library file (.speclib/.tsv/.parquet) found for library '{}'", usedLibs[i]);
 					return null;
 				}
-
 				libPath[i] = chosen.getAbsolutePath();
-
 			}
 		}
 		return libPath;
@@ -363,31 +351,71 @@ public class MetaDiaSeedIterativeTask extends MetaDiaMarkerTask {
 			logger.error(getTaskName() + ": No library paths for first search (classification may have failed)");
 			return false;
 		}
-		if (!tempParquetFile.exists()) {
-			logger.info("Searching {} library against DIA files{}...",
-					addOutLibForInitialSearch ? "microbiome" : "user",
-					addOutLibForInitialSearch ? " (with --out-lib)" : "");
-			diaLibSearchPar.setMbr(false);
-			diaLibSearchPar.setDiaFiles(diaFiles);
-			diaLibSearchPar.setThreadCount(threadCount);
-			diaLibSearchPar.setqValue(0.01);
-			diannPar.setThreads(threadCount);
-			diannPar.setMatrices(false);
-			diannPar.setRelaxed_prot_inf(true);
-			diannPar.setReanalyse(true);
-			diannPar.setExportDecoy(true);
-
-			if (addOutLibForInitialSearch) {
-				diannPar.setMatrices(false);
-				diaNNTask.addTask(diannPar, diaLibSearchPar, tempParquetFile.getAbsolutePath(),
-						false, true, true, initialSearchLibPaths);
-			} else {
-				diaNNTask.addNoQuantLibTask(diannPar, diaLibSearchPar, tempParquetFile.getAbsolutePath(),
-						initialSearchLibPaths);
+		// Check if per-file parquets already exist from a previous separate search.
+		boolean existingPerFile = false;
+		if (!tempParquetFile.exists() && diaFiles != null && diaFiles.length > 0) {
+			for (int i = 0; i < diaFiles.length; i++) {
+				File pf = new File(iterativeFolder, "per_file_" + i + ".parquet");
+				if (pf.exists() && pf.length() > 0) {
+					existingPerFile = true;
+					break;
+				}
 			}
-			diaNNTask.run(diaFiles.length * 12);
 		}
-		if (!tempParquetFile.exists() && diaFiles != null && diaFiles.length > 1 && initialSearchLibPaths != null) {
+
+		if (tempParquetFile.exists()) {
+			initialSearchSeparate = false;
+			goodDiaFiles = diaFiles;
+			return true;
+		} else if (existingPerFile) {
+			List<String> goodList = new ArrayList<>();
+			for (int i = 0; i < diaFiles.length; i++) {
+				File pf = new File(iterativeFolder, "per_file_" + i + ".parquet");
+				if (pf.exists() && pf.length() > 0) {
+					goodList.add(diaFiles[i]);
+				}
+			}
+			initialSearchSeparate = true;
+			goodDiaFiles = goodList.toArray(new String[0]);
+			int maxConcurrent = DeepIterativeCommonSupport.computeMaxConcurrentTasks();
+			logger.info(getTaskName()
+					+ ": per-file parquets already exist from previous run; {} good files; rounds will use per-file search (max concurrent: {})",
+					goodDiaFiles.length, maxConcurrent);
+			return true;
+		}
+
+		// No existing results — run combined search.
+		logger.info("Searching {} library against DIA files{}...",
+				addOutLibForInitialSearch ? "microbiome" : "user",
+				addOutLibForInitialSearch ? " (with --out-lib)" : "");
+		diaLibSearchPar.setMbr(false);
+		diaLibSearchPar.setDiaFiles(diaFiles);
+		diaLibSearchPar.setThreadCount(threadCount);
+		diaLibSearchPar.setqValue(0.01);
+		diannPar.setThreads(threadCount);
+		diannPar.setMatrices(false);
+		diannPar.setRelaxed_prot_inf(true);
+		diannPar.setReanalyse(true);
+		diannPar.setExportDecoy(true);
+
+		if (addOutLibForInitialSearch) {
+			diannPar.setMatrices(false);
+			diaNNTask.addTask(diannPar, diaLibSearchPar, tempParquetFile.getAbsolutePath(),
+					false, true, true, initialSearchLibPaths);
+		} else {
+			diaNNTask.addNoQuantLibTask(diannPar, diaLibSearchPar, tempParquetFile.getAbsolutePath(),
+					initialSearchLibPaths);
+		}
+		diaNNTask.run(diaFiles.length * 12);
+
+		if (tempParquetFile.exists()) {
+			initialSearchSeparate = false;
+			goodDiaFiles = diaFiles;
+			return true;
+		}
+
+		// Combined search failed — fall back to per-file search.
+		if (diaFiles != null && diaFiles.length > 1 && initialSearchLibPaths != null) {
 			List<String> damaged = addOutLibForInitialSearch
 					? runPerFileFallbackAndRetryCombinedWithGenLib(tempParquetFile.getAbsolutePath(), initialSearchLibPaths)
 					: runPerFileFallbackAndRetryCombinedNoQuant(tempParquetFile.getAbsolutePath(), initialSearchLibPaths);
@@ -396,29 +424,24 @@ public class MetaDiaSeedIterativeTask extends MetaDiaMarkerTask {
 				System.err.println(format.format(new Date()) + "\t" + getTaskName()
 						+ ": The following raw files produced no results (may be damaged): " + String.join(", ", damaged));
 			}
-		}
-		if (tempParquetFile.exists()) {
-			return true;
-		}
-
-		// No combined seed.parquet, check whether per-file fallback produced any usable outputs.
-		boolean hasPerFile = false;
-		if (diaFiles != null && diaFiles.length > 0) {
-			for (int i = 0; i < diaFiles.length; i++) {
-				File pf = new File(iterativeFolder, "per_file_" + i + ".parquet");
-				if (pf.exists() && pf.length() > 0) {
-					hasPerFile = true;
-					break;
+			java.util.Set<String> damagedSet = new java.util.HashSet<>(damaged);
+			List<String> goodList = new ArrayList<>();
+			for (String f : diaFiles) {
+				if (!damagedSet.contains(f)) {
+					goodList.add(f);
 				}
 			}
+			if (!goodList.isEmpty()) {
+				initialSearchSeparate = true;
+				goodDiaFiles = goodList.toArray(new String[0]);
+				logger.info(getTaskName() + ": initial search was separate; {} good files, {} damaged",
+						goodDiaFiles.length, damaged.size());
+				return true;
+			}
 		}
-		if (!hasPerFile) {
-			logger.error(getTaskName() + ": First search failed - no seed.parquet and no per-file parquet outputs");
-			return false;
-		}
-		logger.info(getTaskName()
-				+ ": seed.parquet was not created, but per-file parquet outputs exist; will use them directly for downstream steps");
-		return true;
+
+		logger.error(getTaskName() + ": First search failed - no seed.parquet and no per-file parquet outputs");
+		return false;
 	}
 
 	@Override
@@ -533,27 +556,38 @@ public class MetaDiaSeedIterativeTask extends MetaDiaMarkerTask {
 		}
 
 		File combinedFastaFile = new File(iterativeFolder, "combined.fasta");
-		try (PrintWriter writer = new PrintWriter(combinedFastaFile)) {
-			File dbFolder = magDb.getOriginalDbFolder();
-			for (String genome : genomeSet) {
-				File genomeDbFile = new File(dbFolder, genome + ".faa");
-				if (!genomeDbFile.exists()) {
-					genomeDbFile = new File(dbFolder, genome + ".fasta");
-				}
-				if (genomeDbFile.exists()) {
-					try (BufferedReader reader = new BufferedReader(new FileReader(genomeDbFile))) {
-						String line;
-						while ((line = reader.readLine()) != null) {
-							writer.println(line);
-						}
-					}
-				} else {
-					logger.warn("Genome file not found: {}", genome);
-				}
+		boolean usePeptideBasedRound = markerParams.isUsePeptideBasedRound();
+		if (usePeptideBasedRound) {
+			double detectabilityThreshold = markerParams.getPeptideDetectabilityThreshold();
+			if (!writeCombinedPeptideFastaFromSelectedGenomes(genomeSet, detectabilityThreshold, combinedFastaFile)) {
+				logger.error(getTaskName() + ": failed to write peptide-based combined FASTA");
+				return false;
 			}
-		} catch (IOException e) {
-			logger.error("Error writing combined FASTA", e);
-			return false;
+			logger.info(getTaskName() + ": using peptide-based iterative strategy for seed focus/comprehensive "
+					+ "(threshold={})", detectabilityThreshold);
+		} else {
+			try (PrintWriter writer = new PrintWriter(combinedFastaFile)) {
+				File dbFolder = magDb.getOriginalDbFolder();
+				for (String genome : genomeSet) {
+					File genomeDbFile = new File(dbFolder, genome + ".faa");
+					if (!genomeDbFile.exists()) {
+						genomeDbFile = new File(dbFolder, genome + ".fasta");
+					}
+					if (genomeDbFile.exists()) {
+						try (BufferedReader reader = new BufferedReader(new FileReader(genomeDbFile))) {
+							String line;
+							while ((line = reader.readLine()) != null) {
+								writer.println(line);
+							}
+						}
+					} else {
+						logger.warn("Genome file not found: {}", genome);
+					}
+				}
+			} catch (IOException e) {
+				logger.error("Error writing combined FASTA", e);
+				return false;
+			}
 		}
 
 		if (!combinedFastaFile.exists() || combinedFastaFile.length() == 0) {
@@ -611,33 +645,48 @@ public class MetaDiaSeedIterativeTask extends MetaDiaMarkerTask {
 		diannPar.setExportDecoy(true);
 
 		if (addOutLibForInitialSearch) {
-			// Mixed case: first get mag.parquet + mag.parquet.lib (microbiome search with --out-lib), then combine with standalone libs
-			File magParquetFile = new File(combinedFile, "mag.parquet");
-			if (!magParquetFile.exists()) {
-				logger.info("Generating mag.parquet and library (microbiome libs with --out-lib)...");
-				diannPar.setMatrices(false);
-				diaNNTask.addTask(diannPar, diaLibSearchPar, magParquetFile.getAbsolutePath(),
-						false, true, true, initialSearchLibPaths);
-				diaNNTask.run(diaFiles.length * 12);
-			}
-			// DiaNN outputs library as output + ".lib" -> mag.parquet.lib
-			File magLibFile = new File(combinedFile, "mag.lib.parquet");
-			if (!magLibFile.exists()) {
-				logger.error(getTaskName() + ": MAG library file not found: " + magLibFile.getAbsolutePath());
+			// Mixed case: convert iterative microbiome combined.speclib to parquet, then
+			// combine it with standalone parquet libraries for final search.
+			File iterativeFolder = getIterativeResultFolder();
+			File combinedLibFile = new File(iterativeFolder, "combined.speclib");
+			if (!combinedLibFile.exists() || combinedLibFile.length() == 0) {
+				logger.error(getTaskName() + ": Combined iterative microbiome library not found: "
+						+ combinedLibFile.getAbsolutePath());
 				return false;
 			}
-			// Combined search: mag.parquet.lib + all standalone libraries -> combined.parquet (skip if already exists) — final search with quantification
+			File combinedLibParquetFile = new File(iterativeFolder, "combined.lib.parquet");
+			if (!combinedLibParquetFile.exists() || combinedLibParquetFile.length() == 0) {
+				logger.info(getTaskName()
+						+ ": converting iterative combined.speclib to parquet library for mixed-library final search...");
+				diannPar.setThreads(threadCount);
+				diaNNTask.addSpeclib2ParquetTask(diannPar, combinedLibFile.getAbsolutePath(),
+						combinedLibParquetFile.getAbsolutePath());
+				diaNNTask.run(12);
+			}
+			if (!combinedLibParquetFile.exists() || combinedLibParquetFile.length() == 0) {
+				logger.error(getTaskName() + ": failed to generate parquet library from combined.speclib: {}",
+						combinedLibParquetFile.getAbsolutePath());
+				return false;
+			}
 			if (!quan_pep_file.exists() || !combineParquetFile.exists()) {
 				diannPar.setMatrices(true);
 				List<String> combinedLibPaths = new ArrayList<>();
-				combinedLibPaths.add(magLibFile.getAbsolutePath());
+				combinedLibPaths.add(combinedLibParquetFile.getAbsolutePath());
 				if (standaloneSearchLibPaths != null) {
 					for (String p : standaloneSearchLibPaths) {
+						if (p == null || !p.toLowerCase().endsWith(".parquet")) {
+							logger.error(getTaskName()
+									+ ": mixed-library mode accepts parquet libraries only; invalid standalone library: {}",
+									p);
+							return false;
+						}
 						combinedLibPaths.add(p);
 					}
 				}
 				String[] combinedLibArr = combinedLibPaths.toArray(new String[0]);
-				logger.info("Searching with MAG library + {} standalone libraries -> combined.parquet", standaloneSearchLibPaths != null ? standaloneSearchLibPaths.length : 0);
+				logger.info(
+						"Searching with iterative microbiome parquet library + {} standalone parquet libraries -> combined.parquet",
+						standaloneSearchLibPaths != null ? standaloneSearchLibPaths.length : 0);
 				diaNNTask.addTask(diannPar, diaLibSearchPar, combineParquetFile.getAbsolutePath(), combinedLibArr);
 				diaNNTask.run(diaFiles.length * 12);
 			}
@@ -662,6 +711,65 @@ public class MetaDiaSeedIterativeTask extends MetaDiaMarkerTask {
 		}
 		logger.info("Identification completed successfully");
 		return true;
+	}
+
+	private boolean writeCombinedPeptideFastaFromSelectedGenomes(HashSet<String> genomeSet, double detectabilityThreshold,
+			File outputFasta) {
+		if (genomeSet == null || genomeSet.isEmpty()) {
+			return false;
+		}
+		File predictedFolder = new File(magDb.getCurrentFile(), "predicted");
+		if (!predictedFolder.isDirectory()) {
+			logger.error(getTaskName() + ": predicted folder not found for peptide-based iterative FASTA: {}",
+					predictedFolder.getAbsolutePath());
+			return false;
+		}
+		HashMap<String, HashSet<String>> pepProMap = new HashMap<>();
+		for (String genome : genomeSet) {
+			File predictedFile = new File(predictedFolder, genome + ".predicted.tsv");
+			if (!predictedFile.isFile()) {
+				logger.warn(getTaskName() + ": predicted file missing for selected genome: {}", genome);
+				continue;
+			}
+			try (BufferedReader reader = new BufferedReader(new FileReader(predictedFile))) {
+				reader.readLine();
+				String line;
+				while ((line = reader.readLine()) != null) {
+					String[] cs = line.split("\t");
+					if (cs.length < 3) {
+						continue;
+					}
+					double detectability;
+					try {
+						detectability = Double.parseDouble(cs[2]);
+					} catch (NumberFormatException nfe) {
+						continue;
+					}
+					if (detectability < detectabilityThreshold) {
+						continue;
+					}
+					String protein = cs[0];
+					String peptide = cs[1];
+					if (peptide == null || peptide.isEmpty()) {
+						continue;
+					}
+					pepProMap.computeIfAbsent(peptide, k -> new HashSet<>()).add(protein);
+				}
+			} catch (IOException e) {
+				logger.warn(getTaskName() + ": error reading predicted file {}", predictedFile.getAbsolutePath(), e);
+			}
+		}
+		if (pepProMap.isEmpty()) {
+			logger.error(getTaskName() + ": no peptides collected from selected genomes under threshold={}",
+					detectabilityThreshold);
+			return false;
+		}
+		boolean ok = DeepIterativeCommonSupport.writeCombinedFastaFromPeptideProteinMap(outputFasta, pepProMap, logger,
+				getTaskName());
+		if (ok) {
+			logger.info(getTaskName() + ": wrote peptide-based combined FASTA with {} stripped peptides", pepProMap.size());
+		}
+		return ok;
 	}
 
 	/**

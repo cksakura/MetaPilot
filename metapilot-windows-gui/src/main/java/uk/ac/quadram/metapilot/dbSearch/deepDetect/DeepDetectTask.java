@@ -38,7 +38,6 @@ public class DeepDetectTask extends MetaAbstractTask {
 	private SimpleDateFormat format = new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss");
 
 	private File deepDetectFile;
-	private String drive;
 	private ArrayList<File> batFileList;
 	private HashSet<String> genomeSet;
 
@@ -52,15 +51,9 @@ public class DeepDetectTask extends MetaAbstractTask {
 	public DeepDetectTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar, Logger logger) {
 		super(metaPar, mrp, progressBar, logger);
 		this.deepDetectFile = new File(mrp.getToolPath(ToolType.DEEPDETECT));
-		String path = deepDetectFile.getAbsolutePath();
-		int id = path.indexOf(":");
-		if (id < 0) {
-			Exception e = new IOException(
-					"The absolute path of the DeepDetect executable file (DeepDetect.exe) was not found.");
-			LOGGER.error(taskName + ": can't find DeepDetect.exe", e);
+		if (!deepDetectFile.exists()) {
+			LOGGER.error(taskName + ": can't find DeepDetect.exe at " + deepDetectFile.getAbsolutePath());
 			System.out.println(format.format(new Date()) + "\t" + taskName + ": can't find DeepDetect.exe");
-		} else {
-			drive = path.substring(0, id);
 		}
 		this.batFileList = new ArrayList<File>();
 	}
@@ -125,8 +118,7 @@ public class DeepDetectTask extends MetaAbstractTask {
 							PrintWriter batWriter = new PrintWriter(batFile);
 							batWriter.println("@echo off");
 							batWriter.println("cd /d \"" + deepDetectFile.getParent() + "\"");
-							batWriter.println("start /B " + deepDetectFile.getName() + " " + par);
-							batWriter.print("exit");
+							batWriter.println("\"" + deepDetectFile.getAbsolutePath() + "\" " + par.toQuotedString());
 							batWriter.close();
 						} catch (FileNotFoundException e) {
 							// TODO Auto-generated catch block
@@ -220,19 +212,7 @@ public class DeepDetectTask extends MetaAbstractTask {
 
 			boolean finish = executor.awaitTermination(totalGenomeCount, TimeUnit.HOURS);
 
-			for (int i = 0; i < batFileList.size(); i++) {
-				File batFile = batFileList.get(i);
-				FileUtils.deleteQuietly(batFile);
-			}
-
-			files = dbfile.listFiles();
-			for (int i = 0; i < files.length; i++) {
-				String name = files[i].getName();
-				if (name.endsWith(".bat")) {
-					FileUtils.deleteQuietly(files[i]);
-				}
-			}
-
+			cleanupTempFiles(predictedFile);
 			batFileList = new ArrayList<File>();
 
 			for (int i = 0; i < files.length; i++) {
@@ -299,8 +279,7 @@ public class DeepDetectTask extends MetaAbstractTask {
 							PrintWriter batWriter = new PrintWriter(batFile);
 							batWriter.println("@echo off");
 							batWriter.println("cd /d \"" + deepDetectFile.getParent() + "\"");
-							batWriter.println("start /B " + deepDetectFile.getName() + " " + par);
-							batWriter.print("exit");
+							batWriter.println("\"" + deepDetectFile.getAbsolutePath() + "\" " + par.toQuotedString());
 							batWriter.close();
 						} catch (FileNotFoundException e) {
 							// TODO Auto-generated catch block
@@ -384,18 +363,7 @@ public class DeepDetectTask extends MetaAbstractTask {
 
 				finish = executor.awaitTermination(totalGenomeCount, TimeUnit.HOURS);
 
-				for (int i = 0; i < batFileList.size(); i++) {
-					File batFile = batFileList.get(i);
-					FileUtils.deleteQuietly(batFile);
-				}
-
-				files = dbfile.listFiles();
-				for (int i = 0; i < files.length; i++) {
-					String name = files[i].getName();
-					if (name.endsWith(".bat") || name.endsWith(".faa") || name.endsWith(".fasta")) {
-						FileUtils.deleteQuietly(files[i]);
-					}
-				}
+				cleanupTempFiles(predictedFile);
 			}
 
 			progressBar.setProgress(1.0);
@@ -478,9 +446,9 @@ public class DeepDetectTask extends MetaAbstractTask {
 		File batFile = new File(outputFile.getParent(), name + ".deepDetect.bat");
 		try {
 			PrintWriter writer = new PrintWriter(batFile);
-			writer.println(drive + ":");
-			writer.println("cd " + deepDetectFile.getParent());
-			writer.println(deepDetectFile.getName() + " " + par);
+			writer.println("@echo off");
+			writer.println("cd /d \"" + deepDetectFile.getParent() + "\"");
+			writer.println("\"" + deepDetectFile.getAbsolutePath() + "\" " + par.toQuotedString());
 			writer.close();
 		} catch (FileNotFoundException e) {
 			// TODO Auto-generated catch block
@@ -576,29 +544,41 @@ public class DeepDetectTask extends MetaAbstractTask {
 	}
 
 	/**
-	 * DeepDetect expects FASTA headers to contain a space (protein name after the accession).
-	 * If the input FASTA has headers without a space (e.g. ">MGYG000000001_123"), returns a
-	 * modified file where each such header becomes ">accession accession"; otherwise returns
-	 * the original file. The modified file is written next to outputDir.
+	 * Removes temporary .bat and _deepDetect_input.faa files from the predicted folder.
+	 * Never touches original genome files or .predicted.tsv output files.
+	 */
+	private static void cleanupTempFiles(File predictedFolder) {
+		if (predictedFolder == null || !predictedFolder.exists()) {
+			return;
+		}
+		File[] tempFiles = predictedFolder.listFiles();
+		if (tempFiles == null) {
+			return;
+		}
+		for (File f : tempFiles) {
+			String name = f.getName();
+			if (name.endsWith(".bat") || name.endsWith("_deepDetect_input.faa")
+					|| (name.endsWith(".faa") && !name.endsWith(".predicted.tsv"))) {
+				FileUtils.deleteQuietly(f);
+			}
+		}
+	}
+
+	private static final String STANDARD_AA = "ACDEFGHIKLMNPQRSTVWY";
+
+	/**
+	 * Prepares a FASTA file for DeepDetect by applying three rules:
+	 * 1. Headers without a space get a duplicated accession as protein name
+	 *    (DeepDetect requires ">accession proteinName" format)
+	 * 2. Trailing '*' (stop codon) is stripped from protein sequences
+	 * 3. Proteins containing non-standard amino acids (anything outside the 20
+	 *    standard residues ACDEFGHIKLMNPQRSTVWY) are removed entirely
 	 */
 	public static File ensureFastaHeadersHaveProteinName(File inputFile, File outputDir) throws IOException {
 		if (inputFile == null || !inputFile.exists()) {
 			return inputFile;
 		}
-		ArrayList<String> lines = new ArrayList<>();
-		boolean needModify = false;
-		try (BufferedReader reader = new BufferedReader(new FileReader(inputFile))) {
-			String line;
-			while ((line = reader.readLine()) != null) {
-				lines.add(line);
-				if (line.startsWith(">") && !line.substring(1).contains(" ")) {
-					needModify = true;
-				}
-			}
-		}
-		if (!needModify) {
-			return inputFile;
-		}
+
 		String baseName = inputFile.getName();
 		int lastDot = baseName.lastIndexOf('.');
 		String nameNoExt = lastDot > 0 ? baseName.substring(0, lastDot) : baseName;
@@ -607,18 +587,77 @@ public class DeepDetectTask extends MetaAbstractTask {
 			dir = new File(System.getProperty("java.io.tmpdir"));
 		}
 		File modifiedFile = new File(dir, nameNoExt + "_deepDetect_input.faa");
-		try (PrintWriter writer = new PrintWriter(modifiedFile)) {
-			for (String line : lines) {
-				if (line.startsWith(">") && !line.substring(1).contains(" ")) {
-					String accession = line.substring(1).trim();
-					writer.println(">" + accession + " " + accession);
+
+		int skippedCount = 0;
+		int totalCount = 0;
+
+		try (BufferedReader reader = new BufferedReader(new FileReader(inputFile));
+			 PrintWriter writer = new PrintWriter(modifiedFile)) {
+
+			String header = null;
+			StringBuilder seq = new StringBuilder();
+
+			String line;
+			while ((line = reader.readLine()) != null) {
+				if (line.startsWith(">")) {
+					if (header != null) {
+						totalCount++;
+						String cleanedSeq = cleanSequence(seq.toString());
+						if (cleanedSeq != null) {
+							writer.println(header);
+							writer.println(cleanedSeq);
+						} else {
+							skippedCount++;
+						}
+					}
+					if (!line.substring(1).contains(" ")) {
+						String accession = line.substring(1).trim();
+						header = ">" + accession + " " + accession;
+					} else {
+						header = line;
+					}
+					seq = new StringBuilder();
 				} else {
-					writer.println(line);
+					seq.append(line.trim());
+				}
+			}
+			if (header != null) {
+				totalCount++;
+				String cleanedSeq = cleanSequence(seq.toString());
+				if (cleanedSeq != null) {
+					writer.println(header);
+					writer.println(cleanedSeq);
+				} else {
+					skippedCount++;
 				}
 			}
 		}
-		LOGGER.info(taskName + ": created modified FASTA with protein names for DeepDetect: " + modifiedFile.getAbsolutePath());
+
+		if (skippedCount > 0) {
+			LOGGER.info(taskName + ": skipped " + skippedCount + "/" + totalCount
+					+ " proteins with non-standard amino acids in " + inputFile.getName());
+		}
 		return modifiedFile;
+	}
+
+	/**
+	 * Cleans a protein sequence for DeepDetect: removes trailing '*' and
+	 * validates that all remaining characters are standard amino acids.
+	 * @return the cleaned sequence, or null if it contains non-standard residues
+	 */
+	private static String cleanSequence(String seq) {
+		if (seq.endsWith("*")) {
+			seq = seq.substring(0, seq.length() - 1);
+		}
+		if (seq.isEmpty()) {
+			return null;
+		}
+		for (int i = 0; i < seq.length(); i++) {
+			if (STANDARD_AA.indexOf(seq.charAt(i)) < 0) {
+				return null;
+			}
+		}
+		return seq;
 	}
 
 	/**
@@ -661,8 +700,7 @@ public class DeepDetectTask extends MetaAbstractTask {
 		try (PrintWriter batWriter = new PrintWriter(batFile)) {
 			batWriter.println("@echo off");
 			batWriter.println("cd /d \"" + deepDetectExe.getParent() + "\"");
-			batWriter.println(deepDetectExe.getName() + " " + par);
-			batWriter.print("exit");
+			batWriter.println("\"" + deepDetectExe.getAbsolutePath() + "\" " + par.toQuotedString());
 		} catch (FileNotFoundException e) {
 			LOGGER.error(taskName + ": testDeepDetect - error writing .bat file", e);
 			return false;

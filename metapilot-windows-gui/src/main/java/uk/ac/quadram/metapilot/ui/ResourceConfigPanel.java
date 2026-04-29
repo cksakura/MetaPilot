@@ -29,6 +29,14 @@ public class ResourceConfigPanel extends BorderPane {
 	private boolean hasUnsavedChanges = false;
 
 	/**
+	 * Temporary UI-level filtering for tools that are not maintained.
+	 * Keep parameters intact so the tool can be re-enabled later.
+	 */
+	private boolean shouldShowToolInUI(ToolType toolType) {
+		return toolType != ToolType.DBREDUCER;
+	}
+
+	/**
 	 * Create a new resource configuration panel
 	 */
 	public ResourceConfigPanel() {
@@ -141,6 +149,9 @@ public class ResourceConfigPanel extends BorderPane {
 
 		int ddaRow = 0;
 		for (ToolType toolType : ToolType.getDDATools()) {
+			if (!shouldShowToolInUI(toolType)) {
+				continue;
+			}
 			ToolPathControl control = new ToolPathControl(toolType);
 			ddaGrid.add(control, 0, ddaRow++);
 		}
@@ -259,6 +270,9 @@ public class ResourceConfigPanel extends BorderPane {
 				StringBuilder missingTools = new StringBuilder();
 
 				for (ToolType toolType : ToolType.values()) {
+					if (!shouldShowToolInUI(toolType)) {
+						continue;
+					}
 					if (resourceParams.isToolAvailable(toolType)) {
 						if (foundTools.length() > 0)
 							foundTools.append(", ");
@@ -453,8 +467,8 @@ public class ResourceConfigPanel extends BorderPane {
 
 			// Highlight PFind, DBReducer, DeepDetect, FlashLFQ, and FunctionDB that come
 			// with the software
-			boolean isIncluded = (toolType == ToolType.DBREDUCER
-					|| toolType == ToolType.DEEPDETECT || toolType == ToolType.FLASHLFQ || toolType == ToolType.FUNCDB);
+			boolean isIncluded = (toolType == ToolType.DEEPDETECT || toolType == ToolType.FLASHLFQ
+					|| toolType == ToolType.FUNCDB);
 
 			if (isIncluded) {
 				Label includedLabel = new Label("(Included)");

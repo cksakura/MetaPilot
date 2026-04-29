@@ -16,10 +16,12 @@ import java.nio.file.WatchEvent;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 import javax.swing.UIManager;
@@ -672,6 +674,7 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 	 * @return Set of selected item names that together cover the threshold
 	 *         percentage of peptides
 	 */
+	@Deprecated
 	protected HashSet<String> applyOccamsRazor(HashMap<String, HashSet<String>> itemToPeptides,
 			Set<String> totalPeptides, double threshold, double stepThreshold, int maximum, boolean decoyFilter,
 			File out) {
@@ -814,9 +817,337 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 	 * @return Set of selected item names that together cover the threshold
 	 *         percentage of peptides
 	 */
+	@Deprecated
 	protected HashSet<String> applyOccamsRazor(HashMap<String, HashSet<String>> itemToPeptides,
 			Set<String> totalPeptides, double threshold, File out) {
 		return applyOccamsRazor(itemToPeptides, totalPeptides, threshold, 0.01, Integer.MAX_VALUE, false, out);
+	}
+
+	/**
+	 * Adaptive item selection (knee-based) used by modern MAG-style workflows.
+	 * Replaces fixed-threshold Occam's razor selection when callers need adaptive
+	 * core/mid/tail partitioning.
+	 *
+	 * @param itemToPeptides Map from item names to their associated peptides
+	 * @param totalPeptides  Total set of unique peptides
+	 * @param out            Output file for ranking statistics with labels
+	 * @return Set of selected item names (core + mid by adaptive knees)
+	 */
+	protected HashSet<String> applyAdaptiveOccamsRazor(HashMap<String, HashSet<String>> itemToPeptides,
+			Set<String> totalPeptides, File out) {
+		AdaptiveOccamsRazorResult result = applyAdaptiveOccamsRazorWithLabels(itemToPeptides, totalPeptides,
+				Integer.MAX_VALUE, out);
+		return result.selectedItems;
+	}
+
+	protected static class AdaptiveOccamsRazorResult {
+		HashSet<String> selectedItems = new HashSet<>();
+		HashMap<String, String> itemLabels = new HashMap<>();
+		List<String> orderedItems = new ArrayList<>();
+		int focusKnee = -1;
+		int comprehensiveKnee = -1;
+	}
+
+	protected AdaptiveOccamsRazorResult applyAdaptiveOccamsRazorWithLabels(
+			HashMap<String, HashSet<String>> itemToPeptides, Set<String> totalPeptides, int maximum, File out) {
+
+		AdaptiveOccamsRazorResult result = new AdaptiveOccamsRazorResult();
+		if (itemToPeptides == null || itemToPeptides.isEmpty() || totalPeptides == null || totalPeptides.isEmpty()) {
+			return result;
+		}
+
+		final int totalPepCount = Math.max(1, totalPeptides.size());
+		String[] items = itemToPeptides.keySet().toArray(new String[0]);
+
+		Arrays.sort(items, (i1, i2) -> itemToPeptides.get(i2).size() - itemToPeptides.get(i1).size());
+
+		for (int iteratorCount = 0; iteratorCount < 5; iteratorCount++) {
+			HashSet<String> totalSet = new HashSet<>();
+			HashMap<String, Integer> orderMap = new HashMap<>();
+			for (String item : items) {
+				int currentSize = totalSet.size();
+				totalSet.addAll(itemToPeptides.get(item));
+				orderMap.put(item, totalSet.size() - currentSize);
+			}
+			Arrays.sort(items, (i1, i2) -> orderMap.get(i2) - orderMap.get(i1));
+		}
+
+		int n = items.length;
+		int[] incrementCounts = new int[n];
+		double[] incrementRatios = new double[n];
+		double[] cumulativeCoverage = new double[n];
+		int[] totalCoveredCounts = new int[n];
+		HashSet<String> coverageSet = new HashSet<>();
+
+		for (int i = 0; i < n; i++) {
+			int currentSize = coverageSet.size();
+			coverageSet.addAll(itemToPeptides.get(items[i]));
+			int add = coverageSet.size() - currentSize;
+			incrementCounts[i] = add;
+			totalCoveredCounts[i] = coverageSet.size();
+			// Align with MAG greedyRatio: increment / totalCovered at this step (not increment / totalPeptides)
+			incrementRatios[i] = totalCoveredCounts[i] == 0 ? 0.0 : ((double) add / (double) totalCoveredCounts[i]);
+			cumulativeCoverage[i] = (double) coverageSet.size() / (double) totalPepCount;
+		}
+
+		ArrayList<Integer> greedyIndices = new ArrayList<>();
+		ArrayList<Double> greedyCoverage = new ArrayList<>();
+		for (int i = 0; i < n; i++) {
+			if (incrementCounts[i] > 0) {
+				greedyIndices.add(i);
+				greedyCoverage.add(cumulativeCoverage[i]);
+			}
+		}
+
+		int focusKnee = -1;
+		int comprehensiveKnee = -1;
+		int kneeStep = -1, kneeKneedle = -1, kneeCurvature = -1, kneePiecewise = -1, kneeSlope = -1;
+		// Align with MAG: compute knees on moving-average(window=5) of greedy increment ratio curve.
+		// Here, "greedy step" is any row with Increment > 0 (i.e. contributes new peptides).
+		final int window = 5;
+		int T = greedyIndices.size();
+		if (T > 0) {
+			kneeStep = T;
+			if (T >= window) {
+				double[] ratio = new double[T];
+				for (int t = 0; t < T; t++) {
+					int idx = greedyIndices.get(t);
+					ratio[t] = (idx >= 0 && idx < incrementRatios.length) ? incrementRatios[idx] : 0.0;
+				}
+
+				double[] ma = new double[T - window + 1];
+				double sum = 0.0;
+				for (int i = 0; i < window; i++) {
+					sum += ratio[i];
+				}
+				ma[0] = sum / window;
+				for (int i = window; i < T; i++) {
+					sum += ratio[i];
+					sum -= ratio[i - window];
+					ma[i - window + 1] = sum / window;
+				}
+
+				int kneeIndex = detectChordKnee(ma); // 1-based index in ma
+				int kneeIndexKneedle = detectKneedle(ma);
+				int kneeIndexCurv = detectCurvatureKnee(ma);
+				int kneeIndexPiece = detectPiecewiseKnee(ma);
+				int kneeIndexSlope = detectSlopeKnee(ma);
+
+				kneeStep = Math.min(T, (window - 1) + kneeIndex);
+				kneeKneedle = Math.min(T, (window - 1) + kneeIndexKneedle);
+				kneeCurvature = Math.min(T, (window - 1) + kneeIndexCurv);
+				kneePiecewise = Math.min(T, (window - 1) + kneeIndexPiece);
+				kneeSlope = Math.min(T, (window - 1) + kneeIndexSlope);
+			} else {
+				// MAG behavior: when too few greedy steps for MA, set all knees to chordStep (=T).
+				kneeStep = T;
+				kneeKneedle = T;
+				kneeCurvature = T;
+				kneePiecewise = T;
+				kneeSlope = T;
+			}
+
+			focusKnee = medianPositive(kneeKneedle, kneeCurvature, kneeSlope, kneeStep);
+			comprehensiveKnee = Math.max(kneeStep > 0 ? kneeStep : 1, kneePiecewise > 0 ? kneePiecewise : 1);
+
+			focusKnee = Math.min(Math.max(1, focusKnee), T);
+			comprehensiveKnee = Math.min(Math.max(focusKnee, comprehensiveKnee), T);
+		}
+		result.focusKnee = focusKnee;
+		result.comprehensiveKnee = comprehensiveKnee;
+
+		boolean greedyStarted = false;
+		int greedyContributionCount = 0;
+		for (int i = 0; i < n; i++) {
+			String item = items[i];
+			int add = incrementCounts[i];
+			String label;
+
+			if (!greedyStarted) {
+				if (add <= 0) {
+					label = "core";
+					result.selectedItems.add(item);
+				} else {
+					greedyStarted = true;
+					greedyContributionCount = 1;
+					label = labelByKnees(greedyContributionCount, focusKnee, comprehensiveKnee);
+					// Keep all positive-gain greedy items; knees are for labeling only.
+					result.selectedItems.add(item);
+				}
+			} else {
+				if (add <= 0) {
+					break;
+				}
+				greedyContributionCount++;
+				label = labelByKnees(greedyContributionCount, focusKnee, comprehensiveKnee);
+				if (result.selectedItems.size() < maximum) {
+					result.selectedItems.add(item);
+				}
+			}
+
+			result.itemLabels.put(item, label);
+			result.orderedItems.add(item);
+
+			if (result.selectedItems.size() >= maximum) {
+				break;
+			}
+		}
+
+		if (result.selectedItems.isEmpty() && n > 0) {
+			result.selectedItems.add(items[0]);
+			result.itemLabels.put(items[0], "core");
+			if (result.orderedItems.isEmpty()) {
+				result.orderedItems.add(items[0]);
+			}
+		}
+
+		if (out != null) {
+			try (PrintWriter writer = new PrintWriter(out)) {
+				writer.println(
+						"Rank\tItem\tPeptide_count\tTotal_covered_peptide_count\tPercentage\tIncrement\tIncrement ratio\tKneeStep\tKneeKneedle\tKneeCurvature\tKneePiecewise\tKneeSlope\tSelection_label\tSelected");
+				for (int i = 0; i < result.orderedItems.size(); i++) {
+					String item = result.orderedItems.get(i);
+					String label = result.itemLabels.getOrDefault(item, "tail");
+					writer.println(i + "\t" + item + "\t" + itemToPeptides.get(item).size() + "\t"
+							+ (int) Math.round(cumulativeCoverage[i] * totalPepCount) + "\t" + cumulativeCoverage[i] + "\t"
+							+ incrementCounts[i] + "\t" + incrementRatios[i] + "\t" + kneeStep + "\t" + kneeKneedle
+							+ "\t" + kneeCurvature + "\t" + kneePiecewise + "\t" + kneeSlope + "\t" + label + "\t"
+							+ result.selectedItems.contains(item));
+				}
+			} catch (IOException e) {
+				logger.error(getTaskName() + ": error in writing adaptive ranking to " + out, e);
+				System.out.println(
+						format.format(new Date()) + "\t" + getTaskName() + ": error in writing adaptive ranking to " + out);
+			}
+		}
+
+		logger.info("{}: Adaptive Occam selection selected {} items (focusKnee={}, comprehensiveKnee={})", getTaskName(),
+				result.selectedItems.size(), focusKnee, comprehensiveKnee);
+		return result;
+	}
+
+	private static String labelByKnees(int greedyContributionCount, int focusKnee, int comprehensiveKnee) {
+		int focus = Math.max(1, focusKnee);
+		int comprehensive = Math.max(focus, comprehensiveKnee);
+		if (greedyContributionCount <= focus) {
+			return "core";
+		} else if (greedyContributionCount <= comprehensive) {
+			return "mid";
+		}
+		return "tail";
+	}
+
+	private static int medianPositive(int a, int b, int c, int fallback) {
+		int[] vals = new int[] { a > 0 ? a : fallback, b > 0 ? b : fallback, c > 0 ? c : fallback };
+		Arrays.sort(vals);
+		return vals[1] > 0 ? vals[1] : Math.max(1, fallback);
+	}
+
+	private static int detectChordKnee(double[] y) {
+		int n = y.length;
+		if (n <= 2) return Math.max(1, n);
+		double x0 = 0.0, y0 = y[0];
+		double x1 = 1.0, y1 = y[n - 1];
+		double denom = Math.hypot(x1 - x0, y1 - y0);
+		if (denom == 0.0) return Math.max(1, n / 2);
+		double maxDist = -1.0;
+		int best = 1;
+		for (int i = 0; i < n; i++) {
+			double x = (double) i / (double) (n - 1);
+			double dist = Math.abs((y1 - y0) * x - (x1 - x0) * y[i] + x1 * y0 - y1 * x0) / denom;
+			if (dist > maxDist) {
+				maxDist = dist;
+				best = i + 1;
+			}
+		}
+		return best;
+	}
+
+	private static int detectKneedle(double[] y) {
+		int n = y.length;
+		if (n == 0) return -1;
+		double maxDelta = -Double.MAX_VALUE;
+		int best = 1;
+		for (int i = 0; i < n; i++) {
+			double xNorm = n == 1 ? 0.0 : (double) i / (double) (n - 1);
+			double delta = y[i] - xNorm;
+			if (delta > maxDelta) {
+				maxDelta = delta;
+				best = i + 1;
+			}
+		}
+		return best;
+	}
+
+	private static int detectCurvatureKnee(double[] y) {
+		int n = y.length;
+		if (n < 3) return Math.max(1, n);
+		double maxCurv = -Double.MAX_VALUE;
+		int best = 2;
+		for (int i = 1; i < n - 1; i++) {
+			double curv = Math.abs(y[i + 1] - 2 * y[i] + y[i - 1]);
+			if (curv > maxCurv) {
+				maxCurv = curv;
+				best = i + 1;
+			}
+		}
+		return best;
+	}
+
+	private static int detectSlopeKnee(double[] y) {
+		int n = y.length;
+		if (n < 3) return Math.max(1, n);
+		double maxDrop = -Double.MAX_VALUE;
+		int best = 2;
+		for (int i = 1; i < n - 1; i++) {
+			double prev = y[i] - y[i - 1];
+			double next = y[i + 1] - y[i];
+			double drop = prev - next;
+			if (drop > maxDrop) {
+				maxDrop = drop;
+				best = i + 1;
+			}
+		}
+		return best;
+	}
+
+	private static int detectPiecewiseKnee(double[] y) {
+		int n = y.length;
+		if (n < 4) return Math.max(1, n);
+		double bestError = Double.POSITIVE_INFINITY;
+		int best = Math.max(1, n / 2);
+		for (int split = 1; split < n - 1; split++) {
+			double err = fitLineError(y, 0, split) + fitLineError(y, split, n - 1);
+			if (err < bestError) {
+				bestError = err;
+				best = split + 1;
+			}
+		}
+		return best;
+	}
+
+	private static double fitLineError(double[] y, int start, int end) {
+		int n = end - start + 1;
+		if (n <= 2) return 0.0;
+		double sx = 0.0, sy = 0.0, sxy = 0.0, sx2 = 0.0;
+		for (int i = start; i <= end; i++) {
+			double x = i - start;
+			double yi = y[i];
+			sx += x;
+			sy += yi;
+			sxy += x * yi;
+			sx2 += x * x;
+		}
+		double denom = n * sx2 - sx * sx;
+		double a = denom == 0.0 ? 0.0 : (n * sxy - sx * sy) / denom;
+		double b = (sy - a * sx) / n;
+		double err = 0.0;
+		for (int i = start; i <= end; i++) {
+			double x = i - start;
+			double diff = y[i] - (a * x + b);
+			err += diff * diff;
+		}
+		return err;
 	}
 
 	/**

@@ -146,6 +146,9 @@ public class DiaLibraryGenerationPanel extends VBox {
 
 	public void setMagDbItem(MagDbItem magDbItem) {
 		this.currentMagDbItem = magDbItem;
+		if (magDbItem != null) {
+			magDbItem.registerMarker4SpectralLibraryIfPresent();
+		}
 		loadAvailableLibraries();
 	}
 
@@ -827,6 +830,8 @@ public class DiaLibraryGenerationPanel extends VBox {
 						return null;
 					}
 
+					currentMagDbItem.moveLegacyMarker4SpeclibToCanonical();
+
 					// Check the libraries folder
 					File librariesFolder = new File(magDbFolder, "libraries");
 					if (!librariesFolder.exists()) {
@@ -907,6 +912,8 @@ public class DiaLibraryGenerationPanel extends VBox {
 							});
 						}
 					}
+
+					currentMagDbItem.registerMarker4SpectralLibraryIfPresent();
 
 					Platform.runLater(() -> {
 						if (consoleOutput != null) {

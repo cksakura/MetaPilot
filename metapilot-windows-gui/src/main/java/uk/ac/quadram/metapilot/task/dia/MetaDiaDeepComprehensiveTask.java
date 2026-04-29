@@ -5,6 +5,7 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -51,6 +52,8 @@ public class MetaDiaDeepComprehensiveTask extends MetaDiaSeedIterativeTask {
 
 	/** Number of top genomes from genome_ranked.tsv per round. */
 	private static final int GENOMES_PER_ROUND = 5;
+	/** Round stop trigger for peptide-based deep mode: stop after current genome if cumulative stripped peptides exceed this value. */
+	private static final int PEPTIDE_ROUND_TRIGGER = 1_000_000;
 	/** Maximum number of iterative genome rounds. */
 	private static final int MAX_ITERATIVE_ROUNDS = 100;
 
@@ -302,15 +305,26 @@ public class MetaDiaDeepComprehensiveTask extends MetaDiaSeedIterativeTask {
 		}
 
 		String cut = diannPar != null && diannPar.getCut() != null ? diannPar.getCut() : "KR";
-		DeepIterativeCommonSupport.IterativeRoundLoopResult loop = DeepIterativeCommonSupport.runIterativeRoundLoop(
-				rankedFile, GENOMES_PER_ROUND, MAX_ITERATIVE_ROUNDS, "Deep seed round", cut, this::updateMessage,
-				(round, genomes) -> runSeedRoundAppendPreviousPeptides(round, seedFolder, genomes),
-				(inc) -> {
-					StopRuleResult local = computeStopRoundFromIncrements(inc);
-					return new DeepIterativeStopRule.StopRuleResult(local.stopRound, local.nRounds, local.kChord,
-							local.kPiece, local.kKnee, local.k0, local.tMin);
-				},
-				logger, getTaskName());
+		DeepIterativeCommonSupport.IterativeRoundLoopResult loop;
+		MetaParameterDiaMarker markerPar = (metaPar instanceof MetaParameterDiaMarker) ? (MetaParameterDiaMarker) metaPar
+				: null;
+		boolean usePeptideBasedRound = markerPar != null && markerPar.isUsePeptideBasedRound();
+		if (usePeptideBasedRound) {
+			double detectabilityThreshold = markerPar != null ? markerPar.getPeptideDetectabilityThreshold() : 0.5;
+			loop = runPeptideBasedIterativeRoundLoop(rankedFile, seedFolder, cut, detectabilityThreshold);
+		} else {
+			loop = DeepIterativeCommonSupport.runIterativeRoundLoop(
+					rankedFile, GENOMES_PER_ROUND, MAX_ITERATIVE_ROUNDS, "Deep seed round", cut,
+					initialSearchSeparate, initialSearchSeparate && goodDiaFiles != null ? goodDiaFiles.length : 0,
+					this::updateMessage,
+					(round, genomes) -> runSeedRoundAppendPreviousPeptides(round, seedFolder, genomes),
+					(inc) -> {
+						StopRuleResult local = computeStopRoundFromIncrements(inc);
+						return new DeepIterativeStopRule.StopRuleResult(local.stopRound, local.nRounds, local.kChord,
+								local.kPiece, local.kKnee, local.k0, local.tMin);
+					},
+					logger, getTaskName());
+		}
 
 		if (loop.lastRound <= 0) {
 			logger.error(getTaskName() + ": no iterative round completed");
@@ -324,6 +338,22 @@ public class MetaDiaDeepComprehensiveTask extends MetaDiaSeedIterativeTask {
 		int lastRound = loop.lastRound;
 		writeIterativeRoundsInfo(seedFolder, loop.roundsRecord, loop.peptidesInRoundRecord, loop.incrementsPerRound,
 				loop.cumulativeRecord, loop.stopReason, lastStopRuleResult);
+
+		if (usePeptideBasedRound) {
+			File lastRoundDir = new File(seedFolder, "round" + lastRound);
+			this.combinedFile = lastRoundDir;
+			this.resultFolderFile = base;
+			this.quan_pep_file = new File(lastRoundDir, "round" + lastRound + ".pr_matrix.tsv");
+			this.quan_pro_file = new File(lastRoundDir, "round" + lastRound + ".pg_matrix.tsv");
+			if (!this.quan_pep_file.exists()) {
+				logger.error(getTaskName() + ": peptide-based deep seed last-round matrix missing: {}",
+						this.quan_pep_file.getAbsolutePath());
+				return false;
+			}
+			logger.info(getTaskName() + ": peptide-based deep seed completed at round {}. Using last-round outputs as final results.",
+					Integer.valueOf(lastRound));
+			return true;
+		}
 
 		File combinedDir = new File(base, "combined");
 		if (!combinedDir.exists())
@@ -351,9 +381,10 @@ public class MetaDiaDeepComprehensiveTask extends MetaDiaSeedIterativeTask {
 			logger.error(getTaskName() + ": failed to generate combined.speclib at " + combinedSpeclib.getAbsolutePath());
 			return false;
 		}
+		String[] finalSearchFiles = initialSearchSeparate && goodDiaFiles != null ? goodDiaFiles : diaFiles;
 		boolean combinedOk = DeepIterativeCommonSupport.ensureCombinedParquet(combinedParquet, () -> {
 			diaLibSearchPar.setMbr(true);
-			diaLibSearchPar.setDiaFiles(diaFiles);
+			diaLibSearchPar.setDiaFiles(finalSearchFiles);
 			diaLibSearchPar.setThreadCount(threadCount);
 			diaLibSearchPar.setqValue(0.01);
 			diannPar.setThreads(threadCount);
@@ -361,10 +392,9 @@ public class MetaDiaDeepComprehensiveTask extends MetaDiaSeedIterativeTask {
 			diannPar.setRelaxed_prot_inf(true);
 			diannPar.setReanalyse(true);
 			diannPar.setExportDecoy(true);
-			// DIA-NN call purpose: final quantifying search across all configured DIA files.
 			diaNNTask.addTask(diannPar, diaLibSearchPar, combinedParquet.getAbsolutePath(),
 					new String[] { combinedSpeclib.getAbsolutePath() });
-			diaNNTask.run(diaFiles.length * 12);
+			diaNNTask.run(finalSearchFiles.length * 12);
 		});
 		if (!combinedOk) {
 			return false;
@@ -396,6 +426,248 @@ public class MetaDiaDeepComprehensiveTask extends MetaDiaSeedIterativeTask {
 						stopRule.kPiece, stopRule.kKnee, stopRule.k0, stopRule.tMin);
 		DeepIterativeCommonSupport.writeIterativeRoundsInfo(resultDir, rounds, peptidesInRound, newPeptides, cumulative,
 				stopReason, shared, CONSECUTIVE_ROUNDS_FOR_PLATEAU, logger, getTaskName());
+	}
+
+	private DeepIterativeCommonSupport.IterativeRoundLoopResult runPeptideBasedIterativeRoundLoop(File rankedFile,
+			File seedFolder, String cut, double detectabilityThreshold) {
+		final double earlyRelativeGainThreshold = 0.01;
+		final int earlyConsecutiveRounds = 2;
+
+		List<String> rankedGenomes = readAllGenomesFromRanked(rankedFile);
+		if (rankedGenomes.isEmpty()) {
+			return new DeepIterativeCommonSupport.IterativeRoundLoopResult(-1, 0, new ArrayList<>(), new ArrayList<>(),
+					new ArrayList<>(), new ArrayList<>(), "empty_ranked_file", null);
+		}
+
+		HashMap<String, HashSet<String>> cumulativePepProMap = new HashMap<>();
+		HashSet<String> seenIdentifiedPeptides = new HashSet<>();
+		List<Integer> roundsRecord = new ArrayList<>();
+		List<Integer> peptidesInRoundRecord = new ArrayList<>();
+		List<Integer> incrementsPerRound = new ArrayList<>();
+		List<Integer> cumulativeRecord = new ArrayList<>();
+		String stopReason = "max_rounds_reached";
+		DeepIterativeStopRule.StopRuleResult lastStopRuleResult = null;
+		int cursor = 0;
+		int lastRound = 0;
+		int prevPeptideCount = 0;
+
+		for (int round = 1; round <= MAX_ITERATIVE_ROUNDS; round++) {
+			if (cursor >= rankedGenomes.size()) {
+				stopReason = "end_of_ranked_list";
+				break;
+			}
+			updateMessage(getTaskName() + ": peptide-based deep seed round " + round + " library and search");
+			int beforeRoundSize = cumulativePepProMap.size();
+			List<String> thisRoundGenomes = new ArrayList<>();
+			while (cursor < rankedGenomes.size()) {
+				String genome = rankedGenomes.get(cursor);
+				thisRoundGenomes.add(genome);
+				mergePredictedPeptidesForGenome(genome, detectabilityThreshold, cumulativePepProMap);
+				cursor++;
+				if (cumulativePepProMap.size() > PEPTIDE_ROUND_TRIGGER) {
+					break;
+				}
+			}
+			if (thisRoundGenomes.isEmpty()) {
+				stopReason = "end_of_ranked_list";
+				break;
+			}
+
+			File roundDir = new File(seedFolder, "round" + round);
+			if (!roundDir.exists()) {
+				roundDir.mkdir();
+			}
+			File combinedFasta = new File(roundDir, "combined.fasta");
+			if (!writeFastaFromPeptideProteinMap(combinedFasta, cumulativePepProMap)) {
+				logger.error(getTaskName() + ": round {}: failed to write peptide-based combined.fasta", round);
+				return new DeepIterativeCommonSupport.IterativeRoundLoopResult(-1, prevPeptideCount, roundsRecord,
+						peptidesInRoundRecord, incrementsPerRound, cumulativeRecord, "round_failed", lastStopRuleResult);
+			}
+			File combinedSpeclib = new File(roundDir, "combined.speclib");
+			if (!DeepIterativeCommonSupport.ensureCombinedSpeclib(roundDir, combinedSpeclib, () -> {
+				diannPar.setThreads(threadCount);
+				diannPar.setExportDecoy(true);
+				diaNNTask.addTask(diannPar, combinedFasta.getAbsolutePath(), combinedSpeclib.getAbsolutePath(), false);
+				diaNNTask.run(12);
+			}, logger, getTaskName())) {
+				return new DeepIterativeCommonSupport.IterativeRoundLoopResult(-1, prevPeptideCount, roundsRecord,
+						peptidesInRoundRecord, incrementsPerRound, cumulativeRecord, "round_failed", lastStopRuleResult);
+			}
+
+			File roundParquet = new File(roundDir, "round" + round + ".parquet");
+			String[] searchFiles = initialSearchSeparate && goodDiaFiles != null ? goodDiaFiles : diaFiles;
+			diaLibSearchPar.setMbr(false);
+			diaLibSearchPar.setDiaFiles(searchFiles);
+			diaLibSearchPar.setThreadCount(threadCount);
+			diaLibSearchPar.setqValue(0.01);
+			diannPar.setThreads(threadCount);
+			diannPar.setMatrices(true);
+			diannPar.setRelaxed_prot_inf(true);
+			diannPar.setReanalyse(true);
+			diannPar.setExportDecoy(true);
+			diaNNTask.addTask(diannPar, diaLibSearchPar, roundParquet.getAbsolutePath(),
+					new String[] { combinedSpeclib.getAbsolutePath() });
+			diaNNTask.run(searchFiles.length * 12);
+			if (!roundParquet.exists()) {
+				logger.error(getTaskName() + ": round {}: search failed - {} not created", round,
+						roundParquet.getAbsolutePath());
+				return new DeepIterativeCommonSupport.IterativeRoundLoopResult(-1, prevPeptideCount, roundsRecord,
+						peptidesInRoundRecord, incrementsPerRound, cumulativeRecord, "round_failed", lastStopRuleResult);
+			}
+
+			int peptideCount = DeepIterativeCommonSupport.countIdentifiedPeptides(roundParquet, cut, logger, getTaskName());
+			int incThis = DeepIterativeCommonSupport.countNewPeptidesFromParquet(roundParquet, seenIdentifiedPeptides, cut,
+					logger, getTaskName());
+			mergeIdentifiedPeptidesFromParquet(roundParquet, cut, cumulativePepProMap);
+
+			roundsRecord.add(Integer.valueOf(round));
+			peptidesInRoundRecord.add(Integer.valueOf(peptideCount));
+			incrementsPerRound.add(Integer.valueOf(incThis));
+			cumulativeRecord.add(Integer.valueOf(seenIdentifiedPeptides.size()));
+			lastRound = round;
+			prevPeptideCount = peptideCount;
+
+			logger.info(
+					"{}: peptide-based round {} summary - genomes_added={}, cumulative_library_before={}, cumulative_library_after={}, identified={}, new={}, cumulative_identified={}",
+					getTaskName(), Integer.valueOf(round), Integer.valueOf(thisRoundGenomes.size()),
+					Integer.valueOf(beforeRoundSize), Integer.valueOf(cumulativePepProMap.size()), Integer.valueOf(peptideCount),
+					Integer.valueOf(incThis), Integer.valueOf(seenIdentifiedPeptides.size()));
+
+			if (round >= earlyConsecutiveRounds) {
+				boolean allBelow = true;
+				for (int k = 0; k < earlyConsecutiveRounds && allBelow; k++) {
+					int idx = round - 1 - k;
+					int cum = cumulativeRecord.get(idx);
+					if (cum <= 0) {
+						allBelow = false;
+						break;
+					}
+					int incVal = incrementsPerRound.get(idx);
+					double relativeGain = (double) incVal / (double) cum;
+					if (relativeGain >= earlyRelativeGainThreshold) {
+						allBelow = false;
+					}
+				}
+				if (allBelow) {
+					stopReason = "early_plateau_rule_1pct";
+					break;
+				}
+			}
+			if (round >= 8) {
+				StopRuleResult local = computeStopRoundFromIncrements(incrementsPerRound);
+				lastStopRuleResult = new DeepIterativeStopRule.StopRuleResult(local.stopRound, local.nRounds, local.kChord,
+						local.kPiece, local.kKnee, local.k0, local.tMin);
+				if (local.stopRound > 0 && local.stopRound == round) {
+					stopReason = "knee_plateau_rule";
+					break;
+				}
+			}
+		}
+		return new DeepIterativeCommonSupport.IterativeRoundLoopResult(lastRound, prevPeptideCount, roundsRecord,
+				peptidesInRoundRecord, incrementsPerRound, cumulativeRecord, stopReason, lastStopRuleResult);
+	}
+
+	private List<String> readAllGenomesFromRanked(File rankedFile) {
+		List<String> genomes = new ArrayList<>();
+		try (BufferedReader r = new BufferedReader(new FileReader(rankedFile))) {
+			if (r.readLine() == null) {
+				return genomes;
+			}
+			String line;
+			while ((line = r.readLine()) != null) {
+				line = line.trim();
+				if (line.isEmpty() || line.startsWith("#")) {
+					continue;
+				}
+				String[] parts = line.split("\t");
+				if (parts.length > 1 && !parts[1].trim().isEmpty()) {
+					genomes.add(parts[1].trim());
+				}
+			}
+		} catch (IOException e) {
+			logger.warn(getTaskName() + ": error reading ranked file {}", rankedFile.getAbsolutePath(), e);
+		}
+		return genomes;
+	}
+
+	private void mergePredictedPeptidesForGenome(String genome, double detectabilityThreshold,
+			HashMap<String, HashSet<String>> cumulativePepProMap) {
+		File predictedFile = new File(new File(magDb.getCurrentFile(), "predicted"), genome + ".predicted.tsv");
+		if (!predictedFile.isFile()) {
+			logger.warn(getTaskName() + ": predicted peptide file missing for genome {}", genome);
+			return;
+		}
+		int added = 0;
+		try (BufferedReader reader = new BufferedReader(new FileReader(predictedFile))) {
+			reader.readLine();
+			String line;
+			while ((line = reader.readLine()) != null) {
+				String[] cs = line.split("\t");
+				if (cs.length < 3) {
+					continue;
+				}
+				double detectability;
+				try {
+					detectability = Double.parseDouble(cs[2]);
+				} catch (NumberFormatException nfe) {
+					continue;
+				}
+				if (detectability < detectabilityThreshold) {
+					continue;
+				}
+				String protein = cs[0];
+				String peptide = cs[1];
+				if (peptide == null || peptide.isEmpty()) {
+					continue;
+				}
+				HashSet<String> proSet = cumulativePepProMap.computeIfAbsent(peptide, k -> new HashSet<>());
+				int before = proSet.size();
+				proSet.add(protein);
+				if (before == 0) {
+					added++;
+				}
+			}
+		} catch (IOException e) {
+			logger.warn(getTaskName() + ": error reading predicted peptide file {}", predictedFile.getAbsolutePath(), e);
+		}
+		logger.info(getTaskName() + ": genome {} added {} predicted peptides (threshold={})",
+				genome, Integer.valueOf(added), Double.valueOf(detectabilityThreshold));
+	}
+
+	private boolean writeFastaFromPeptideProteinMap(File outputFasta, HashMap<String, HashSet<String>> pepProMap) {
+		return DeepIterativeCommonSupport.writeCombinedFastaFromPeptideProteinMap(outputFasta, pepProMap, logger,
+				getTaskName());
+	}
+
+	private void mergeIdentifiedPeptidesFromParquet(File parquetFile, String cut,
+			HashMap<String, HashSet<String>> cumulativePepProMap) {
+		try {
+			DiaNNParquetReader reader = new DiaNNParquetReader(parquetFile.getAbsolutePath(), cut);
+			DiaNNPrecursor[] precursors = reader.getDiaNNPrecursors(0.01);
+			if (precursors == null) {
+				return;
+			}
+			for (DiaNNPrecursor p : precursors) {
+				if (p == null || p.getIsDecoy()) {
+					continue;
+				}
+				String seq = p.getSeqString();
+				if (seq == null || seq.isEmpty()) {
+					continue;
+				}
+				HashSet<String> proSet = cumulativePepProMap.computeIfAbsent(seq, k -> new HashSet<>());
+				String[] pros = p.getProGroups();
+				if (pros != null) {
+					for (String pro : pros) {
+						if (pro != null && !pro.isEmpty()) {
+							proSet.add(pro);
+						}
+					}
+				}
+			}
+		} catch (Exception e) {
+			logger.warn(getTaskName() + ": failed to merge identified peptides from {}", parquetFile.getAbsolutePath(), e);
+		}
 	}
 
 	// ===== Helper methods for deep seed iterative rounds (adapted from MetaDiaDeepMarkerTask) =====
@@ -432,31 +704,52 @@ public class MetaDiaDeepComprehensiveTask extends MetaDiaSeedIterativeTask {
 	}
 
 	private int runSeedRoundAppendPreviousPeptides(int round, File seedFolder, List<String> genomes) {
-		return DeepIterativeCommonSupport.runAppendPreviousPeptidesRound(round, seedFolder, genomes, diaFiles, false,
-				"deep seed", this::writeCombinedFastaFromGenomes,
+		String[] searchFiles = initialSearchSeparate && goodDiaFiles != null ? goodDiaFiles : diaFiles;
+		return DeepIterativeCommonSupport.runAppendPreviousPeptidesRound(round, seedFolder, genomes, searchFiles, false,
+				"deep seed", initialSearchSeparate,
+				this::writeCombinedFastaFromGenomes,
 				this::writeCombinedFastaFromGenomesAndPreviousPeptides,
 				(combinedFasta, combinedSpeclib) -> {
 					diannPar.setThreads(threadCount);
-					// DIA-NN call purpose: round-level library build
-					// (roundN/combined.fasta -> roundN/combined.speclib).
 					diaNNTask.addTask(diannPar, combinedFasta.getAbsolutePath(), combinedSpeclib.getAbsolutePath(), false);
 					diaNNTask.run(12);
 				},
 				(roundParquet, combinedSpeclibPath, files, reanalyse) -> {
-					// DIA-NN call purpose: round-level non-quant identification using the
-					// round-specific library; output is roundN/roundN.parquet.
-					diaLibSearchPar.setMbr(false);
-					diaLibSearchPar.setDiaFiles(files);
-					diaLibSearchPar.setThreadCount(threadCount);
-					diaLibSearchPar.setqValue(0.01);
-					diannPar.setThreads(threadCount);
-					diannPar.setMatrices(false);
-					diannPar.setRelaxed_prot_inf(true);
-					diannPar.setReanalyse(reanalyse);
-					diannPar.setExportDecoy(false);
-					diaNNTask.addNoQuantLibTask(diannPar, diaLibSearchPar, roundParquet.getAbsolutePath(),
-							combinedSpeclibPath);
-					diaNNTask.run(files.length * 12);
+					if (initialSearchSeparate) {
+						File roundDir = roundParquet.getParentFile();
+						int maxConcurrent = DeepIterativeCommonSupport.computeMaxConcurrentTasks();
+						for (int i = 0; i < files.length; i++) {
+							File pf = new File(roundDir, "per_file_" + i + ".parquet");
+							if (pf.exists() && pf.length() > 0) {
+								continue;
+							}
+							diaLibSearchPar.setMbr(false);
+							diaLibSearchPar.setDiaFiles(new String[] { files[i] });
+							diaLibSearchPar.setThreadCount(threadCount);
+							diaLibSearchPar.setqValue(0.01);
+							diannPar.setThreads(threadCount);
+							diannPar.setMatrices(false);
+							diannPar.setRelaxed_prot_inf(true);
+							diannPar.setReanalyse(reanalyse);
+							diannPar.setExportDecoy(false);
+							diaNNTask.addNoQuantLibTask(diannPar, diaLibSearchPar, pf.getAbsolutePath(),
+									combinedSpeclibPath);
+						}
+						diaNNTask.run(maxConcurrent, files.length * 12);
+					} else {
+						diaLibSearchPar.setMbr(false);
+						diaLibSearchPar.setDiaFiles(files);
+						diaLibSearchPar.setThreadCount(threadCount);
+						diaLibSearchPar.setqValue(0.01);
+						diannPar.setThreads(threadCount);
+						diannPar.setMatrices(false);
+						diannPar.setRelaxed_prot_inf(true);
+						diannPar.setReanalyse(reanalyse);
+						diannPar.setExportDecoy(false);
+						diaNNTask.addNoQuantLibTask(diannPar, diaLibSearchPar, roundParquet.getAbsolutePath(),
+								combinedSpeclibPath);
+						diaNNTask.run(files.length * 12);
+					}
 				},
 				this::countIdentifiedPeptides, logger, getTaskName());
 	}
@@ -473,6 +766,18 @@ public class MetaDiaDeepComprehensiveTask extends MetaDiaSeedIterativeTask {
 			return false;
 		}
 		String cut = diannPar != null && diannPar.getCut() != null ? diannPar.getCut() : "KR";
+		DiaNNPrecursor[] precursors;
+		if (previousRoundParquet.exists()) {
+			DiaNNParquetReader reader = new DiaNNParquetReader(previousRoundParquet.getAbsolutePath(), cut);
+			precursors = reader.getDiaNNPrecursors(0.01);
+		} else {
+			File prevDir = previousRoundParquet.getParentFile();
+			String[] filesForRead = initialSearchSeparate && goodDiaFiles != null ? goodDiaFiles : diaFiles;
+			precursors = DeepIterativeCommonSupport.readPrecursorsFromPerFileParquets(
+					prevDir, 0.01, filesForRead, cut, logger, getTaskName());
+			logger.info(getTaskName() + ": read {} precursors from per-file parquets in {}",
+					precursors != null ? precursors.length : 0, prevDir.getAbsolutePath());
+		}
 		Set<String> addedPeptideSequences = new HashSet<>();
 		try (PrintWriter w = new PrintWriter(outputFasta)) {
 			for (String genome : genomes) {
@@ -489,8 +794,6 @@ public class MetaDiaDeepComprehensiveTask extends MetaDiaSeedIterativeTask {
 						w.println(line);
 				}
 			}
-			DiaNNParquetReader reader = new DiaNNParquetReader(previousRoundParquet.getAbsolutePath(), cut);
-			DiaNNPrecursor[] precursors = reader.getDiaNNPrecursors(0.01);
 			if (precursors != null) {
 				for (DiaNNPrecursor p : precursors) {
 					if (p == null || p.getIsDecoy())
@@ -578,39 +881,43 @@ public class MetaDiaDeepComprehensiveTask extends MetaDiaSeedIterativeTask {
 			return pepProMap;
 		}
 		String cut = diannPar != null && diannPar.getCut() != null ? diannPar.getCut() : "KR";
+		String[] filesForRead = initialSearchSeparate && goodDiaFiles != null ? goodDiaFiles : diaFiles;
 		for (int round = 1; round <= lastRound; round++) {
 			File roundDir = new File(seedFolder, "round" + round);
+			DiaNNPrecursor[] precursors = null;
 			File roundParquet = new File(roundDir, "round" + round + ".parquet");
-			if (!roundParquet.isFile()) {
+			if (roundParquet.isFile()) {
+				try {
+					DiaNNParquetReader reader = new DiaNNParquetReader(roundParquet.getAbsolutePath(), cut);
+					precursors = reader.getDiaNNPrecursors(0.01);
+				} catch (Exception e) {
+					logger.warn(getTaskName() + ": failed to read deep seed round parquet " + roundParquet.getAbsolutePath(), e);
+				}
+			} else {
+				precursors = DeepIterativeCommonSupport.readPrecursorsFromPerFileParquets(
+						roundDir, 0.01, filesForRead, cut, logger, getTaskName());
+			}
+			if (precursors == null) {
 				continue;
 			}
-			try {
-				DiaNNParquetReader reader = new DiaNNParquetReader(roundParquet.getAbsolutePath(), cut);
-				DiaNNPrecursor[] precursors = reader.getDiaNNPrecursors(0.01);
-				if (precursors == null) {
+			for (DiaNNPrecursor p : precursors) {
+				if (p == null || p.getIsDecoy()) {
 					continue;
 				}
-				for (DiaNNPrecursor p : precursors) {
-					if (p == null || p.getIsDecoy()) {
-						continue;
-					}
-					String pep = p.getSeqString();
-					if (pep == null || pep.isEmpty()) {
-						continue;
-					}
-					String[] pros = p.getProGroups();
-					if (pros == null || pros.length == 0) {
-						continue;
-					}
-					HashSet<String> set = pepProMap.computeIfAbsent(pep, k -> new HashSet<>());
-					for (String pro : pros) {
-						if (pro != null && !pro.isEmpty()) {
-							set.add(pro);
-						}
+				String pep = p.getSeqString();
+				if (pep == null || pep.isEmpty()) {
+					continue;
+				}
+				String[] pros = p.getProGroups();
+				if (pros == null || pros.length == 0) {
+					continue;
+				}
+				HashSet<String> set = pepProMap.computeIfAbsent(pep, k -> new HashSet<>());
+				for (String pro : pros) {
+					if (pro != null && !pro.isEmpty()) {
+						set.add(pro);
 					}
 				}
-			} catch (Exception e) {
-				logger.warn(getTaskName() + ": failed to read deep seed round parquet " + roundParquet.getAbsolutePath(), e);
 			}
 		}
 		logger.info(getTaskName() + ": aggregated {} peptides from deep seed round parquets for combined FASTA", pepProMap.size());
@@ -635,9 +942,11 @@ public class MetaDiaDeepComprehensiveTask extends MetaDiaSeedIterativeTask {
 			return;
 		}
 		int lastRound = 0;
+		int gfc = goodDiaFiles != null ? goodDiaFiles.length : (diaFiles != null ? diaFiles.length : 0);
 		for (int r = 1; r <= MAX_ITERATIVE_ROUNDS; r++) {
 			File rd = new File(seedFolder, "round" + r);
-			if (rd.isDirectory() && new File(rd, "round" + r + ".parquet").isFile()) {
+			if (rd.isDirectory() && (new File(rd, "round" + r + ".parquet").isFile()
+					|| DeepIterativeCommonSupport.hasRoundPerFileParquets(rd, gfc))) {
 				lastRound = r;
 			}
 		}

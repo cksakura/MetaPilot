@@ -5,12 +5,15 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.lang.management.ManagementFactory;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 
 import org.apache.logging.log4j.Logger;
+
+import com.sun.management.OperatingSystemMXBean;
 
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNParquetReader;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNPrecursor;
@@ -92,24 +95,145 @@ public final class DeepIterativeCommonSupport {
 	private DeepIterativeCommonSupport() {
 	}
 
+	/**
+	 * Max concurrent DIA-NN tasks based on system RAM: totalRAM_GB / 16.
+	 * Each DIA-NN instance uses ~16 GB; this limits parallel tasks to avoid OOM.
+	 */
+	public static int computeMaxConcurrentTasks() {
+		long totalMemoryGB = ((OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean())
+				.getTotalMemorySize() / 1024 / 1024 / 1024;
+		int maxTasks = (int) (totalMemoryGB / 16);
+		return Math.max(maxTasks, 1);
+	}
+
+	/**
+	 * Count new (previously unseen) peptides from per-file parquets in a round directory.
+	 * Mirrors {@link #countNewPeptidesFromParquet} but reads from per_file_*.parquet.
+	 */
+	public static int countNewPeptidesFromRoundPerFileParquets(File roundDir, int fileCount,
+			HashSet<String> seenPeptides, String cut, Logger logger, String taskName) {
+		if (roundDir == null || !roundDir.isDirectory()) {
+			return 0;
+		}
+		String localCut = cut != null ? cut : "KR";
+		int newCount = 0;
+		for (int i = 0; i < fileCount; i++) {
+			File pf = new File(roundDir, "per_file_" + i + ".parquet");
+			if (!pf.exists() || pf.length() <= 0) {
+				continue;
+			}
+			try {
+				DiaNNParquetReader reader = new DiaNNParquetReader(pf.getAbsolutePath(), localCut);
+				DiaNNPrecursor[] precursors = reader.getDiaNNPrecursors(0.01);
+				if (precursors != null) {
+					for (DiaNNPrecursor p : precursors) {
+						if (p == null || p.getIsDecoy()) {
+							continue;
+						}
+						String seq = p.getSeqString();
+						if (seq == null || seq.isEmpty()) {
+							continue;
+						}
+						if (!seenPeptides.contains(seq)) {
+							seenPeptides.add(seq);
+							newCount++;
+						}
+					}
+				}
+			} catch (Exception e) {
+				logger.warn(taskName + ": failed to count new peptides from " + pf.getAbsolutePath(), e);
+			}
+		}
+		return newCount;
+	}
+
+	/**
+	 * Count unique identified peptides from per-file parquets in a round directory.
+	 * Mirrors {@link #countIdentifiedPeptides} but reads from per_file_*.parquet.
+	 */
+	public static int countIdentifiedPeptidesFromRoundPerFileParquets(File roundDir, int fileCount,
+			String cut, Logger logger, String taskName) {
+		if (roundDir == null || !roundDir.isDirectory()) {
+			return 0;
+		}
+		String localCut = cut != null ? cut : "KR";
+		HashSet<String> peptides = new HashSet<>();
+		for (int i = 0; i < fileCount; i++) {
+			File pf = new File(roundDir, "per_file_" + i + ".parquet");
+			if (!pf.exists() || pf.length() <= 0) {
+				continue;
+			}
+			try {
+				DiaNNParquetReader reader = new DiaNNParquetReader(pf.getAbsolutePath(), localCut);
+				DiaNNPrecursor[] precursors = reader.getDiaNNPrecursors(0.01);
+				if (precursors != null) {
+					for (DiaNNPrecursor p : precursors) {
+						if (p == null || p.getIsDecoy()) {
+							continue;
+						}
+						String seq = p.getSeqString();
+						if (seq != null && !seq.isEmpty()) {
+							peptides.add(seq);
+						}
+					}
+				}
+			} catch (Exception e) {
+				logger.warn(taskName + ": failed to read per-file parquet " + pf.getAbsolutePath(), e);
+			}
+		}
+		return peptides.size();
+	}
+
+	/**
+	 * Check whether a round directory contains at least one non-empty per-file parquet.
+	 */
+	public static boolean hasRoundPerFileParquets(File roundDir, int fileCount) {
+		if (roundDir == null || !roundDir.isDirectory()) {
+			return false;
+		}
+		for (int i = 0; i < fileCount; i++) {
+			File pf = new File(roundDir, "per_file_" + i + ".parquet");
+			if (pf.exists() && pf.length() > 0) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	public static DiaNNPrecursor[] readPrecursorsFromPerFileParquets(File dir, Double qValue, String[] diaFiles,
 			String cut, Logger logger, String taskName) {
 		if (dir == null || !dir.isDirectory()) {
+			logger.warn(taskName + ": readPrecursorsFromPerFileParquets: invalid round directory: {}", dir);
 			return null;
 		}
 		String localCut = cut != null ? cut : "KR";
 		List<DiaNNPrecursor> all = new ArrayList<>();
+		int totalFilesRead = 0;
+		int totalFilesFailed = 0;
+		int totalPrecursors = 0;
+		int expectedFiles = (diaFiles != null ? diaFiles.length : -1);
+		logger.info(taskName
+				+ ": reading per-file parquets from {} (qValue={}, cut={}, expectedFiles={})",
+				dir.getAbsolutePath(), qValue, localCut, expectedFiles >= 0 ? expectedFiles : "auto-detect");
 		for (int i = 0; i < (diaFiles != null ? diaFiles.length : Integer.MAX_VALUE); i++) {
 			File pf = new File(dir, "per_file_" + i + ".parquet");
 			if (!pf.exists()) {
+				logger.info(taskName + ": per_file_{}.parquet not found in {}, stop scanning further indices", i,
+						dir.getAbsolutePath());
 				break;
 			}
 			if (pf.length() <= 0) {
+				logger.warn(taskName + ": skip empty parquet file: {}", pf.getAbsolutePath());
 				continue;
 			}
 			try {
 				DiaNNParquetReader reader = new DiaNNParquetReader(pf.getAbsolutePath(), localCut);
 				DiaNNPrecursor[] prec = (qValue == null) ? reader.getDiaNNPrecursors() : reader.getDiaNNPrecursors(qValue);
+				int fileCount = (prec == null ? 0 : prec.length);
+				totalFilesRead++;
+				totalPrecursors += fileCount;
+				logger.info(taskName + ": per-file result {} -> {} precursors (qValue={})", pf.getName(), fileCount,
+						qValue);
 				if (prec != null) {
 					for (DiaNNPrecursor p : prec) {
 						if (p != null) {
@@ -118,9 +242,12 @@ public final class DeepIterativeCommonSupport {
 					}
 				}
 			} catch (Exception e) {
+				totalFilesFailed++;
 				logger.warn(taskName + ": failed to read per-file parquet " + pf.getAbsolutePath(), e);
 			}
 		}
+		logger.info(taskName + ": per-file precursor read summary: filesRead={}, filesFailed={}, totalPrecursors={}",
+				totalFilesRead, totalFilesFailed, totalPrecursors);
 		return all.isEmpty() ? null : all.toArray(new DiaNNPrecursor[0]);
 	}
 
@@ -297,6 +424,23 @@ public final class DeepIterativeCommonSupport {
 			WriteFastaFromGenomesAndPrevious writeFromGenomesAndPrevious, BuildSpeclibAction buildSpeclibAction,
 			RunNoQuantSearchAction runNoQuantSearchAction, CountPeptidesAction countPeptidesAction, Logger logger,
 			String taskName) {
+		return runAppendPreviousPeptidesRound(round, roundBaseDir, genomes, searchFiles, reanalyse, roundLabel,
+				false, writeFromGenomes, writeFromGenomesAndPrevious, buildSpeclibAction,
+				runNoQuantSearchAction, countPeptidesAction, logger, taskName);
+	}
+
+	/**
+	 * Overload supporting separate (per-file) search mode.
+	 * When {@code separateSearch} is true, per-file parquets are expected instead of a single roundN.parquet.
+	 * The {@code writeFromGenomesAndPrevious} lambda should handle reading from per-file parquets when
+	 * the passed parquet file does not exist.
+	 */
+	public static int runAppendPreviousPeptidesRound(int round, File roundBaseDir, List<String> genomes, String[] searchFiles,
+			boolean reanalyse, String roundLabel, boolean separateSearch,
+			WriteFastaFromGenomes writeFromGenomes,
+			WriteFastaFromGenomesAndPrevious writeFromGenomesAndPrevious, BuildSpeclibAction buildSpeclibAction,
+			RunNoQuantSearchAction runNoQuantSearchAction, CountPeptidesAction countPeptidesAction, Logger logger,
+			String taskName) {
 		File roundDir = new File(roundBaseDir, "round" + round);
 		if (!roundDir.exists()) {
 			roundDir.mkdir();
@@ -313,7 +457,7 @@ public final class DeepIterativeCommonSupport {
 		} else {
 			File prevFolder = new File(roundBaseDir, "round" + (round - 1));
 			File prevParquet = new File(prevFolder, "round" + (round - 1) + ".parquet");
-			if (!prevParquet.exists()) {
+			if (!prevParquet.exists() && !(separateSearch && hasRoundPerFileParquets(prevFolder, searchFiles.length))) {
 				logger.error(taskName + ": round {}: previous round parquet not found: {}", round,
 						prevParquet.getAbsolutePath());
 				return -1;
@@ -339,8 +483,18 @@ public final class DeepIterativeCommonSupport {
 				combinedSpeclib.length());
 
 		File roundParquet = new File(roundDir, "round" + round + ".parquet");
-		if (!roundParquet.exists()) {
+		if (!roundParquet.exists() && !(separateSearch && hasRoundPerFileParquets(roundDir, searchFiles.length))) {
 			runNoQuantSearchAction.run(roundParquet, combinedSpeclib.getAbsolutePath(), searchFiles, reanalyse);
+		}
+		if (separateSearch) {
+			if (!hasRoundPerFileParquets(roundDir, searchFiles.length)) {
+				logger.error(taskName + ": round {}: separate search failed - no per-file parquets created in {}", round, roundDir.getAbsolutePath());
+				return -1;
+			}
+			int count = countIdentifiedPeptidesFromRoundPerFileParquets(roundDir, searchFiles.length,
+					null, logger, taskName);
+			logger.info(taskName + ": round {} (separate): unique peptides (q<=0.01, non-decoy): {}", round, count);
+			return count;
 		}
 		if (!roundParquet.exists()) {
 			logger.error(taskName + ": round {}: search failed - {} not created", round, roundParquet.getName());
@@ -355,8 +509,22 @@ public final class DeepIterativeCommonSupport {
 	public static IterativeRoundLoopResult runIterativeRoundLoop(File rankedFile, int genomesPerRound, int maxRounds,
 			String roundHeaderLabel, String cut, UpdateMessageAction updateMessageAction,
 			RunRoundAction runRoundAction, ComputeStopRuleAction computeStopRuleAction, Logger logger, String taskName) {
-		// Unconditional early stop: if discovery is clearly saturated very early, stop regardless of knee gating.
-		// Rule: stop when relative gain (new/cumulative) < 1.0% for 2 consecutive rounds.
+		return runIterativeRoundLoop(rankedFile, genomesPerRound, maxRounds, roundHeaderLabel, cut,
+				false, 0, updateMessageAction, runRoundAction, computeStopRuleAction, logger, taskName);
+	}
+
+	/**
+	 * Overload supporting separate (per-file) search mode.
+	 * When {@code separateSearch} is true, new-peptide counting reads from per-file parquets
+	 * (per_file_*.parquet in each roundN/ directory) instead of a single roundN.parquet.
+	 *
+	 * @param separateSearch  true if rounds produced per-file parquets instead of combined roundN.parquet
+	 * @param goodFileCount   number of good (non-damaged) DIA files; used to enumerate per-file parquets
+	 */
+	public static IterativeRoundLoopResult runIterativeRoundLoop(File rankedFile, int genomesPerRound, int maxRounds,
+			String roundHeaderLabel, String cut, boolean separateSearch, int goodFileCount,
+			UpdateMessageAction updateMessageAction,
+			RunRoundAction runRoundAction, ComputeStopRuleAction computeStopRuleAction, Logger logger, String taskName) {
 		final double earlyRelativeGainThreshold = 0.01;
 		final int earlyConsecutiveRounds = 2;
 
@@ -392,8 +560,14 @@ public final class DeepIterativeCommonSupport {
 			}
 
 			File roundDir = new File(rankedFile.getParentFile(), "round" + round);
-			File roundParquet = new File(roundDir, "round" + round + ".parquet");
-			int incThis = countNewPeptidesFromParquet(roundParquet, seenPeptides, cut, logger, taskName);
+			int incThis;
+			if (separateSearch) {
+				incThis = countNewPeptidesFromRoundPerFileParquets(roundDir, goodFileCount, seenPeptides, cut,
+						logger, taskName);
+			} else {
+				File roundParquet = new File(roundDir, "round" + round + ".parquet");
+				incThis = countNewPeptidesFromParquet(roundParquet, seenPeptides, cut, logger, taskName);
+			}
 			incPerRound.add(incThis);
 			roundsRecord.add(round);
 			peptidesInRoundRecord.add(peptideCount);
@@ -402,11 +576,10 @@ public final class DeepIterativeCommonSupport {
 			logger.info(taskName + ": round {}: identified {} peptides (previous round: {}), new = {}, cumulative = {}",
 					round, peptideCount, prevPeptideCount, incThis, seenPeptides.size());
 
-			// Early stop (no knee required): 2 consecutive rounds with relative gain < 1.0%.
 			if (round >= earlyConsecutiveRounds) {
 				boolean allBelow = true;
 				for (int k = 0; k < earlyConsecutiveRounds && allBelow; k++) {
-					int idx = round - 1 - k; // 0-based
+					int idx = round - 1 - k;
 					int cumulative = cumulativeRecord.get(idx);
 					if (cumulative <= 0) {
 						allBelow = false;

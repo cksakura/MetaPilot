@@ -39,6 +39,11 @@ public abstract class MetaPeptide {
 	protected int[] charges;
 	protected boolean isDecoy;
 
+	/** Identification type codes used in {@link #idenType}. */
+	public static final int IDEN_UNMATCHED = 0;
+	public static final int IDEN_MSMS = 1;
+	public static final int IDEN_MBR = 2;
+
 	public static String[] idenTypeStrings = { "unmatched", "MS/MS", "MBR" };
 
 	public MetaPeptide(String sequence) {
