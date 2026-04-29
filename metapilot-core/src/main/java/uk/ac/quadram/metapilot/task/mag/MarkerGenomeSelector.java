@@ -2831,7 +2831,7 @@ public class MarkerGenomeSelector {
 		File dbFilder = new File(
 				"C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-gut\\v2.0.2\\original_db");
 
-		MarkerGenomeSelector.testParquet("Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\12mix\\DIA\\MetaPilot\\marker_comprehensive\\marker");
+		MarkerGenomeSelector.testParquet("Z:\\PRIDE_dataset\\PXD051792_uMetaP\\20241012_colonic_content\\MetaPilot\\marker_deep\\marker");
 		
 //		MarkerGenomeSelector selector = new MarkerGenomeSelector();
 //		selector.setKneeSelectionMode(KNEE_MODE_COMPREHENSIVE);

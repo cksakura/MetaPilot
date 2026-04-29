@@ -26,6 +26,10 @@ public class MetaParameterDia extends MetaBaseParameter {
 	
 	// Seed workflow mode: DIRECT, FOCUS, COMPREHENSIVE, DEEP
 	private String seedMode = "DIRECT";
+
+	// Deep-seed peptide-based round mode
+	private boolean usePeptideBasedRound = false;
+	private double peptideDetectabilityThreshold = 0.5;
 	
 	public MetaParameterDia() {
 		super(uk.ac.quadram.metapilot.workflow.WorkflowType.DIA_SEED.getAnalysisType(), new MetaData(), "", "",
@@ -142,5 +146,21 @@ public class MetaParameterDia extends MetaBaseParameter {
 	
 	public void setSeedMode(String seedMode) {
 		this.seedMode = seedMode;
+	}
+
+	public boolean isUsePeptideBasedRound() {
+		return usePeptideBasedRound;
+	}
+
+	public void setUsePeptideBasedRound(boolean usePeptideBasedRound) {
+		this.usePeptideBasedRound = usePeptideBasedRound;
+	}
+
+	public double getPeptideDetectabilityThreshold() {
+		return peptideDetectabilityThreshold;
+	}
+
+	public void setPeptideDetectabilityThreshold(double peptideDetectabilityThreshold) {
+		this.peptideDetectabilityThreshold = peptideDetectabilityThreshold;
 	}
 }

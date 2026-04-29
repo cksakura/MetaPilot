@@ -67,6 +67,8 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 
 	private ComboBox<String> modeSelectionComboBox;
 	private ComboBox<Integer> threadsComboBox;
+	private CheckBox usePeptideRoundCheckBox;
+	private TextField detectabilityThresholdField;
 
 	// Modification checkboxes (same as DIA Marker Parameters tab)
 	private CheckBox mExcisionCheckBox;
@@ -227,6 +229,11 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 			if (acetyProNCheckBox != null) metaParameterDia.setAcetyProN(acetyProNCheckBox.isSelected());
 			if (phosphoSTYCheckBox != null) metaParameterDia.setPhosphoSTY(phosphoSTYCheckBox.isSelected());
 			if (kGGCheckBox != null) metaParameterDia.setKGG(kGGCheckBox.isSelected());
+			boolean peptideEnabledByMode = modeIndex != 0;
+			if (usePeptideRoundCheckBox != null) {
+				metaParameterDia.setUsePeptideBasedRound(peptideEnabledByMode && usePeptideRoundCheckBox.isSelected());
+			}
+			metaParameterDia.setPeptideDetectabilityThreshold(parseDetectabilityThresholdFromUI());
 
 			LOGGER.info("Successfully collected parameters from UI for DIA Seed workflow");
 			if (consolePanel != null) {
@@ -507,7 +514,28 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 		settingsGrid.add(modeBox, 0, 0);
 		settingsGrid.add(threadsBox, 1, 0);
 
-		section.getChildren().addAll(titleLabel, settingsGrid);
+		VBox deepPeptideBox = new VBox(5);
+		Label deepPeptideLabel = new Label("Peptide-based library settings:");
+		deepPeptideLabel.setStyle("-fx-font-weight: bold;");
+		usePeptideRoundCheckBox = new CheckBox("Use peptide-based rounds");
+		usePeptideRoundCheckBox.setSelected(false);
+		usePeptideRoundCheckBox.setTooltip(new Tooltip(
+				"For Focus/Comprehensive/Deep modes: build iterative microbiome library from predicted peptides."));
+		usePeptideRoundCheckBox.setOnAction(e -> updateParameterView());
+
+		HBox thresholdBox = new HBox(8);
+		thresholdBox.setAlignment(Pos.CENTER_LEFT);
+		Label thresholdLabel = new Label("Detectability threshold:");
+		detectabilityThresholdField = new TextField("0.5");
+		detectabilityThresholdField.setPrefWidth(90);
+		detectabilityThresholdField.setTooltip(new Tooltip(
+				"Keep predicted peptides with detectability >= this value."));
+		detectabilityThresholdField.textProperty().addListener((obs, ov, nv) -> updateParameterView());
+		thresholdBox.getChildren().addAll(thresholdLabel, detectabilityThresholdField);
+		deepPeptideBox.getChildren().addAll(deepPeptideLabel, usePeptideRoundCheckBox, thresholdBox);
+		updatePeptideBasedControlsState();
+
+		section.getChildren().addAll(titleLabel, settingsGrid, deepPeptideBox);
 		return section;
 	}
 
@@ -639,6 +667,7 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 		consolePanel = new ConsolePanel();
 		magDatabasePanel = new MagDatabaseSettingsPanel(false);
 		magDatabasePanel.setParameterUpdateCallback(() -> {
+			syncSelectedMagDbToPanels();
 			updateParameterView();
 			updateMagDbStatus();
 		});
@@ -668,10 +697,12 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 
 		tabPane.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, newTab) -> {
 			if (newTab == paramTab) {
+				syncSelectedMagDbToPanels();
 				updateMetadataTableFromIOPanel();
 				ensureLibraryPanelCreated();
 				updateParameterView();
 			} else if (newTab == consoleTab) {
+				syncSelectedMagDbToPanels();
 				updateParameterView();
 				// Auto-save without validation or alerts (validation/alert only when user clicks Run)
 				try {
@@ -693,6 +724,20 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 		Platform.runLater(this::setupWindowCloseHandler);
 	}
 
+	/**
+	 * Keep Parameters/Console panels aligned with Input/Output MAG DB selection.
+	 * Input/Output (magDatabasePanel) is the single source of truth.
+	 */
+	private void syncSelectedMagDbToPanels() {
+		if (magDatabasePanel == null) {
+			return;
+		}
+		MagDbItem selectedMagDb = magDatabasePanel.getSelectedMagDatabase();
+		if (selectedMagDb != null) {
+			updateLibraryPanelWithMagDb(selectedMagDb);
+		}
+	}
+
 	private void updateMetadataTableFromIOPanel() {
 		if (ioPanel == null || metadataConfigurationPanel == null) {
 			return;
@@ -706,6 +751,7 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 		if (consolePanel == null) {
 			return;
 		}
+		updatePeptideBasedControlsState();
 
 		StringBuilder sb = new StringBuilder();
 		sb.append("=== DIA Analysis Parameters ===\n\n");
@@ -730,6 +776,10 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 		}
 		if (threadsComboBox != null) {
 			sb.append("  Thread Count: ").append(threadsComboBox.getValue()).append("\n");
+		}
+		if (usePeptideRoundCheckBox != null) {
+			sb.append("  Use peptide rounds: ").append(usePeptideRoundCheckBox.isSelected()).append("\n");
+			sb.append("  Detectability threshold: ").append(parseDetectabilityThresholdFromUI()).append("\n");
 		}
 		sb.append("\n");
 
@@ -867,11 +917,38 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 			if (acetyProNCheckBox != null) metaParameterDia.setAcetyProN(acetyProNCheckBox.isSelected());
 			if (phosphoSTYCheckBox != null) metaParameterDia.setPhosphoSTY(phosphoSTYCheckBox.isSelected());
 			if (kGGCheckBox != null) metaParameterDia.setKGG(kGGCheckBox.isSelected());
+			boolean peptideEnabledByMode = modeIndex != 0;
+			if (usePeptideRoundCheckBox != null) {
+				metaParameterDia.setUsePeptideBasedRound(peptideEnabledByMode && usePeptideRoundCheckBox.isSelected());
+			}
+			metaParameterDia.setPeptideDetectabilityThreshold(parseDetectabilityThresholdFromUI());
 			return metaParameterDia;
 		} catch (Exception e) {
 			LOGGER.debug("Lenient parameter collect failed: " + e.getMessage());
 			return null;
 		}
+	}
+
+	private double parseDetectabilityThresholdFromUI() {
+		if (detectabilityThresholdField == null) {
+			return 0.5;
+		}
+		try {
+			return Double.parseDouble(detectabilityThresholdField.getText().trim());
+		} catch (Exception e) {
+			return 0.5;
+		}
+	}
+
+	private void updatePeptideBasedControlsState() {
+		if (usePeptideRoundCheckBox == null || detectabilityThresholdField == null || modeSelectionComboBox == null) {
+			return;
+		}
+		int modeIndex = modeSelectionComboBox.getSelectionModel().getSelectedIndex();
+		boolean peptideSectionEnabled = modeIndex != 0; // disable in Direct search
+		usePeptideRoundCheckBox.setDisable(!peptideSectionEnabled);
+		detectabilityThresholdField
+				.setDisable(!(peptideSectionEnabled && usePeptideRoundCheckBox.isSelected()));
 	}
 
 	private boolean validateInputs() {
@@ -897,6 +974,19 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 				String[] libs = libraryPanel.getSelectedLibraryNames();
 				if (libs == null || libs.length == 0) {
 					showError("Validation Error", "For Focus or Comprehensive search, please select at least one spectral library.");
+					return false;
+				}
+			}
+			if (modeIndex != 0 && usePeptideRoundCheckBox != null && usePeptideRoundCheckBox.isSelected()) {
+				double threshold;
+				try {
+					threshold = Double.parseDouble(detectabilityThresholdField.getText().trim());
+				} catch (Exception e) {
+					showError("Validation Error", "Detectability threshold must be a number.");
+					return false;
+				}
+				if (threshold < 0.0 || threshold > 1.0) {
+					showError("Validation Error", "Detectability threshold must be between 0 and 1.");
 					return false;
 				}
 			}
@@ -1318,6 +1408,11 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 		if (acetyProNCheckBox != null) acetyProNCheckBox.setSelected(params.isAcetyProN());
 		if (phosphoSTYCheckBox != null) phosphoSTYCheckBox.setSelected(params.isPhosphoSTY());
 		if (kGGCheckBox != null) kGGCheckBox.setSelected(params.isKGG());
+		if (usePeptideRoundCheckBox != null) usePeptideRoundCheckBox.setSelected(params.isUsePeptideBasedRound());
+		if (detectabilityThresholdField != null) {
+			detectabilityThresholdField.setText(String.valueOf(params.getPeptideDetectabilityThreshold()));
+		}
+		updatePeptideBasedControlsState();
 
 		if (libraryPanel != null) {
 			libraryPanel.updateMetaParameter(params);

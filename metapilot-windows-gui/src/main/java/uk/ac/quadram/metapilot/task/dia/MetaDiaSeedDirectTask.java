@@ -222,8 +222,6 @@ public class MetaDiaSeedDirectTask extends MetaDiaTask {
 			}
 
 			// MetaParameterDia: resolve paths and classify by matchToMag
-			File magDbFile = magDb.getCurrentFile();
-			File libFolderFile = new File(magDbFile, "libraries");
 			String[] usedLibs = ((MetaParameterDia) metaPar).getLibrary();
 			MagPepLib[] allLibs = magDb.getMagPepLibs();
 
@@ -235,25 +233,11 @@ public class MetaDiaSeedDirectTask extends MetaDiaTask {
 					libPath[i] = directLibFile.getAbsolutePath();
 					matchToMag[i] = false; // external path → treat as standalone
 				} else {
-					File libFolder = new File(libFolderFile, usedLibs[i]);
-					File speclibFile = new File(libFolder, usedLibs[i] + ".speclib");
-					File tsvFile = new File(libFolder, usedLibs[i] + ".tsv");
-					File parquetFile = new File(libFolder, usedLibs[i] + ".parquet");
-
-					File chosen = null;
-					if (speclibFile.exists()) {
-						chosen = speclibFile;
-					} else if (tsvFile.exists()) {
-						chosen = tsvFile;
-					} else if (parquetFile.exists()) {
-						chosen = parquetFile;
-					}
-
-					if (chosen == null) {
+					File chosen = magDb.resolveSpectralLibraryFile(usedLibs[i]);
+					if (chosen == null || !chosen.exists()) {
 						logger.error(getTaskName() + ": no library file (.speclib/.tsv/.parquet) found for library '{}'", usedLibs[i]);
 						return false;
 					}
-
 					libPath[i] = chosen.getAbsolutePath();
 
 					boolean micro = false;

@@ -216,6 +216,8 @@ public class DiaParameterIO extends BaseParameterIO {
                 seedMode = "DIRECT";
             }
             diaSettings.put("seed_mode", seedMode);
+            diaSettings.put("use_peptide_based_round", params.isUsePeptideBasedRound());
+            diaSettings.put("peptide_detectability_threshold", params.getPeptideDetectabilityThreshold());
 
             json.put("dia_settings", diaSettings);
 
@@ -385,6 +387,8 @@ public class DiaParameterIO extends BaseParameterIO {
 
             // Seed mode default
             String seedMode = "DIRECT";
+            boolean usePeptideBasedRound = false;
+            double peptideDetectabilityThreshold = 0.5;
 
             if (json.has("dia_settings")) {
                 JSONObject diaSettings = json.getJSONObject("dia_settings");
@@ -409,6 +413,9 @@ public class DiaParameterIO extends BaseParameterIO {
 
                 // Load seed mode if present
                 seedMode = diaSettings.optString("seed_mode", seedMode);
+                usePeptideBasedRound = diaSettings.optBoolean("use_peptide_based_round", usePeptideBasedRound);
+                peptideDetectabilityThreshold = diaSettings.optDouble("peptide_detectability_threshold",
+                        peptideDetectabilityThreshold);
             }
 
             // Create MetaParameterDia (no self model / external models for now)
@@ -432,6 +439,8 @@ public class DiaParameterIO extends BaseParameterIO {
 
             // Apply seed mode
             params.setSeedMode(seedMode);
+            params.setUsePeptideBasedRound(usePeptideBasedRound);
+            params.setPeptideDetectabilityThreshold(peptideDetectabilityThreshold);
 
             LOGGER.info("Successfully loaded parameters from {}", paramFile.getAbsolutePath());
             return params;

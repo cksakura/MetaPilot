@@ -39,6 +39,12 @@ import uk.ac.quadram.metapilot.task.par.MetaConstants;
  */
 public class MetaDbReducerTask extends MetaDbCreateTask {
 
+	/**
+	 * NOTE (temporary): DBReducer is currently unmaintained, so we bypass it in this task.
+	 * Keep tool-path/parameter wiring intact so it can be re-enabled later by flipping this flag.
+	 */
+	private static final boolean ENABLE_DBREDUCER = false;
+
 	private String[] mgfFiles;
 	private String[] pf2Files;
 	private File dbReducerExe;
@@ -77,7 +83,7 @@ public class MetaDbReducerTask extends MetaDbCreateTask {
 				dbReducerExe.exists());
 		logger.info("{}: pFind executable: {} (exists: {})", taskName, pFindExe.getAbsolutePath(), pFindExe.exists());
 
-		if (dbReducerExe.getName().equals("DBReducer.exe") && dbReducerExe.exists()
+		if (ENABLE_DBREDUCER && dbReducerExe.getName().equals("DBReducer.exe") && dbReducerExe.exists()
 				&& metaPar.getMs2ScanMode().equals(MetaConstants.HCD_FTMS)) {
 			useDBReducer = true;
 			logger.info("{}: Using DBReducer for database reduction", taskName);

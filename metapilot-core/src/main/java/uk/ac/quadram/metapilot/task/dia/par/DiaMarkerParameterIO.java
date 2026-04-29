@@ -190,6 +190,8 @@ public class DiaMarkerParameterIO extends BaseParameterIO {
 			// Genome-selection mode
 			// Persist only marker_mode; genomeSelectionStrategy is computed from this when loading.
 			diaSettings.put("marker_mode", params.getMarkerMode());
+			diaSettings.put("use_peptide_based_round", params.isUsePeptideBasedRound());
+			diaSettings.put("peptide_detectability_threshold", params.getPeptideDetectabilityThreshold());
 
 			// Modification settings
 			diaSettings.put("mExcision", params.isMExcision());
@@ -382,6 +384,8 @@ public class DiaMarkerParameterIO extends BaseParameterIO {
 			boolean acetyProN = false;
 			boolean phosphoSTY = false;
 			boolean kGG = false;
+			boolean usePeptideBasedRound = false;
+			double peptideDetectabilityThreshold = 0.5;
 
 			if (json.has("dia_settings")) {
 				JSONObject diaSettings = json.getJSONObject("dia_settings");
@@ -403,6 +407,9 @@ public class DiaMarkerParameterIO extends BaseParameterIO {
 				acetyProN = diaSettings.optBoolean("acetyProN", acetyProN);
 				phosphoSTY = diaSettings.optBoolean("phosphoSTY", phosphoSTY);
 				kGG = diaSettings.optBoolean("kGG", kGG);
+				usePeptideBasedRound = diaSettings.optBoolean("use_peptide_based_round", usePeptideBasedRound);
+				peptideDetectabilityThreshold = diaSettings.optDouble("peptide_detectability_threshold",
+						peptideDetectabilityThreshold);
 			}
 
 			// Create MetaParameterDiaMarker (no self model / external models for now)
@@ -419,6 +426,8 @@ public class DiaMarkerParameterIO extends BaseParameterIO {
 			params.setAcetyProN(acetyProN);
 			params.setPhosphoSTY(phosphoSTY);
 			params.setKGG(kGG);
+			params.setUsePeptideBasedRound(usePeptideBasedRound);
+			params.setPeptideDetectabilityThreshold(peptideDetectabilityThreshold);
 
 			return params;
 

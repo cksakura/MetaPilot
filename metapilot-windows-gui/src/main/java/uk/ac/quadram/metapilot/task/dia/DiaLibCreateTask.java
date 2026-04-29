@@ -52,6 +52,7 @@ public class DiaLibCreateTask extends MetaAbstractTask {
 	public static final int fromPeptide = 2;
 
 	private boolean matchToMag = true;
+	private String lastFailureReason;
 
 	public DiaLibCreateTask(MetaParameterDia metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
 			String filePath, ArrayList<String> pathList, int buildType, Logger logger) {
@@ -71,15 +72,27 @@ public class DiaLibCreateTask extends MetaAbstractTask {
 
 	@Override
 	protected Boolean call() throws Exception {
+		lastFailureReason = null;
+
+		if (magDbItem == null) {
+			return fail("MAG database item is null.", null);
+		}
+		if (magDbItem.getCurrentFile() == null) {
+			return fail("MAG database current folder is null for database: " + magDbItem.getCatalogueID(), null);
+		}
 
 		File libFolder = new File(magDbItem.getCurrentFile(), "libraries");
 		if (!libFolder.exists()) {
-			libFolder.mkdir();
+			if (!libFolder.mkdir()) {
+				return fail("Failed to create libraries folder: " + libFolder.getAbsolutePath(), null);
+			}
 		}
 
 		File libFile = new File(libFolder, libName);
 		if (!libFile.exists()) {
-			libFile.mkdir();
+			if (!libFile.mkdir()) {
+				return fail("Failed to create library folder: " + libFile.getAbsolutePath(), null);
+			}
 		}
 
 		DiaNNTask diaNNTask = new DiaNNTask(mrp.getToolPath(ToolType.DIANN));
@@ -154,8 +167,7 @@ public class DiaLibCreateTask extends MetaAbstractTask {
 				}
 				reader.close();
 			} catch (IOException e) {
-				logger.error(taskName + ": error in reading " + pepFile, e);
-				System.err.println(format.format(new Date()) + "\t" + taskName + ": error in reading " + pepFile);
+				return fail("Error reading predicted peptide file: " + pepFile.getAbsolutePath(), e);
 			}
 
 			File pepDbFile = new File(libFile, libName + ".fasta");
@@ -188,8 +200,7 @@ public class DiaLibCreateTask extends MetaAbstractTask {
 
 					writer.close();
 				} catch (IOException e) {
-					logger.error(taskName + ": error in writing " + pepDbFile, e);
-					System.err.println(format.format(new Date()) + "\t" + taskName + ": error in reading " + pepDbFile);
+					return fail("Error writing peptide FASTA file: " + pepDbFile.getAbsolutePath(), e);
 				}
 			}
 
@@ -204,7 +215,10 @@ public class DiaLibCreateTask extends MetaAbstractTask {
 					if (tempLibFile.exists()) {
 						tempLibFile.renameTo(destLibFile);
 					} else {
-						return false;
+						return fail(
+								"DIA-NN library generation did not produce expected file: "
+										+ tempLibFile.getAbsolutePath(),
+								null);
 					}
 				}
 			}
@@ -226,12 +240,8 @@ public class DiaLibCreateTask extends MetaAbstractTask {
 					}
 
 					if (seqid == -1) {
-
-						logger.error(taskName + ": there is no \"Sequence\" column in the file " + filePath);
-						System.out.println(format.format(new Date()) + "\t" + taskName
-								+ ": there is no \"Sequence\" column in the file " + filePath);
-
-						return false;
+						return fail("Input peptide table has no \"Sequence\" or \"Base sequence\" column: " + filePath,
+								null);
 					}
 
 					while ((pline = reader.readLine()) != null) {
@@ -262,11 +272,7 @@ public class DiaLibCreateTask extends MetaAbstractTask {
 					}
 					reader.close();
 				} catch (IOException e) {
-
-					logger.error(taskName + ": error in reading " + filePath, e);
-					System.err.println(format.format(new Date()) + "\t" + taskName + ": error in reading " + filePath);
-
-					return false;
+					return fail("Error reading peptide input file: " + filePath, e);
 				}
 
 				String[] sortedPeps = pepSet.toArray(String[]::new);
@@ -278,8 +284,7 @@ public class DiaLibCreateTask extends MetaAbstractTask {
 					}
 					writer.close();
 				} catch (IOException e) {
-					logger.error(taskName + ": error in writing " + pepDbFile, e);
-					System.err.println(format.format(new Date()) + "\t" + taskName + ": error in reading " + pepDbFile);
+					return fail("Error writing peptide FASTA file: " + pepDbFile.getAbsolutePath(), e);
 				}
 			}
 
@@ -294,12 +299,15 @@ public class DiaLibCreateTask extends MetaAbstractTask {
 					if (tempLibFile.exists()) {
 						tempLibFile.renameTo(destLibFile);
 					} else {
-						return false;
+						return fail(
+								"DIA-NN library generation did not produce expected file: "
+										+ tempLibFile.getAbsolutePath(),
+								null);
 					}
 				}
 			}
 		} else {
-			return false;
+			return fail("Unsupported library build type: " + taskType, null);
 		}
 
 		if (!parquetFile.exists()) {
@@ -308,7 +316,7 @@ public class DiaLibCreateTask extends MetaAbstractTask {
 		}
 
 		if (!parquetFile.exists()) {
-			return false;
+			return fail("DIA-NN parquet conversion failed. Missing output: " + parquetFile.getAbsolutePath(), null);
 		}
 
 		HashSet<String> pepSet = DiaNNParquetReader.getPeptideSet(parquetFile.getAbsolutePath());
@@ -328,6 +336,21 @@ public class DiaLibCreateTask extends MetaAbstractTask {
 
 		magDbItem.addPepLib(libName, pepSet.size(), enzyme, miss, matchToMag);
 		return true;
+	}
+
+	public String getLastFailureReason() {
+		return lastFailureReason;
+	}
+
+	private Boolean fail(String message, Exception e) {
+		lastFailureReason = message;
+		if (e != null) {
+			logger.error(taskName + ": " + message, e);
+		} else {
+			logger.error(taskName + ": " + message);
+		}
+		System.err.println(format.format(new Date()) + "\t" + taskName + ": " + message);
+		return false;
 	}
 
 	public void forceStop() {

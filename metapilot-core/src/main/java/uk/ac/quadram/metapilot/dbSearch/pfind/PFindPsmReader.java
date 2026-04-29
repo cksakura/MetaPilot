@@ -1563,11 +1563,11 @@ public class PFindPsmReader {
 
 	public static void main(String[] args) {
 		// TODO Auto-generated method stub
-		PFindPsmReader.sihumixTest("C:\\Users\\daz25hak\\Documents\\data\\data\\marker4_focus.tsv");
+//		PFindPsmReader.sihumixTest("C:\\Users\\daz25hak\\Documents\\data\\data\\marker4_focus.tsv");
 //		PFindPsmReader.sihumixTest("C:\\Users\\daz25hak\\Documents\\data\\data\\SIHUMIx_peptide_paperdata.txt");
-//		PFindPsmReader.copyCfg(
-//				"Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DDA\\MetaPilot\\pfind_MAG_search_marker4_comp", 
-//				"Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DDA\\MetaPilot\\pfind_MAG_search");
+		PFindPsmReader.copyCfg(
+				"Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DDA\\MetaPilot\\pfind_MAG_search_marker2_comp", 
+				"Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DDA\\MetaPilot\\pfind_MAG_search");
 //		PFindPsmReader.match300drugPeptide("Z:\\PRIDE_dataset\\PXD056930_300drug\\search\\peptides.txt", 
 //				"Z:\\PRIDE_dataset\\PXD056930_300drug\\search\\mgnify_peptides.txt", 
 //				"C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-gut\\v2.0.2\\predicted");

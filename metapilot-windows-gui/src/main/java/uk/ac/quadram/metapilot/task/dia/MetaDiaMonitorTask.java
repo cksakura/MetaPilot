@@ -340,7 +340,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 				File markerDir = new File(perFileFolder, "marker");
 				markerDir.mkdirs();
 				File markerParquet = new File(markerDir, "marker.parquet");
-				File markerLib = magDb != null ? magDb.getMarker4LibFile() : null;
+				File markerLib = magDb != null ? magDb.resolveMarker4LibraryFile() : null;
 				if (markerLib == null || !markerLib.exists()) {
 					updateTableStatus(baseFileName, "Failed", "Marker4 library missing");
 					return null;
@@ -529,6 +529,18 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 	private File[] resolveSeedLibraries() {
 		ArrayList<File> files = new ArrayList<>();
 		for (String libName : libPathList) {
+			File direct = new File(libName);
+			if (direct.exists()) {
+				files.add(direct);
+				continue;
+			}
+			if (magDb != null) {
+				File resolved = magDb.resolveSpectralLibraryFile(libName);
+				if (resolved != null && resolved.exists()) {
+					files.add(resolved);
+					continue;
+				}
+			}
 			File libFile = new File(new File(libFolderFile, libName), libName + ".parquet");
 			if (libFile.exists()) {
 				files.add(libFile);

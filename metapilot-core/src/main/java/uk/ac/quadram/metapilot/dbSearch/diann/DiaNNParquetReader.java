@@ -165,7 +165,6 @@ public class DiaNNParquetReader {
 		}
 
 		fileReader.close();
-
 		return map;
 	}
 
@@ -605,26 +604,42 @@ public class DiaNNParquetReader {
 	
 	public static void main(String[] args) throws IOException {
 //		DiaNNParquetReader.changeName("Z:\\PRIDE_dataset\\PXD051104_metaExpertPro\\MetaPilot_DIA_MPW\\MetaPilot\\marker_deep\\marker");
-		DiaNNParquetReader
-				.getProPepMap("Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\12mix\\DIA\\MetaPilot\\marker_focus\\marker"
-						+ "\\combined.parquet");
+//		DiaNNParquetReader
+//				.getProPepMap("Z:\\PRIDE_dataset\\PXD051104_metaExpertPro\\MetaPilot_DIA_MPW\\MetaPilot\\marker_deep\\marker"
+//						+ "\\per_file_1.parquet");
 //		System.out.println("peptide count\t"+set.size());
 //		DiaNNParquetReader.matchGenome("Z:\\Kai\\Database\\human-gut\\v2.0.2", 
 //				"E:\\20250423\\20250422_MetaLAB_DIA_search\\selfModel\\mag_result\\combined.parquet");
-/*		
-		DiaNNParquetReader reader = new DiaNNParquetReader("Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\pool\\MetaPilot\\focus\\combined"
-				+ "\\combined.parquet", "KR");
-		DiaNNPrecursor[] pps =  reader.getDiaNNPrecursors();
+		
+		DiaNNParquetReader reader = new DiaNNParquetReader("Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851001\\DIA\\MetaPilot\\seed_deep\\seed\\round1"
+				+ "\\round1-first-pass.parquet", "KR");
+		DiaNNPrecursor[] pps =  reader.getDiaNNPrecursors(0.01);
 		int[] count = new int[2];
+		HashSet<String> set = new HashSet<String>();
 		for(DiaNNPrecursor pp: pps) {
 			if(pp.getIsDecoy()) {
 				count[0]++;
 			}else {
 				count[1]++;
+				set.add(pp.getSeqString());
 			}
 		}
-		System.out.println(count[0]+"\t"+count[1]);
-*/		
+		System.out.println(count[0]+"\t"+count[1]+"\t"+set.size());
+		
+		reader = new DiaNNParquetReader("Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851001\\DIA\\MetaPilot\\seed_deep\\seed\\round1"
+				+ "\\round1.parquet", "KR");
+		pps =  reader.getDiaNNPrecursors(0.01);
+		count = new int[2];
+		for(DiaNNPrecursor pp: pps) {
+			if(pp.getIsDecoy()) {
+				count[0]++;
+			}else {
+				count[1]++;
+				set.add(pp.getSeqString());
+			}
+		}
+		System.out.println(count[0]+"\t"+count[1]+"\t"+set.size());
+		
 //		System.out.println(DiaNNParquetReader.getPepProMap(
 //				"C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-gut\\v2.0.2\\libraries\\Pekka"
 //						+ "\\Pekka.parquet"));

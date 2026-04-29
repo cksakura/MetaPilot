@@ -24,6 +24,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.logging.log4j.LogManager;
 
@@ -31,6 +33,7 @@ import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.util.Duration;
 import uk.ac.quadram.metapilot.task.dia.DiaLibCreateTask;
+import uk.ac.quadram.metapilot.task.dia.MetaDiaMarkerTask;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.mag.MagDbConfigIO;
@@ -101,6 +104,9 @@ public class DiaLibraryPanelNoModel extends VBox {
 
 	public void setMagDbItem(MagDbItem magDbItem) {
 		this.currentMagDbItem = magDbItem;
+		if (magDbItem != null) {
+			magDbItem.registerMarker4SpectralLibraryIfPresent();
+		}
 		loadAvailableLibraries();
 	}
 
@@ -487,6 +493,46 @@ public class DiaLibraryPanelNoModel extends VBox {
 		}));
 
 		libCreateTask.setOnSucceeded(e -> Platform.runLater(() -> {
+			Boolean taskResult = libCreateTask.getValue();
+			if (taskResult == null || !taskResult) {
+				updateProgressStep(0, "Library generation failed!");
+				if (libraryProgressBar != null) {
+					libraryProgressBar.setProgress(0);
+				}
+				if (generateLibraryButton != null) {
+					generateLibraryButton.setDisable(false);
+				}
+				String taskFailureReason = libCreateTask.getLastFailureReason();
+				if (taskFailureReason == null || taskFailureReason.trim().isEmpty()) {
+					taskFailureReason = "DiaLibCreateTask returned false without an explicit reason.";
+				}
+				if (consoleOutput != null) {
+					consoleOutput.appendText("=== Library Generation Failed ===\n");
+					consoleOutput.appendText("✗ DiaLibCreateTask failed: " + taskFailureReason + "\n");
+				}
+				showError("Library Generation Failed", "DiaLibCreateTask failed:\n" + taskFailureReason);
+				return;
+			}
+
+			String outputValidationError = validateGeneratedLibraryOutput(libraryName);
+			if (outputValidationError != null) {
+				updateProgressStep(0, "Library generation failed (output validation)!");
+				if (libraryProgressBar != null) {
+					libraryProgressBar.setProgress(0);
+				}
+				if (generateLibraryButton != null) {
+					generateLibraryButton.setDisable(false);
+				}
+				if (consoleOutput != null) {
+					consoleOutput.appendText("=== Library Generation Failed ===\n");
+					consoleOutput.appendText("✗ Library output validation failed.\n");
+					consoleOutput.appendText(outputValidationError);
+				}
+				showError("Library Generation Failed",
+						"Library task completed but output files were not generated correctly.\n\n" + outputValidationError);
+				return;
+			}
+
 			updateProgressStep(totalSteps, "Library generation completed successfully!");
 			if (libraryProgressBar != null) {
 				libraryProgressBar.setProgress(1.0);
@@ -567,6 +613,66 @@ public class DiaLibraryPanelNoModel extends VBox {
 		new Thread(libCreateTask).start();
 	}
 
+	/**
+	 * Verifies expected generated library output exists; returns null if valid, otherwise a detailed reason.
+	 */
+	private String validateGeneratedLibraryOutput(String libraryName) {
+		if (currentMagDbItem == null) {
+			return "Reason: current MAG database is null.\n";
+		}
+		File magDbFolder = currentMagDbItem.getCurrentFile();
+		if (magDbFolder == null) {
+			return "Reason: MAG database folder is null.\n";
+		}
+		if (!magDbFolder.exists()) {
+			return "Reason: MAG database folder does not exist: " + magDbFolder.getAbsolutePath() + "\n";
+		}
+
+		File librariesFolder = new File(magDbFolder, "libraries");
+		if (!librariesFolder.exists()) {
+			return "Reason: libraries folder does not exist: " + librariesFolder.getAbsolutePath() + "\n";
+		}
+		if (!librariesFolder.isDirectory()) {
+			return "Reason: libraries path is not a directory: " + librariesFolder.getAbsolutePath() + "\n";
+		}
+
+		File libraryFolder = new File(librariesFolder, libraryName);
+		if (!libraryFolder.exists()) {
+			return "Reason: generated library folder was not created: " + libraryFolder.getAbsolutePath() + "\n";
+		}
+		if (!libraryFolder.isDirectory()) {
+			return "Reason: generated library path is not a directory: " + libraryFolder.getAbsolutePath() + "\n";
+		}
+
+		File[] contents = libraryFolder.listFiles();
+		if (contents == null) {
+			return "Reason: cannot read generated library folder: " + libraryFolder.getAbsolutePath() + "\n";
+		}
+		if (contents.length == 0) {
+			return "Reason: generated library folder is empty: " + libraryFolder.getAbsolutePath() + "\n";
+		}
+
+		File speclibFile = new File(libraryFolder, libraryName + ".speclib");
+		File tsvFile = new File(libraryFolder, libraryName + ".tsv");
+		File parquetFile = new File(libraryFolder, libraryName + ".parquet");
+		if (!speclibFile.exists() && !tsvFile.exists() && !parquetFile.exists()) {
+			StringBuilder sb = new StringBuilder();
+			sb.append("Reason: no expected library file found in: ").append(libraryFolder.getAbsolutePath()).append("\n");
+			sb.append("Expected one of: ").append(speclibFile.getName()).append(", ")
+					.append(tsvFile.getName()).append(", ").append(parquetFile.getName()).append("\n");
+			sb.append("Actual files: ");
+			for (int i = 0; i < contents.length; i++) {
+				if (i > 0) {
+					sb.append(", ");
+				}
+				sb.append(contents[i].getName());
+			}
+			sb.append("\n");
+			return sb.toString();
+		}
+		return null;
+	}
+
 	private void checkAvailableLibraries() {
 		if (currentMagDbItem == null) {
 			showError("No Database", "Please select a MAG database first.");
@@ -588,16 +694,97 @@ public class DiaLibraryPanelNoModel extends VBox {
 						Platform.runLater(() -> {
 							if (consoleOutput != null) {
 								consoleOutput.appendText("ERROR: MAG database folder not found.\n");
+								consoleOutput.appendText("MAG database path: "
+										+ (magDbFolder == null ? "<null>" : magDbFolder.getAbsolutePath()) + "\n");
 							}
 						});
 						return null;
 					}
 
-					File librariesFolder = new File(magDbFolder, "libraries");
+					currentMagDbItem.moveLegacyMarker4SpeclibToCanonical();
+
+					File marker4Speclib = currentMagDbItem.getMarker4LibFile();
+					boolean marker4Missing = marker4Speclib == null || !marker4Speclib.exists();
+					if (marker4Missing && resourceParameters != null) {
+						CountDownLatch latch = new CountDownLatch(1);
+						AtomicBoolean userWantsGeneration = new AtomicBoolean(false);
+						Platform.runLater(() -> {
+							try {
+								Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+								confirm.setTitle("Marker4 spectral library");
+								confirm.setHeaderText("No Marker4 library found");
+								confirm.setContentText(
+										"Generate the Marker4 spectral library now from your MAG database FASTA?\n\n"
+												+ "This uses DIA-NN (predicted spectra) and may take several minutes. "
+												+ "You can skip and run a Marker DIA task later instead.");
+								confirm.getButtonTypes().setAll(ButtonType.YES, ButtonType.NO);
+								Optional<ButtonType> answer = confirm.showAndWait();
+								userWantsGeneration.set(answer.isPresent() && answer.get() == ButtonType.YES);
+							} finally {
+								latch.countDown();
+							}
+						});
+						latch.await();
+
+						if (userWantsGeneration.get()) {
+							MetaParameterDia diaPar = metaParameter;
+							if (parentPanel != null) {
+								try {
+									MetaParameterDia collected = parentPanel.collectParametersFromUI();
+									if (collected != null) {
+										diaPar = collected;
+									}
+								} catch (Exception ignore) {
+									// keep metaParameter
+								}
+							}
+							if (diaPar == null) {
+								Platform.runLater(
+										() -> showError("Parameters", "Cannot generate Marker4: workflow parameters are not available."));
+							} else {
+								Platform.runLater(() -> {
+									if (consoleOutput != null) {
+										consoleOutput.appendText("Generating Marker4 spectral library...\n");
+									}
+								});
+								boolean genOk = MetaDiaMarkerTask.generateMarker4LibraryOnly(diaPar, resourceParameters,
+										currentMagDbItem, libraryProgressBar, null);
+								if (!genOk) {
+									Platform.runLater(() -> {
+										if (consoleOutput != null) {
+											consoleOutput.appendText(
+													"ERROR: Marker4 library generation failed. Check that DIA-NN is configured, "
+															+ "Marker4 FASTA exists for this MAG database, and see the log.\n");
+										}
+										showError("Marker4 generation failed",
+												"Could not build the Marker4 library. Check DIA-NN in resource settings, "
+														+ "ensure the MAG database has Marker4 proteins, and review the console log.");
+									});
+								} else {
+									Platform.runLater(() -> {
+										if (consoleOutput != null) {
+											consoleOutput.appendText("Marker4 library generated successfully.\n");
+										}
+									});
+								}
+							}
+						}
+					}
+
+					File librariesFolder = new File(magDbFolder, MagDbItem.LIBRARIES_FOLDER_NAME);
+					Platform.runLater(() -> {
+						if (consoleOutput != null) {
+							consoleOutput.appendText("MAG database folder: " + magDbFolder.getAbsolutePath() + "\n");
+							consoleOutput.appendText("Expected libraries folder: " + librariesFolder.getAbsolutePath() + "\n");
+						}
+					});
 					if (!librariesFolder.exists()) {
 						Platform.runLater(() -> {
 							if (consoleOutput != null) {
 								consoleOutput.appendText("No libraries folder found.\n");
+								consoleOutput.appendText("Reason details: exists=" + librariesFolder.exists()
+										+ ", isDirectory=" + librariesFolder.isDirectory() + ", canRead="
+										+ librariesFolder.canRead() + "\n");
 							}
 						});
 						return null;
@@ -607,7 +794,10 @@ public class DiaLibraryPanelNoModel extends VBox {
 					if (libraryFolders == null || libraryFolders.length == 0) {
 						Platform.runLater(() -> {
 							if (consoleOutput != null) {
-								consoleOutput.appendText("No library folders found.\n");
+								consoleOutput.appendText("No library folders found in: " + librariesFolder.getAbsolutePath() + "\n");
+								consoleOutput.appendText("Reason details: exists=" + librariesFolder.exists()
+										+ ", isDirectory=" + librariesFolder.isDirectory() + ", canRead="
+										+ librariesFolder.canRead() + ", listFilesNull=" + (libraryFolders == null) + "\n");
 							}
 						});
 						return null;
@@ -630,6 +820,8 @@ public class DiaLibraryPanelNoModel extends VBox {
 							foundLibraries[0]++;
 						}
 					}
+
+					currentMagDbItem.registerMarker4SpectralLibraryIfPresent();
 
 					final int count = foundLibraries[0];
 					Platform.runLater(() -> {

@@ -39,6 +39,12 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 	// Logger is inherited from MetaPilotIgcTask -> MetaPilotTask as an instance field
 	private static final String taskName = "DDA IGC database search by pFind workflow";
 
+	/**
+	 * NOTE (temporary): DBReducer is currently unmaintained, so we bypass it in this workflow.
+	 * Keep the parameter/tool-path wiring intact so it can be re-enabled later by flipping this flag.
+	 */
+	private static final boolean ENABLE_DBREDUCER = false;
+
 	protected HashMap<String, PostTransModification> ptmMap;
 
 	// Fields to track running subtasks
@@ -90,8 +96,12 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 		pFindTask = new PFindTask(pFindBin, metaPar.getThreadCount());
 		ptmMap = pFindTask.getPtmMap();
 
-		File dbReducerExe = new File(mrp.getToolPath(ToolType.DBREDUCER));
-		dbReducerTask = new DBReducerTask(dbReducerExe);
+		if (ENABLE_DBREDUCER) {
+			File dbReducerExe = new File(mrp.getToolPath(ToolType.DBREDUCER));
+			dbReducerTask = new DBReducerTask(dbReducerExe);
+		} else {
+			dbReducerTask = null;
+		}
 	}
 
 	@Override
@@ -327,7 +337,7 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 		boolean useDBReducer = false;
 
 		// dbReducerTask2 is already declared as a field
-		if (ms2Type.equals(MetaConstants.HCD_FTMS)
+		if (ENABLE_DBREDUCER && ms2Type.equals(MetaConstants.HCD_FTMS)
 				&& ((DDAIgcPFindParameters) metaPar).getQuanMode().equals(MetaConstants.labelFree)) {
 			useDBReducer = true;
 		}
@@ -626,7 +636,11 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 				return false;
 			}
 		} catch (InterruptedException e) {
-			logger.error(getTaskName() + ": Post-analysis task was interrupted", e);
+			if (this.isCancelled()) {
+				logger.info(getTaskName() + ": Post-analysis wait interrupted (task cancelled/force-stopped)");
+			} else {
+				logger.warn(getTaskName() + ": Post-analysis wait interrupted", e);
+			}
 			Thread.currentThread().interrupt();
 			return false;
 		} catch (ExecutionException e) {

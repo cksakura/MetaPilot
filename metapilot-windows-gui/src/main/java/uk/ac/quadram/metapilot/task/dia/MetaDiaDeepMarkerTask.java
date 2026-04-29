@@ -55,6 +55,11 @@ public class MetaDiaDeepMarkerTask extends MetaDiaMarkerTask {
 	/** Last round index from iterative search; used in exportReport to rebuild peptide→protein mapping from round parquets. */
 	private int lastRoundForExport;
 
+	/** True when the initial marker search fell back to per-file search. */
+	private boolean initialSearchSeparate;
+	/** Subset of diaFiles that produced results. Set when initialSearchSeparate is true. */
+	private String[] goodDiaFiles;
+
 	public MetaDiaDeepMarkerTask(MetaParameterDiaMarker markerParams, MetaResourceParameters mrp,
 			ProgressBar bar1, ProgressBar bar2) {
 		super(markerParams, mrp, bar1, bar2);
@@ -105,7 +110,7 @@ public class MetaDiaDeepMarkerTask extends MetaDiaMarkerTask {
 		System.out.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
 				+ ": iterative search started");
 
-		File markerLibFile = magDb.getMarker4LibFile();
+		File markerLibFile = magDb.resolveMarker4LibraryFile();
 		if (markerLibFile == null || !markerLibFile.exists()) {
 			logger.error(getTaskName() + ": Marker library file not found for iterative search");
 			System.err.println(new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss").format(new Date()) + "\t" + getTaskName()
@@ -119,7 +124,16 @@ public class MetaDiaDeepMarkerTask extends MetaDiaMarkerTask {
 		}
 
 		File tempParquetFile = new File(markerFile, "marker.parquet");
-		if (!tempParquetFile.exists()) {
+		if (tempParquetFile.exists()) {
+			logger.info("Marker library search result already exists in {}", tempParquetFile.getAbsolutePath());
+		} else if (hasExistingPerFileParquets(markerFile)) {
+			initialSearchSeparate = true;
+			goodDiaFiles = collectGoodDiaFilesFromPerFileParquets(markerFile);
+			int maxConcurrent = DeepIterativeCommonSupport.computeMaxConcurrentTasks();
+			logger.info(getTaskName()
+					+ ": per-file parquets already exist from previous run; {} good files; rounds will use per-file search (max concurrent: {})",
+					goodDiaFiles.length, maxConcurrent);
+		} else {
 			diaLibSearchPar.setMbr(false);
 			diaLibSearchPar.setDiaFiles(diaFiles);
 			diaLibSearchPar.setThreadCount(threadCount);
@@ -132,14 +146,10 @@ public class MetaDiaDeepMarkerTask extends MetaDiaMarkerTask {
 			logger.info("Searching marker library against DIA files...");
 			logger.info("  Marker library: {}", markerLibFile.getAbsolutePath());
 			logger.info("  DIA files count: {}", diaFiles != null ? diaFiles.length : 0);
-			// DIA-NN call purpose: marker-only identification (no quant matrices), used only
-			// to collect peptides/proteins for downstream genome ranking.
 			diaNNTask.addNoQuantLibTask(diannPar, diaLibSearchPar, tempParquetFile.getAbsolutePath(),
 					markerLibFile.getAbsolutePath());
 			diaNNTask.run(diaFiles.length * 12);
 
-			// If the combined search failed to produce marker.parquet and we have multiple DIA files,
-			// fall back to per-file search to identify damaged raw files (same strategy as MetaDiaMarkerTask).
 			if (!tempParquetFile.exists() && diaFiles != null && diaFiles.length > 1) {
 				List<String> damaged = runPerFileFallbackAndRetryCombinedNoQuant(
 						tempParquetFile.getAbsolutePath(),
@@ -151,9 +161,25 @@ public class MetaDiaDeepMarkerTask extends MetaDiaMarkerTask {
 							+ getTaskName() + ": The following raw files produced no results (may be damaged): "
 							+ String.join(", ", damaged));
 				}
+				java.util.Set<String> damagedSet = new java.util.HashSet<>(damaged);
+				java.util.ArrayList<String> goodList = new java.util.ArrayList<>();
+				for (String f : diaFiles) {
+					if (!damagedSet.contains(f)) {
+						goodList.add(f);
+					}
+				}
+				if (!goodList.isEmpty()) {
+					initialSearchSeparate = true;
+					goodDiaFiles = goodList.toArray(new String[0]);
+					int maxConcurrent = DeepIterativeCommonSupport.computeMaxConcurrentTasks();
+					logger.info(getTaskName()
+							+ ": initial search was separate; {} good files, {} damaged; rounds will use per-file search (max concurrent: {})",
+							goodDiaFiles.length, damaged.size(), maxConcurrent);
+				}
 			}
-		} else {
-			logger.info("Marker library search result already exists in {}", tempParquetFile.getAbsolutePath());
+		}
+		if (!initialSearchSeparate) {
+			goodDiaFiles = diaFiles;
 		}
 
 		// Genome selection only (no combined.fasta / combined.speclib)
@@ -243,7 +269,9 @@ public class MetaDiaDeepMarkerTask extends MetaDiaMarkerTask {
 
 		String cut = diannPar != null && diannPar.getCut() != null ? diannPar.getCut() : "KR";
 		DeepIterativeCommonSupport.IterativeRoundLoopResult loop = DeepIterativeCommonSupport.runIterativeRoundLoop(
-				rankedFile, GENOMES_PER_ROUND, MAX_ITERATIVE_ROUNDS, "Round", cut, this::updateMessage,
+				rankedFile, GENOMES_PER_ROUND, MAX_ITERATIVE_ROUNDS, "Round", cut,
+				initialSearchSeparate, initialSearchSeparate ? goodDiaFiles.length : 0,
+				this::updateMessage,
 				(round, genomes) -> runRoundAppendPreviousPeptides(round, markerFile, genomes),
 				(inc) -> {
 					StopRuleResult local = computeStopRoundFromIncrements(inc);
@@ -309,11 +337,10 @@ public class MetaDiaDeepMarkerTask extends MetaDiaMarkerTask {
 			}
 			logger.info(getTaskName() + ": combined.speclib ready: {} ({} bytes)", combinedSpeclib.getAbsolutePath(), combinedSpeclib.length());
 
-			// DIA-NN call purpose: final quantifying search across all DIA files, producing
-			// combined.parquet and matrix outputs (pr/pg) for report/export.
+			String[] finalSearchFiles = initialSearchSeparate ? goodDiaFiles : diaFiles;
 			boolean combinedOk = DeepIterativeCommonSupport.ensureCombinedParquet(combinedParquet, () -> {
 				diaLibSearchPar.setMbr(true);
-				diaLibSearchPar.setDiaFiles(diaFiles);
+				diaLibSearchPar.setDiaFiles(finalSearchFiles);
 				diaLibSearchPar.setThreadCount(threadCount);
 				diaLibSearchPar.setqValue(0.01);
 				diannPar.setThreads(threadCount);
@@ -321,11 +348,11 @@ public class MetaDiaDeepMarkerTask extends MetaDiaMarkerTask {
 				diannPar.setRelaxed_prot_inf(true);
 				diannPar.setReanalyse(true);
 				diannPar.setExportDecoy(true);
-				logger.info(getTaskName() + ": combined search using combined.speclib {} → {}", combinedSpeclib.getAbsolutePath(),
-						combinedParquet.getAbsolutePath());
+				logger.info(getTaskName() + ": combined search using combined.speclib {} → {} ({} files)",
+						combinedSpeclib.getAbsolutePath(), combinedParquet.getAbsolutePath(), finalSearchFiles.length);
 				diaNNTask.addTask(diannPar, diaLibSearchPar, combinedParquet.getAbsolutePath(),
 						new String[] { combinedSpeclib.getAbsolutePath() });
-				diaNNTask.run(diaFiles.length * 12);
+				diaNNTask.run(finalSearchFiles.length * 12);
 			});
 			if (!combinedOk) {
 				logger.error(getTaskName() + ": combined search failed - combined.parquet not created");
@@ -333,11 +360,12 @@ public class MetaDiaDeepMarkerTask extends MetaDiaMarkerTask {
 			}
 		} else {
 			logger.info(getTaskName() + ": combined result already exists, skipping combined search");
-			// When reusing existing combined result, discover lastRound from round folders for exportReport.
 			if (lastRoundForExport <= 0) {
+				int gfc = goodDiaFiles != null ? goodDiaFiles.length : (diaFiles != null ? diaFiles.length : 0);
 				for (int r = 1; r <= MAX_ITERATIVE_ROUNDS; r++) {
 					File rd = new File(markerFile, "round" + r);
-					if (rd.isDirectory() && new File(rd, "round" + r + ".parquet").isFile()) {
+					if (rd.isDirectory() && (new File(rd, "round" + r + ".parquet").isFile()
+							|| DeepIterativeCommonSupport.hasRoundPerFileParquets(rd, gfc))) {
 						lastRoundForExport = r;
 					}
 				}
@@ -376,39 +404,43 @@ public class MetaDiaDeepMarkerTask extends MetaDiaMarkerTask {
 			return pepProMap;
 		}
 		String cut = diannPar != null && diannPar.getCut() != null ? diannPar.getCut() : "KR";
+		String[] filesForRead = initialSearchSeparate ? goodDiaFiles : diaFiles;
 		for (int round = 1; round <= lastRound; round++) {
 			File roundDir = new File(markerFile, "round" + round);
+			DiaNNPrecursor[] precursors = null;
 			File roundParquet = new File(roundDir, "round" + round + ".parquet");
-			if (!roundParquet.isFile()) {
+			if (roundParquet.isFile()) {
+				try {
+					DiaNNParquetReader reader = new DiaNNParquetReader(roundParquet.getAbsolutePath(), cut);
+					precursors = reader.getDiaNNPrecursors(0.01);
+				} catch (Exception e) {
+					logger.warn(getTaskName() + ": failed to read round parquet " + roundParquet.getAbsolutePath(), e);
+				}
+			} else {
+				precursors = DeepIterativeCommonSupport.readPrecursorsFromPerFileParquets(
+						roundDir, 0.01, filesForRead, cut, logger, getTaskName());
+			}
+			if (precursors == null) {
 				continue;
 			}
-			try {
-				DiaNNParquetReader reader = new DiaNNParquetReader(roundParquet.getAbsolutePath(), cut);
-				DiaNNPrecursor[] precursors = reader.getDiaNNPrecursors(0.01);
-				if (precursors == null) {
+			for (DiaNNPrecursor p : precursors) {
+				if (p == null || p.getIsDecoy()) {
 					continue;
 				}
-				for (DiaNNPrecursor p : precursors) {
-					if (p == null || p.getIsDecoy()) {
-						continue;
-					}
-					String pep = p.getSeqString();
-					if (pep == null || pep.isEmpty()) {
-						continue;
-					}
-					String[] pros = p.getProGroups();
-					if (pros == null || pros.length == 0) {
-						continue;
-					}
-					HashSet<String> set = pepProMap.computeIfAbsent(pep, k -> new HashSet<>());
-					for (String pro : pros) {
-						if (pro != null && !pro.isEmpty()) {
-							set.add(pro);
-						}
+				String pep = p.getSeqString();
+				if (pep == null || pep.isEmpty()) {
+					continue;
+				}
+				String[] pros = p.getProGroups();
+				if (pros == null || pros.length == 0) {
+					continue;
+				}
+				HashSet<String> set = pepProMap.computeIfAbsent(pep, k -> new HashSet<>());
+				for (String pro : pros) {
+					if (pro != null && !pro.isEmpty()) {
+						set.add(pro);
 					}
 				}
-			} catch (Exception e) {
-				logger.warn(getTaskName() + ": failed to read round parquet " + roundParquet.getAbsolutePath(), e);
 			}
 		}
 		logger.info(getTaskName() + ": aggregated {} peptides from round parquets for combined FASTA", pepProMap.size());
@@ -428,9 +460,11 @@ public class MetaDiaDeepMarkerTask extends MetaDiaMarkerTask {
 		}
 		int lastRound = lastRoundForExport;
 		if (lastRound <= 0) {
+			int gfc = goodDiaFiles != null ? goodDiaFiles.length : (diaFiles != null ? diaFiles.length : 0);
 			for (int r = 1; r <= MAX_ITERATIVE_ROUNDS; r++) {
 				File rd = new File(markerFile, "round" + r);
-				if (rd.isDirectory() && new File(rd, "round" + r + ".parquet").isFile()) {
+				if (rd.isDirectory() && (new File(rd, "round" + r + ".parquet").isFile()
+						|| DeepIterativeCommonSupport.hasRoundPerFileParquets(rd, gfc))) {
 					lastRound = r;
 				}
 			}
@@ -490,30 +524,50 @@ public class MetaDiaDeepMarkerTask extends MetaDiaMarkerTask {
 	 * Returns identified peptide count or -1 on failure.
 	 */
 	private int runRoundAppendPreviousPeptides(int round, File markerFile, List<String> genomes) {
-		return DeepIterativeCommonSupport.runAppendPreviousPeptidesRound(round, markerFile, genomes, diaFiles, true,
-				"append strategy", this::writeCombinedFastaFromGenomes,
+		String[] searchFiles = initialSearchSeparate ? goodDiaFiles : diaFiles;
+		return DeepIterativeCommonSupport.runAppendPreviousPeptidesRound(round, markerFile, genomes, searchFiles, true,
+				"append strategy", initialSearchSeparate,
+				this::writeCombinedFastaFromGenomes,
 				this::writeCombinedFastaFromGenomesAndPreviousPeptides,
 				(combinedFasta, combinedSpeclib) -> {
-					// DIA-NN call purpose: round-level library build
-					// (roundN/combined.fasta -> roundN/combined.speclib).
 					diannPar.setThreads(threadCount);
 					diaNNTask.addTask(diannPar, combinedFasta.getAbsolutePath(), combinedSpeclib.getAbsolutePath(), false);
 					diaNNTask.run(12);
 				},
-				(roundParquet, combinedSpeclibPath, searchFiles, reanalyse) -> {
-					// DIA-NN call purpose: round-level non-quant identification against the
-					// round-specific library. Output is roundN/roundN.parquet.
-					diaLibSearchPar.setMbr(false);
-					diaLibSearchPar.setDiaFiles(searchFiles);
-					diaLibSearchPar.setThreadCount(threadCount);
-					diaLibSearchPar.setqValue(0.01);
-					diannPar.setThreads(threadCount);
-					diannPar.setMatrices(false);
-					diannPar.setRelaxed_prot_inf(true);
-					diannPar.setReanalyse(reanalyse);
-					diannPar.setExportDecoy(false);
-					diaNNTask.addNoQuantLibTask(diannPar, diaLibSearchPar, roundParquet.getAbsolutePath(), combinedSpeclibPath);
-					diaNNTask.run(searchFiles.length * 12);
+				(roundParquet, combinedSpeclibPath, files, reanalyse) -> {
+					if (initialSearchSeparate) {
+						File roundDir = roundParquet.getParentFile();
+						int maxConcurrent = DeepIterativeCommonSupport.computeMaxConcurrentTasks();
+						for (int i = 0; i < files.length; i++) {
+							File pf = new File(roundDir, "per_file_" + i + ".parquet");
+							if (pf.exists() && pf.length() > 0) {
+								continue;
+							}
+							diaLibSearchPar.setMbr(false);
+							diaLibSearchPar.setDiaFiles(new String[] { files[i] });
+							diaLibSearchPar.setThreadCount(threadCount);
+							diaLibSearchPar.setqValue(0.01);
+							diannPar.setThreads(threadCount);
+							diannPar.setMatrices(false);
+							diannPar.setRelaxed_prot_inf(true);
+							diannPar.setReanalyse(reanalyse);
+							diannPar.setExportDecoy(false);
+							diaNNTask.addNoQuantLibTask(diannPar, diaLibSearchPar, pf.getAbsolutePath(), combinedSpeclibPath);
+						}
+						diaNNTask.run(maxConcurrent, files.length * 12);
+					} else {
+						diaLibSearchPar.setMbr(false);
+						diaLibSearchPar.setDiaFiles(files);
+						diaLibSearchPar.setThreadCount(threadCount);
+						diaLibSearchPar.setqValue(0.01);
+						diannPar.setThreads(threadCount);
+						diannPar.setMatrices(false);
+						diannPar.setRelaxed_prot_inf(true);
+						diannPar.setReanalyse(reanalyse);
+						diannPar.setExportDecoy(false);
+						diaNNTask.addNoQuantLibTask(diannPar, diaLibSearchPar, roundParquet.getAbsolutePath(), combinedSpeclibPath);
+						diaNNTask.run(files.length * 12);
+					}
 				},
 				this::countIdentifiedPeptides, logger, getTaskName());
 	}
@@ -529,6 +583,18 @@ public class MetaDiaDeepMarkerTask extends MetaDiaMarkerTask {
 			return false;
 		}
 		String cut = diannPar != null && diannPar.getCut() != null ? diannPar.getCut() : "KR";
+		DiaNNPrecursor[] precursors;
+		if (previousRoundParquet.exists()) {
+			DiaNNParquetReader reader = new DiaNNParquetReader(previousRoundParquet.getAbsolutePath(), cut);
+			precursors = reader.getDiaNNPrecursors(0.01);
+		} else {
+			File prevDir = previousRoundParquet.getParentFile();
+			String[] filesForRead = initialSearchSeparate ? goodDiaFiles : diaFiles;
+			precursors = DeepIterativeCommonSupport.readPrecursorsFromPerFileParquets(
+					prevDir, 0.01, filesForRead, cut, logger, getTaskName());
+			logger.info(getTaskName() + ": read {} precursors from per-file parquets in {}",
+					precursors != null ? precursors.length : 0, prevDir.getAbsolutePath());
+		}
 		Set<String> addedPeptideSequences = new HashSet<>();
 		try (PrintWriter w = new PrintWriter(outputFasta)) {
 			for (String genome : genomes) {
@@ -543,8 +609,6 @@ public class MetaDiaDeepMarkerTask extends MetaDiaMarkerTask {
 					while ((line = reader.readLine()) != null) w.println(line);
 				}
 			}
-			DiaNNParquetReader reader = new DiaNNParquetReader(previousRoundParquet.getAbsolutePath(), cut);
-			DiaNNPrecursor[] precursors = reader.getDiaNNPrecursors(0.01);
 			if (precursors != null) {
 				for (DiaNNPrecursor p : precursors) {
 					if (p == null || p.getIsDecoy()) continue;
@@ -619,6 +683,38 @@ public class MetaDiaDeepMarkerTask extends MetaDiaMarkerTask {
 	private int countIdentifiedPeptides(File parquetFile) {
 		String cut = diannPar != null && diannPar.getCut() != null ? diannPar.getCut() : "KR";
 		return DeepIterativeCommonSupport.countIdentifiedPeptides(parquetFile, cut, logger, getTaskName());
+	}
+
+	/**
+	 * Check whether the marker folder already has per-file parquets from a previous separate search.
+	 */
+	private boolean hasExistingPerFileParquets(File markerDir) {
+		if (diaFiles == null || diaFiles.length == 0 || markerDir == null) {
+			return false;
+		}
+		for (int i = 0; i < diaFiles.length; i++) {
+			File pf = new File(markerDir, "per_file_" + i + ".parquet");
+			if (pf.exists() && pf.length() > 0) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Collect the subset of diaFiles whose per-file parquets exist (non-damaged files).
+	 */
+	private String[] collectGoodDiaFilesFromPerFileParquets(File markerDir) {
+		java.util.ArrayList<String> goodList = new java.util.ArrayList<>();
+		if (diaFiles != null && markerDir != null) {
+			for (int i = 0; i < diaFiles.length; i++) {
+				File pf = new File(markerDir, "per_file_" + i + ".parquet");
+				if (pf.exists() && pf.length() > 0) {
+					goodList.add(diaFiles[i]);
+				}
+			}
+		}
+		return goodList.toArray(new String[0]);
 	}
 
 	/** Write combined FASTA from genome IDs using MAG DB original folder (genome.faa or genome.fasta). */

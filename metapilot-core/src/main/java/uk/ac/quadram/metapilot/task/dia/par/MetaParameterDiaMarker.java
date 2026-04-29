@@ -43,6 +43,8 @@ public class MetaParameterDiaMarker extends MetaParameterDia {
 			this.acetyProN = dia.isAcetyProN();
 			this.phosphoSTY = dia.isPhosphoSTY();
 			this.kGG = dia.isKGG();
+			this.setUsePeptideBasedRound(dia.isUsePeptideBasedRound());
+			this.setPeptideDetectabilityThreshold(dia.getPeptideDetectabilityThreshold());
 		}
 	}
 

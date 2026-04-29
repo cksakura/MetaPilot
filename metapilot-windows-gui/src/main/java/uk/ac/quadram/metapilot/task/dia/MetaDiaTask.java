@@ -7,7 +7,6 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.math.BigInteger;
-import java.sql.SQLException;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -34,7 +33,6 @@ import org.dom4j.DocumentException;
 
 import uk.ac.quadram.metapilot.core.math.MathTool;
 import uk.ac.quadram.metapilot.core.prodb.FastaManager;
-import uk.ac.quadram.metapilot.core.taxonomy.TaxonomyRanks;
 import uk.ac.quadram.metapilot.core.tools.FormatTool;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNParquetReader;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNPrecursor;
@@ -56,9 +54,7 @@ import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProteinAnnoEggNog;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProteinXMLReader2;
-import uk.ac.quadram.metapilot.task.mag.HMGenomeHtmlWriter;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
-import uk.ac.quadram.metapilot.task.mag.MagFuncSearcher;
 import uk.ac.quadram.metapilot.task.mag.MetaPilotMagTask;
 import uk.ac.quadram.metapilot.task.mag.MetaProteinAnnoMag;
 import javafx.scene.control.ProgressBar;
@@ -267,6 +263,12 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 				if (!diaFile.exists()) {
 					list.add(rawFiles[i]);
 				}
+			} else if (rawFiles[i].endsWith(".wiff") || rawFiles[i].endsWith(".WIFF")) {
+				diaFiles[i] = rawFiles[i] + ".dia";
+				File diaFile = new File(diaFiles[i]);
+				if (!diaFile.exists()) {
+					list.add(rawFiles[i]);
+				}
 			} else {
 				logger.error(getTaskName() + ": unknown spectra format");
 				System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": unknown spectra format");
@@ -366,9 +368,10 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 				libPath = new String[] { libraryPath };
 				diaNNTask.addTask(diannPar, diaLibSearchPar, combineParquetFile.getAbsolutePath(), libPath);
 			} else {
-				File magDbFile = this.magDb.getCurrentFile();
-				File libFolderFile = new File(magDbFile, "libraries");
-
+				if (this.magDb == null) {
+					logger.error(getTaskName() + ": MAG database is null; cannot resolve spectral libraries");
+					return false;
+				}
 				String[] usedLibs = ((MetaParameterDia) metaPar).getLibrary();
 				libPath = new String[usedLibs.length];
 				for (int i = 0; i < usedLibs.length; i++) {
@@ -376,27 +379,13 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 					if (directLibFile.exists()) {
 						libPath[i] = directLibFile.getAbsolutePath();
 					} else {
-						File libFolder = new File(libFolderFile, usedLibs[i]);
-						File speclibFile = new File(libFolder, usedLibs[i] + ".speclib");
-						File tsvFile = new File(libFolder, usedLibs[i] + ".tsv");
-						File parquetFile = new File(libFolder, usedLibs[i] + ".parquet");
-
-						File chosen = null;
-						if (speclibFile.exists()) {
-							chosen = speclibFile;
-						} else if (tsvFile.exists()) {
-							chosen = tsvFile;
-						} else if (parquetFile.exists()) {
-							chosen = parquetFile;
-						}
-
-						if (chosen == null) {
+						File chosen = this.magDb.resolveSpectralLibraryFile(usedLibs[i]);
+						if (chosen == null || !chosen.exists()) {
 							logger.error(getTaskName() + ": no library file (.speclib/.tsv/.parquet) found for library '{}'", usedLibs[i]);
 							System.err.println(format.format(new Date()) + "\t" + getTaskName()
 									+ ": no library file (.speclib/.tsv/.parquet) found for library '" + usedLibs[i] + "'");
 							return false;
 						}
-
 						libPath[i] = chosen.getAbsolutePath();
 					}
 				}
@@ -2424,108 +2413,30 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 
 		updateProgress(91, 100);
 
-		// taxonomy analysis
-
-		logger.info(getTaskName() + ": taxonomy analysis started");
-		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": taxonomy analysis started");
-
-		File taxFile = new File(resultFolderFile, "taxonomy_analysis");
-		if (!taxFile.exists()) {
-			taxFile.mkdir();
-		}
-
-		MagFuncSearcher searcher = null;
-		try {
-			searcher = new MagFuncSearcher(metaPar.getMicroDb(), mrp.getToolPath(ToolType.FUNCDB), magDb);
-
-		} catch (NumberFormatException | SQLException | IOException e) {
-			// TODO Auto-generated catch block
-			logger.error(getTaskName() + ": error in genome analysis, task failed", e);
-			System.err.println(
-					format.format(new Date()) + "\t" + getTaskName() + ": error in genome analysis, task failed");
-
-			return false;
-		}
-
-		String[] genomes = genomeIntensityMap.keySet().toArray(new String[genomeIntensityMap.size()]);
-		HashMap<String, String[]> genomeTaxaMap = null;
-		try {
-			genomeTaxaMap = searcher.matchGenome(genomes);
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			logger.error(getTaskName() + ": Error in searching the genome2taxa database", e);
-			System.err.println(
-					format.format(new Date()) + "\t" + getTaskName() + ": error in searching the genome2taxa database");
-			return false;
-		}
-
-		File genomeHtmlFile = new File(taxFile, "Genome.html");
-		try {
-			HMGenomeHtmlWriter htmlWriter = new HMGenomeHtmlWriter(genomeHtmlFile);
-			htmlWriter.write(genomeTaxaMap);
-			htmlWriter.close();
-
-			// Copy the generated Genome.html to the reports directory
-			File reportGenomeHtml = new File(metaPar.getReportDir(), "reports/Genome.html");
-			if (reportGenomeHtml.getParentFile() != null && !reportGenomeHtml.getParentFile().exists()) {
-				reportGenomeHtml.getParentFile().mkdirs();
-			}
-			Files.copy(genomeHtmlFile.toPath(), reportGenomeHtml.toPath(), StandardCopyOption.REPLACE_EXISTING);
-			logger.info("Copied Genome.html to reports directory: " + reportGenomeHtml.getAbsolutePath());
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			logger.error("Error in writing genome information to " + genomeHtmlFile, e);
-			System.err.println(
-					format.format(new Date()) + "\t" + "Error in writing genome information to " + genomeHtmlFile);
-			return false;
-		}
-
-		// Copy Genome.html to report directory for navigation access
-		if (genomeHtmlFile.exists() && this.reportHtmlDir != null) {
-			File reportGenomeHtml = new File(this.reportHtmlDir, "Genome.html");
-			if (!reportGenomeHtml.exists()) {
-				try {
-					java.nio.file.Files.copy(genomeHtmlFile.toPath(), reportGenomeHtml.toPath(),
-							java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-					logger.info(getTaskName() + ": copied Genome.html to report directory");
-					System.out.println(format.format(new Date()) + "\t" + getTaskName()
-							+ ": copied Genome.html to report directory");
-				} catch (IOException e) {
-					logger.error(getTaskName() + ": error copying Genome.html to report directory", e);
-					System.err.println(format.format(new Date()) + "\t" + getTaskName()
-							+ ": error copying Genome.html to report directory");
-				}
-			}
-		}
-
-		TaxonomyRanks[] mainRanks = TaxonomyRanks.getMainRanks();
-		double[] cellularIntensity = new double[quanExpNames.length];
-		HashMap<String, String[]>[] taxRankMaps = new HashMap[mainRanks.length];
-		HashMap<String, double[]>[] taxIntensityMaps = new HashMap[mainRanks.length];
-		HashMap<String, Double>[] taxScoreMaps = new HashMap[mainRanks.length];
-		for (int i = 0; i < taxRankMaps.length; i++) {
-			taxRankMaps[i] = new HashMap<String, String[]>();
-			taxIntensityMaps[i] = new HashMap<String, double[]>();
-			taxScoreMaps[i] = new HashMap<String, Double>();
-		}
-
-		// Core/mid/tail from ranked.tsv (same as DDA: prefer combined result)
-		HashMap<String, String> genomeSelectionLabel = new HashMap<>();
 		MetaDiaMarkerTask.ensureCombinedRankedFromPrecursors(this, resultFolderFile);
-		File rankedFile = new File(resultFolderFile, "combined/ranked.tsv");
-		if (!rankedFile.exists()) rankedFile = new File(resultFolderFile, "marker/genome_ranked.tsv");
-		if (!rankedFile.exists()) rankedFile = new File(resultFolderFile, "seed/genome_ranked.tsv");
-		if (rankedFile.exists()) {
-			MetaDiaMarkerTask.readCoreMidTailFromRankedTsv(rankedFile, genomeSelectionLabel, genomeIntensityMap.keySet());
-			MetaPilotMagTask.RankedGenomeSelectionResult rankedAll =
-					MetaPilotMagTask.buildExportSelectionFromRankedTsv(rankedFile, null);
+		File rankedLog = new File(resultFolderFile, "combined/ranked.tsv");
+		if (!rankedLog.exists()) {
+			rankedLog = new File(resultFolderFile, "marker/genome_ranked.tsv");
+		}
+		if (!rankedLog.exists()) {
+			rankedLog = new File(resultFolderFile, "seed/genome_ranked.tsv");
+		}
+		if (rankedLog.exists()) {
+			HashMap<String, String> genomeSelectionLabel = new HashMap<>();
+			MetaDiaMarkerTask.readCoreMidTailFromRankedTsv(rankedLog, genomeSelectionLabel, genomeIntensityMap.keySet());
+			MetaPilotMagTask.RankedGenomeSelectionResult rankedAll = MetaPilotMagTask
+					.buildExportSelectionFromRankedTsv(rankedLog, null);
 			int contributingAll = rankedAll.orderedGenomes.size();
 			int labeledWithIntensity = genomeSelectionLabel.size();
 			int coreCount = 0, midCount = 0, tailCount = 0;
 			for (String lbl : genomeSelectionLabel.values()) {
-				if ("core".equals(lbl)) coreCount++;
-				else if ("mid".equals(lbl)) midCount++;
-				else tailCount++;
+				if ("core".equals(lbl)) {
+					coreCount++;
+				} else if ("mid".equals(lbl)) {
+					midCount++;
+				} else {
+					tailCount++;
+				}
 			}
 			java.util.HashSet<String> contributingSet = new java.util.HashSet<>(rankedAll.orderedGenomes);
 			java.util.HashSet<String> intensitySet = new java.util.HashSet<>(genomeIntensityMap.keySet());
@@ -2533,250 +2444,65 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 			inWindowNoIntensity.removeAll(intensitySet);
 			java.util.HashSet<String> intensityBeyondWindow = new java.util.HashSet<>(intensitySet);
 			intensityBeyondWindow.removeAll(contributingSet);
-			logger.info("{}: Genome export summary – ranked_window={}, labeled_with_intensity={}, core={}, mid={}, tail={}, window_no_intensity={}, intensity_beyond_window={}",
+			logger.info(
+					"{}: Genome export summary – ranked_window={}, labeled_with_intensity={}, core={}, mid={}, tail={}, window_no_intensity={}, intensity_beyond_window={}",
 					getTaskName(), Integer.valueOf(contributingAll), Integer.valueOf(labeledWithIntensity),
 					Integer.valueOf(coreCount), Integer.valueOf(midCount), Integer.valueOf(tailCount),
 					Integer.valueOf(inWindowNoIntensity.size()), Integer.valueOf(intensityBeyondWindow.size()));
 		}
-		if (rankedFile.exists() && !genomeSelectionLabel.isEmpty()) {
-			ArrayList<String> filteredGenomes = new ArrayList<>();
-			for (String genome : genomes) {
-				if (genomeSelectionLabel.containsKey(genome)) {
-					filteredGenomes.add(genome);
-				}
-			}
-			genomes = filteredGenomes.toArray(new String[0]);
+
+		HashMap<String, HashSet<String>> uniquePepCountMap = new HashMap<String, HashSet<String>>();
+		HashMap<String, HashSet<String>> totalPepWithILMap = new HashMap<String, HashSet<String>>();
+		HashMap<String, HashSet<String>> razorPepWithILMap = new HashMap<String, HashSet<String>>();
+		HashMap<String, HashSet<String>> uniquePepWithILMap = new HashMap<String, HashSet<String>>();
+		fillDiaGenomeUniqueAndILMaps(peps, magDb.getIdentifier(), razorPepCountMap, uniquePepCountMap, totalPepWithILMap,
+				razorPepWithILMap, uniquePepWithILMap, genomeIntensityMap.keySet());
+
+		HashMap<String, Double> genomeScoreForTaxonomy = new HashMap<>();
+		for (String g : genomeIntensityMap.keySet()) {
+			double[] sc = genomeScoreMap.get(g);
+			double p = sc != null && sc.length > 0 ? Math.max(1e-300, sc[0]) : 1.0;
+			genomeScoreForTaxonomy.put(g, Double.valueOf(p));
 		}
 
-		File genomeFile = new File(taxFile, "Genome.tsv");
-		PrintWriter genomeWriter = null;
-		try {
-			genomeWriter = new PrintWriter(genomeFile);
-			StringBuilder genomeTitlesb = new StringBuilder();
-			genomeTitlesb.append("Genome\t");
-			genomeTitlesb.append("p-value\t");
-			genomeTitlesb.append("Local FDR\t");
-			genomeTitlesb.append("PSM count\t");
-			genomeTitlesb.append("Peptide count\t");
-			genomeTitlesb.append("Razor peptide count\t");
-			genomeTitlesb.append("Selection_label\t");
-			genomeTitlesb.append("GTDB_Name\t");
-			genomeTitlesb.append("GTDB_Rank\t");
-
-			for (int i = 0; i < mainRanks.length; i++) {
-				genomeTitlesb.append("GTDB_").append(mainRanks[i].getName()).append("\t");
-			}
-
-			genomeTitlesb.append("NCBI_Name\t");
-			genomeTitlesb.append("NCBI_Rank");
-
-			for (int i = 0; i < mainRanks.length; i++) {
-				genomeTitlesb.append("\t").append("NCBI_").append(mainRanks[i].getName());
-			}
-
-			for (String exp : expNames) {
-				if (exp.startsWith("Intensity ")) {
-					genomeTitlesb.append("\t").append(exp);
-				} else {
-					genomeTitlesb.append("\tIntensity ").append(exp);
-				}
-			}
-
-			genomeWriter.println(genomeTitlesb);
-
-			updateProgress(94, 100);
-
-			for (int i = 0; i < genomes.length; i++) {
-				String[] taxaContent = genomeTaxaMap.get(genomes[i]);
-				if (genomeIntensityMap.containsKey(genomes[i])) {
-					double[] genomeIntensity = genomeIntensityMap.get(genomes[i]);
-					for (int j = 0; j < genomeIntensity.length; j++) {
-						cellularIntensity[j] += genomeIntensity[j];
-					}
-
-					StringBuilder genomeTaxaSb = new StringBuilder();
-					genomeTaxaSb.append(genomes[i]).append("\t");
-
-					genomeTaxaSb.append(FormatTool.getDFE4().format(genomeScoreMap.get(genomes[i])[0])).append("\t");
-					genomeTaxaSb.append(FormatTool.getDF4().format(genomeScoreMap.get(genomes[i])[1])).append("\t");
-
-					if (psmCountMap.containsKey(genomes[i])) {
-						genomeTaxaSb.append(psmCountMap.get(genomes[i])).append("\t");
-					} else {
-						genomeTaxaSb.append("0").append("\t");
-					}
-					if (totalPepCountMap.containsKey(genomes[i])) {
-						genomeTaxaSb.append(totalPepCountMap.get(genomes[i]).size()).append("\t");
-					} else {
-						genomeTaxaSb.append("0").append("\t");
-					}
-					if (razorPepCountMap.containsKey(genomes[i])) {
-						genomeTaxaSb.append(razorPepCountMap.get(genomes[i]).size());
-					} else {
-						genomeTaxaSb.append("0");
-					}
-
-					genomeTaxaSb.append("\t").append(genomeSelectionLabel.getOrDefault(genomes[i], "tail"));
-
-					for (int j = 1; j < taxaContent.length; j++) {
-						genomeTaxaSb.append("\t").append(taxaContent[j]);
-					}
-
-					for (int j = 0; j < genomeIntensity.length; j++) {
-						genomeTaxaSb.append("\t").append(genomeIntensity[j]);
-					}
-					genomeWriter.println(genomeTaxaSb);
-
-					for (int j = 0; j < taxRankMaps.length; j++) {
-						String taxon = taxaContent[j + 3];
-						if (taxon == null || taxon.length() == 0) {
-							continue;
-						}
-						if (!taxRankMaps[j].containsKey(taxon)) {
-							String[] lineage = new String[j + 1];
-							System.arraycopy(taxaContent, 3, lineage, 0, lineage.length);
-							taxRankMaps[j].put(taxon, lineage);
-						}
-
-						double[] taxIntensity;
-						if (taxIntensityMaps[j].containsKey(taxon)) {
-							taxIntensity = taxIntensityMaps[j].get(taxon);
-						} else {
-							taxIntensity = new double[genomeIntensity.length];
-						}
-
-						for (int k = 0; k < taxIntensity.length; k++) {
-							taxIntensity[k] += genomeIntensity[k];
-						}
-						taxIntensityMaps[j].put(taxon, taxIntensity);
-
-						if (taxScoreMaps[j].containsKey(taxon)) {
-							taxScoreMaps[j].put(taxon, taxScoreMaps[j].get(taxon) * genomeScoreMap.get(genomes[i])[0]);
-						} else {
-							taxScoreMaps[j].put(taxon, genomeScoreMap.get(genomes[i])[0]);
-						}
-					}
-				}
-			}
-			genomeWriter.close();
-
-		} catch (FileNotFoundException e) {
-			// TODO Auto-generated catch block
-			logger.error("Error in writing genome information to " + genomeFile, e);
-			System.err
-					.println(format.format(new Date()) + "\t" + "Error in writing genome information to " + genomeFile);
+		HashMap<String, double[]> prevDiaStats = this.lastDiaStyleGenomeStats;
+		this.lastDiaStyleGenomeStats = null;
+		updateProgress(94, 100);
+		if (!performTaxonomyAnalysis(genomeIntensityMap, genomeScoreForTaxonomy, psmCountMap, totalPepCountMap,
+				razorPepCountMap, uniquePepCountMap, totalPepWithILMap, razorPepWithILMap, uniquePepWithILMap, expNames,
+				getTaskName())) {
+			this.lastDiaStyleGenomeStats = prevDiaStats;
 			return false;
 		}
+		this.lastDiaStyleGenomeStats = prevDiaStats;
 
-		File taxaFile = new File(taxFile, "Taxa.tsv");
+		File taxFile = new File(resultFolderFile, "taxonomy_analysis");
 		File taxaReportFile = new File(taxFile, "Taxa_report.tsv");
-		PrintWriter taxaWriter = null;
-		PrintWriter taxaReportWriter = null;
+		File genomeHtmlFile = new File(taxFile, "Genome.html");
 		try {
-			taxaWriter = new PrintWriter(taxaFile);
-			taxaReportWriter = new PrintWriter(taxaReportFile);
-
-			StringBuilder taxaTitlesb1 = new StringBuilder();
-			taxaTitlesb1.append("Name\t");
-			taxaTitlesb1.append("Score\t");
-			taxaTitlesb1.append("Rank");
-
-			for (int i = 0; i < mainRanks.length; i++) {
-				taxaTitlesb1.append("\t").append(mainRanks[i].getName());
+			File reportGenomeHtml = new File(metaPar.getReportDir(), "reports/Genome.html");
+			if (reportGenomeHtml.getParentFile() != null && !reportGenomeHtml.getParentFile().exists()) {
+				reportGenomeHtml.getParentFile().mkdirs();
 			}
-			for (String exp : expNames) {
-				if (exp.startsWith("Intensity ")) {
-					taxaTitlesb1.append("\t").append(exp);
-				} else {
-					taxaTitlesb1.append("\tIntensity ").append(exp);
-				}
+			if (genomeHtmlFile.exists()) {
+				Files.copy(genomeHtmlFile.toPath(), reportGenomeHtml.toPath(), StandardCopyOption.REPLACE_EXISTING);
+				logger.info("Copied Genome.html to reports directory: " + reportGenomeHtml.getAbsolutePath());
 			}
-			StringBuilder taxaTitlesb2 = new StringBuilder();
-			taxaTitlesb2.append("Name\t");
-			taxaTitlesb2.append("Rank");
-
-			for (int i = 0; i < mainRanks.length; i++) {
-				taxaTitlesb2.append("\t").append(mainRanks[i].getName());
-			}
-			for (String exp : expNames) {
-				if (exp.startsWith("Intensity ")) {
-					taxaTitlesb2.append("\t").append(exp);
-				} else {
-					taxaTitlesb2.append("\tIntensity ").append(exp);
-				}
-			}
-			taxaWriter.println(taxaTitlesb1);
-			taxaReportWriter.println(taxaTitlesb2);
-
-			for (int i = 0; i < taxRankMaps.length; i++) {
-				for (String taxon : taxRankMaps[i].keySet()) {
-					String[] taxaContent = taxRankMaps[i].get(taxon);
-					double[] intensity = taxIntensityMaps[i].get(taxon);
-
-					StringBuilder taxaSb = new StringBuilder();
-					taxaSb.append(taxon).append("\t");
-
-					double taxonScore = taxScoreMaps[i].get(taxon);
-					if (taxonScore == 0) {
-						taxaSb.append("1000").append("\t");
-					} else {
-						taxaSb.append(FormatTool.getDF4().format(-Math.log10(taxonScore))).append("\t");
-					}
-
-					taxaSb.append(mainRanks[i].getName());
-
-					for (int j = 0; j < mainRanks.length; j++) {
-						if (j < taxaContent.length) {
-							taxaSb.append("\t").append(taxaContent[j]);
-						} else {
-							taxaSb.append("\t");
-						}
-					}
-
-					for (int j = 0; j < intensity.length; j++) {
-						taxaSb.append("\t").append(intensity[j]);
-					}
-
-					taxaWriter.println(taxaSb);
-				}
-			}
-
-			taxaWriter.close();
-
-			for (int i = 0; i < taxRankMaps.length; i++) {
-				for (String taxon : taxRankMaps[i].keySet()) {
-					String[] taxaContent = taxRankMaps[i].get(taxon);
-					double[] intensity = taxIntensityMaps[i].get(taxon);
-
-					StringBuilder taxaSb = new StringBuilder();
-					taxaSb.append(taxon).append("\t");
-					taxaSb.append(mainRanks[i].getName());
-
-					for (int j = 0; j < mainRanks.length; j++) {
-						if (j < taxaContent.length) {
-							taxaSb.append("\t").append(taxaContent[j]);
-						} else {
-							taxaSb.append("\t");
-						}
-					}
-					for (int j = 0; j < intensity.length; j++) {
-						taxaSb.append("\t").append(intensity[j]);
-					}
-
-					taxaReportWriter.println(taxaSb);
-				}
-			}
-
-			taxaReportWriter.close();
-
-		} catch (FileNotFoundException e) {
-			// TODO Auto-generated catch block
-			logger.error("Error in writing taxa information to " + taxaFile, e);
-			System.err.println(format.format(new Date()) + "\t" + "Error in writing taxa information to " + taxaFile);
+		} catch (IOException e) {
+			logger.error(getTaskName() + ": error copying Genome.html to reports directory", e);
 		}
-
-		logger.info(getTaskName() + ": taxonomy analysis finished");
-		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": taxonomy analysis finished");
+		if (genomeHtmlFile.exists() && this.reportHtmlDir != null) {
+			File reportGenomeHtmlLocal = new File(this.reportHtmlDir, "Genome.html");
+			if (!reportGenomeHtmlLocal.exists()) {
+				try {
+					java.nio.file.Files.copy(genomeHtmlFile.toPath(), reportGenomeHtmlLocal.toPath(),
+							java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+					logger.info(getTaskName() + ": copied Genome.html to report directory");
+				} catch (IOException e) {
+					logger.error(getTaskName() + ": error copying Genome.html to report directory", e);
+				}
+			}
+		}
 
 		updateProgress(95, 100);
 
@@ -5160,6 +4886,106 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 	 * scheme.
 	 */
 	protected static final int IDX_S = 0, IDX_P_EMP = 1, IDX_Q_VALUE = 2;
+
+	/**
+	 * Invokes {@link MetaPilotMagTask#performTaxonomyAnalysis} (DDA-aligned table). Used where a subclass cannot
+	 * access {@code MetaPilotMagTask} protected API through a {@link MetaDiaTask} reference (e.g. static export).
+	 */
+	protected boolean invokePerformTaxonomyAnalysisDdaFormat(HashMap<String, double[]> genomeIntensityMap,
+			HashMap<String, Double> genomeScoreMap, HashMap<String, Integer> psmCountMap,
+			HashMap<String, HashSet<String>> totalPepCountMap, HashMap<String, HashSet<String>> razorPepCountMap,
+			HashMap<String, HashSet<String>> uniquePepCountMap,
+			HashMap<String, HashSet<String>> totalPepWithILMap, HashMap<String, HashSet<String>> razorPepWithILMap,
+			HashMap<String, HashSet<String>> uniquePepWithILMap, String[] intensityTitle, String taskName) {
+		return performTaxonomyAnalysis(genomeIntensityMap, genomeScoreMap, psmCountMap, totalPepCountMap,
+				razorPepCountMap, uniquePepCountMap, totalPepWithILMap, razorPepWithILMap, uniquePepWithILMap,
+				intensityTitle, taskName);
+	}
+
+	protected HashMap<String, double[]> getLastDiaStyleGenomeStatsField() {
+		return lastDiaStyleGenomeStats;
+	}
+
+	protected void setLastDiaStyleGenomeStatsField(HashMap<String, double[]> stats) {
+		this.lastDiaStyleGenomeStats = stats;
+	}
+
+	/**
+	 * Per-genome unique peptides and I/L subsets for {@link MetaPilotMagTask#performTaxonomyAnalysis} (DDA-aligned).
+	 */
+	protected static void fillDiaGenomeUniqueAndILMaps(FlashLfqQuanPeptide[] peps, String magIdentifier,
+			HashMap<String, HashSet<String>> razorPepCountMap,
+			HashMap<String, HashSet<String>> uniquePepCountMap,
+			HashMap<String, HashSet<String>> totalPepWithILMap,
+			HashMap<String, HashSet<String>> razorPepWithILMap,
+			HashMap<String, HashSet<String>> uniquePepWithILMap,
+			java.util.Set<String> genomeKeys) {
+		if (peps == null || magIdentifier == null) {
+			return;
+		}
+		for (FlashLfqQuanPeptide pep : peps) {
+			String stripeSequence = pep.getSequence();
+			String[] proteins = pep.getProteins();
+			if (proteins == null) {
+				continue;
+			}
+			int count = 0;
+			for (String p : proteins) {
+				if (p != null && razorPepCountMap.containsKey(p)) {
+					count++;
+				}
+			}
+			if (count == 0) {
+				continue;
+			}
+			boolean hasIorL = stripeSequence != null
+					&& (stripeSequence.indexOf('I') >= 0 || stripeSequence.indexOf('L') >= 0);
+			String uniqueGenome = null;
+			boolean isUnique = true;
+			for (String p : proteins) {
+				if (p == null || p.isEmpty()) {
+					continue;
+				}
+				if (p.startsWith(magIdentifier)) {
+					String genome = p.split("_")[0];
+					if (uniqueGenome == null) {
+						uniqueGenome = genome;
+					} else if (!uniqueGenome.equals(genome)) {
+						isUnique = false;
+						break;
+					}
+				} else {
+					isUnique = false;
+					break;
+				}
+			}
+			String razorProtein = pep.getRazorProtein();
+			for (String p : proteins) {
+				if (p == null || !razorPepCountMap.containsKey(p) || !p.startsWith(magIdentifier)) {
+					continue;
+				}
+				String genome = p.split("_")[0];
+				if (!genomeKeys.contains(genome)) {
+					continue;
+				}
+				if (hasIorL) {
+					totalPepWithILMap.computeIfAbsent(genome, k -> new HashSet<>()).add(stripeSequence);
+				}
+				if (isUnique && uniqueGenome != null && uniqueGenome.equals(genome)) {
+					uniquePepCountMap.computeIfAbsent(genome, k -> new HashSet<>()).add(stripeSequence);
+					if (hasIorL) {
+						uniquePepWithILMap.computeIfAbsent(genome, k -> new HashSet<>()).add(stripeSequence);
+					}
+				}
+			}
+			if (razorProtein != null && razorProtein.startsWith(magIdentifier) && hasIorL) {
+				String genome = razorProtein.split("_")[0];
+				if (genomeKeys.contains(genome)) {
+					razorPepWithILMap.computeIfAbsent(genome, k -> new HashSet<>()).add(stripeSequence);
+				}
+			}
+		}
+	}
 
 	/**
 	 * Folder containing combined.fasta for new-scheme export. Default:
