@@ -677,14 +677,19 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 	static void ensureCombinedRankedFromPrecursors(MetaDiaTask diaTask, File resultFolder) {
 		File combinedDir = new File(resultFolder, "combined");
 		File rankedTsv = new File(combinedDir, "ranked.tsv");
-		if (rankedTsv.exists()) return;
-		if (diaTask.diaPp == null || diaTask.diaPp.length == 0) return;
-		if (diaTask.getExportMagDb() == null) return;
+		if (rankedTsv.exists())
+			return;
+		if (diaTask.diaPp == null || diaTask.diaPp.length == 0)
+			return;
+		if (diaTask.getExportMagDb() == null)
+			return;
 		File currentFile = diaTask.getExportMagDb().getCurrentFile();
-		if (currentFile == null || !currentFile.exists()) return;
-		File markerFasta = new File(currentFile, "Marker4.fasta");
+		if (currentFile == null || !currentFile.exists())
+			return;
+
 		File genomesTaxaTsv = new File(currentFile, "genomes-taxa.tsv");
-		if (!markerFasta.exists() || !genomesTaxaTsv.exists()) return;
+		if (!genomesTaxaTsv.exists())
+			return;
 		String mode = MarkerGenomeSelector.KNEE_MODE_FOCUS;
 		if (diaTask.getExportMetaPar() instanceof MetaParameterDiaMarker) {
 			String markerMode = ((MetaParameterDiaMarker) diaTask.getExportMetaPar()).getMarkerMode();
@@ -692,18 +697,21 @@ public class MetaDiaMarkerTask extends MetaDiaTask {
 				mode = MarkerGenomeSelector.KNEE_MODE_COMPREHENSIVE;
 			}
 		}
-		if (!combinedDir.exists()) combinedDir.mkdirs();
+		if (!combinedDir.exists())
+			combinedDir.mkdirs();
 		File evidenceFile = new File(combinedDir, "evidence.tsv");
 		File selectedFile = new File(combinedDir, "selected.tsv");
 		try {
 			MarkerGenomeSelector selector = new MarkerGenomeSelector();
 			selector.setKneeSelectionMode(mode);
-			selector.selectMarkerGenomesWithKnee(diaTask.diaPp, markerFasta, genomesTaxaTsv,
-					evidenceFile.getAbsolutePath(), rankedTsv.getAbsolutePath(), selectedFile.getAbsolutePath(),
-					500, true);
-			diaTask.getExportLogger().info(diaTask.getTaskName() + ": generated combined/ranked.tsv from combined result for Selection_label");
+			selector.selectMarkerGenomesWithKnee(diaTask.diaPp, null, genomesTaxaTsv, evidenceFile.getAbsolutePath(),
+					rankedTsv.getAbsolutePath(), selectedFile.getAbsolutePath(),
+					MarkerGenomeSelector.UNLIMITED_MAXIMUM_SELECTED, true);
+			diaTask.getExportLogger().info(
+					diaTask.getTaskName() + ": generated combined/ranked.tsv from combined result for Selection_label");
 		} catch (Exception e) {
-			diaTask.getExportLogger().warn(diaTask.getTaskName() + ": could not generate combined/ranked.tsv: " + e.getMessage());
+			diaTask.getExportLogger()
+					.warn(diaTask.getTaskName() + ": could not generate combined/ranked.tsv: " + e.getMessage());
 		}
 	}
 

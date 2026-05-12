@@ -44,6 +44,7 @@ public class MagDbItem {
 
 		this.repositoryFile = null;
 		
+		this.mgygNameMap = new HashMap<String, ArrayList<String>>();
 		this.magModelMap = new HashMap<String, MagModel>();
 		this.magPepLibMap = new HashMap<String, MagPepLib>();
 	}
@@ -55,6 +56,7 @@ public class MagDbItem {
 
 		this.repositoryFile = directoryFile;
 		
+		this.mgygNameMap = new HashMap<String, ArrayList<String>>();
 		this.magModelMap = new HashMap<String, MagModel>();
 		this.magPepLibMap = new HashMap<String, MagPepLib>();
 	}

@@ -22,6 +22,7 @@ import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.core.prodb.FastaManager;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaMarker;
 import uk.ac.quadram.metapilot.task.mag.MarkerGenomeSelector;
+import uk.ac.quadram.metapilot.task.par.MetaData;
 
 /**
  * DIA Deep Marker workflow.
@@ -47,8 +48,9 @@ import uk.ac.quadram.metapilot.task.mag.MarkerGenomeSelector;
 public class MetaDiaDeepMarkerTask extends MetaDiaMarkerTask {
 
 	private static final String TASK_NAME = "DIA Deep Marker analysis";
-	/** Number of top genomes from genome_ranked.tsv per round. */
-	private static final int GENOMES_PER_ROUND = 5;
+	private static final String MODE_DEEP_PER_FILE = "DEEP_PER_FILE";
+	/** Legacy default genomes per round. Prefer {@link MetaParameterDiaMarker#getGenomesPerRound()} when available. */
+	private static final int DEFAULT_GENOMES_PER_ROUND = 5;
 	/** Stop iterative rounds when identification count does not increase (like Deep Comprehensive). */
 	private static final int MAX_ITERATIVE_ROUNDS = 100;
 
@@ -65,6 +67,26 @@ public class MetaDiaDeepMarkerTask extends MetaDiaMarkerTask {
 		super(markerParams, mrp, bar1, bar2);
 	}
 
+	private boolean isDeepPerFileMode() {
+		if (!(metaPar instanceof MetaParameterDiaMarker)) {
+			return false;
+		}
+		String mm = ((MetaParameterDiaMarker) metaPar).getMarkerMode();
+		return mm != null && MODE_DEEP_PER_FILE.equalsIgnoreCase(mm);
+	}
+
+	private int getGenomesPerRound() {
+		if (metaPar instanceof MetaParameterDiaMarker) {
+			int v = ((MetaParameterDiaMarker) metaPar).getGenomesPerRound();
+			return v > 0 ? v : DEFAULT_GENOMES_PER_ROUND;
+		}
+		return DEFAULT_GENOMES_PER_ROUND;
+	}
+
+	private static String rawBaseName(String path) {
+		return DeepComprehensivePaths.runIdFromRawFilePath(path);
+	}
+
 	@Override
 	protected String getTaskName() {
 		return TASK_NAME;
@@ -73,6 +95,500 @@ public class MetaDiaDeepMarkerTask extends MetaDiaMarkerTask {
 	@Override
 	protected Logger getLogger() {
 		return logger;
+	}
+
+	/**
+	 * In DEEP_PER_FILE mode, {@code metaPar.getDbSearchResultFile()} is temporarily set
+	 * to {@code <marker_deep>/marker/<rawname>} for the current file, so the iterative folder
+	 * should be that directory itself (no extra "/marker" nesting).
+	 */
+	@Override
+	protected File getIterativeResultFolder() {
+		if (isDeepPerFileMode()) {
+			return metaPar.getDbSearchResultFile();
+		}
+		return super.getIterativeResultFolder();
+	}
+
+	/**
+	 * New mode: run Deep Marker independently per DIA raw file.
+	 * Outputs per raw file:
+	 *   marker_deep/marker/<rawname>/{marker.parquet, genome_ranked.tsv, roundN/...}
+	 *
+	 * After all per-file rounds finish, a single combined folder is generated (same as original deep mode):
+	 *   marker_deep/combined/{combined.fasta, combined.speclib, combined.parquet, matrices...}
+	 */
+	@Override
+	protected Boolean call() throws Exception {
+		if (!isDeepPerFileMode()) {
+			return super.call();
+		}
+
+		updateMessage(getTaskName() + " (per raw file)");
+		updateProgress(0, 100);
+
+		// Step 0a: copy report templates and set metaPar.reportDir.
+		// MetaDiaMarkerTask.call() does this early via copyReportTemplatesInBackground(); DEEP_PER_FILE overrides
+		// call() with a custom loop so we must run it here as well, otherwise:
+		//   1) downstream code uses new File(metaPar.getReportDir(), "reports/{Genome,functions}.html") which
+		//      resolves to the process working directory when getReportDir() is null, leaking the static
+		//      Genome Report / Functions Report (Static) files outside <resultFolder>/report/reports/;
+		//   2) the report index.html template is never copied so the index page can't render those cards.
+		updateMessage(getTaskName() + ": preparing report templates...");
+		updateProgress(1, 100);
+		if (!copyReportTemplatesInBackground()) {
+			logger.error(getTaskName() + ": failed to copy report templates (per-file mode)");
+			return false;
+		}
+
+		// Step 0b: ensure DIA inputs (diaFiles) are prepared (conversion when needed).
+		updateMessage(getTaskName() + ": preparing DIA input files...");
+		updateProgress(2, 100);
+		if (!spectraConvert()) {
+			logger.error(getTaskName() + ": spectra conversion failed (per-file mode)");
+			return false;
+		}
+
+		// Step 1: shared library setup (Marker4 files, marker library, etc.)
+		updateMessage(getTaskName() + ": preparing marker libraries...");
+		updateProgress(5, 100);
+		if (!createSSLibrary()) {
+			logger.error(getTaskName() + ": Failed - Focus library setup error (per-file mode)");
+			return false;
+		}
+
+		// Run per raw file (sequentially or in parallel) so each gets its own genome ranking + rounds.
+		String[] originalDiaFiles = this.diaFiles;
+		File originalDbSearchResultFile = metaPar.getDbSearchResultFile();
+		File originalResultFolder = this.resultFolderFile;
+		int originalThreadCount = metaPar.getThreadCount();
+
+		try {
+			if (originalDiaFiles == null || originalDiaFiles.length == 0) {
+				logger.error(getTaskName() + ": no DIA files provided");
+				return false;
+			}
+
+			File markerRoot = new File(originalDbSearchResultFile, "marker");
+			if (!markerRoot.exists()) {
+				markerRoot.mkdirs();
+			}
+
+			// Build stable per-file folder map (raw -> perFileDir, raw -> rawName)
+			java.util.LinkedHashMap<String, File> perFileDirs = new java.util.LinkedHashMap<>();
+			java.util.LinkedHashMap<String, String> perFileNames = new java.util.LinkedHashMap<>();
+			for (String raw : originalDiaFiles) {
+				String rawName = rawBaseName(raw);
+				File perFileDir = new File(markerRoot, rawName);
+				perFileDir.mkdirs();
+				perFileDirs.put(raw, perFileDir);
+				perFileNames.put(raw, rawName);
+			}
+
+			int totalThreads = originalThreadCount;
+			int poolSize = DeepIterativeCommonSupport.computeDeepPerFilePoolSize(originalDiaFiles.length);
+			int perTaskThreads = Math.max(1, totalThreads / Math.max(1, poolSize));
+			logger.info(getTaskName()
+					+ ": per-file processing budget -> poolSize={}, perTaskThreads={}, totalThreads={}, files={}",
+					poolSize, perTaskThreads, totalThreads, originalDiaFiles.length);
+
+			java.util.concurrent.ConcurrentHashMap<String, Integer> perFileLastRound = new java.util.concurrent.ConcurrentHashMap<>();
+
+			boolean ok;
+			if (poolSize <= 1) {
+				ok = runPerFileSequential(originalDiaFiles, perFileDirs, perFileNames, perFileLastRound, perTaskThreads);
+			} else {
+				ok = runPerFileParallel(originalDiaFiles, perFileDirs, perFileNames, perFileLastRound, poolSize,
+						perTaskThreads);
+			}
+			if (!ok) {
+				return false;
+			}
+
+			// Restore to original (all DIA files) then run one combined search like the original deep mode.
+			this.diaFiles = originalDiaFiles;
+			this.goodDiaFiles = originalDiaFiles;
+			this.initialSearchSeparate = false;
+			metaPar.setDbSearchResultFile(originalDbSearchResultFile);
+			this.resultFolderFile = originalResultFolder;
+			metaPar.setThreadCount(originalThreadCount);
+
+			// Order perFileLastRound by originalDiaFiles for deterministic downstream processing
+			java.util.LinkedHashMap<String, Integer> orderedLastRound = new java.util.LinkedHashMap<>();
+			for (String raw : originalDiaFiles) {
+				Integer v = perFileLastRound.get(raw);
+				if (v == null) {
+					v = 0;
+				}
+				orderedLastRound.put(raw, v);
+			}
+
+			updateMessage(getTaskName() + ": building global combined search from all per-file rounds...");
+			updateProgress(92, 100);
+			if (!runGlobalCombinedFromPerFileRounds(originalDiaFiles, perFileDirs, orderedLastRound, originalDbSearchResultFile)) {
+				return false;
+			}
+
+			updateMessage(getTaskName() + ": generating combined report...");
+			updateProgress(97, 100);
+			if (!exportReport()) {
+				logger.error(getTaskName() + ": combined report failed");
+				return false;
+			}
+
+			updateMessage(getTaskName() + ": per-file rounds + global combined completed successfully!");
+			updateProgress(100, 100);
+			return true;
+		} finally {
+			// Restore shared state for safety
+			this.diaFiles = originalDiaFiles;
+			metaPar.setDbSearchResultFile(originalDbSearchResultFile);
+			this.resultFolderFile = originalResultFolder;
+			metaPar.setThreadCount(originalThreadCount);
+		}
+	}
+
+	/**
+	 * Run per-file iterative phase sequentially (one raw file at a time).
+	 * Used when total RAM is below the per-file budget (32 GB) or only one file.
+	 *
+	 * <p>Each per-file workflow runs in its own child {@link MetaDiaDeepMarkerTask}
+	 * instance using the supplied per-task thread count.
+	 */
+	private boolean runPerFileSequential(String[] originalDiaFiles,
+			java.util.Map<String, File> perFileDirs,
+			java.util.Map<String, String> perFileNames,
+			java.util.concurrent.ConcurrentHashMap<String, Integer> perFileLastRound,
+			int perTaskThreads) {
+		int total = originalDiaFiles.length;
+		for (int i = 0; i < total; i++) {
+			String raw = originalDiaFiles[i];
+			File perFileDir = perFileDirs.get(raw);
+			String rawName = perFileNames.get(raw);
+
+			int start = 10 + (int) Math.floor((double) i * 80.0 / (double) total);
+			int end = 10 + (int) Math.floor((double) (i + 1) * 80.0 / (double) total);
+			updateMessage(getTaskName() + ": per-file workflow (" + (i + 1) + "/" + total + "): " + rawName);
+			updateProgress(start, 100);
+
+			int lastRound = runOnePerFileWorker(raw, perFileDir, perTaskThreads);
+			if (lastRound <= 0) {
+				logger.error(getTaskName() + ": per-file workflow failed for {}", raw);
+				return false;
+			}
+			perFileLastRound.put(raw, lastRound);
+			updateProgress(end, 100);
+		}
+		return true;
+	}
+
+	/**
+	 * Run per-file iterative phase in parallel using a fixed-size thread pool.
+	 *
+	 * <p>Pool size is computed from total system RAM (32 GB per concurrent task);
+	 * each concurrent worker is given {@code totalThreads / poolSize} DIA-NN threads
+	 * so the combined CPU/RAM load stays bounded.
+	 *
+	 * <p>If any worker fails, all submitted workers are awaited so we have a clean
+	 * shutdown before returning false.
+	 */
+	private boolean runPerFileParallel(String[] originalDiaFiles,
+			java.util.Map<String, File> perFileDirs,
+			java.util.Map<String, String> perFileNames,
+			java.util.concurrent.ConcurrentHashMap<String, Integer> perFileLastRound,
+			int poolSize, int perTaskThreads) {
+		final int total = originalDiaFiles.length;
+		logger.info(getTaskName() + ": running {} per-file workflows in parallel (poolSize={}, perTaskThreads={})",
+				total, poolSize, perTaskThreads);
+
+		java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(poolSize,
+				r -> {
+					Thread t = new Thread(r, "DeepPerFile-Worker");
+					t.setDaemon(true);
+					return t;
+				});
+		java.util.concurrent.atomic.AtomicInteger completed = new java.util.concurrent.atomic.AtomicInteger(0);
+		java.util.concurrent.atomic.AtomicBoolean anyFailed = new java.util.concurrent.atomic.AtomicBoolean(false);
+		java.util.List<java.util.concurrent.Future<?>> futures = new java.util.ArrayList<>();
+
+		try {
+			for (String raw : originalDiaFiles) {
+				final File perFileDir = perFileDirs.get(raw);
+				final String rawName = perFileNames.get(raw);
+				final String rawFile = raw;
+				futures.add(executor.submit(() -> {
+					try {
+						if (anyFailed.get()) {
+							return;
+						}
+						logger.info(getTaskName() + ": [parallel] starting per-file workflow for {} (perTaskThreads={})",
+								rawName, perTaskThreads);
+						int lastRound = runOnePerFileWorker(rawFile, perFileDir, perTaskThreads);
+						if (lastRound <= 0) {
+							logger.error(getTaskName() + ": [parallel] per-file workflow failed for {}", rawFile);
+							anyFailed.set(true);
+							return;
+						}
+						perFileLastRound.put(rawFile, lastRound);
+						int done = completed.incrementAndGet();
+						int progress = 10 + (int) Math.floor((double) done * 80.0 / (double) total);
+						updateMessage(getTaskName() + ": [parallel] " + done + "/" + total + " complete (latest: "
+								+ rawName + ")");
+						updateProgress(progress, 100);
+						logger.info(getTaskName() + ": [parallel] completed per-file workflow for {} (lastRound={})",
+								rawName, lastRound);
+					} catch (Throwable t) {
+						logger.error(getTaskName() + ": [parallel] exception in per-file worker for " + rawFile, t);
+						anyFailed.set(true);
+					}
+				}));
+			}
+
+			for (java.util.concurrent.Future<?> f : futures) {
+				try {
+					f.get();
+				} catch (java.util.concurrent.ExecutionException ee) {
+					logger.error(getTaskName() + ": [parallel] worker future failed: {}", ee.toString(), ee);
+					anyFailed.set(true);
+				} catch (InterruptedException ie) {
+					Thread.currentThread().interrupt();
+					logger.error(getTaskName() + ": [parallel] interrupted while awaiting worker", ie);
+					anyFailed.set(true);
+				}
+			}
+		} finally {
+			executor.shutdown();
+			try {
+				if (!executor.awaitTermination(5, java.util.concurrent.TimeUnit.MINUTES)) {
+					executor.shutdownNow();
+				}
+			} catch (InterruptedException ignored) {
+				executor.shutdownNow();
+				Thread.currentThread().interrupt();
+			}
+		}
+
+		if (anyFailed.get()) {
+			logger.error(getTaskName() + ": one or more per-file workers failed");
+			return false;
+		}
+		return true;
+	}
+
+	/**
+	 * Run the iterative phase (marker search + iterative rounds) for a single raw
+	 * file in an isolated child {@link MetaDiaDeepMarkerTask} instance.
+	 *
+	 * <p>Each child has its own {@code DiaNNTask}, {@code DiannParameter},
+	 * {@code DiaLibSearchPar}, and per-file metadata, which makes it safe to run
+	 * multiple workers concurrently. The child is configured with
+	 * {@code threadCount = perTaskThreads} so DIA-NN sub-processes use the
+	 * appropriate share of CPU. The child writes its output under
+	 * {@code perFileDir} (the same folder layout used in sequential mode).
+	 *
+	 * <p>The child is <b>not</b> executed via {@link javafx.concurrent.Task#run()};
+	 * we call {@link #iterativeSearch()} and {@link #runRoundsOnly()} directly so we
+	 * skip {@code spectraConvert} (already done by the parent), {@code createSSLibrary}
+	 * (already done by the parent), and the global combined search (parent runs that
+	 * once after all per-file workers finish).
+	 *
+	 * @return last round index (>0) on success; <=0 on failure.
+	 */
+	private int runOnePerFileWorker(String raw, File perFileDir, int perTaskThreads) {
+		try {
+			MetaParameterDiaMarker parentP = (MetaParameterDiaMarker) metaPar;
+
+			String[] childRawFiles = new String[] { raw };
+			String[] childExpNames = new String[] { rawBaseName(raw) };
+			int[] fractions = new int[] { 1 };
+			int[] replicates = new int[] { 1 };
+			MetaData childMd = new MetaData(childRawFiles, childExpNames, fractions, replicates);
+
+			MetaParameterDiaMarker childP = new MetaParameterDiaMarker(parentP, parentP.getMagDbItem(),
+					parentP.isLibrarySearch(), parentP.isSelfModelSearch(),
+					parentP.getLibrary(), parentP.isUseModel(), parentP.getModels());
+			// Use DEEP_PER_FILE so the child's getIterativeResultFolder() returns its
+			// dbSearchResultFile (perFileDir) directly, matching the per-file folder layout.
+			childP.setMarkerMode(MODE_DEEP_PER_FILE);
+			childP.setGenomesPerRound(parentP.getGenomesPerRound());
+			childP.setMExcision(parentP.isMExcision());
+			childP.setCarbamiC(parentP.isCarbamiC());
+			childP.setOxidationM(parentP.isOxidationM());
+			childP.setAcetyProN(parentP.isAcetyProN());
+			childP.setPhosphoSTY(parentP.isPhosphoSTY());
+			childP.setKGG(parentP.isKGG());
+			childP.setUsePeptideBasedRound(parentP.isUsePeptideBasedRound());
+			childP.setPeptideDetectabilityThreshold(parentP.getPeptideDetectabilityThreshold());
+			childP.setMetadata(childMd);
+			childP.setDbSearchResultFile(perFileDir);
+			childP.setReportDir(null);
+			childP.setThreadCount(perTaskThreads);
+			childP.setResult(parentP.getResult());
+
+			MetaDiaDeepMarkerTask child = new MetaDiaDeepMarkerTask(childP, this.mrp,
+					this.progressBar, this.secondBar);
+			// Skip spectraConvert in child (parent already converted): set diaFiles directly.
+			child.diaFiles = new String[] { raw };
+			child.initialSearchSeparate = false;
+			child.goodDiaFiles = child.diaFiles;
+
+			if (!child.iterativeSearch()) {
+				getLogger().error(getTaskName() + ": child iterativeSearch failed for {}", raw);
+				return -1;
+			}
+			int lastRound = child.runRoundsOnly();
+			if (lastRound <= 0) {
+				getLogger().error(getTaskName() + ": child runRoundsOnly returned {} for {}", lastRound, raw);
+				return -1;
+			}
+			return lastRound;
+		} catch (Throwable t) {
+			getLogger().error(getTaskName() + ": runOnePerFileWorker exception for " + raw, t);
+			return -1;
+		}
+	}
+
+	/**
+	 * Run only the iterative round loop (no final combined quant search).
+	 *
+	 * @return lastRound (>0) on success; <=0 on failure.
+	 */
+	private int runRoundsOnly() {
+		File markerFile = getIterativeResultFolder();
+		File rankedFile = new File(markerFile, "genome_ranked.tsv");
+		if (!rankedFile.exists()) {
+			logger.error(getTaskName() + ": genome_ranked.tsv not found: {}", rankedFile.getAbsolutePath());
+			return -1;
+		}
+
+		String cut = diannPar != null && diannPar.getCut() != null ? diannPar.getCut() : "KR";
+		DeepIterativeCommonSupport.IterativeRoundLoopResult loop = DeepIterativeCommonSupport.runIterativeRoundLoop(
+				rankedFile, getGenomesPerRound(), MAX_ITERATIVE_ROUNDS, "Round", cut,
+				initialSearchSeparate, initialSearchSeparate ? goodDiaFiles.length : 0,
+				this::updateMessage,
+				(round, genomes) -> runRoundAppendPreviousPeptides(round, markerFile, genomes),
+				(inc) -> {
+					StopRuleResult local = computeStopRoundFromIncrements(inc);
+					return new DeepIterativeStopRule.StopRuleResult(local.stopRound, local.nRounds, local.kChord,
+							local.kPiece, local.kKnee, local.k0, local.tMin);
+				},
+				logger, getTaskName());
+
+		if (loop.lastRound <= 0) {
+			logger.error(getTaskName() + ": no round completed");
+			return -1;
+		}
+
+		StopRuleResult lastStopRuleResult = loop.lastStopRuleResult == null ? null
+				: new StopRuleResult(loop.lastStopRuleResult.stopRound, loop.lastStopRuleResult.nRounds,
+						loop.lastStopRuleResult.kChord, loop.lastStopRuleResult.kPiece, loop.lastStopRuleResult.kKnee,
+						loop.lastStopRuleResult.k0, loop.lastStopRuleResult.tMin);
+		writeIterativeRoundsInfo(markerFile, loop.roundsRecord, loop.peptidesInRoundRecord, loop.incrementsPerRound,
+				loop.cumulativeRecord, loop.stopReason, lastStopRuleResult);
+
+		return loop.lastRound;
+	}
+
+	private boolean runGlobalCombinedFromPerFileRounds(
+			String[] originalDiaFiles,
+			java.util.LinkedHashMap<String, File> perFileDirs,
+			java.util.LinkedHashMap<String, Integer> perFileLastRound,
+			File deepRootDir
+	) {
+		if (originalDiaFiles == null || originalDiaFiles.length == 0) {
+			logger.error(getTaskName() + ": no DIA files for global combined search");
+			return false;
+		}
+		if (perFileDirs == null || perFileDirs.isEmpty() || perFileLastRound == null || perFileLastRound.isEmpty()) {
+			logger.error(getTaskName() + ": per-file rounds are missing; cannot build global combined");
+			return false;
+		}
+
+		// 1) Aggregate peptide->proteins across ALL per-file rounds.
+		HashMap<String, HashSet<String>> pepProMap = new HashMap<>();
+		for (String raw : perFileDirs.keySet()) {
+			File perFileDir = perFileDirs.get(raw);
+			Integer lastRound = perFileLastRound.get(raw);
+			if (perFileDir == null || lastRound == null || lastRound.intValue() <= 0) {
+				continue;
+			}
+
+			// Temporarily align state for reading round parquets in that folder (important if per-file search outputs exist).
+			String[] oldDiaFiles = this.diaFiles;
+			boolean oldSeparate = this.initialSearchSeparate;
+			String[] oldGood = this.goodDiaFiles;
+			try {
+				this.diaFiles = new String[] { raw };
+				this.goodDiaFiles = this.diaFiles;
+				this.initialSearchSeparate = false;
+
+				HashMap<String, HashSet<String>> one = buildPepToProteinsFromRounds(perFileDir, lastRound.intValue());
+				for (java.util.Map.Entry<String, HashSet<String>> e : one.entrySet()) {
+					if (e.getKey() == null || e.getKey().isEmpty() || e.getValue() == null || e.getValue().isEmpty()) {
+						continue;
+					}
+					HashSet<String> set = pepProMap.computeIfAbsent(e.getKey(), k -> new HashSet<>());
+					set.addAll(e.getValue());
+				}
+			} finally {
+				this.diaFiles = oldDiaFiles;
+				this.initialSearchSeparate = oldSeparate;
+				this.goodDiaFiles = oldGood;
+			}
+		}
+
+		if (pepProMap.isEmpty()) {
+			logger.error(getTaskName() + ": no peptides collected from per-file round parquets for global combined FASTA");
+			return false;
+		}
+
+		// 2) Write combined FASTA + speclib under the deep root combined/ folder (same as original mode).
+		File combinedDir = new File(deepRootDir, "combined");
+		if (!combinedDir.exists()) combinedDir.mkdirs();
+		File combinedParquet = new File(combinedDir, "combined.parquet");
+		File combinedPepMatrix = new File(combinedDir, "combined.pr_matrix.tsv");
+		File combinedFasta = new File(combinedDir, "combined.fasta");
+		File combinedSpeclib = new File(combinedDir, "combined.speclib");
+
+		if (!DeepIterativeCommonSupport.writeCombinedFastaFromPeptideProteinMap(combinedFasta, pepProMap, logger, getTaskName())) {
+			return false;
+		}
+
+		if (!DeepIterativeCommonSupport.ensureCombinedSpeclib(combinedDir, combinedSpeclib, () -> {
+			diannPar.setThreads(threadCount);
+			diannPar.setExportDecoy(true);
+			diaNNTask.addTask(diannPar, combinedFasta.getAbsolutePath(), combinedSpeclib.getAbsolutePath(), false);
+			diaNNTask.run(12);
+		}, logger, getTaskName())) {
+			return false;
+		}
+
+		// 3) Final quantifying search across ALL DIA files using the combined speclib.
+		boolean combinedOk = DeepIterativeCommonSupport.ensureCombinedParquet(combinedParquet, () -> {
+			diaLibSearchPar.setMbr(true);
+			diaLibSearchPar.setDiaFiles(originalDiaFiles);
+			diaLibSearchPar.setThreadCount(threadCount);
+			diaLibSearchPar.setqValue(0.01);
+			diannPar.setThreads(threadCount);
+			diannPar.setMatrices(true);
+			diannPar.setRelaxed_prot_inf(true);
+			diannPar.setReanalyse(true);
+			diannPar.setExportDecoy(true);
+			logger.info(getTaskName() + ": global combined search using combined.speclib {} → {} ({} files)",
+					combinedSpeclib.getAbsolutePath(), combinedParquet.getAbsolutePath(), originalDiaFiles.length);
+			diaNNTask.addTask(diannPar, diaLibSearchPar, combinedParquet.getAbsolutePath(),
+					new String[] { combinedSpeclib.getAbsolutePath() });
+			diaNNTask.run(originalDiaFiles.length * 12);
+		});
+		if (!combinedOk || !combinedParquet.exists() || !combinedPepMatrix.exists()) {
+			logger.error(getTaskName() + ": global combined search failed - combined outputs missing in {}", combinedDir.getAbsolutePath());
+			return false;
+		}
+
+		this.combinedFile = combinedDir;
+		this.quan_pep_file = combinedPepMatrix;
+		this.quan_pro_file = new File(combinedDir, "combined.pg_matrix.tsv");
+		return true;
 	}
 
 	@Override
@@ -203,9 +719,11 @@ public class MetaDiaDeepMarkerTask extends MetaDiaMarkerTask {
 
 		MetaParameterDiaMarker markerParams = (metaPar instanceof MetaParameterDiaMarker) ? (MetaParameterDiaMarker) metaPar : null;
 		// Map markerMode to MarkerGenomeSelector knee mode (FOCUS vs COMPREHENSIVE)
+		// DEEP_PER_FILE behaves like DEEP for genome selection (per-file ranking with comprehensive knee).
 		String markerMode = markerParams != null ? markerParams.getMarkerMode() : null;
 		String mode;
-		if ("COMPREHENSIVE".equalsIgnoreCase(markerMode) || "DEEP".equalsIgnoreCase(markerMode)) {
+		if ("COMPREHENSIVE".equalsIgnoreCase(markerMode) || "DEEP".equalsIgnoreCase(markerMode)
+				|| MODE_DEEP_PER_FILE.equalsIgnoreCase(markerMode)) {
 			mode = MarkerGenomeSelector.KNEE_MODE_COMPREHENSIVE;
 		} else {
 			mode = MarkerGenomeSelector.KNEE_MODE_FOCUS;
@@ -269,7 +787,7 @@ public class MetaDiaDeepMarkerTask extends MetaDiaMarkerTask {
 
 		String cut = diannPar != null && diannPar.getCut() != null ? diannPar.getCut() : "KR";
 		DeepIterativeCommonSupport.IterativeRoundLoopResult loop = DeepIterativeCommonSupport.runIterativeRoundLoop(
-				rankedFile, GENOMES_PER_ROUND, MAX_ITERATIVE_ROUNDS, "Round", cut,
+				rankedFile, getGenomesPerRound(), MAX_ITERATIVE_ROUNDS, "Round", cut,
 				initialSearchSeparate, initialSearchSeparate ? goodDiaFiles.length : 0,
 				this::updateMessage,
 				(round, genomes) -> runRoundAppendPreviousPeptides(round, markerFile, genomes),
@@ -296,8 +814,12 @@ public class MetaDiaDeepMarkerTask extends MetaDiaMarkerTask {
 
 		logger.info(getTaskName() + ": iterative rounds finished at round {} ({} peptides); running combined search using combined FASTA built from all round parquets...", lastRound, prevPeptideCount);
 
-		// Combined folder: build one combined FASTA from all round{N}.parquet, then combined.speclib, then search all raw files once.
-		File combinedDir = new File(metaPar.getDbSearchResultFile(), "combined");
+		// Combined folder:
+		// - normal mode: under <marker_deep>/combined
+		// - per-file mode: under <marker_deep>/marker/<rawname>/combined
+		File combinedDir = isDeepPerFileMode()
+				? new File(markerFile, "combined")
+				: new File(metaPar.getDbSearchResultFile(), "combined");
 		if (!combinedDir.exists()) combinedDir.mkdirs();
 		File combinedParquet = new File(combinedDir, "combined.parquet");
 		File combinedPepMatrix = new File(combinedDir, "combined.pr_matrix.tsv");
@@ -458,21 +980,74 @@ public class MetaDiaDeepMarkerTask extends MetaDiaMarkerTask {
 		if (markerFile == null || !markerFile.exists()) {
 			return;
 		}
-		int lastRound = lastRoundForExport;
-		if (lastRound <= 0) {
-			int gfc = goodDiaFiles != null ? goodDiaFiles.length : (diaFiles != null ? diaFiles.length : 0);
-			for (int r = 1; r <= MAX_ITERATIVE_ROUNDS; r++) {
-				File rd = new File(markerFile, "round" + r);
-				if (rd.isDirectory() && (new File(rd, "round" + r + ".parquet").isFile()
-						|| DeepIterativeCommonSupport.hasRoundPerFileParquets(rd, gfc))) {
-					lastRound = r;
+
+		HashMap<String, HashSet<String>> pepProMap;
+		if (isDeepPerFileMode()) {
+			// In DEEP_PER_FILE, round outputs are under marker/<rawname>/roundN/.
+			// Rebuild mapping from ALL per-file round parquets, not from a single round folder.
+			File markerRoot = new File(markerFile, "marker");
+			if (!markerRoot.isDirectory()) {
+				// Backward-compatible fallback: behave like normal mode if marker/ does not exist.
+				int lastRound = lastRoundForExport;
+				if (lastRound <= 0) {
+					int gfc = goodDiaFiles != null ? goodDiaFiles.length : (diaFiles != null ? diaFiles.length : 0);
+					for (int r = 1; r <= MAX_ITERATIVE_ROUNDS; r++) {
+						File rd = new File(markerFile, "round" + r);
+						if (rd.isDirectory() && (new File(rd, "round" + r + ".parquet").isFile()
+								|| DeepIterativeCommonSupport.hasRoundPerFileParquets(rd, gfc))) {
+							lastRound = r;
+						}
+					}
+				}
+				if (lastRound <= 0) {
+					return;
+				}
+				pepProMap = buildPepToProteinsFromRounds(markerFile, lastRound);
+			} else {
+				pepProMap = new HashMap<>();
+				File[] perFileDirs = markerRoot.listFiles(File::isDirectory);
+				if (perFileDirs == null || perFileDirs.length == 0) {
+					return;
+				}
+
+				for (File perFileDir : perFileDirs) {
+					int lastRound = detectLastRoundInFolder(perFileDir);
+					if (lastRound <= 0) {
+						continue;
+					}
+					HashMap<String, HashSet<String>> one = buildPepToProteinsFromRounds(perFileDir, lastRound);
+					if (one == null || one.isEmpty()) {
+						continue;
+					}
+					for (java.util.Map.Entry<String, HashSet<String>> e : one.entrySet()) {
+						if (e.getKey() == null || e.getKey().isEmpty() || e.getValue() == null || e.getValue().isEmpty()) {
+							continue;
+						}
+						HashSet<String> set = pepProMap.computeIfAbsent(e.getKey(), k -> new HashSet<>());
+						set.addAll(e.getValue());
+					}
+				}
+				logger.info(getTaskName() + ": DEEP_PER_FILE remap – aggregated {} peptides from all per-file rounds",
+						pepProMap.size());
+			}
+		} else {
+			int lastRound = lastRoundForExport;
+			if (lastRound <= 0) {
+				int gfc = goodDiaFiles != null ? goodDiaFiles.length : (diaFiles != null ? diaFiles.length : 0);
+				for (int r = 1; r <= MAX_ITERATIVE_ROUNDS; r++) {
+					File rd = new File(markerFile, "round" + r);
+					if (rd.isDirectory() && (new File(rd, "round" + r + ".parquet").isFile()
+							|| DeepIterativeCommonSupport.hasRoundPerFileParquets(rd, gfc))) {
+						lastRound = r;
+					}
 				}
 			}
+			if (lastRound <= 0) {
+				return;
+			}
+			pepProMap = buildPepToProteinsFromRounds(markerFile, lastRound);
 		}
-		if (lastRound <= 0) {
-			return;
-		}
-		HashMap<String, HashSet<String>> pepProMap = buildPepToProteinsFromRounds(markerFile, lastRound);
+
 		if (pepProMap.isEmpty() || precursors == null) {
 			return;
 		}
@@ -516,6 +1091,25 @@ public class MetaDiaDeepMarkerTask extends MetaDiaMarkerTask {
 		}
 		logger.info("{}: deep-marker remap from round parquets – peptides with mapping: {}, proteins before remap: {}, proteins after remap: {}",
 				getTaskName(), pepProMap.size(), proteinsBefore.size(), proteinsAfter.size());
+	}
+
+	private int detectLastRoundInFolder(File markerDir) {
+		if (markerDir == null || !markerDir.isDirectory()) {
+			return -1;
+		}
+		int gfc = goodDiaFiles != null ? goodDiaFiles.length : (diaFiles != null ? diaFiles.length : 0);
+		int lastRound = -1;
+		for (int r = 1; r <= MAX_ITERATIVE_ROUNDS; r++) {
+			File rd = new File(markerDir, "round" + r);
+			if (!rd.isDirectory()) {
+				continue;
+			}
+			File rp = new File(rd, "round" + r + ".parquet");
+			if (rp.isFile() || (gfc > 0 && DeepIterativeCommonSupport.hasRoundPerFileParquets(rd, gfc))) {
+				lastRound = r;
+			}
+		}
+		return lastRound;
 	}
 
 	/**

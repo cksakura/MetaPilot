@@ -347,7 +347,7 @@ public class MetaPilotCLI {
                     typedParams = (MetaParameterDiaMarker) parameterObject;
                     MetaParameterDiaMarker diaMarkerParams = (MetaParameterDiaMarker) typedParams;
                     String markerMode = diaMarkerParams.getMarkerMode();
-                    if ("DEEP".equalsIgnoreCase(markerMode)) {
+                    if ("DEEP".equalsIgnoreCase(markerMode) || "DEEP_PER_FILE".equalsIgnoreCase(markerMode)) {
                         workflowLabel = "DIA_MARKER (deep)";
                         task = new MetaDiaDeepMarkerTask(diaMarkerParams, resourceParams,
                                 new javafx.scene.control.ProgressBar(), new javafx.scene.control.ProgressBar());

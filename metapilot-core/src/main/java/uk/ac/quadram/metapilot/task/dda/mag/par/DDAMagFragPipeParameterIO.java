@@ -56,25 +56,31 @@ public class DDAMagFragPipeParameterIO extends BaseParameterIO {
 			LOGGER.info("Loading parameters from: {}", inputFile.getAbsolutePath());
 			JSONObject json = readJsonFromFile(inputFile);
 			
-			// Create MetaData object from experiments
 			MetaData metadata = new MetaData();
-			if (json.has("input_output") && json.getJSONObject("input_output").has("experiments")) {
-				JSONArray experiments = json.getJSONObject("input_output").getJSONArray("experiments");
-				String[] rawFiles = new String[experiments.length()];
-				String[] expNames = new String[experiments.length()];
-				int[] fractions = new int[experiments.length()];
-				int[] replicates = new int[experiments.length()];
+			if (json.has("input_output")) {
+				JSONObject ioSettings = json.getJSONObject("input_output");
+				if (ioSettings.has("experiments")) {
+					JSONArray experiments = ioSettings.getJSONArray("experiments");
+					String[] rawFiles = new String[experiments.length()];
+					String[] expNames = new String[experiments.length()];
+					int[] fractions = new int[experiments.length()];
+					int[] replicates = new int[experiments.length()];
 
-				for (int i = 0; i < experiments.length(); i++) {
-					JSONObject exp = experiments.getJSONObject(i);
-					rawFiles[i] = exp.optString("file_path", "");
-					expNames[i] = exp.optString("experiment_name", "");
-					fractions[i] = 1; // Default fraction
-					replicates[i] = 1; // Default replicate
+					for (int i = 0; i < experiments.length(); i++) {
+						JSONObject exp = experiments.getJSONObject(i);
+						rawFiles[i] = exp.optString("file_path", "");
+						expNames[i] = exp.optString("experiment_name", "");
+						fractions[i] = 1;
+						replicates[i] = 1;
+					}
+
+					metadata = new MetaData(rawFiles, expNames, fractions, replicates);
+					LOGGER.info("Loaded {} experiments from parameter file", experiments.length());
+				} else if (ioSettings.has("input_dir")) {
+					metadata = uk.ac.quadram.metapilot.task.par.HpcInputDiscovery.discoverMetaData(
+							ioSettings.optString("input_dir", ""));
+					LOGGER.info("Discovered {} raw files from input_dir", metadata.getRawFiles().length);
 				}
-
-				metadata = new MetaData(rawFiles, expNames, fractions, replicates);
-				LOGGER.info("Loaded {} experiments from parameter file", experiments.length());
 			}
 
 			// Load Input/Output settings
@@ -90,6 +96,11 @@ public class DDAMagFragPipeParameterIO extends BaseParameterIO {
 				magDbVersion = ioSettings.optString("mag_db_version", "");
 				appendHostDb = ioSettings.optBoolean("append_host_db", false);
 				hostDB = ioSettings.optString("host_database", "");
+			}
+			if (json.has("mag_database")) {
+				JSONObject magDbSettings = json.getJSONObject("mag_database");
+				microDb = magDbSettings.optString("catalogue_id", microDb);
+				magDbVersion = magDbSettings.optString("catalogue_version", magDbVersion);
 			}
 
 			// Load additional parameters
@@ -163,11 +174,14 @@ public class DDAMagFragPipeParameterIO extends BaseParameterIO {
 				LOGGER.info("Loaded {} variable modifications", variableModifications.size());
 			}
 
-			// Note: FragPipe workflow is now configured by UI and passed directly to task
-			// No need to load/save workflow in parameters
-			if (json.optBoolean("fragpipe_workflow_configured", false)) {
-				LOGGER.info("Workflow configuration flag found, will be configured by UI");
+			String fragpipeWorkflow = "";
+			if (json.has("dda_settings")) {
+				fragpipeWorkflow = json.getJSONObject("dda_settings").optString("fragpipe_workflow", "");
 			}
+			if (fragpipeWorkflow.isEmpty()) {
+				fragpipeWorkflow = json.optString("fragpipe_workflow", "");
+			}
+			params.setFragpipeWorkflowPath(fragpipeWorkflow);
 
 			LOGGER.info("Successfully loaded parameters from: {}", inputFile.getAbsolutePath());
 			return params;

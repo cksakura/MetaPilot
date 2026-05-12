@@ -234,8 +234,9 @@ Edit `MAGDB_1_0.json` (this file is large, so use the GUI for most changes):
 - **Sage MAG**: High-speed MAG proteome analysis
 
 #### DIA (Data-Independent Acquisition) Workflows
-- **DIA Normal**: Standard DIA analysis with spectral libraries
-- **DIA Target**: Targeted DIA analysis for specific proteins
+- **DIA Marker**: Marker4-based genome selection with Focus, Comprehensive, Deep, and Deep per raw file modes
+- **DIA Seed**: User-library DIA workflow with Direct, Focus, Comprehensive, and Deep Comprehensive modes
+- **DIA Target**: Targeted DIA analysis for specific proteins/functions/taxa
 - **DIA Real-time**: Real-time DIA analysis and monitoring
 
 ### Workflow Parameters
@@ -355,7 +356,7 @@ Edit `MAGDB_1_0.json` (this file is large, so use the GUI for most changes):
 }
 ```
 
-#### DIA Normal Example
+#### DIA Seed Example
 ```json
 {
   "workflow": "DiaNNMAG",
@@ -412,7 +413,7 @@ Edit `MAGDB_1_0.json` (this file is large, so use the GUI for most changes):
 
 ### DIA Workflows (Advanced Metaproteomics)
 
-DIA workflows are more complex and offer three different analysis strategies. Understanding these strategies is crucial for successful DIA analysis.
+DIA workflows offer several different strategies. The main MAG-aware workflows are `DIA Marker` and `DIA Seed`, while `DIA Target` is a separate targeted workflow.
 
 #### Prerequisites for DIA Workflows
 
@@ -432,7 +433,7 @@ DIA workflows are more complex and offer three different analysis strategies. Un
 
 #### Understanding DIA Analysis Strategies
 
-##### Strategy 1: Library Analysis (Direct Identification)
+##### Strategy 1: DIA Seed Direct (Library Analysis / Direct Identification)
 **Best for**: Samples similar to existing reference libraries
 
 **Process**:
@@ -442,7 +443,7 @@ DIA workflows are more complex and offer three different analysis strategies. Un
 - Recommended for routine analyses with established protocols
 
 **Steps**:
-1. Launch **DIA Normal** workflow
+1. Launch **DIA Seed** workflow
 2. **Input/Output Tab**:
    - Add DIA raw files
    - Set output directory
@@ -464,7 +465,7 @@ DIA workflows are more complex and offer three different analysis strategies. Un
 4. **Console Tab**: Click **Start Analysis**
 5. Results will be in `output_directory/library_analysis/`
 
-##### Strategy 2: Iterative Analysis (Sample-Specific Library Creation)
+##### Strategy 2: DIA Seed Iterative (Sample-Specific Library Creation)
 **Best for**: Novel samples without suitable reference libraries
 
 **Process**:
@@ -477,7 +478,7 @@ DIA workflows are more complex and offer three different analysis strategies. Un
 - Takes longer but provides better coverage for complex samples
 
 **Steps**:
-1. Launch **DIA Normal** workflow
+1. Launch **DIA Seed** workflow
 2. **Input/Output Tab**: Configure as above
 3. **Parameters Tab**:
    - Set **Analysis Mode** to "Iterative search"
@@ -501,7 +502,7 @@ DIA workflows are more complex and offer three different analysis strategies. Un
    - Separate folders for each sample with round-by-round results
    - Final combined results in `combined/` folder
 
-##### Strategy 3: Self-Model Analysis (Deep Learning Enhanced)
+##### Strategy 3: DIA Seed Deep Comprehensive (Deep Learning Enhanced)
 **Best for**: Complex samples requiring maximum sensitivity
 
 **Process**:
@@ -521,7 +522,7 @@ DIA workflows are more complex and offer three different analysis strategies. Un
    - Models are saved to MAG database folder
 
 2. **Analysis Setup**:
-   - Launch **DIA Normal** workflow
+   - Launch **DIA Seed** workflow
    - **Input/Output Tab**: Configure as above
    - **Parameters Tab**:
      - Set **Analysis Mode** to "Deep learning mode"
@@ -718,7 +719,7 @@ When models are selected:
   - Improves genome selection accuracy
   - Reduces false positive identifications
 
-#### Self-Model Analysis (Automatic Model Generation)
+#### DIA Seed Deep Comprehensive (Automatic Model Generation)
 
 In "Deep learning mode":
 1. **Round 1** proceeds with library search (no models yet)
@@ -1079,7 +1080,7 @@ This example walks through a complete DIA analysis from scratch for a human gut 
    - Verify status shows "Downloaded" and "Local Available"
 
 4. **Generate Predicted Peptides** (4-6 hours):
-   - Launch **DIA Normal** workflow
+   - Launch **DIA Seed** workflow
    - **Input/Output** tab:
      - Select MAG database: human-gut v2.0.2
    - Check **MAG Library Status** section
@@ -1230,10 +1231,11 @@ For additional support:
 
 | Your Situation | Recommended Workflow | Key Steps |
 |----------------|---------------------|-----------|
-| Have suitable spectral libraries | DIA Normal - Library Analysis | Select libraries → Start Analysis |
-| Novel sample, no libraries | DIA Normal - Iterative Analysis | Select seed libraries → 4-round search |
-| Complex/challenging sample | DIA Normal - Self-Model Analysis | Enable deep learning → Auto-model generation |
+| Have suitable spectral libraries | DIA Seed - Direct | Select libraries → Start Analysis |
+| Novel sample, no libraries | DIA Seed - Focus/Comprehensive | Select seed libraries → iterative refinement |
+| Complex/challenging sample | DIA Seed - Deep Comprehensive | Enable deep learning → Auto-model generation |
 | Focus on specific taxa | DIA Target | Select taxa → Generate targeted library |
+| Marker-guided MAG refinement | DIA Marker | Use Marker4 library → genome selection → refined search |
 | Live instrument monitoring | DIA Real-time | Set monitor folder → Watch for files |
 
 ### Essential Checklist Before DIA Analysis
@@ -1255,7 +1257,7 @@ For additional support:
 
 After a successful DIA analysis, your output directory will contain:
 
-#### Library Analysis Results:
+#### DIA Seed Direct Results:
 ```
 output_directory/
 └── library_analysis/
@@ -1272,7 +1274,6 @@ output_directory/
     │   └── [function category reports]
     ├── taxonomy_analysis/
     │   ├── Genome.tsv                  # Genome-level taxonomy
-    │   ├── Genome.html                 # Genome report (HTML)
     │   └── Taxa_report.tsv             # Taxonomic abundance
     └── report/
         └── reports/
@@ -1284,7 +1285,7 @@ output_directory/
             └── report_function_summary.html
 ```
 
-#### Iterative Analysis Results:
+#### DIA Seed Focus/Comprehensive Results:
 ```
 output_directory/
 └── iterative_analysis/
@@ -1308,10 +1309,10 @@ output_directory/
     │   ├── combined.pg_matrix.tsv
     │   ├── genomes_razor.tsv           # Genome coverage analysis
     │   └── proteins_razor.tsv          # Protein coverage analysis
-    └── [final reports same as library analysis]
+    └── [final reports same as direct/library analysis]
 ```
 
-#### Self-Model Analysis Results:
+#### DIA Seed Deep Comprehensive Results:
 ```
 output_directory/
 └── self_model_analysis/

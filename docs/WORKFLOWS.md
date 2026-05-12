@@ -17,7 +17,7 @@ It is written to support generating a **single workflow chart** for the project.
 >    - DIA Marker/Seed: build **refined microbiome library**: combined.fasta → combined.speclib (and convert to parquet library when multi-lib search requires it).  
 >    - Optional peptide-based strategy: build combined.fasta from predicted peptides above a detectability threshold to reduce library size.  
 > 6) **Refined quantifying search** on the refined DB/library (final IDs + intensities).  
-> 7) **Taxonomy export** in a unified DDA-aligned format: `taxonomy_analysis/Genome.tsv` and `Taxa_report.tsv` (+ HTML).
+> 7) **Taxonomy export** in a unified DDA-aligned format: `taxonomy_analysis/Genome.tsv` and `Taxa_report.tsv` (GUI workflows may also generate HTML reports).
 
 The core design pattern across MAG workflows is:
 
@@ -235,7 +235,7 @@ DIA Marker mirrors the DDA “marker initial search” strategy, but uses DIA-NN
 
 ---
 
-## DIA Deep Marker workflow: iterative refinement before the final quantifying search
+## DIA Deep Marker workflows (Deep / Deep per raw file): iterative refinement before the final quantifying search
 
 Deep Marker extends DIA Marker by adding iterative rounds:
 
@@ -247,16 +247,20 @@ Deep Marker extends DIA Marker by adding iterative rounds:
 3. Final step: merge evidence and run one **quantifying** search to produce final matrices/parquet
 4. Export taxonomy in unified format
 
+`Deep per raw file` uses the same core logic, but runs the iterative marker workflow independently for each DIA raw file under `marker/<rawname>/...` before building one global combined search.
+
 ---
 
-## DIA Seed workflows (Direct / Focus / Comprehensive / Deep)
+## DIA Seed workflows (Direct / Focus / Comprehensive / Deep Comprehensive)
 
 Seed workflows start from **user-selected spectral libraries** rather than Marker4.
 
 ### Direct Seed
 
 - Search the selected libraries directly (no MAG genome selection/refinement).
-- Export results.
+- If all selected libraries are microbiome/MAG-matched, MetaPilot can continue through report export.
+- If all selected libraries are standalone/non-MAG, MetaPilot stops after identification because there is no MAG mapping for taxonomy export.
+- Mixed standalone + microbiome sets are handled by using microbiome-compatible libraries for MAG-aware refinement.
 
 ### Seed iterative (Focus / Comprehensive)
 
@@ -278,6 +282,16 @@ It supports a peptide-budget mode where each round adds predicted peptides genom
 
 ---
 
+## DIA Target workflow (targeted, not part of the MAG backbone)
+
+`DIA Target` is a separate workflow from `DIA Seed`.
+
+- It uses a **pre-generated targeted library** for specific taxa/functions/proteins of interest.
+- It does **not** use Marker4-based genome ranking or the shared MAG sample-specific refinement backbone described above.
+- It is best documented as a targeted follow-up workflow rather than as part of the shared Marker/Seed genome-selection design.
+
+---
+
 ## Notes for workflow charts
 
 If you need a single chart, a useful abstraction is:
@@ -286,9 +300,11 @@ If you need a single chart, a useful abstraction is:
   - DDA MAG: “high-abundance / marker FASTA”
   - DIA Marker: “Marker4 spectral library”
   - DIA Seed: “user-selected libraries”
+  - DIA Target: targeted library generated for selected taxa/functions/proteins
 
 - **Selection**
   - genome ranking + Focus/Comprehensive selection
+  - DIA Target does not use this shared genome-ranking stage
 
 - **Refinement**
   - DDA: sample-specific FASTA

@@ -1371,7 +1371,7 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 			boolean useMarker4 = MagDbItem.MARKER4.equalsIgnoreCase(magFragPipeParams.getGenomeSelectorMode());
 			MarkerGenomeSelector selector = new MarkerGenomeSelector();
 			selector.setKneeSelectionMode(MarkerGenomeSelector.KNEE_MODE_COMPREHENSIVE);
-			int maximumSelected = 500;
+			int maximumSelected = MarkerGenomeSelector.UNLIMITED_MAXIMUM_SELECTED;
 			boolean enableAutoRep = useMarker4;
 			MetaPSM[] metaPsms = psms;
 			File currentFile = magDb.getCurrentFile();

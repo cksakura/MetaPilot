@@ -47,6 +47,7 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 	private static final String WORKFLOW_FOCUS = "Focus";
 	private static final String WORKFLOW_COMPREHENSIVE = "Comprehensive";
 	private static final String WORKFLOW_DEEP = "Deep";
+	private static final String WORKFLOW_DEEP_PER_FILE = "Deep (per raw file)";
 
 	// Parameter components
 	private ComboBox<String> workflowModeComboBox;
@@ -226,7 +227,7 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 		Label workflowLabel = new Label("Workflow:");
 		workflowLabel.setStyle("-fx-font-weight: bold;");
 		workflowModeComboBox = new ComboBox<>(
-				FXCollections.observableArrayList(WORKFLOW_FOCUS, WORKFLOW_COMPREHENSIVE, WORKFLOW_DEEP));
+				FXCollections.observableArrayList(WORKFLOW_FOCUS, WORKFLOW_COMPREHENSIVE, WORKFLOW_DEEP, WORKFLOW_DEEP_PER_FILE));
 		workflowModeComboBox.setMinWidth(160);
 		workflowModeComboBox.setPrefWidth(200);
 		workflowModeComboBox.setValue(WORKFLOW_FOCUS);
@@ -234,7 +235,8 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 		Tooltip workflowTooltip = new Tooltip(
 				"Focus: knee-based genome selection with a compact set of genomes.\n"
 				+ "Comprehensive: more inclusive genome set using comprehensive knee mode.\n"
-				+ "Deep: deep comprehensive iterative workflow (multiple rounds + combined search).");
+				+ "Deep: deep comprehensive iterative workflow (multiple rounds + combined search).\n"
+				+ "Deep (per raw file): run the full deep-marker iterative workflow independently for each raw file (results under marker/<rawname>/...).");
 		workflowModeComboBox.setTooltip(workflowTooltip);
 		VBox workflowBox = new VBox(5);
 		workflowBox.getChildren().addAll(workflowLabel, workflowModeComboBox);
@@ -581,6 +583,8 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 					: WORKFLOW_FOCUS;
 			if (WORKFLOW_DEEP.equals(workflow)) {
 				params.setMarkerMode("DEEP");
+			} else if (WORKFLOW_DEEP_PER_FILE.equals(workflow)) {
+				params.setMarkerMode("DEEP_PER_FILE");
 			} else if (WORKFLOW_COMPREHENSIVE.equals(workflow)) {
 				params.setMarkerMode("COMPREHENSIVE");
 			} else {
@@ -702,6 +706,8 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 					: WORKFLOW_FOCUS;
 			if (WORKFLOW_DEEP.equals(workflow)) {
 				params.setMarkerMode("DEEP");
+			} else if (WORKFLOW_DEEP_PER_FILE.equals(workflow)) {
+				params.setMarkerMode("DEEP_PER_FILE");
 			} else if (WORKFLOW_COMPREHENSIVE.equals(workflow)) {
 				params.setMarkerMode("COMPREHENSIVE");
 			} else {
@@ -841,6 +847,8 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 			String markerMode = params.getMarkerMode();
 			if ("DEEP".equalsIgnoreCase(markerMode)) {
 				workflowModeComboBox.setValue(WORKFLOW_DEEP);
+			} else if ("DEEP_PER_FILE".equalsIgnoreCase(markerMode)) {
+				workflowModeComboBox.setValue(WORKFLOW_DEEP_PER_FILE);
 			} else if ("COMPREHENSIVE".equalsIgnoreCase(markerMode)) {
 				workflowModeComboBox.setValue(WORKFLOW_COMPREHENSIVE);
 			} else {
@@ -898,11 +906,11 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 			String workflow = workflowModeComboBox != null && workflowModeComboBox.getValue() != null
 					? workflowModeComboBox.getValue()
 					: WORKFLOW_FOCUS;
-			boolean deepMarker = WORKFLOW_DEEP.equals(workflow);
+			boolean deepMarker = WORKFLOW_DEEP.equals(workflow) || WORKFLOW_DEEP_PER_FILE.equals(workflow);
 			if (deepMarker) {
 				currentTask = new MetaDiaDeepMarkerTask(analysisParams, mrp,
 						consolePanel.getOverallProgressBar(), consolePanel.getCurrentTaskProgressBar());
-				consolePanel.appendConsoleText("Workflow: Deep (iterative comprehensive marker workflow)\n");
+				consolePanel.appendConsoleText("Workflow: " + workflow + "\n");
 			} else {
 				currentTask = new MetaDiaMarkerTask(analysisParams, mrp,
 						consolePanel.getOverallProgressBar(), consolePanel.getCurrentTaskProgressBar());

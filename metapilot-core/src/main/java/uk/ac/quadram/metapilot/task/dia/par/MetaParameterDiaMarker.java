@@ -15,7 +15,15 @@ import uk.ac.quadram.metapilot.task.mag.MagDbItem;
  */
 public class MetaParameterDiaMarker extends MetaParameterDia {
 
-	/** Marker workflow mode persisted for UI/CLI round-trip: FOCUS, COMPREHENSIVE, DEEP. */
+	/**
+	 * Marker workflow mode persisted for UI/CLI round-trip.
+	 * <p>
+	 * Known values:
+	 * - FOCUS
+	 * - COMPREHENSIVE
+	 * - DEEP (iterative rounds + combined search over all DIA files)
+	 * - DEEP_PER_FILE (iterative workflow run independently per DIA file; results under marker/<rawname>/...)
+	 */
 	private String markerMode = "FOCUS";
 
 	// Modification settings (from DiannParameter)
@@ -25,6 +33,14 @@ public class MetaParameterDiaMarker extends MetaParameterDia {
 	private boolean acetyProN = false;
 	private boolean phosphoSTY = false;
 	private boolean kGG = false;
+
+	/**
+	 * Deep iterative workflows: genomes included per round.
+	 * <p>
+	 * Default is 5 to match legacy behaviour. Set to 10 (etc.) to benchmark speed/sensitivity
+	 * trade-offs for single-file or per-file modes.
+	 */
+	private int genomesPerRound = 5;
 
 	public MetaParameterDiaMarker() {
 		super();
@@ -103,6 +119,14 @@ public class MetaParameterDiaMarker extends MetaParameterDia {
 	
 	public void setMarkerMode(String markerMode) {
 		this.markerMode = markerMode;
+	}
+
+	public int getGenomesPerRound() {
+		return genomesPerRound;
+	}
+
+	public void setGenomesPerRound(int genomesPerRound) {
+		this.genomesPerRound = genomesPerRound;
 	}
 }
 

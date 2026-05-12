@@ -12,14 +12,19 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
-import cern.colt.Arrays;
-
 public class MetaPilotDDADIATest {
+
+    /** Equate I and L for peptide comparisons (map I -> L). */
+    private static String normalizeIL(String peptide) {
+        if (peptide == null || peptide.isEmpty()) return "";
+        return peptide.replace('I', 'L');
+    }
 
     /**
      * Re-generate legacy taxonomy_analysis/Taxa.tsv from an existing taxonomy_analysis/Genome.tsv.
@@ -857,14 +862,495 @@ public class MetaPilotDDADIATest {
             reader.close();
         }
     }
+
+    private static void comparePeptideLevel3(String file1, String file2, String file3) throws IOException {
+        HashSet<String> peptideSet1 = new HashSet<>();
+        HashSet<String> peptideSet2 = new HashSet<>();
+        HashSet<String> peptideSet3 = new HashSet<>();
+
+        // File1 only: genome distribution for peptides from my result (protein column idx=5).
+        // genome -> unique peptide set (peptides can map to multiple genomes if proteins list contains multiple genomes)
+        HashMap<String, HashSet<String>> genomeToPeptides1 = new HashMap<>();
+        // Group index: 0,1,2,3 (3 means >=3 missed cleavages)
+        HashMap<Integer, HashSet<String>> peptideGroups1 = new HashMap<>();
+        HashMap<Integer, HashSet<String>> peptideGroups2 = new HashMap<>();
+        HashMap<Integer, HashSet<String>> peptideGroups3 = new HashMap<>();
+        for (int i = 0; i <= 3; i++) {
+            peptideGroups1.put(i, new HashSet<>());
+            peptideGroups2.put(i, new HashSet<>());
+            peptideGroups3.put(i, new HashSet<>());
+        }
+
+        try (BufferedReader reader1 = new BufferedReader(new FileReader(file1))) {
+            String header1 = reader1.readLine();
+            if (header1 == null) {
+                throw new IOException("File 1 is empty: " + file1);
+            }
+
+            String line1 = null;
+            while ((line1 = reader1.readLine()) != null) {
+                if (line1.trim().isEmpty()) {
+                    continue;
+                }
+                String[] parts1 = line1.split("\t", -1);
+                if (parts1.length <= 1) {
+                    continue;
+                }
+                String peptide1 = parts1[1] == null ? "" : parts1[1].trim();
+                if (peptide1.isEmpty()) {
+                    continue;
+                }
+                String pep1 = normalizeIL(peptide1);
+                peptideSet1.add(pep1);
+                int group1 = toMissedCleavageGroup(countMissedCleavagesKR(pep1));
+                peptideGroups1.get(group1).add(pep1);
+
+                // Protein column is the 6th column (idx=5): use it to infer genome(s).
+                // Expected protein IDs like "MGYGxxxx_protein" (possibly multiple proteins separated by ';' or ',').
+                if (parts1.length > 5) {
+                    String proteinsCell = parts1[5] == null ? "" : parts1[5].trim();
+                    if (!proteinsCell.isEmpty()) {
+                        // Split common multi-protein separators.
+                        String[] prots = proteinsCell.split("[;,]");
+                        for (String p : prots) {
+                            if (p == null) continue;
+                            String pro = p.trim();
+                            if (pro.isEmpty()) continue;
+
+                            // Some exports include multiple tokens separated by whitespace; keep only first token.
+                            int sp = pro.indexOf(' ');
+                            if (sp > 0) pro = pro.substring(0, sp);
+
+                            if (pro.startsWith("REV_")) pro = pro.substring(4);
+
+                            // Genome id is prefix before first '_' (matches MarkerGenomeSelector.extractGenomeId behavior).
+                            int us = pro.indexOf('_');
+                            if (us <= 0) continue;
+                            String genome = pro.substring(0, us).trim();
+                            if (genome.isEmpty()) continue;
+
+                            genomeToPeptides1.computeIfAbsent(genome, k -> new HashSet<>()).add(pep1);
+                        }
+                    }
+                }
+            }
+        }
+    
+        try (BufferedReader reader2 = new BufferedReader(new FileReader(file2))) {
+            String header2 = reader2.readLine();
+            if (header2 == null) {
+                throw new IOException("File 2 is empty: " + file2);
+            }
+            String[] h2 = header2.split("\t", -1);
+            int peptideCol2 = detectPeptideColumnIndex(h2, 6);
+
+            String line2 = null;
+            while ((line2 = reader2.readLine()) != null) {
+                if (line2.trim().isEmpty()) {
+                    continue;
+                }
+                String[] parts2 = line2.split("\t", -1);
+                if (peptideCol2 < 0 || parts2.length <= peptideCol2) {
+                    continue;
+                }
+                String peptide2 = parts2[peptideCol2] == null ? "" : parts2[peptideCol2].trim();
+                if (peptide2.isEmpty()) {
+                    continue;
+                }
+                String pep2 = normalizeIL(peptide2);
+                peptideSet2.add(pep2);
+                int group2 = toMissedCleavageGroup(countMissedCleavagesKR(pep2));
+                peptideGroups2.get(group2).add(pep2);
+            }
+        }
+
+        try (BufferedReader reader3 = new BufferedReader(new FileReader(file3))) {
+            String header3 = reader3.readLine();
+            if (header3 == null) {
+                throw new IOException("File 3 is empty: " + file3);
+            }
+            String[] h3 = header3.split("\t", -1);
+            int peptideCol3 = detectPeptideColumnIndex(h3, 5);
+
+            String line3 = null;
+            while ((line3 = reader3.readLine()) != null) {
+                if (line3.trim().isEmpty()) {
+                    continue;
+                }
+                String[] parts3 = line3.split("\t", -1);
+                if (peptideCol3 < 0 || parts3.length <= peptideCol3) {
+                    continue;
+                }
+                String peptide3 = parts3[peptideCol3] == null ? "" : parts3[peptideCol3].trim();
+                if (peptide3.isEmpty()) {
+                    continue;
+                }
+                String pep3 = normalizeIL(peptide3);
+                peptideSet3.add(pep3);
+                int group3 = toMissedCleavageGroup(countMissedCleavagesKR(pep3));
+                peptideGroups3.get(group3).add(pep3);
+            }
+        }
+
+        System.out.println("Peptides in file 1: " + peptideSet1.size());
+        System.out.println("Peptides in file 2: " + peptideSet2.size());
+        System.out.println("Peptides in file 3: " + peptideSet3.size());
+
+        // Export peptides identified by paper but missing from my result:
+        // peptides present in file2 OR file3, but NOT in file1.
+        {
+            HashSet<String> paperPeptides = new HashSet<>(peptideSet2);
+            paperPeptides.addAll(peptideSet3);
+            paperPeptides.removeAll(peptideSet1);
+
+            ArrayList<String> missing = new ArrayList<>(paperPeptides);
+            Collections.sort(missing);
+
+            File outDir = new File(file1).getParentFile();
+            if (outDir == null) outDir = new File(".");
+            File outFile = new File(outDir, "peptides_in_paper_missing_from_my_result.tsv");
+
+            try (PrintWriter w = new PrintWriter(outFile)) {
+                w.println("Peptide\tInFile2\tInFile3");
+                for (String pep : missing) {
+                    w.println(pep + "\t" + (peptideSet2.contains(pep) ? "1" : "0") + "\t" + (peptideSet3.contains(pep) ? "1" : "0"));
+                }
+            }
+            System.out.println("Exported missing peptides: " + missing.size() + "\t" + outFile.getAbsolutePath());
+        }
+
+        // Print genome distribution for peptides from file1 (unique peptides per genome).
+        if (!genomeToPeptides1.isEmpty()) {
+            ArrayList<Map.Entry<String, HashSet<String>>> entries = new ArrayList<>(genomeToPeptides1.entrySet());
+            entries.sort((a, b) -> {
+                int ca = a.getValue() == null ? 0 : a.getValue().size();
+                int cb = b.getValue() == null ? 0 : b.getValue().size();
+                if (cb != ca) return Integer.compare(cb, ca);
+                return a.getKey().compareTo(b.getKey());
+            });
+            System.out.println("---- File1 genome distribution (unique peptides; protein col idx=5) ----");
+            for (Map.Entry<String, HashSet<String>> e : entries) {
+                System.out.println(e.getKey() + "\t" + (e.getValue() == null ? 0 : e.getValue().size()));
+            }
+        } else {
+            System.out.println("---- File1 genome distribution ----");
+            System.out.println("No genome/protein info parsed from file1 column 6 (idx=5).");
+        }
+
+        System.out.println("---- Venn3 counts (overall) ----");
+        printVenn3Counts(peptideSet1, peptideSet2, peptideSet3);
+
+        System.out.println("---- Venn3 counts by missed cleavage group (KR, excluding KP/RP) ----");
+        for (int g = 0; g <= 3; g++) {
+            String label = (g <= 2) ? String.valueOf(g) : ">=3";
+            System.out.println("MissedCleavage=" + label);
+            printVenn3Counts(peptideGroups1.get(g), peptideGroups2.get(g), peptideGroups3.get(g));
+        }
+    }
+
+    /**
+     * Compare 4 peptide files and export UpSet plot counts (intersection sizes).
+     * Peptides are normalized by equating I/L (I -> L).
+     *
+     * File formats:
+     * - file1: peptide column fixed at idx=1 (as in comparePeptideLevel3).
+     * - file2: peptide column detected (fallback idx=6).
+     * - file3: peptide column detected (fallback idx=5).
+     * - file4: same format as file2 (detected, fallback idx=6).
+     *
+     * Output: a TSV next to file1 named "upset4_peptide_counts.tsv".
+     */
+    private static void comparePeptideLevel4Upset(String file1, String file2, String file3, String file4) throws IOException {
+        HashSet<String> s1 = new HashSet<>();
+        HashSet<String> s2 = new HashSet<>();
+        HashSet<String> s3 = new HashSet<>();
+        HashSet<String> s4 = new HashSet<>();
+
+        // file1 (my result): peptide column idx=1
+        try (BufferedReader r1 = new BufferedReader(new FileReader(file1))) {
+            String h = r1.readLine();
+            if (h == null) throw new IOException("File 1 is empty: " + file1);
+            String line;
+            while ((line = r1.readLine()) != null) {
+                if (line.trim().isEmpty()) continue;
+                String[] parts = line.split("\t", -1);
+                if (parts.length <= 1) continue;
+                String pep = parts[1] == null ? "" : parts[1].trim();
+                if (pep.isEmpty()) continue;
+                s1.add(normalizeIL(pep));
+            }
+        }
+        System.out.println("s1\t"+s1.size());
+        // file2
+        try (BufferedReader r2 = new BufferedReader(new FileReader(file2))) {
+            String header = r2.readLine();
+            if (header == null) throw new IOException("File 2 is empty: " + file2);
+            int pepCol = detectPeptideColumnIndex(header.split("\t", -1), 6);
+            String line;
+            while ((line = r2.readLine()) != null) {
+                if (line.trim().isEmpty()) continue;
+                String[] parts = line.split("\t", -1);
+                if (pepCol < 0 || parts.length <= pepCol) continue;
+                String pep = parts[pepCol] == null ? "" : parts[pepCol].trim();
+                if (pep.isEmpty()) continue;
+                s2.add(normalizeIL(pep));
+            }
+        }
+        System.out.println("s2\t"+s2.size());
+        // file3
+        try (BufferedReader r3 = new BufferedReader(new FileReader(file3))) {
+            String header = r3.readLine();
+            if (header == null) throw new IOException("File 3 is empty: " + file3);
+            int pepCol = detectPeptideColumnIndex(header.split("\t", -1), 5);
+            String line;
+            while ((line = r3.readLine()) != null) {
+                if (line.trim().isEmpty()) continue;
+                String[] parts = line.split("\t", -1);
+                if (pepCol < 0 || parts.length <= pepCol) continue;
+                String pep = parts[pepCol] == null ? "" : parts[pepCol].trim();
+                if (pep.isEmpty()) continue;
+                s3.add(normalizeIL(pep));
+            }
+        }
+        System.out.println("s3\t"+s3.size());
+        // file4 (same as file2)
+        try (BufferedReader r4 = new BufferedReader(new FileReader(file4))) {
+            String header = r4.readLine();
+            if (header == null) throw new IOException("File 4 is empty: " + file4);
+            int pepCol = detectPeptideColumnIndex(header.split("\t", -1), 6);
+            String line;
+            while ((line = r4.readLine()) != null) {
+                if (line.trim().isEmpty()) continue;
+                String[] parts = line.split("\t", -1);
+                if (pepCol < 0 || parts.length <= pepCol) continue;
+                String pep = parts[pepCol] == null ? "" : parts[pepCol].trim();
+                if (pep.isEmpty()) continue;
+                s4.add(normalizeIL(pep));
+            }
+        }
+        System.out.println("s4\t"+s4.size());
+        // Union
+        HashSet<String> union = new HashSet<>(s1);
+        union.addAll(s2);
+        union.addAll(s3);
+        union.addAll(s4);
+        System.out.println("union\t"+union.size());
+        // Export peptide list: only in file1 AND file4, and NOT in file2 and file3.
+        // (I/L equated already via normalizeIL during read)
+        HashSet<String> only14 = new HashSet<>(s1);
+        only14.retainAll(s4);
+        only14.removeAll(s2);
+        only14.removeAll(s3);
+        System.out.println("only14\t"+only14.size());
+        // mask: bit0=file1, bit1=file2, bit2=file3, bit3=file4
+        HashMap<Integer, Integer> maskCounts = new HashMap<>();
+        for (String pep : union) {
+            int m = 0;
+            if (s1.contains(pep)) m |= 1;
+            if (s2.contains(pep)) m |= 2;
+            if (s3.contains(pep)) m |= 4;
+            if (s4.contains(pep)) m |= 8;
+            if (m == 0) continue;
+            maskCounts.put(m, maskCounts.getOrDefault(m, 0) + 1);
+        }
+
+        ArrayList<Integer> masks = new ArrayList<>(maskCounts.keySet());
+        masks.sort((a, b) -> {
+            int ca = maskCounts.getOrDefault(a, 0);
+            int cb = maskCounts.getOrDefault(b, 0);
+            if (cb != ca) return Integer.compare(cb, ca);
+            return Integer.compare(a, b);
+        });
+
+        File outDir = new File(file1).getParentFile();
+        if (outDir == null) outDir = new File(".");
+        File outFile = new File(outDir, "upset4_peptide_counts.tsv");
+        File outOnly14 = new File(outDir, "peptides_only_file1_and_file4.tsv");
+        File outUnion = new File(outDir, "peptides_union_4files.tsv");
+        File outCommon = new File(outDir, "peptides_common_4files.tsv");
+
+        try (PrintWriter w = new PrintWriter(outFile)) {
+            w.println("Mask\tInFile1\tInFile2\tInFile3\tInFile4\tCount");
+            for (int m : masks) {
+                int c = maskCounts.getOrDefault(m, 0);
+                w.println(m + "\t" + ((m & 1) != 0 ? "1" : "0")
+                        + "\t" + ((m & 2) != 0 ? "1" : "0")
+                        + "\t" + ((m & 4) != 0 ? "1" : "0")
+                        + "\t" + ((m & 8) != 0 ? "1" : "0")
+                        + "\t" + c);
+            }
+        }
+
+        ArrayList<String> only14List = new ArrayList<>(only14);
+        Collections.sort(only14List);
+        try (PrintWriter w = new PrintWriter(outOnly14)) {
+            w.println("Peptide");
+            for (String pep : only14List) {
+                w.println(pep);
+            }
+        }
+
+        ArrayList<String> unionList = new ArrayList<>(union);
+        Collections.sort(unionList);
+        try (PrintWriter w = new PrintWriter(outUnion)) {
+            w.println("Peptide\tInFile1\tInFile2\tInFile3\tInFile4");
+            for (String pep : unionList) {
+                w.println(pep
+                        + "\t" + (s1.contains(pep) ? "1" : "0")
+                        + "\t" + (s2.contains(pep) ? "1" : "0")
+                        + "\t" + (s3.contains(pep) ? "1" : "0")
+                        + "\t" + (s4.contains(pep) ? "1" : "0"));
+            }
+        }
+
+        HashSet<String> common = new HashSet<>(s1);
+        common.retainAll(s2);
+        common.retainAll(s3);
+        common.retainAll(s4);
+        ArrayList<String> commonList = new ArrayList<>(common);
+        Collections.sort(commonList);
+        try (PrintWriter w = new PrintWriter(outCommon)) {
+            w.println("Peptide");
+            for (String pep : commonList) {
+                w.println(pep);
+            }
+        }
+        System.out.println("common\t"+common.size());
+        System.out.println("---- UpSet4 summary (I/L equated) ----");
+        System.out.println("File1 peptides: " + s1.size());
+        System.out.println("File2 peptides: " + s2.size());
+        System.out.println("File3 peptides: " + s3.size());
+        System.out.println("File4 peptides: " + s4.size());
+        System.out.println("Union peptides: " + union.size());
+        System.out.println("Exported UpSet counts: " + masks.size() + "\t" + outFile.getAbsolutePath());
+        System.out.println("Exported peptides only in file1&file4 (not in file2/file3): " + only14List.size()
+                + "\t" + outOnly14.getAbsolutePath());
+        System.out.println("Exported union peptide list (4 files): " + unionList.size()
+                + "\t" + outUnion.getAbsolutePath());
+        System.out.println("Exported common peptide list (all 4 files): " + commonList.size()
+                + "\t" + outCommon.getAbsolutePath());
+    }
+
+    private static void printVenn3Counts(Set<String> a, Set<String> b, Set<String> c) {
+        HashSet<String> aOnly = new HashSet<>(a);
+        aOnly.removeAll(b);
+        aOnly.removeAll(c);
+
+        HashSet<String> bOnly = new HashSet<>(b);
+        bOnly.removeAll(a);
+        bOnly.removeAll(c);
+
+        HashSet<String> cOnly = new HashSet<>(c);
+        cOnly.removeAll(a);
+        cOnly.removeAll(b);
+
+        HashSet<String> ab = new HashSet<>(a);
+        ab.retainAll(b);
+        HashSet<String> abc = new HashSet<>(ab);
+        abc.retainAll(c);
+
+        HashSet<String> abOnly = new HashSet<>(ab);
+        abOnly.removeAll(c);
+
+        HashSet<String> ac = new HashSet<>(a);
+        ac.retainAll(c);
+        HashSet<String> acOnly = new HashSet<>(ac);
+        acOnly.removeAll(b);
+
+        HashSet<String> bc = new HashSet<>(b);
+        bc.retainAll(c);
+        HashSet<String> bcOnly = new HashSet<>(bc);
+        bcOnly.removeAll(a);
+
+        System.out.println("A_only\t" + aOnly.size());
+        System.out.println("B_only\t" + bOnly.size());
+        System.out.println("C_only\t" + cOnly.size());
+        System.out.println("A∩B_only\t" + abOnly.size());
+        System.out.println("A∩C_only\t" + acOnly.size());
+        System.out.println("B∩C_only\t" + bcOnly.size());
+        System.out.println("A∩B∩C\t" + abc.size());
+    }
+
+    private static int detectPeptideColumnIndex(String[] header, int fallbackIdx) {
+        if (header == null) return fallbackIdx;
+        // Common peptide column names in different exports
+        String[] candidates = new String[] {
+                "Base sequence",
+                "Stripped.Sequence",
+                "Peptide",
+                "Peptide sequence",
+                "Sequence", "PeptideSequence"
+        };
+
+        for (String cand : candidates) {
+            for (int i = 0; i < header.length; i++) {
+                if (cand.equals(header[i] == null ? null : header[i].trim())) {
+                    return i;
+                }
+            }
+        }
+        return fallbackIdx;
+    }
+
+    private static int toMissedCleavageGroup(int missedCleavages) {
+        if (missedCleavages <= 0) return 0;
+        if (missedCleavages == 1) return 1;
+        if (missedCleavages == 2) return 2;
+        return 3;
+    }
+
+    /**
+     * Counts missed cleavage sites for K/R cleavage with proline exception (no cut at KP/RP).
+     * For a peptide sequence, this is approximated as the number of internal cleavage sites:
+     * occurrences of K or R that are not the last residue and not followed by P.
+     *
+     * This method tolerates simple modified strings by stripping non-letter characters first.
+     */
+    private static int countMissedCleavagesKR(String peptide) {
+        if (peptide == null) return 0;
+
+        StringBuilder seq = new StringBuilder(peptide.length());
+        for (int i = 0; i < peptide.length(); i++) {
+            char c = peptide.charAt(i);
+            if (Character.isLetter(c)) {
+                seq.append(Character.toUpperCase(c));
+            }
+        }
+
+        int len = seq.length();
+        if (len <= 1) return 0;
+
+        int missed = 0;
+        for (int i = 0; i < len - 1; i++) {
+            char c = seq.charAt(i);
+            if (c == 'K' || c == 'R') {
+                char next = seq.charAt(i + 1);
+                if (next != 'P') {
+                    missed++;
+                }
+            }
+        }
+        return missed;
+    }
 /**
  * @d
  * @param args
  * @throws IOException
  */
     public static void main(String[] args) throws IOException {
+
+//    	comparePeptideLevel3("Z:\\PRIDE_dataset\\PXD051104_metaExpertPro\\DIA_combined\\MetaPilot\\marker_deep\\final_peptides.tsv", 
+//        "Z:\\PRIDE_dataset\\PXD051104_metaExpertPro\\O480_60min_DIA_IGC_humanswiss.pr_matrix.tsv",
+//        "Z:\\PRIDE_dataset\\PXD051104_metaExpertPro"
+//    			+ "\\O480_60min_IGC_humanswiss_library.tsv");
     	
-        getNoneZeroIntensityPeptides("Z:\\PRIDE_dataset\\PXD051104_metaExpertPro\\DIA_combined\\MetaPilot\\marker_deep\\host\\host.pr_matrix.tsv");
+    	comparePeptideLevel4Upset("Z:\\PRIDE_dataset\\PXD051104_metaExpertPro\\DIA_combined\\MetaPilot\\marker_deep\\final_peptides.tsv", 
+    	        "Z:\\PRIDE_dataset\\PXD051104_metaExpertPro\\O480_60min_DIA_IGC_humanswiss.pr_matrix.tsv",
+    	        "Z:\\PRIDE_dataset\\PXD051104_metaExpertPro"
+    	    			+ "\\O480_60min_IGC_humanswiss_library.tsv", 
+    	    			"Z:\\PRIDE_dataset\\PXD051104_metaExpertPro\\DIA_combined\\MGYG000002293\\MGYG000002293.pr_matrix.tsv");
+    	
+//        getNoneZeroIntensityPeptides("Z:\\PRIDE_dataset\\PXD051104_metaExpertPro\\DIA_combined\\MetaPilot\\marker_deep\\host\\host.pr_matrix.tsv");
 //    	exportLegacyTaxaFromGenomeTsv(new File("Z:\\PRIDE_dataset\\PXD051104_metaExpertPro\\DIA_combined\\MetaPilot\\marker_deep\\taxonomy_analysis"
 //    			+ "\\Genome.tsv"), new File("Z:\\PRIDE_dataset\\PXD051104_metaExpertPro\\DIA_combined\\MetaPilot\\marker_deep\\taxonomy_analysis"
 //    					+ "\\taxa_new.tsv"), false);

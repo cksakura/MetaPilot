@@ -3411,15 +3411,6 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 	/**
 	 * Safely parse an integer from a string, returning 0 if empty or invalid.
 	 */
-	private static int parseIntSafe(String s) {
-		if (s == null || s.trim().isEmpty()) return 0;
-		try {
-			return Integer.parseInt(s.trim());
-		} catch (NumberFormatException e) {
-			return 0;
-		}
-	}
-
 	/**
 	 * Export selection labels parsed from ranked.tsv:
 	 * ordered genomes and labels limited to rows that still contribute (GreedyGain != 0 after greedy starts).
@@ -3449,140 +3440,18 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 	 */
 	public static RankedGenomeSelectionResult buildExportSelectionFromRankedTsv(File rankedFile,
 			java.util.Set<String> allowedGenomes) {
+		uk.ac.quadram.metapilot.core.runner.RankedTsvLabelParser.RankedGenomeSelectionResult coreResult =
+				uk.ac.quadram.metapilot.core.runner.RankedTsvLabelParser.buildExportSelectionFromRankedTsv(rankedFile, allowedGenomes);
 		RankedGenomeSelectionResult result = new RankedGenomeSelectionResult();
-		if (rankedFile == null || !rankedFile.isFile()) {
-			return result;
-		}
-		try (BufferedReader reader = new BufferedReader(new FileReader(rankedFile))) {
-			String header = reader.readLine();
-			if (header == null) return result;
-			String[] headerCols = header.split("\t");
-			int rankIdx = -1, genomeIdx = -1, greedyGainIdx = -1, reasonIdx = -1;
-			int kneeStepIdx = -1, kneeKneedleIdx = -1, kneeCurvIdx = -1, kneePieceIdx = -1, kneeSlopeIdx = -1;
-			for (int i = 0; i < headerCols.length; i++) {
-				String col = headerCols[i].trim();
-				if (col.equals("Rank")) rankIdx = i;
-				else if (col.equals("Genome")) genomeIdx = i;
-				else if (col.equals("Reason")) reasonIdx = i;
-				else if (col.equals("GreedyGain")) greedyGainIdx = i;
-				else if (col.equals("KneeStep")) kneeStepIdx = i;
-				else if (col.equals("KneeKneedle")) kneeKneedleIdx = i;
-				else if (col.equals("KneeCurvature")) kneeCurvIdx = i;
-				else if (col.equals("KneePiecewise")) kneePieceIdx = i;
-				else if (col.equals("KneeSlope")) kneeSlopeIdx = i;
-			}
-			int maxColIdx = Math.max(rankIdx, Math.max(genomeIdx,
-					Math.max(greedyGainIdx, Math.max(kneeStepIdx, Math.max(kneeKneedleIdx,
-							Math.max(kneeCurvIdx, Math.max(kneePieceIdx, kneeSlopeIdx)))))));
-			if (rankIdx < 0 || genomeIdx < 0 || greedyGainIdx < 0 || kneeStepIdx < 0 || kneeKneedleIdx < 0
-					|| kneeCurvIdx < 0 || kneePieceIdx < 0 || kneeSlopeIdx < 0) {
-				return result;
-			}
-
-			String line;
-			boolean kneeValuesRead = false;
-			boolean greedyStarted = false;
-			int greedyContributionCount = 0;
-			while ((line = reader.readLine()) != null) {
-				line = line.trim();
-				if (line.isEmpty() || line.startsWith("#")) continue;
-				String[] parts = line.split("\t");
-				if (parts.length <= maxColIdx) continue;
-				String genome = parts[genomeIdx].trim();
-				if (genome.isEmpty()) continue;
-				result.totalRanked++;
-				// Reason-based statistics (independent of allowedGenomes)
-				if (reasonIdx >= 0 && reasonIdx < parts.length) {
-					String reason = parts[reasonIdx].trim();
-					if ("PRIVILEGE_UNIQUE_3TYPES".equals(reason)) {
-						result.privilegeCount++;
-					} else if ("GREEDY".equals(reason)) {
-						result.greedyCount++;
-					}
-				}
-				if (allowedGenomes != null && !allowedGenomes.contains(genome)) continue;
-				try {
-					Integer.parseInt(parts[rankIdx].trim());
-					if (!kneeValuesRead) {
-						int kneeStep = parseIntSafe(parts[kneeStepIdx].trim());
-						int kneeKneedle = parseIntSafe(parts[kneeKneedleIdx].trim());
-						int kneeCurv = parseIntSafe(parts[kneeCurvIdx].trim());
-						int kneePiece = parseIntSafe(parts[kneePieceIdx].trim());
-						int kneeSlope = parseIntSafe(parts[kneeSlopeIdx].trim());
-						int[] focusVals = { kneeKneedle, kneeCurv, kneeSlope };
-						Arrays.sort(focusVals);
-						result.focusKnee = focusVals[1];
-						result.comprehensiveKnee = Math.max(kneeStep, kneePiece);
-						kneeValuesRead = true;
-					}
-					if (result.focusKnee <= 0 || result.comprehensiveKnee <= 0) {
-						continue;
-					}
-					double greedyGain = parseDoubleSafe(parts[greedyGainIdx].trim());
-					if (!greedyStarted) {
-						if (greedyGain == 0.0) {
-							result.genomeSelectionLabel.put(genome, "core");
-							result.orderedGenomes.add(genome);
-							continue;
-						}
-						greedyStarted = true;
-						greedyContributionCount = 1;
-					} else {
-						if (greedyGain == 0.0) {
-							break;
-						}
-						greedyContributionCount++;
-					}
-					if (greedyContributionCount <= result.focusKnee) {
-						result.genomeSelectionLabel.put(genome, "core");
-					} else if (greedyContributionCount <= result.comprehensiveKnee) {
-						result.genomeSelectionLabel.put(genome, "mid");
-					} else {
-						result.genomeSelectionLabel.put(genome, "tail");
-					}
-					result.orderedGenomes.add(genome);
-				} catch (NumberFormatException e) {
-					// skip malformed row
-				}
-			}
-
-			// Special case: no GREEDY rows at all (only privilege/representative stage).
-			// In this scenario, all genomes that pass allowedGenomes should be treated as CORE.
-			if (result.greedyCount == 0 && result.totalRanked > 0 && result.orderedGenomes.isEmpty()) {
-				try (BufferedReader r2 = new BufferedReader(new FileReader(rankedFile))) {
-					// skip header
-					r2.readLine();
-					String l2;
-					while ((l2 = r2.readLine()) != null) {
-						l2 = l2.trim();
-						if (l2.isEmpty() || l2.startsWith("#")) continue;
-						String[] p2 = l2.split("\t");
-						if (p2.length <= genomeIdx) continue;
-						String g = p2[genomeIdx].trim();
-						if (g.isEmpty()) continue;
-						if (allowedGenomes != null && !allowedGenomes.contains(g)) continue;
-						if (!result.genomeSelectionLabel.containsKey(g)) {
-							result.genomeSelectionLabel.put(g, "core");
-							result.orderedGenomes.add(g);
-						}
-					}
-				} catch (IOException e) {
-					// fall back silently; caller will see empty result
-				}
-			}
-		} catch (IOException e) {
-			return result;
-		}
+		result.genomeSelectionLabel.putAll(coreResult.genomeSelectionLabel);
+		result.orderedGenomes.addAll(coreResult.orderedGenomes);
+		result.focusKnee = coreResult.focusKnee;
+		result.comprehensiveKnee = coreResult.comprehensiveKnee;
+		result.totalRanked = coreResult.totalRanked;
+		result.privilegeCount = coreResult.privilegeCount;
+		result.greedyCount = coreResult.greedyCount;
 		return result;
 	}
 
-	private static double parseDoubleSafe(String s) {
-		if (s == null || s.trim().isEmpty()) return 0.0;
-		try {
-			return Double.parseDouble(s.trim());
-		} catch (NumberFormatException e) {
-			return 0.0;
-		}
-	}
 
 }

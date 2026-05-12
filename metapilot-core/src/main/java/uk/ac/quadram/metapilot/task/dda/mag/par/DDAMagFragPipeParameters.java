@@ -53,6 +53,7 @@ public class DDAMagFragPipeParameters extends MetaBaseParameter {
     // MAG-specific fields
     private String magDbCatalogueId = "";
     private String magDbVersion = "";
+    private String fragpipeWorkflowPath = "";
     private String genomeSelectorMode = MagDbItem.MARKER2;
     private String genomeSelectionStrategy = "Focus";
     
@@ -181,6 +182,9 @@ public class DDAMagFragPipeParameters extends MetaBaseParameter {
     
     public String getMagDbVersion() { return magDbVersion; }
     public void setMagDbVersion(String magDbVersion) { this.magDbVersion = magDbVersion; }
+
+    public String getFragpipeWorkflowPath() { return fragpipeWorkflowPath; }
+    public void setFragpipeWorkflowPath(String fragpipeWorkflowPath) { this.fragpipeWorkflowPath = fragpipeWorkflowPath; }
 
     public String getGenomeSelectorMode() { return genomeSelectorMode; }
     public void setGenomeSelectorMode(String genomeSelectorMode) {

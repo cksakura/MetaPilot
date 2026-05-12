@@ -7,60 +7,30 @@
   "metadata": [
     {"sample_index": 0},
     {"sample_index": 1},
-    {"sample_index": 2},
-    {"sample_index": 3},
-    {"sample_index": 4},
-    {"sample_index": 5},
-    {"sample_index": 6},
-    {"sample_index": 7},
-    {"sample_index": 8}
+    {"sample_index": 2}
   ],
   "workflow": "DIA_SEED",
   "input_output": {
     "micro_db": "C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-gut\\v2.0.2",
     "host_database": "",
-    "output_directory": "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851001\\DIA\\MetaPilot",
+    "output_directory": "Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\12mix\\DIA\\MetaPilot",
     "append_host_db": false,
     "experiments": [
       {
-        "file_path": "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851001\\DIA\\YS-194-DIA-1.raw",
-        "experiment_name": "YS-194-DIA-1"
+        "file_path": "Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\12mix\\DIA\\170413_12mix_DIA_14.raw",
+        "experiment_name": "DIA_14"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851001\\DIA\\YS-194-DIA-1_20200620233957.raw",
-        "experiment_name": "YS-194-DIA-1_20200620233957"
+        "file_path": "Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\12mix\\DIA\\170413_12mix_DIA_15.raw",
+        "experiment_name": "DIA_15"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851001\\DIA\\YS-194-DIA-1_20200621022500.raw",
-        "experiment_name": "YS-194-DIA-1_20200621022500"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851001\\DIA\\YS-194-DIA-2.raw",
-        "experiment_name": "YS-194-DIA-2"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851001\\DIA\\YS-194-DIA-2_20200621094425.raw",
-        "experiment_name": "YS-194-DIA-2_20200621094425"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851001\\DIA\\YS-194-DIA-2_20200621122928.raw",
-        "experiment_name": "YS-194-DIA-2_20200621122928"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851001\\DIA\\YS-194-DIA-3.raw",
-        "experiment_name": "YS-194-DIA-3"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851001\\DIA\\YS-194-DIA-3_20200621194833.raw",
-        "experiment_name": "YS-194-DIA-3_20200621194833"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851001\\DIA\\YS-194-DIA-3_20200621223326.raw",
-        "experiment_name": "YS-194-DIA-3_20200621223326"
+        "file_path": "Z:\\PRIDE_dataset\\PXD008738_Elo_DIA\\12mix\\DIA\\170413_12mix_DIA_16.raw",
+        "experiment_name": "DIA_16"
       }
     ]
   },
-  "generated_at": "2026-03-11 08:51:17",
+  "generated_at": "2026-04-24 16:44:16",
   "description": "Last used parameters",
   "basic_parameters": {
     "ms2_scan_mode": "DIA",
@@ -70,14 +40,16 @@
   },
   "dia_settings": {
     "acetyProN": true,
-    "library_search": false,
+    "library_search": true,
     "phosphoSTY": false,
     "mExcision": true,
-    "libraries": ["qiao_12mix"],
+    "libraries": ["Elo_12mix"],
     "carbamiC": true,
     "kGG": false,
+    "peptide_detectability_threshold": 0.5,
     "oxidationM": true,
-    "seed_mode": "COMPREHENSIVE"
+    "seed_mode": "DIRECT",
+    "use_peptide_based_round": false
   },
   "version": "1.0"
 }

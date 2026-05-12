@@ -135,9 +135,38 @@ public final class DeepComprehensivePaths {
 		}
 		int lastSlash = Math.max(rawFilePath.lastIndexOf('/'), rawFilePath.lastIndexOf('\\'));
 		String name = lastSlash >= 0 ? rawFilePath.substring(lastSlash + 1) : rawFilePath;
-		int dot = name.lastIndexOf('.');
-		String stem = dot > 0 ? name.substring(0, dot) : name;
-		return sanitizeRunId(stem);
+		return sanitizeRunId(stemWithoutSpectralSuffix(name));
+	}
+
+	private static String stemWithoutSpectralSuffix(String fileName) {
+		if (fileName == null || fileName.isEmpty()) {
+			return "run";
+		}
+		String stem = fileName.trim();
+		String lower = stem.toLowerCase();
+		if (lower.endsWith(".raw.dia")) {
+			return stem.substring(0, stem.length() - 8);
+		}
+		if (lower.endsWith(".raw.d")) {
+			return stem.substring(0, stem.length() - 6);
+		}
+		if (lower.endsWith(".mzml")) {
+			return stem.substring(0, stem.length() - 5);
+		}
+		if (lower.endsWith(".dia")) {
+			return stem.substring(0, stem.length() - 4);
+		}
+		if (lower.endsWith(".raw")) {
+			return stem.substring(0, stem.length() - 4);
+		}
+		if (lower.endsWith(".d")) {
+			return stem.substring(0, stem.length() - 2);
+		}
+		int dot = stem.lastIndexOf('.');
+		if (dot > 0) {
+			return stem.substring(0, dot);
+		}
+		return stem;
 	}
 
 	/**

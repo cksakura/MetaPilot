@@ -1260,10 +1260,11 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 			boolean enableAutoRep = useMarker4;
 			if (useMarker4) {
 				selector.selectMarkerGenomesWithKnee(psms, markerFasta, genomesTaxaTsv, evidenceTsv.getAbsolutePath(),
-						rankedTsv.getAbsolutePath(), selectedTsv.getAbsolutePath(), 500, enableAutoRep);
+						rankedTsv.getAbsolutePath(), selectedTsv.getAbsolutePath(),
+						MarkerGenomeSelector.UNLIMITED_MAXIMUM_SELECTED, enableAutoRep);
 			} else {
 				selector.selectMarkerGenomesWithKnee(psms, evidenceTsv.getAbsolutePath(), rankedTsv.getAbsolutePath(),
-						selectedTsv.getAbsolutePath(), 500, enableAutoRep);
+						selectedTsv.getAbsolutePath(), MarkerGenomeSelector.UNLIMITED_MAXIMUM_SELECTED, enableAutoRep);
 			}
 		}
 		if (rankedTsv.exists()) {

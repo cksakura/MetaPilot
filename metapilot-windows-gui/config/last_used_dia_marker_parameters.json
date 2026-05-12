@@ -60,7 +60,7 @@
       }
     ]
   },
-  "generated_at": "2026-03-11 11:46:37",
+  "generated_at": "2026-05-08 15:14:53",
   "description": "Last used parameters",
   "basic_parameters": {
     "ms2_scan_mode": "DIA",
@@ -71,13 +71,16 @@
   "dia_settings": {
     "acetyProN": true,
     "library_search": true,
+    "genomes_per_round": 5,
     "phosphoSTY": false,
     "mExcision": true,
     "libraries": [],
     "carbamiC": true,
     "kGG": false,
+    "peptide_detectability_threshold": 0.5,
     "oxidationM": true,
-    "marker_mode": "DEEP"
+    "marker_mode": "DEEP_PER_FILE",
+    "use_peptide_based_round": false
   },
   "version": "1.0"
 }

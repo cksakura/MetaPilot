@@ -18,23 +18,18 @@ import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
 
 public class MagFuncSearcher extends IGCFuncSqliteSearcher {
 
-	/**
-	 * https://gtdb.ecogenomic.org/
-	 */
 	private String genome;
 	private MagDbItem usedMagDbItem;
 
 	public MagFuncSearcher(String dbpath, String defDbPath, MagDbItem usedMagDbItem)
 			throws SQLException, NumberFormatException, IOException {
 		super(dbpath, defDbPath);
-		// TODO Auto-generated constructor stub
 		this.usedMagDbItem = usedMagDbItem;
 	}
 
 	public MagFuncSearcher(String dbpath, String defDbPath, MagDbItem usedMagDbItem, String genome)
 			throws SQLException, NumberFormatException, IOException {
 		super(dbpath, defDbPath);
-		// TODO Auto-generated constructor stub
 		this.genome = genome;
 		this.usedMagDbItem = usedMagDbItem;
 	}
@@ -205,7 +200,6 @@ public class MagFuncSearcher extends IGCFuncSqliteSearcher {
 			}
 			reader.close();
 		} else {
-			System.out.println("Taxonomic annotation file " + genomeTaxaFile + " was not found.");
 			throw new IOException("Taxonomic annotation file " + genomeTaxaFile + " was not found.");
 		}
 
@@ -258,16 +252,19 @@ public class MagFuncSearcher extends IGCFuncSqliteSearcher {
 
 		File eggnogFile = null;
 		File[] eggnogFiles = eggnogFolder.listFiles();
-		for (int i = 0; i < eggnogFiles.length; i++) {
-			String name = eggnogFiles[i].getName();
-			if (name.startsWith(genome)) {
-				eggnogFile = eggnogFiles[i];
+		if (eggnogFiles != null) {
+			for (int i = 0; i < eggnogFiles.length; i++) {
+				String name = eggnogFiles[i].getName();
+				if (name.startsWith(genome)) {
+					eggnogFile = eggnogFiles[i];
+				}
 			}
 		}
 
 		if (eggnogFile != null && eggnogFile.exists()) {
 			BufferedReader reader = new BufferedReader(new FileReader(eggnogFile));
-			String line = reader.readLine();
+			reader.readLine();
+			String line;
 			while ((line = reader.readLine()) != null) {
 				String[] content = line.split("\t");
 				if (proMap.containsKey(content[0])) {
@@ -343,15 +340,12 @@ public class MagFuncSearcher extends IGCFuncSqliteSearcher {
 			}
 			reader.close();
 		} else {
-			System.out.println("Functional annotation file " + eggnogFile + " was not found.");
 			throw new IOException("Functional annotation file " + eggnogFile + " was not found.");
 		}
 
 		getReference(cogSet, nogSet, goSet, ecSet, keggSet);
 
-		MetaProteinAnnoMag[] mpas = list.toArray(new MetaProteinAnnoMag[list.size()]);
-
-		return mpas;
+		return list.toArray(new MetaProteinAnnoMag[list.size()]);
 	}
 
 }

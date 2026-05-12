@@ -51,7 +51,7 @@ public class MetaDiaDeepComprehensiveTask extends MetaDiaSeedIterativeTask {
 	private static final String SEED_PARQUET = "seed.parquet";
 
 	/** Number of top genomes from genome_ranked.tsv per round. */
-	private static final int GENOMES_PER_ROUND = 5;
+	private static final int DEFAULT_GENOMES_PER_ROUND = 5;
 	/** Round stop trigger for peptide-based deep mode: stop after current genome if cumulative stripped peptides exceed this value. */
 	private static final int PEPTIDE_ROUND_TRIGGER = 1_000_000;
 	/** Maximum number of iterative genome rounds. */
@@ -60,6 +60,14 @@ public class MetaDiaDeepComprehensiveTask extends MetaDiaSeedIterativeTask {
 	public MetaDiaDeepComprehensiveTask(MetaParameterDiaMarker markerParams, MetaResourceParameters mrp,
 			ProgressBar bar1, ProgressBar bar2) {
 		super(markerParams, mrp, bar1, bar2);
+	}
+
+	private int getGenomesPerRound() {
+		if (metaPar instanceof MetaParameterDiaMarker) {
+			int v = ((MetaParameterDiaMarker) metaPar).getGenomesPerRound();
+			return v > 0 ? v : DEFAULT_GENOMES_PER_ROUND;
+		}
+		return DEFAULT_GENOMES_PER_ROUND;
 	}
 
 	@Override
@@ -314,7 +322,7 @@ public class MetaDiaDeepComprehensiveTask extends MetaDiaSeedIterativeTask {
 			loop = runPeptideBasedIterativeRoundLoop(rankedFile, seedFolder, cut, detectabilityThreshold);
 		} else {
 			loop = DeepIterativeCommonSupport.runIterativeRoundLoop(
-					rankedFile, GENOMES_PER_ROUND, MAX_ITERATIVE_ROUNDS, "Deep seed round", cut,
+					rankedFile, getGenomesPerRound(), MAX_ITERATIVE_ROUNDS, "Deep seed round", cut,
 					initialSearchSeparate, initialSearchSeparate && goodDiaFiles != null ? goodDiaFiles.length : 0,
 					this::updateMessage,
 					(round, genomes) -> runSeedRoundAppendPreviousPeptides(round, seedFolder, genomes),

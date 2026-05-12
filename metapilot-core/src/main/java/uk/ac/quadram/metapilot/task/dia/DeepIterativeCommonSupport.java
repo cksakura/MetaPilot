@@ -107,6 +107,259 @@ public final class DeepIterativeCommonSupport {
 	}
 
 	/**
+	 * Pool size for DEEP_PER_FILE-style parallel per-raw-file processing.
+	 * <p>
+	 * A full per-file Deep Marker workflow (marker search + many iterative rounds)
+	 * uses substantially more peak memory than a single DIA-NN search. We budget
+	 * 32 GB per concurrent per-file task: pool = totalRAM_GB / 32.
+	 * <p>
+	 * If total RAM is below 32 GB, we fall back to sequential processing (pool = 1).
+	 * The pool is also capped by the number of files to process.
+	 *
+	 * @param fileCount number of raw files in this run; pool size will not exceed this
+	 * @return pool size in [1, fileCount]
+	 */
+	public static int computeDeepPerFilePoolSize(int fileCount) {
+		long totalMemoryGB;
+		try {
+			totalMemoryGB = ((OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean())
+					.getTotalMemorySize() / 1024 / 1024 / 1024;
+		} catch (Throwable t) {
+			return 1;
+		}
+		int n;
+		if (totalMemoryGB < 32L) {
+			n = 1;
+		} else {
+			n = (int) (totalMemoryGB / 32L);
+		}
+		n = Math.max(1, n);
+		if (fileCount > 0) {
+			n = Math.min(n, fileCount);
+		}
+		return n;
+	}
+
+	// ---------------------- HPC-aware pool sizing ----------------------
+
+	/** Default conservative per-task RAM budget on HPC. Higher than the GUI default (32 GB) because
+	 *  HPC OOM-kills the job if any worker exceeds the cgroup limit, and DEEP_PER_FILE peaks can
+	 *  exceed 32 GB on large MAG libraries. Override with METAPILOT_DEEP_PER_FILE_RAM_PER_TASK_GB. */
+	public static final long DEFAULT_HPC_RAM_PER_TASK_GB = 64L;
+
+	/** Minimum DIA-NN threads per per-file worker. Pool is capped so each worker keeps at least this many. */
+	public static final int MIN_THREADS_PER_TASK = 4;
+
+	public enum MemorySource {
+		EXPLICIT_OVERRIDE_POOL,
+		SLURM_MEM_PER_NODE,
+		SLURM_MEM_PER_CPU,
+		CGROUP_V2_MEMORY_MAX,
+		CGROUP_V1_MEMORY_LIMIT,
+		PHYSICAL_RAM
+	}
+
+	/**
+	 * Result of an HPC-aware pool sizing decision (carries the provenance so callers can log it).
+	 */
+	public static final class PoolDecision {
+		public final int poolSize;
+		public final int perTaskThreads;
+		public final long effectiveMemoryGB;
+		public final long ramPerTaskGB;
+		public final MemorySource memorySource;
+		public final String memorySourceDetail;
+		/** True iff the pool size came from an explicit env/system-property override. */
+		public final boolean explicitOverride;
+
+		PoolDecision(int poolSize, int perTaskThreads, long effectiveMemoryGB, long ramPerTaskGB,
+				MemorySource memorySource, String memorySourceDetail, boolean explicitOverride) {
+			this.poolSize = poolSize;
+			this.perTaskThreads = perTaskThreads;
+			this.effectiveMemoryGB = effectiveMemoryGB;
+			this.ramPerTaskGB = ramPerTaskGB;
+			this.memorySource = memorySource;
+			this.memorySourceDetail = memorySourceDetail;
+			this.explicitOverride = explicitOverride;
+		}
+	}
+
+	/**
+	 * Conservative HPC pool sizing for DEEP_PER_FILE.
+	 * <p>
+	 * Differs from {@link #computeDeepPerFilePoolSize(int)} in three ways:
+	 * <ol>
+	 *   <li><b>Reads the actual job memory limit</b> (Slurm env, then cgroup v2/v1) instead of node RAM,
+	 *       so the result reflects what your scheduler will actually let you use.</li>
+	 *   <li><b>Uses a larger per-task RAM budget</b> ({@value #DEFAULT_HPC_RAM_PER_TASK_GB} GB by default,
+	 *       configurable via {@code METAPILOT_DEEP_PER_FILE_RAM_PER_TASK_GB} or system property
+	 *       {@code metapilot.deep_per_file.ram_per_task_gb}) since HPC OOM-kills oversubscribed jobs.</li>
+	 *   <li><b>Caps by CPU as well as RAM</b> so each worker keeps at least
+	 *       {@value #MIN_THREADS_PER_TASK} DIA-NN threads.</li>
+	 * </ol>
+	 *
+	 * <p>Explicit overrides (highest priority):
+	 * <ul>
+	 *   <li>{@code METAPILOT_DEEP_PER_FILE_POOL} or {@code -Dmetapilot.deep_per_file.pool=N} pins the pool size.</li>
+	 *   <li>{@code METAPILOT_DEEP_PER_FILE_RAM_PER_TASK_GB} or {@code -Dmetapilot.deep_per_file.ram_per_task_gb=N}
+	 *       overrides the per-task GB budget.</li>
+	 * </ul>
+	 *
+	 * @param fileCount     number of raw files to process; pool is capped by this
+	 * @param totalThreads  total DIA-NN threads available; pool is capped so each worker keeps at least
+	 *                      {@value #MIN_THREADS_PER_TASK} threads
+	 */
+	public static PoolDecision computeDeepPerFilePoolSizeHpc(int fileCount, int totalThreads) {
+		long ramPerTaskGB = readPositiveLong("METAPILOT_DEEP_PER_FILE_RAM_PER_TASK_GB",
+				"metapilot.deep_per_file.ram_per_task_gb", DEFAULT_HPC_RAM_PER_TASK_GB);
+		if (ramPerTaskGB <= 0) ramPerTaskGB = DEFAULT_HPC_RAM_PER_TASK_GB;
+
+		// 1) Highest priority: explicit pool override. Still cap by fileCount.
+		Long explicitPool = readPositiveLongOrNull("METAPILOT_DEEP_PER_FILE_POOL", "metapilot.deep_per_file.pool");
+		if (explicitPool != null) {
+			int n = explicitPool.intValue();
+			n = Math.max(1, n);
+			if (fileCount > 0) n = Math.min(n, fileCount);
+			int perTask = (totalThreads > 0) ? Math.max(1, totalThreads / n) : 1;
+			return new PoolDecision(n, perTask, -1L, ramPerTaskGB,
+					MemorySource.EXPLICIT_OVERRIDE_POOL, "explicit override = " + explicitPool, true);
+		}
+
+		// 2) Detect available memory in priority order: Slurm -> cgroup v2 -> cgroup v1 -> physical RAM (* 0.8).
+		long memBytes;
+		MemorySource src;
+		String srcDetail;
+
+		long slurmMemPerNodeMb = readPositiveLongEnv("SLURM_MEM_PER_NODE");
+		long slurmMemPerCpuMb = readPositiveLongEnv("SLURM_MEM_PER_CPU");
+		long slurmCpus = readPositiveLongEnv("SLURM_CPUS_ON_NODE");
+		if (slurmCpus <= 0) slurmCpus = readPositiveLongEnv("SLURM_CPUS_PER_TASK");
+		if (slurmMemPerNodeMb > 0) {
+			memBytes = slurmMemPerNodeMb * 1024L * 1024L;
+			src = MemorySource.SLURM_MEM_PER_NODE;
+			srcDetail = "SLURM_MEM_PER_NODE=" + slurmMemPerNodeMb + " MB";
+		} else if (slurmMemPerCpuMb > 0 && slurmCpus > 0) {
+			memBytes = slurmMemPerCpuMb * slurmCpus * 1024L * 1024L;
+			src = MemorySource.SLURM_MEM_PER_CPU;
+			srcDetail = "SLURM_MEM_PER_CPU=" + slurmMemPerCpuMb + " MB * cpus=" + slurmCpus;
+		} else {
+			Long cgv2 = readCgroupV2MemoryMaxBytes();
+			if (cgv2 != null) {
+				memBytes = cgv2;
+				src = MemorySource.CGROUP_V2_MEMORY_MAX;
+				srcDetail = "/sys/fs/cgroup/memory.max=" + cgv2;
+			} else {
+				Long cgv1 = readCgroupV1MemoryLimitBytes();
+				if (cgv1 != null) {
+					memBytes = cgv1;
+					src = MemorySource.CGROUP_V1_MEMORY_LIMIT;
+					srcDetail = "/sys/fs/cgroup/memory/memory.limit_in_bytes=" + cgv1;
+				} else {
+					long physical;
+					try {
+						physical = ((OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean())
+								.getTotalMemorySize();
+					} catch (Throwable t) {
+						physical = 0;
+					}
+					// Leave headroom for the OS / driver / DIA-NN overhead when no cgroup signal is available.
+					memBytes = (long) (physical * 0.8);
+					src = MemorySource.PHYSICAL_RAM;
+					srcDetail = "physical RAM (no cgroup/Slurm signal); using 80%";
+				}
+			}
+		}
+
+		long effectiveMemoryGB = memBytes / 1024L / 1024L / 1024L;
+
+		// 3) Compute pool from memory budget.
+		int n;
+		if (effectiveMemoryGB < ramPerTaskGB) {
+			n = 1;
+		} else {
+			n = (int) (effectiveMemoryGB / ramPerTaskGB);
+		}
+		n = Math.max(1, n);
+		if (fileCount > 0) n = Math.min(n, fileCount);
+
+		// 4) Cap by CPU so each worker keeps at least MIN_THREADS_PER_TASK threads.
+		if (totalThreads > 0) {
+			int cpuCap = Math.max(1, totalThreads / MIN_THREADS_PER_TASK);
+			n = Math.min(n, cpuCap);
+		}
+
+		int perTask = (totalThreads > 0) ? Math.max(1, totalThreads / n) : 1;
+		return new PoolDecision(n, perTask, effectiveMemoryGB, ramPerTaskGB, src, srcDetail, false);
+	}
+
+	private static long readPositiveLong(String envName, String sysPropName, long fallback) {
+		Long v = readPositiveLongOrNull(envName, sysPropName);
+		return v != null ? v.longValue() : fallback;
+	}
+
+	private static Long readPositiveLongOrNull(String envName, String sysPropName) {
+		String raw = null;
+		try {
+			raw = System.getProperty(sysPropName);
+		} catch (Throwable ignored) {
+		}
+		if (raw == null || raw.isBlank()) {
+			try {
+				raw = System.getenv(envName);
+			} catch (Throwable ignored) {
+			}
+		}
+		if (raw == null || raw.isBlank()) return null;
+		try {
+			long v = Long.parseLong(raw.trim());
+			return v > 0 ? Long.valueOf(v) : null;
+		} catch (Exception e) {
+			return null;
+		}
+	}
+
+	private static long readPositiveLongEnv(String envName) {
+		try {
+			String raw = System.getenv(envName);
+			if (raw == null || raw.isBlank()) return -1L;
+			long v = Long.parseLong(raw.trim());
+			return v > 0 ? v : -1L;
+		} catch (Exception e) {
+			return -1L;
+		}
+	}
+
+	/** Read cgroup v2 memory.max as bytes; returns null when unavailable, "max", or path missing. */
+	private static Long readCgroupV2MemoryMaxBytes() {
+		java.io.File f = new java.io.File("/sys/fs/cgroup/memory.max");
+		if (!f.isFile()) return null;
+		try {
+			String s = new String(java.nio.file.Files.readAllBytes(f.toPath())).trim();
+			if (s.isEmpty() || "max".equalsIgnoreCase(s)) return null;
+			long v = Long.parseLong(s);
+			return v > 0 ? Long.valueOf(v) : null;
+		} catch (Exception e) {
+			return null;
+		}
+	}
+
+	/** Read cgroup v1 memory.limit_in_bytes; returns null when unavailable or "unlimited" sentinel. */
+	private static Long readCgroupV1MemoryLimitBytes() {
+		java.io.File f = new java.io.File("/sys/fs/cgroup/memory/memory.limit_in_bytes");
+		if (!f.isFile()) return null;
+		try {
+			String s = new String(java.nio.file.Files.readAllBytes(f.toPath())).trim();
+			if (s.isEmpty()) return null;
+			long v = Long.parseLong(s);
+			// cgroup v1 reports a huge sentinel (~9.22e18) when no limit is set. Treat that as "no signal".
+			if (v <= 0 || v >= Long.MAX_VALUE / 2) return null;
+			return Long.valueOf(v);
+		} catch (Exception e) {
+			return null;
+		}
+	}
+
+	/**
 	 * Count new (previously unseen) peptides from per-file parquets in a round directory.
 	 * Mirrors {@link #countNewPeptidesFromParquet} but reads from per_file_*.parquet.
 	 */

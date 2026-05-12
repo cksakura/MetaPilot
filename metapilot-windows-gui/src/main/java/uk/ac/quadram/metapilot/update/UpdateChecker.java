@@ -321,7 +321,7 @@ public class UpdateChecker {
         String v = Optional.ofNullable(UpdateChecker.class.getPackage())
                 .map(Package::getImplementationVersion)
                 .orElse(null);
-        return (v != null && !v.isBlank()) ? v : "1.0.0-beta.7";
+        return (v != null && !v.isBlank()) ? v : "1.0.0-beta.8";
     }
 
     private static class ReleaseInfo {

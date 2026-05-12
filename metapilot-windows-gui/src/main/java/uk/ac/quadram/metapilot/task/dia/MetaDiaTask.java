@@ -15,8 +15,6 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -31,6 +29,7 @@ import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 import org.apache.commons.math3.stat.inference.MannWhitneyUTest;
 import org.dom4j.DocumentException;
 
+import uk.ac.quadram.metapilot.core.dia.DiaScoring;
 import uk.ac.quadram.metapilot.core.math.MathTool;
 import uk.ac.quadram.metapilot.core.prodb.FastaManager;
 import uk.ac.quadram.metapilot.core.tools.FormatTool;
@@ -4920,71 +4919,8 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 			HashMap<String, HashSet<String>> razorPepWithILMap,
 			HashMap<String, HashSet<String>> uniquePepWithILMap,
 			java.util.Set<String> genomeKeys) {
-		if (peps == null || magIdentifier == null) {
-			return;
-		}
-		for (FlashLfqQuanPeptide pep : peps) {
-			String stripeSequence = pep.getSequence();
-			String[] proteins = pep.getProteins();
-			if (proteins == null) {
-				continue;
-			}
-			int count = 0;
-			for (String p : proteins) {
-				if (p != null && razorPepCountMap.containsKey(p)) {
-					count++;
-				}
-			}
-			if (count == 0) {
-				continue;
-			}
-			boolean hasIorL = stripeSequence != null
-					&& (stripeSequence.indexOf('I') >= 0 || stripeSequence.indexOf('L') >= 0);
-			String uniqueGenome = null;
-			boolean isUnique = true;
-			for (String p : proteins) {
-				if (p == null || p.isEmpty()) {
-					continue;
-				}
-				if (p.startsWith(magIdentifier)) {
-					String genome = p.split("_")[0];
-					if (uniqueGenome == null) {
-						uniqueGenome = genome;
-					} else if (!uniqueGenome.equals(genome)) {
-						isUnique = false;
-						break;
-					}
-				} else {
-					isUnique = false;
-					break;
-				}
-			}
-			String razorProtein = pep.getRazorProtein();
-			for (String p : proteins) {
-				if (p == null || !razorPepCountMap.containsKey(p) || !p.startsWith(magIdentifier)) {
-					continue;
-				}
-				String genome = p.split("_")[0];
-				if (!genomeKeys.contains(genome)) {
-					continue;
-				}
-				if (hasIorL) {
-					totalPepWithILMap.computeIfAbsent(genome, k -> new HashSet<>()).add(stripeSequence);
-				}
-				if (isUnique && uniqueGenome != null && uniqueGenome.equals(genome)) {
-					uniquePepCountMap.computeIfAbsent(genome, k -> new HashSet<>()).add(stripeSequence);
-					if (hasIorL) {
-						uniquePepWithILMap.computeIfAbsent(genome, k -> new HashSet<>()).add(stripeSequence);
-					}
-				}
-			}
-			if (razorProtein != null && razorProtein.startsWith(magIdentifier) && hasIorL) {
-				String genome = razorProtein.split("_")[0];
-				if (genomeKeys.contains(genome)) {
-					razorPepWithILMap.computeIfAbsent(genome, k -> new HashSet<>()).add(stripeSequence);
-				}
-			}
-		}
+		DiaScoring.fillDiaGenomeUniqueAndILMaps(peps, magIdentifier, razorPepCountMap,
+				uniquePepCountMap, totalPepWithILMap, razorPepWithILMap, uniquePepWithILMap, genomeKeys);
 	}
 
 	/**
@@ -5037,314 +4973,22 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 	 * PEP/CScore+intensity scoring and decoy resampling. Uses unique peptides only
 	 * when uniquePeptidesOnly is true. Value is double[]{S, p_emp, q_value};
 	 * q_value is Benjamini–Hochberg corrected.
+	 *
+	 * <p>Delegates to {@link DiaScoring#computeGenomeScoreMap}.
 	 */
 	protected HashMap<String, double[]> computeGenomeScoreMap(DiaNNPrecursor[] precursors, boolean uniquePeptidesOnly) {
-		HashMap<String, double[]> genomeScoreMap = new HashMap<>();
-		if (precursors == null || precursors.length == 0) {
-			return genomeScoreMap;
-		}
-		HashMap<String, PeptideEvidence> peptideMap = new HashMap<>();
-		for (DiaNNPrecursor pp : precursors) {
-			String seq = pp.getSeqString();
-			if (seq == null || seq.isEmpty())
-				continue;
-			int charge = pp.getCharge();
-			boolean isDecoy = pp.getIsDecoy();
-			String key = seq + "|" + charge + "|" + isDecoy;
-			double preQuan = pp.getPreQuan();
-			double ms1Area = pp.getMs1Area();
-			double cscore = pp.getCscore();
-			double pep = pp.getPEP();
-			PeptideEvidence ev = peptideMap.get(key);
-			if (ev == null) {
-				ev = new PeptideEvidence();
-				ev.seq = seq;
-				ev.bestCScore = cscore;
-				ev.bestPEP = pep;
-				ev.bestPreQuan = preQuan;
-				ev.bestMs1Area = ms1Area;
-				ev.isDecoy = isDecoy;
-				ev.proteins = new HashSet<>();
-				peptideMap.put(key, ev);
-			} else {
-				ev.bestCScore = Math.max(ev.bestCScore, cscore);
-				ev.bestPEP = Math.min(ev.bestPEP, pep);
-				ev.bestPreQuan = Math.max(ev.bestPreQuan, preQuan);
-				ev.bestMs1Area = Math.max(ev.bestMs1Area, ms1Area);
-			}
-			String[] proGroups = pp.getProGroups();
-			if (proGroups != null) {
-				for (String pro : proGroups) {
-					if (pro != null && !pro.isEmpty())
-						ev.proteins.add(pro);
-				}
-			}
-		}
-		double cap = 6.0;
-		double minLog1 = Double.MAX_VALUE, maxLog1 = -Double.MAX_VALUE;
-		double minLog2 = Double.MAX_VALUE, maxLog2 = -Double.MAX_VALUE;
-		for (PeptideEvidence ev : peptideMap.values()) {
-			double logI1 = Math.log(1.0 + Math.max(0, ev.bestPreQuan)) / Math.log(2.0);
-			double logI2 = Math.log(1.0 + Math.max(0, ev.bestMs1Area)) / Math.log(2.0);
-			minLog1 = Math.min(minLog1, logI1);
-			maxLog1 = Math.max(maxLog1, logI1);
-			minLog2 = Math.min(minLog2, logI2);
-			maxLog2 = Math.max(maxLog2, logI2);
-		}
-		double logRange1 = Math.max(1e-10, maxLog1 - minLog1);
-		double logRange2 = Math.max(1e-10, maxLog2 - minLog2);
-		final double decoyPepMax = 0.99;
-		ArrayList<Double> decoyEPool = new ArrayList<>();
-		HashMap<String, GenomePeptideEntry> genomePeptides = new HashMap<>();
-		for (Map.Entry<String, PeptideEvidence> ent : peptideMap.entrySet()) {
-			PeptideEvidence ev = ent.getValue();
-			String seq = ev.seq;
-			double e = ev.bestCScore > 0 ? Math.min(cap, Math.max(0, ev.bestCScore))
-					: Math.min(cap, Math.max(0, -Math.log10(Math.max(ev.bestPEP, 1e-10))));
-			double logI1 = Math.log(1.0 + Math.max(0, ev.bestPreQuan)) / Math.log(2.0);
-			double logI2 = Math.log(1.0 + Math.max(0, ev.bestMs1Area)) / Math.log(2.0);
-			double norm1 = (logI1 - minLog1) / logRange1;
-			double norm2 = (logI2 - minLog2) / logRange2;
-			double intensityFactor = 0.5 + 0.25 * norm1 + 0.25 * norm2;
-			if (ev.isDecoy) {
-				if (ev.bestPEP < decoyPepMax)
-					decoyEPool.add(e * intensityFactor);
-				continue;
-			}
-			HashSet<String> genomes = new HashSet<>();
-			for (String pro : ev.proteins) {
-				if (pro.startsWith(FastaManager.shuffle))
-					continue;
-				String[] parts = pro.split("_");
-				if (parts.length > 0 && !parts[0].isEmpty())
-					genomes.add(parts[0]);
-			}
-			if (genomes.isEmpty())
-				continue;
-			int m = genomes.size();
-			if (m != 1 && uniquePeptidesOnly)
-				continue;
-			double w = (m == 1) ? 1.0 : (1.0 / m);
-			double wei = w * e * intensityFactor;
-			for (String g : genomes) {
-				WeightedPeptideScore wps = new WeightedPeptideScore();
-				wps.seq = seq;
-				wps.e = e;
-				wps.w = w;
-				wps.we = wei;
-				wps.intensityFactor = intensityFactor;
-				GenomePeptideEntry ge = genomePeptides.get(g);
-				if (ge == null) {
-					ge = new GenomePeptideEntry();
-					genomePeptides.put(g, ge);
-				}
-				ge.weightedScores.add(wps);
-			}
-		}
-		int k = 5;
-		Random rnd = new Random(42);
-		int B = 10000;
-		HashMap<String, Double> SMap = new HashMap<>();
-		HashMap<String, Integer> genomeNMap = new HashMap<>();
-		HashMap<String, Integer> genomeTotalPeptidesMap = new HashMap<>();
-		for (String g : genomePeptides.keySet()) {
-			List<WeightedPeptideScore> scores = genomePeptides.get(g).weightedScores;
-			genomeTotalPeptidesMap.put(g, scores.size());
-			scores.sort((a, b) -> Double.compare(b.we, a.we));
-			int n = Math.min(k, scores.size());
-			double S = 0;
-			for (int i = 0; i < n; i++)
-				S += scores.get(i).we;
-			SMap.put(g, S);
-			genomeNMap.put(g, n);
-		}
-		if (decoyEPool.isEmpty())
-			decoyEPool.add(0.0);
-		double[] decoyArr = new double[decoyEPool.size()];
-		for (int i = 0; i < decoyArr.length; i++)
-			decoyArr[i] = decoyEPool.get(i);
-		int decoyLen = decoyArr.length;
-		int maxM = 0;
-		for (Integer m : genomeTotalPeptidesMap.values())
-			maxM = Math.max(maxM, m);
-		double[] tmp = new double[Math.max(maxM, 1)];
-		HashMap<String, Double> pempMap = new HashMap<>();
-		for (String g : SMap.keySet()) {
-			double Sg = SMap.get(g);
-			int M = genomeTotalPeptidesMap.get(g);
-			int ng = genomeNMap.get(g);
-			int count = 0;
-			for (int b = 0; b < B; b++) {
-				for (int i = 0; i < M; i++)
-					tmp[i] = decoyArr[rnd.nextInt(decoyLen)];
-				Arrays.sort(tmp, 0, M);
-				double Sb = 0;
-				for (int i = M - 1; i >= M - ng && i >= 0; i--)
-					Sb += tmp[i];
-				if (Sb >= Sg)
-					count++;
-			}
-			double pemp = (1.0 + count) / (1.0 + B);
-			pempMap.put(g, pemp);
-		}
-		String[] genomes = pempMap.keySet().toArray(new String[0]);
-		Arrays.sort(genomes, Comparator.comparingDouble(pempMap::get));
-		int nGenomes = genomes.length;
-		for (int i = 0; i < nGenomes; i++) {
-			double pemp = pempMap.get(genomes[i]);
-			double q = Math.min(1.0, pemp * nGenomes / (i + 1));
-			genomeScoreMap.put(genomes[i], new double[] { SMap.get(genomes[i]), pemp, q });
-		}
-		return genomeScoreMap;
+		return DiaScoring.computeGenomeScoreMap(precursors, uniquePeptidesOnly);
 	}
 
+
 	/**
-	 * Compute per-protein scores (S, p_emp, q_value) from precursors using
-	 * PEP/CScore+intensity scoring and decoy resampling. S = sum of ALL weighted
-	 * scores per protein (no top-k).
+	 * Compute per-protein scores (S, p_emp, q_value) from precursors.
+	 * S = sum of all intensity-weighted scores per protein (no top-k).
+	 *
+	 * <p>Delegates to {@link DiaScoring#computeProteinScoreMap}.
 	 */
 	protected HashMap<String, double[]> computeProteinScoreMap(DiaNNPrecursor[] precursors) {
-		HashMap<String, double[]> proteinScoreMap = new HashMap<>();
-		if (precursors == null || precursors.length == 0) {
-			return proteinScoreMap;
-		}
-		HashMap<String, PeptideEvidence> peptideMap = new HashMap<>();
-		for (DiaNNPrecursor pp : precursors) {
-			String seq = pp.getSeqString();
-			if (seq == null || seq.isEmpty())
-				continue;
-			int charge = pp.getCharge();
-			boolean isDecoy = pp.getIsDecoy();
-			String key = seq + "|" + charge + "|" + isDecoy;
-			double preQuan = pp.getPreQuan();
-			double ms1Area = pp.getMs1Area();
-			double cscore = pp.getCscore();
-			double pep = pp.getPEP();
-			PeptideEvidence ev = peptideMap.get(key);
-			if (ev == null) {
-				ev = new PeptideEvidence();
-				ev.seq = seq;
-				ev.bestCScore = cscore;
-				ev.bestPEP = pep;
-				ev.bestPreQuan = preQuan;
-				ev.bestMs1Area = ms1Area;
-				ev.isDecoy = isDecoy;
-				ev.proteins = new HashSet<>();
-				peptideMap.put(key, ev);
-			} else {
-				ev.bestCScore = Math.max(ev.bestCScore, cscore);
-				ev.bestPEP = Math.min(ev.bestPEP, pep);
-				ev.bestPreQuan = Math.max(ev.bestPreQuan, preQuan);
-				ev.bestMs1Area = Math.max(ev.bestMs1Area, ms1Area);
-			}
-			String[] proGroups = pp.getProGroups();
-			if (proGroups != null) {
-				for (String pro : proGroups) {
-					if (pro != null && !pro.isEmpty())
-						ev.proteins.add(pro);
-				}
-			}
-		}
-		double cap = 6.0;
-		double minLog1 = Double.MAX_VALUE, maxLog1 = -Double.MAX_VALUE;
-		double minLog2 = Double.MAX_VALUE, maxLog2 = -Double.MAX_VALUE;
-		for (PeptideEvidence ev : peptideMap.values()) {
-			double logI1 = Math.log(1.0 + Math.max(0, ev.bestPreQuan)) / Math.log(2.0);
-			double logI2 = Math.log(1.0 + Math.max(0, ev.bestMs1Area)) / Math.log(2.0);
-			minLog1 = Math.min(minLog1, logI1);
-			maxLog1 = Math.max(maxLog1, logI1);
-			minLog2 = Math.min(minLog2, logI2);
-			maxLog2 = Math.max(maxLog2, logI2);
-		}
-		double logRange1 = Math.max(1e-10, maxLog1 - minLog1);
-		double logRange2 = Math.max(1e-10, maxLog2 - minLog2);
-		final double decoyPepMax = 0.99;
-		ArrayList<Double> decoyEPool = new ArrayList<>();
-		HashMap<String, ArrayList<Double>> proteinPeptides = new HashMap<>();
-		for (Map.Entry<String, PeptideEvidence> ent : peptideMap.entrySet()) {
-			PeptideEvidence ev = ent.getValue();
-			String seq = ev.seq;
-			double e = ev.bestCScore > 0 ? Math.min(cap, Math.max(0, ev.bestCScore))
-					: Math.min(cap, Math.max(0, -Math.log10(Math.max(ev.bestPEP, 1e-10))));
-			double logI1 = Math.log(1.0 + Math.max(0, ev.bestPreQuan)) / Math.log(2.0);
-			double logI2 = Math.log(1.0 + Math.max(0, ev.bestMs1Area)) / Math.log(2.0);
-			double norm1 = (logI1 - minLog1) / logRange1;
-			double norm2 = (logI2 - minLog2) / logRange2;
-			double intensityFactor = 0.5 + 0.25 * norm1 + 0.25 * norm2;
-			double wei = e * intensityFactor;
-			if (ev.isDecoy) {
-				if (ev.bestPEP < decoyPepMax)
-					decoyEPool.add(wei);
-				for (String pro : ev.proteins) {
-					if (!pro.startsWith(FastaManager.shuffle))
-						continue;
-					ArrayList<Double> weiList = proteinPeptides.get(pro);
-					if (weiList == null) {
-						weiList = new ArrayList<>();
-						proteinPeptides.put(pro, weiList);
-					}
-					weiList.add(wei);
-				}
-				continue;
-			}
-			for (String pro : ev.proteins) {
-				if (pro.startsWith(FastaManager.shuffle))
-					continue;
-				ArrayList<Double> weiList = proteinPeptides.get(pro);
-				if (weiList == null) {
-					weiList = new ArrayList<>();
-					proteinPeptides.put(pro, weiList);
-				}
-				weiList.add(wei);
-			}
-		}
-		Random rnd = new Random(42);
-		int B = 10000;
-		HashMap<String, Double> SMap = new HashMap<>();
-		HashMap<String, Integer> proteinNMap = new HashMap<>();
-		for (String pro : proteinPeptides.keySet()) {
-			ArrayList<Double> weiList = proteinPeptides.get(pro);
-			double S = 0;
-			for (double w : weiList)
-				S += w;
-			SMap.put(pro, S);
-			proteinNMap.put(pro, weiList.size());
-		}
-		if (decoyEPool.isEmpty())
-			decoyEPool.add(0.0);
-		double[] decoyArr = new double[decoyEPool.size()];
-		for (int i = 0; i < decoyArr.length; i++)
-			decoyArr[i] = decoyEPool.get(i);
-		int decoyLen = decoyArr.length;
-		int maxM = 0;
-		for (Integer m : proteinNMap.values())
-			maxM = Math.max(maxM, m);
-		double[] tmp = new double[Math.max(maxM, 1)];
-		HashMap<String, Double> pempMap = new HashMap<>();
-		for (String pro : SMap.keySet()) {
-			double Sp = SMap.get(pro);
-			int M = proteinNMap.get(pro);
-			int count = 0;
-			for (int b = 0; b < B; b++) {
-				double Sb = 0;
-				for (int i = 0; i < M; i++) {
-					tmp[i] = decoyArr[rnd.nextInt(decoyLen)];
-					Sb += tmp[i];
-				}
-				if (Sb >= Sp)
-					count++;
-			}
-			pempMap.put(pro, (1.0 + count) / (1.0 + B));
-		}
-		String[] proteins = pempMap.keySet().toArray(new String[0]);
-		Arrays.sort(proteins, Comparator.comparingDouble(pempMap::get));
-		int nProteins = proteins.length;
-		for (int i = 0; i < nProteins; i++) {
-			double pemp = pempMap.get(proteins[i]);
-			double q = Math.min(1.0, pemp * nProteins / (i + 1));
-			proteinScoreMap.put(proteins[i], new double[] { SMap.get(proteins[i]), pemp, q });
-		}
-		return proteinScoreMap;
+		return DiaScoring.computeProteinScoreMap(precursors);
 	}
 
 	/**

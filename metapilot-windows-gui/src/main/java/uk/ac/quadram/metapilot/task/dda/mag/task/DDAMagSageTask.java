@@ -985,7 +985,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 
 			MarkerGenomeSelector selector = new MarkerGenomeSelector();
 			selector.setRepresentativeLevel("CLASS");
-			int maximumSelected = 1000;
+			int maximumSelected = MarkerGenomeSelector.UNLIMITED_MAXIMUM_SELECTED;
 			selector.setKneeSelectionMode(magSageParams.getGenomeSelectionStrategy());
 			boolean enableAutoRep = useMarker4;
 			if (useMarker4) {

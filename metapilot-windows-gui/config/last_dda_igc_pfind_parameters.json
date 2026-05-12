@@ -1,87 +1,5 @@
 {
-  "quantitative_mode": {
-    "mode": "Isobaric",
-    "isobaric_table": [
-      {
-        "plus2": "0.0",
-        "minus2": "0.0",
-        "minus1": "0.0",
-        "plus1": "0.0",
-        "label_name": "TMT10plex126C"
-      },
-      {
-        "plus2": "0.0",
-        "minus2": "0.0",
-        "minus1": "0.0",
-        "plus1": "0.0",
-        "label_name": "TMT10plex127N"
-      },
-      {
-        "plus2": "0.0",
-        "minus2": "0.0",
-        "minus1": "0.0",
-        "plus1": "0.0",
-        "label_name": "TMT10plex127C"
-      },
-      {
-        "plus2": "0.0",
-        "minus2": "0.0",
-        "minus1": "0.0",
-        "plus1": "0.0",
-        "label_name": "TMT10plex128N"
-      },
-      {
-        "plus2": "0.0",
-        "minus2": "0.0",
-        "minus1": "0.0",
-        "plus1": "0.0",
-        "label_name": "TMT10plex128C"
-      },
-      {
-        "plus2": "0.0",
-        "minus2": "0.0",
-        "minus1": "0.0",
-        "plus1": "0.0",
-        "label_name": "TMT10plex129N"
-      },
-      {
-        "plus2": "0.0",
-        "minus2": "0.0",
-        "minus1": "0.0",
-        "plus1": "0.0",
-        "label_name": "TMT10plex129C"
-      },
-      {
-        "plus2": "0.0",
-        "minus2": "0.0",
-        "minus1": "0.0",
-        "plus1": "0.0",
-        "label_name": "TMT10plex130N"
-      },
-      {
-        "plus2": "0.0",
-        "minus2": "0.0",
-        "minus1": "0.0",
-        "plus1": "0.0",
-        "label_name": "TMT10plex130C"
-      },
-      {
-        "plus2": "0.0",
-        "minus2": "0.0",
-        "minus1": "0.0",
-        "plus1": "0.0",
-        "label_name": "TMT10plex131N"
-      },
-      {
-        "plus2": "0.0",
-        "minus2": "0.0",
-        "minus1": "0.0",
-        "plus1": "0.0",
-        "label_name": "TMT11plex131C"
-      }
-    ],
-    "isobaric_type": "TMT11plex"
-  },
+  "quantitative_mode": {"mode": "Label-free"},
   "metadata": [
     {
       "treatment": "",
@@ -90,10 +8,10 @@
       "custom_field_1": "",
       "custom_field_2": "",
       "time_point": "",
-      "label_type": "Isobaric - TMT10plex126C",
+      "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "Stool1"
+      "sample_name": "Xu_20151119_IBD_HM415_CO"
     },
     {
       "treatment": "",
@@ -102,10 +20,10 @@
       "custom_field_1": "",
       "custom_field_2": "",
       "time_point": "",
-      "label_type": "Isobaric - TMT10plex127N",
+      "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "Stool1"
+      "sample_name": "Xu_20151119_IBD_HM455_CO_151205152342"
     },
     {
       "treatment": "",
@@ -114,10 +32,10 @@
       "custom_field_1": "",
       "custom_field_2": "",
       "time_point": "",
-      "label_type": "Isobaric - TMT10plex127C",
+      "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "Stool1"
+      "sample_name": "Xu_20151119_IBD_HM466_CO_151204032959"
     },
     {
       "treatment": "",
@@ -126,387 +44,43 @@
       "custom_field_1": "",
       "custom_field_2": "",
       "time_point": "",
-      "label_type": "Isobaric - TMT10plex128N",
+      "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "Stool1"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "Isobaric - TMT10plex128C",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "Stool1"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "Isobaric - TMT10plex129N",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "Stool1"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "Isobaric - TMT10plex129C",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "Stool1"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "Isobaric - TMT10plex130N",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "Stool1"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "Isobaric - TMT10plex130C",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "Stool1"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "Isobaric - TMT10plex131N",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "Stool1"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "Isobaric - TMT11plex131C",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "Stool1"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "Isobaric - TMT10plex126C",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "Stool2"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "Isobaric - TMT10plex127N",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "Stool2"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "Isobaric - TMT10plex127C",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "Stool2"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "Isobaric - TMT10plex128N",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "Stool2"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "Isobaric - TMT10plex128C",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "Stool2"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "Isobaric - TMT10plex129N",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "Stool2"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "Isobaric - TMT10plex129C",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "Stool2"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "Isobaric - TMT10plex130N",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "Stool2"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "Isobaric - TMT10plex130C",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "Stool2"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "Isobaric - TMT10plex131N",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "Stool2"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "Isobaric - TMT11plex131C",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "Stool2"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "Isobaric - TMT10plex126C",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "Stool3"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "Isobaric - TMT10plex127N",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "Stool3"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "Isobaric - TMT10plex127C",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "Stool3"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "Isobaric - TMT10plex128N",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "Stool3"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "Isobaric - TMT10plex128C",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "Stool3"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "Isobaric - TMT10plex129N",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "Stool3"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "Isobaric - TMT10plex129C",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "Stool3"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "Isobaric - TMT10plex130N",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "Stool3"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "Isobaric - TMT10plex130C",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "Stool3"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "Isobaric - TMT10plex131N",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "Stool3"
-    },
-    {
-      "treatment": "",
-      "condition": "",
-      "gender": "",
-      "custom_field_1": "",
-      "custom_field_2": "",
-      "time_point": "",
-      "label_type": "Isobaric - TMT11plex131C",
-      "custom_field_3": "",
-      "age": "",
-      "sample_name": "Stool3"
+      "sample_name": "Xu_20151119_IBD_HM503_CO_151202195424"
     }
   ],
   "workflow": "DDA_IGC_PFIND",
   "input_output": {
     "host_database": "C:\\Users\\daz25hak\\MetaProAI\\database\\uniprotkb_Human_AND_reviewed_true_AND_m_2025_09_01.fasta",
     "microbiome_database": "C:\\Users\\daz25hak\\MetaProAI\\database\\760MetaHit_139HMP_368PKU_511Bac.uniq.pep.fasta",
-    "output_directory": "Z:\\PRIDE_dataset\\PXD050781\\DDA_stool\\MetaPilot",
-    "append_host_db": true,
+    "output_directory": "Z:\\PRIDE_dataset\\PXD003528_MetaPro_IQ\\MetaPilot",
+    "append_host_db": false,
     "experiments": [
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA_stool\\Haonan_20210924_isotope_mix_Stool1.raw",
-        "experiment_name": "Stool1"
+        "file_path": "Z:\\PRIDE_dataset\\PXD003528_MetaPro_IQ\\Xu_20151119_IBD_HM415_CO.raw",
+        "experiment_name": "Xu_20151119_IBD_HM415_CO"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA_stool\\Haonan_20210924_isotope_mix_Stool2.raw",
-        "experiment_name": "Stool2"
+        "file_path": "Z:\\PRIDE_dataset\\PXD003528_MetaPro_IQ\\Xu_20151119_IBD_HM455_CO_151205152342.raw",
+        "experiment_name": "Xu_20151119_IBD_HM455_CO_151205152342"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781\\DDA_stool\\Haonan_20210924_isotope_mix_Stool3.raw",
-        "experiment_name": "Stool3"
+        "file_path": "Z:\\PRIDE_dataset\\PXD003528_MetaPro_IQ\\Xu_20151119_IBD_HM466_CO_151204032959.raw",
+        "experiment_name": "Xu_20151119_IBD_HM466_CO_151204032959"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD003528_MetaPro_IQ\\Xu_20151119_IBD_HM503_CO_151202195424.raw",
+        "experiment_name": "Xu_20151119_IBD_HM503_CO_151202195424"
       }
     ]
   },
   "enzyme_settings": {
     "enzyme": "Trypsin",
     "missed_cleavages": 2,
-    "digestion_mode": "Specific"
+    "digestion_mode": "Fully-Specific"
   },
-  "generated_at": "2026-03-03 10:44:20",
+  "generated_at": "2026-04-17 09:07:00",
   "additional_parameters": {
     "generate_sample_specific_db": true,
     "ms2_scan_mode": "HCD-FTMS",
