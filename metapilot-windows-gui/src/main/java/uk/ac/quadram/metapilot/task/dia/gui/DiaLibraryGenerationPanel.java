@@ -668,6 +668,7 @@ public class DiaLibraryGenerationPanel extends VBox {
 				// Initialize progress tracking
 				currentStep = 0;
 				updateProgressStep(0, "Starting library generation...");
+				libraryProgressBar.setProgress(-1.0);
 
 				if (consoleOutput != null) {
 					consoleOutput.appendText("=== Library Generation Started ===\n");
@@ -866,17 +867,12 @@ public class DiaLibraryGenerationPanel extends VBox {
 					for (File libraryFolder : libraryFolders) {
 						String libraryName = libraryFolder.getName();
 
-						// Look for .speclib file in the library folder
-						File speclibFile = new File(libraryFolder, libraryName + ".speclib");
-						File tsvFile = new File(libraryFolder, libraryName + ".tsv");
 						File parquetFile = new File(libraryFolder, libraryName + ".parquet");
 
-						// Check if any of the expected library files exist
-						if (speclibFile.exists() || tsvFile.exists() || parquetFile.exists()) {
+						if (parquetFile.exists()) {
 							Platform.runLater(() -> {
 								if (consoleOutput != null) {
-									consoleOutput.appendText("Found library: " + libraryName + " (speclib: "
-											+ speclibFile.exists() + ", tsv: " + tsvFile.exists() + ", parquet: "
+									consoleOutput.appendText("Found library: " + libraryName + " (parquet: "
 											+ parquetFile.exists() + ")\n");
 								}
 							});
@@ -1090,8 +1086,6 @@ public class DiaLibraryGenerationPanel extends VBox {
 	 */
 	private void updateProgressStep(int step, String message) {
 		currentStep = step;
-		double progress = (double) step / totalSteps;
-		libraryProgressBar.setProgress(progress);
 
 		if (progressLabel != null) {
 			if (step == 0) {

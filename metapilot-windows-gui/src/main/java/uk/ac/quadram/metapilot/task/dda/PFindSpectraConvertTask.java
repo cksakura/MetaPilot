@@ -15,6 +15,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.logging.log4j.Logger;
 
+import uk.ac.quadram.metapilot.core.runner.MzmlSummaryFileWriter;
 import uk.ac.quadram.metapilot.dbSearch.pfind.PFindTask;
 import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
@@ -93,6 +94,9 @@ public class PFindSpectraConvertTask extends MetaAbstractTask {
 		File rtFile = new File(spectraDirFile, "rt.txt");
 		File ms2CountFile = new File(spectraDirFile, "ms2Count.txt");
 		String[] rawFiles = metaPar.getMetadata().getRawFiles();
+		if (MzmlSummaryFileWriter.allMzml(rawFiles)) {
+			MzmlSummaryFileWriter.ensure(spectraDirFile, rawFiles);
+		}
 
 		String[] rawFileNames = new String[rawFiles.length];
 		String[] ms2FileNames = new String[rawFiles.length];

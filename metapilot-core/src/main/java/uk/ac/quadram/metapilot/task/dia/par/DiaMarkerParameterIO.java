@@ -162,7 +162,7 @@ public class DiaMarkerParameterIO extends BaseParameterIO {
 			// Input/Output settings (aligned with DIA_SEED format)
 			JSONObject ioSettings = new JSONObject();
 			ioSettings.put("output_directory", params.getResult());
-			ioSettings.put("micro_db", params.getMicroDb());
+			ioSettings.put("micro_db", resolveMagCatalogueId(params));
 			ioSettings.put("append_host_db", params.isAppendHostDb());
 			ioSettings.put("host_database", params.getHostDB());
 
@@ -255,6 +255,25 @@ public class DiaMarkerParameterIO extends BaseParameterIO {
 			LOGGER.error("Failed to save parameters to " + outputFile.getAbsolutePath(), e);
 			return false;
 		}
+	}
+
+	private String resolveMagCatalogueId(MetaParameterDiaMarker params) {
+		if (params == null) {
+			return "";
+		}
+		MagDbItem magDbItem = params.getMagDbItem();
+		if (magDbItem != null && magDbItem.getCatalogueID() != null && !magDbItem.getCatalogueID().isBlank()) {
+			return magDbItem.getCatalogueID();
+		}
+		String microDb = params.getMicroDb();
+		if (microDb == null) {
+			return "";
+		}
+		if (microDb.contains("\\") || microDb.contains("/") || new File(microDb).isAbsolute()) {
+			LOGGER.warn("DIA Marker micro_db contains a filesystem path but no MAG catalogue item was available; exporting empty micro_db instead: {}", microDb);
+			return "";
+		}
+		return microDb;
 	}
 
 	@Override

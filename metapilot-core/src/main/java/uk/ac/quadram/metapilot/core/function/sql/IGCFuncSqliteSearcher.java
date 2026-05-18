@@ -5,13 +5,18 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 import org.dom4j.DocumentException;
 
@@ -116,9 +121,14 @@ public class IGCFuncSqliteSearcher {
 					ecSet.add(ecs[i]);
 				}
 
-				String[] keggs = content[8].split(",");
-				for (int i = 0; i < keggs.length; i++) {
-					keggSet.add(keggs[i]);
+				String[] kos = content[7].split(",");
+				for (int i = 0; i < kos.length; i++) {
+					keggSet.add(kos[i]);
+				}
+
+				String[] pathways = content[8].split(",");
+				for (int i = 0; i < pathways.length; i++) {
+					keggSet.add(pathways[i]);
 				}
 
 				String[] cogs = content[16].split(",");
@@ -157,129 +167,307 @@ public class IGCFuncSqliteSearcher {
 	protected void getReference(HashSet<String> cogSet, HashSet<String> nogSet, HashSet<String> goSet,
 			HashSet<String> ecSet, HashSet<String> keggSet) throws SQLException {
 
-		Connection defDbConn = DriverManager.getConnection("jdbc:sqlite:" + this.defDbPath);
-		Statement defDbStmt = defDbConn.createStatement();
-
-		if (cogSet.size() > 0) {
-			StringBuilder cogsb = new StringBuilder();
-			cogsb.append("(");
-			for (String cog : cogSet) {
-				cogsb.append("\"").append(cog).append("\"").append(",");
-			}
-			cogsb.deleteCharAt(cogsb.length() - 1);
-			cogsb.append(")");
-
-			StringBuilder sqlsb = new StringBuilder();
-			sqlsb.append("select * from ").append(cogDbName).append(" where id IN ").append(cogsb);
-
-			ResultSet cogRs = defDbStmt.executeQuery(sqlsb.toString());
-			while (cogRs.next()) {
-				String id = cogRs.getString("id");
-				String category = cogRs.getString("category");
-				String des = cogRs.getString("description");
-
-				usedCogMap.put(id, new String[] { category, des });
+		try (Connection defDbConn = DriverManager.getConnection("jdbc:sqlite:" + this.defDbPath)) {
+			if (hasTable(defDbConn, "annotation_term")) {
+				getReferenceFromNormalizedDb(defDbConn, cogSet, nogSet, goSet, ecSet, keggSet);
+			} else {
+				getReferenceFromLegacyDb(defDbConn, cogSet, nogSet, goSet, ecSet, keggSet);
 			}
 		}
+	}
 
-		if (nogSet.size() > 0) {
-			StringBuilder nogsb = new StringBuilder();
-			nogsb.append("(");
-			for (String nog : nogSet) {
-				nogsb.append("\"").append(nog).append("\"").append(",");
-			}
-			nogsb.deleteCharAt(nogsb.length() - 1);
-			nogsb.append(")");
+	private void getReferenceFromNormalizedDb(Connection conn, HashSet<String> cogSet, HashSet<String> nogSet,
+			HashSet<String> goSet, HashSet<String> ecSet, HashSet<String> keggSet) throws SQLException {
 
-			StringBuilder sqlsb = new StringBuilder();
-			sqlsb.append("select * from ").append(nogDbName).append(" where id IN ").append(nogsb);
-
-			ResultSet nogRs = defDbStmt.executeQuery(sqlsb.toString());
-			while (nogRs.next()) {
-				String id = nogRs.getString("id");
-				String category = nogRs.getString("category");
-				String des = nogRs.getString("description");
-
-				usedNogMap.put(id, new String[] { category, des });
-			}
+		for (ReferenceRow row : queryTerms(conn, "COG", cogSet)) {
+			usedCogMap.put(row.id, new String[] { row.category, row.description });
 		}
 
-		if (ecSet.size() > 0) {
-			StringBuilder ecsb = new StringBuilder();
-			ecsb.append("(");
-			for (String ec : ecSet) {
-				ecsb.append("\"").append(ec).append("\"").append(",");
-			}
-			ecsb.deleteCharAt(ecsb.length() - 1);
-			ecsb.append(")");
+		for (ReferenceRow row : queryNogTerms(conn, nogSet)) {
+			usedNogMap.put(row.id, new String[] { row.category, row.description });
+		}
 
-			StringBuilder sqlsb = new StringBuilder();
-			sqlsb.append("select * from ").append(ecDbName).append(" where id IN ").append(ecsb);
-
-			ResultSet ecRs = defDbStmt.executeQuery(sqlsb.toString());
-			while (ecRs.next()) {
-				String id = ecRs.getString("id");
-				String de = ecRs.getString("de");
-				String ca = ecRs.getString("ca");
-				String[] ans = ecRs.getString("an").split(";");
-
-				ArrayList<String> anList = new ArrayList<String>();
-				for (String an : ans) {
+		for (ReferenceRow row : queryEcTerms(conn, ecSet)) {
+			ArrayList<String> anList = new ArrayList<String>();
+			for (String an : row.synonyms.split(";")) {
+				if (an != null && an.length() > 0) {
 					anList.add(an);
 				}
-				EnzymeCommission ec = new EnzymeCommission(id, de, ca, anList);
-
-				usedEcMap.put(id, ec);
 			}
+			usedEcMap.put(row.id, new EnzymeCommission(row.id, row.description, row.reaction, anList));
 		}
 
-		if (goSet.size() > 0) {
-			StringBuilder gosb = new StringBuilder();
-			gosb.append("(");
-			for (String go : goSet) {
-				gosb.append("\"").append(go).append("\"").append(",");
-			}
-			gosb.deleteCharAt(gosb.length() - 1);
-			gosb.append(")");
-
-			StringBuilder sqlsb = new StringBuilder();
-			sqlsb.append("select * from ").append(goDbName).append(" where id IN ").append(gosb);
-
-			ResultSet goRs = defDbStmt.executeQuery(sqlsb.toString());
-			while (goRs.next()) {
-				String id = goRs.getString("id");
-				String name = goRs.getString("name");
-				String namespace = goRs.getString("namespace");
-
-				GoObo goObo = new GoObo(id, name, namespace);
-
-				usedGoMap.put(id, goObo);
-			}
+		for (ReferenceRow row : queryTerms(conn, "GO", goSet)) {
+			usedGoMap.put(row.id, new GoObo(row.id, firstNonEmpty(row.name, row.description), row.namespace));
 		}
 
-		if (keggSet.size() > 0) {
-			StringBuilder keggsb = new StringBuilder();
-			keggsb.append("(");
-			for (String kegg : keggSet) {
-				keggsb.append("\"").append(kegg).append("\"").append(",");
-			}
-			keggsb.deleteCharAt(keggsb.length() - 1);
-			keggsb.append(")");
-
-			StringBuilder sqlsb = new StringBuilder();
-			sqlsb.append("select * from ").append(keggDbName).append(" where name IN ").append(keggsb);
-
-			ResultSet keggRs = defDbStmt.executeQuery(sqlsb.toString());
-			while (keggRs.next()) {
-				String name = keggRs.getString("name");
-				String des = keggRs.getString("description");
-
-				usedKeggMap.put(name, des);
+		for (String kegg : cleanIds(keggSet)) {
+			ReferenceRow row = queryKeggTerm(conn, kegg);
+			if (row != null) {
+				usedKeggMap.put(kegg, row.description);
 			}
 		}
+	}
 
-		defDbStmt.close();
-		defDbConn.close();
+	private void getReferenceFromLegacyDb(Connection conn, HashSet<String> cogSet, HashSet<String> nogSet,
+			HashSet<String> goSet, HashSet<String> ecSet, HashSet<String> keggSet) throws SQLException {
+
+		try (Statement stmt = conn.createStatement()) {
+			for (String id : cleanIds(cogSet)) {
+				try (ResultSet rs = stmt.executeQuery(
+						"select id, category, description from " + cogDbName + " where id=" + sqlQuote(id))) {
+					while (rs.next()) {
+						usedCogMap.put(rs.getString("id"),
+								new String[] { rs.getString("category"), rs.getString("description") });
+					}
+				}
+			}
+
+			for (String id : cleanIds(nogSet)) {
+				try (ResultSet rs = stmt.executeQuery(
+						"select id, category, description from " + nogDbName + " where id=" + sqlQuote(id))) {
+					while (rs.next()) {
+						usedNogMap.put(rs.getString("id"),
+								new String[] { rs.getString("category"), rs.getString("description") });
+					}
+				}
+			}
+
+			for (String id : cleanIds(ecSet)) {
+				try (ResultSet rs = stmt.executeQuery(
+						"select id, de, ca, an from " + ecDbName + " where id=" + sqlQuote(id))) {
+					while (rs.next()) {
+						ArrayList<String> anList = new ArrayList<String>();
+						String anString = rs.getString("an");
+						if (anString != null) {
+							for (String an : anString.split(";")) {
+								if (an.length() > 0) anList.add(an);
+							}
+						}
+						String ecId = rs.getString("id");
+						usedEcMap.put(ecId, new EnzymeCommission(ecId, rs.getString("de"), rs.getString("ca"), anList));
+					}
+				}
+			}
+
+			for (String id : cleanIds(goSet)) {
+				try (ResultSet rs = stmt.executeQuery(
+						"select id, name, namespace from " + goDbName + " where id=" + sqlQuote(id))) {
+					while (rs.next()) {
+						usedGoMap.put(rs.getString("id"),
+								new GoObo(rs.getString("id"), rs.getString("name"), rs.getString("namespace")));
+					}
+				}
+			}
+
+			for (String id : cleanIds(keggSet)) {
+				try (ResultSet rs = stmt.executeQuery(
+						"select name, description from " + keggDbName + " where name=" + sqlQuote(id))) {
+					while (rs.next()) {
+						usedKeggMap.put(id, rs.getString("description"));
+					}
+				}
+			}
+		}
+	}
+
+	private static ArrayList<ReferenceRow> queryTerms(Connection conn, String source, Set<String> ids)
+			throws SQLException {
+		ArrayList<ReferenceRow> rows = new ArrayList<ReferenceRow>();
+		String sql = "select source, term_id, name, description, namespace, category from annotation_term "
+				+ "where source=? and term_id=?";
+		try (PreparedStatement ps = conn.prepareStatement(sql)) {
+			for (String id : cleanIds(ids)) {
+				ps.setString(1, source);
+				ps.setString(2, id);
+				try (ResultSet rs = ps.executeQuery()) {
+					while (rs.next()) {
+						rows.add(ReferenceRow.fromTerm(rs, id));
+					}
+				}
+			}
+		}
+		return rows;
+	}
+
+	private static ArrayList<ReferenceRow> queryNogTerms(Connection conn, Set<String> ids) throws SQLException {
+		ArrayList<ReferenceRow> rows = new ArrayList<ReferenceRow>();
+		if (hasTable(conn, "eggnog_og_annotation")) {
+			String sql = "select id, category, description from eggnog_og_annotation where id=?";
+			try (PreparedStatement ps = conn.prepareStatement(sql)) {
+				for (String id : cleanIds(ids)) {
+					ps.setString(1, id);
+					try (ResultSet rs = ps.executeQuery()) {
+						while (rs.next()) {
+							ReferenceRow row = new ReferenceRow();
+							row.id = rs.getString("id");
+							row.category = rs.getString("category");
+							row.description = rs.getString("description");
+							rows.add(row);
+						}
+					}
+				}
+			}
+		} else {
+			rows.addAll(queryLegacyLikeRows(conn, "nog_e5_og_annotations", ids));
+		}
+		return rows;
+	}
+
+	private static ArrayList<ReferenceRow> queryEcTerms(Connection conn, Set<String> ids) throws SQLException {
+		ArrayList<ReferenceRow> rows = new ArrayList<ReferenceRow>();
+		String sql = "select t.term_id, t.description, "
+				+ "coalesce(ca.property_value, '') as reaction, coalesce(an.property_value, '') as synonyms "
+				+ "from annotation_term t "
+				+ "left join annotation_property ca on ca.source=t.source and ca.term_id=t.term_id and ca.property_key='reaction' "
+				+ "left join annotation_property an on an.source=t.source and an.term_id=t.term_id and an.property_key='synonyms' "
+				+ "where t.source='EC' and t.term_id=?";
+		try (PreparedStatement ps = conn.prepareStatement(sql)) {
+			for (String id : cleanIds(ids)) {
+				ps.setString(1, id);
+				try (ResultSet rs = ps.executeQuery()) {
+					while (rs.next()) {
+						ReferenceRow row = new ReferenceRow();
+						row.id = rs.getString("term_id");
+						row.description = rs.getString("description");
+						row.reaction = rs.getString("reaction");
+						row.synonyms = rs.getString("synonyms");
+						rows.add(row);
+					}
+				}
+			}
+		}
+		return rows;
+	}
+
+	private static ReferenceRow queryTermByIdOrAlias(Connection conn, String source, String id) throws SQLException {
+		String sql = "select t.source, t.term_id, t.name, t.description, t.namespace, t.category "
+				+ "from annotation_term t where t.source=? and t.term_id=? "
+				+ "union all "
+				+ "select t.source, t.term_id, t.name, t.description, t.namespace, t.category "
+				+ "from annotation_alias a join annotation_term t on t.source=a.source and t.term_id=a.canonical_id "
+				+ "where a.source=? and a.alias=? limit 1";
+		try (PreparedStatement ps = conn.prepareStatement(sql)) {
+			ps.setString(1, source);
+			ps.setString(2, id);
+			ps.setString(3, source);
+			ps.setString(4, id);
+			try (ResultSet rs = ps.executeQuery()) {
+				if (rs.next()) {
+					return ReferenceRow.fromTerm(rs, id);
+				}
+			}
+		}
+		return null;
+	}
+
+	private static ReferenceRow queryKeggTerm(Connection conn, String id) throws SQLException {
+		String normalized = id == null ? "" : id.trim();
+		if (normalized.length() == 0) {
+			return null;
+		}
+
+		ArrayList<String> sources = new ArrayList<String>();
+		if (normalized.startsWith("ko:") || normalized.matches("^K\\d{5}$")) {
+			sources.add("KEGG_ko");
+		} else if (normalized.startsWith("path:") || normalized.startsWith("map") || normalized.startsWith("ko")) {
+			sources.add("KEGG_Pathway");
+		} else if (normalized.startsWith("md:") || normalized.matches("^M\\d{5}$")) {
+			sources.add("KEGG_Module");
+		} else if (normalized.startsWith("rn:") || normalized.matches("^R\\d{5}$")) {
+			sources.add("KEGG_Reaction");
+		} else if (normalized.startsWith("rc:") || normalized.matches("^RC\\d{5}$")) {
+			sources.add("KEGG_rclass");
+		}
+
+		sources.add("KEGG_ko");
+		sources.add("KEGG_Pathway");
+		sources.add("KEGG_Module");
+		sources.add("KEGG_Reaction");
+		sources.add("KEGG_rclass");
+
+		LinkedHashSet<String> uniqueSources = new LinkedHashSet<String>(sources);
+		for (String source : uniqueSources) {
+			ReferenceRow row = queryTermByIdOrAlias(conn, source, normalized);
+			if (row != null) {
+				return row;
+			}
+		}
+		return null;
+	}
+
+	private static ArrayList<ReferenceRow> queryLegacyLikeRows(Connection conn, String table, Set<String> ids)
+			throws SQLException {
+		ArrayList<ReferenceRow> rows = new ArrayList<ReferenceRow>();
+		String sql = "select id, category, description from " + table + " where id=?";
+		try (PreparedStatement ps = conn.prepareStatement(sql)) {
+			for (String id : cleanIds(ids)) {
+				ps.setString(1, id);
+				try (ResultSet rs = ps.executeQuery()) {
+					while (rs.next()) {
+						ReferenceRow row = new ReferenceRow();
+						row.id = rs.getString("id");
+						row.category = rs.getString("category");
+						row.description = rs.getString("description");
+						rows.add(row);
+					}
+				}
+			}
+		}
+		return rows;
+	}
+
+	private static Set<String> cleanIds(Set<String> ids) {
+		if (ids == null || ids.isEmpty()) {
+			return Collections.emptySet();
+		}
+		LinkedHashSet<String> clean = new LinkedHashSet<String>();
+		for (String id : ids) {
+			if (id == null) continue;
+			String value = id.trim();
+			if (value.length() == 0 || value.equals("-")) continue;
+			clean.add(value);
+		}
+		return clean;
+	}
+
+	private static boolean hasTable(Connection conn, String name) throws SQLException {
+		DatabaseMetaData meta = conn.getMetaData();
+		try (ResultSet rs = meta.getTables(null, null, name, new String[] { "TABLE" })) {
+			if (rs.next()) return true;
+		}
+		try (ResultSet rs = meta.getTables(null, null, name, new String[] { "VIEW" })) {
+			return rs.next();
+		}
+	}
+
+	private static String firstNonEmpty(String first, String second) {
+		if (first != null && first.length() > 0) return first;
+		return second == null ? "" : second;
+	}
+
+	private static String sqlQuote(String value) {
+		return "'" + value.replace("'", "''") + "'";
+	}
+
+	private static final class ReferenceRow {
+		String id = "";
+		String name = "";
+		String description = "";
+		String namespace = "";
+		String category = "";
+		String reaction = "";
+		String synonyms = "";
+
+		static ReferenceRow fromTerm(ResultSet rs, String requestedId) throws SQLException {
+			ReferenceRow row = new ReferenceRow();
+			row.id = firstNonEmpty(requestedId, rs.getString("term_id"));
+			row.name = rs.getString("name");
+			row.description = rs.getString("description");
+			row.namespace = rs.getString("namespace");
+			row.category = rs.getString("category");
+			return row;
+		}
 	}
 	
 	public HashMap<String, String[]> getUsedCogMap() {

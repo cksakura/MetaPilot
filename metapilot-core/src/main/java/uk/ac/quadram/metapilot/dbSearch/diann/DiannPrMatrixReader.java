@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Locale;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -20,6 +21,17 @@ public class DiannPrMatrixReader extends FlashLfqQuanPepReader {
 	private static Logger LOGGER = LogManager.getLogger(DiannPrMatrixReader.class);
 	
 	private HashMap<String, Integer> runIdMap;
+
+	private static final class PrecursorSummary {
+		String[] proteins;
+		String razorProtein;
+		int miss;
+		double mass;
+		double pep = 1;
+		double qValue = 1;
+		int[] spCount;
+		double[] individualPep;
+	}
 
 	public DiannPrMatrixReader(String quanPep) {
 		this(new File(quanPep));
@@ -62,31 +74,13 @@ public class DiannPrMatrixReader extends FlashLfqQuanPepReader {
 					chargeId = i;
 				} else if (title[i].equals("Protein.Group")) {
 					proteinId = i;
-				} else if (title[i].endsWith(".d") || title[i].endsWith(".dia") || title[i].endsWith(".raw")) {
-					int id = title[i].lastIndexOf("\\");
-					if (id >= 0 && id < title[i].length() - 1) {
-						String fileNameI = null;
-						if (title[i].endsWith(".d")) {
-							fileNameI = title[i].substring(id + 1, title[i].length() - 2);
-						} else if (title[i].endsWith(".d.dia")) {
-							fileNameI = title[i].substring(id + 1, title[i].length() - 6);
-						} else if (title[i].endsWith(".raw")) {
-							fileNameI = title[i].substring(id + 1, title[i].length() - 4);
-						} else if (title[i].endsWith(".raw.dia")) {
-							fileNameI = title[i].substring(id + 1, title[i].length() - 8);
-						} else if (title[i].endsWith(".dia")) {
-							fileNameI = title[i].substring(id + 1, title[i].length() - 4);
-						} else {
-							fileNameI = title[i].substring(id + 1);
-						}
-
-						intensityTitleIdMap.put(fileNameI, i);
-						intensityTitleList.add(fileNameI);
-						runIdMap.put(fileNameI, runIdMap.size());
-					} else {
-						intensityTitleIdMap.put(title[i], i);
-						intensityTitleList.add(title[i]);
-					}
+				} else if (isIntensityColumn(title[i])) {
+					String runName = normalizeRunName(title[i]);
+					int runId = intensityTitleList.size();
+					intensityTitleIdMap.put(runName, i);
+					intensityTitleList.add(runName);
+					putRunAlias(runIdMap, title[i], runId);
+					putRunAlias(runIdMap, runName, runId);
 				}
 			}
 
@@ -250,17 +244,7 @@ public class DiannPrMatrixReader extends FlashLfqQuanPepReader {
 	public FlashLfqQuanPeptide[] getMetaPeptides(DiaNNPrecursor[] diaNNPrecursors) {
 		// TODO Auto-generated method stub
 
-		HashMap<String, ArrayList<DiaNNPrecursor>> ppMap = new HashMap<String, ArrayList<DiaNNPrecursor>>();
-		for (int i = 0; i < diaNNPrecursors.length; i++) {
-			String modseq = diaNNPrecursors[i].getModSeqString();
-			if (ppMap.containsKey(modseq)) {
-				ppMap.get(modseq).add(diaNNPrecursors[i]);
-			} else {
-				ArrayList<DiaNNPrecursor> list = new ArrayList<DiaNNPrecursor>();
-				list.add(diaNNPrecursors[i]);
-				ppMap.put(modseq, list);
-			}
-		}
+		HashMap<String, PrecursorSummary> ppMap = buildPrecursorSummaryMap(diaNNPrecursors);
 
 		HashMap<String, FlashLfqQuanPeptide> map = new HashMap<String, FlashLfqQuanPeptide>();
 		ArrayList<FlashLfqQuanPeptide> list = new ArrayList<FlashLfqQuanPeptide>();
@@ -303,47 +287,18 @@ public class DiannPrMatrixReader extends FlashLfqQuanPepReader {
 							list.add(peptide);
 							map.put(modSeq, peptide);
 
-							ArrayList<DiaNNPrecursor> pplist = ppMap.get(modSeq);
-
-							int[] spCount = new int[intensityTitleIdMap.size()];
+							PrecursorSummary summary = ppMap.get(modSeq);
+							int[] spCount = summary.spCount.clone();
 							int[] idenType = new int[intensityTitleIdMap.size()];
-							double[] indiPEP = new double[intensityTitleIdMap.size()];
-							Arrays.fill(indiPEP, 1.0);
+							double[] indiPEP = summary.individualPep.clone();
 							double[] intensity = peptide.getIntensity();
 
-							double PEP = 1;
-							double qValue = 1;
-							int miss = 0;
-							double mass = 0;
-							for (DiaNNPrecursor pp : pplist) {
-								String runString = pp.getRunString();
-								if (runIdMap.containsKey(runString)) {
-									spCount[runIdMap.get(runString)]++;
-
-									if (pp.getPEP() < indiPEP[runIdMap.get(runString)]) {
-										indiPEP[runIdMap.get(runString)] = pp.getPEP();
-									}
-								}
-
-								if (pp.getPEP() < PEP) {
-									PEP = pp.getPEP();
-								}
-
-								if (pp.getGlobalQvalue() < qValue) {
-									qValue = pp.getGlobalQvalue();
-								}
-
-								miss = pp.getMissCleavage();
-								mass = pp.getMass();
-
-								peptide.setProteins(pp.getProGroups());
-								peptide.setRazorProtein(pp.getRazorProtein());
-							}
-
-							peptide.setMissCleave(miss);
-							peptide.setMass(mass);
-							peptide.setPEP(PEP);
-							peptide.setScore(qValue);
+							peptide.setProteins(summary.proteins);
+							peptide.setRazorProtein(summary.razorProtein);
+							peptide.setMissCleave(summary.miss);
+							peptide.setMass(summary.mass);
+							peptide.setPEP(summary.pep);
+							peptide.setScore(summary.qValue);
 
 							peptide.setMs2Counts(spCount);
 							peptide.setIndividualPEP(indiPEP);
@@ -372,9 +327,118 @@ public class DiannPrMatrixReader extends FlashLfqQuanPepReader {
 		FlashLfqQuanPeptide[] peps = list.toArray(new FlashLfqQuanPeptide[list.size()]);
 		return peps;
 	}
-	
-	public static void main(String[] args) {
-		DiannPrMatrixReader reader = new DiannPrMatrixReader("E:\\combined.pr_matrix.tsv");
-		System.out.println(reader.getMetaPeptides().length);
+
+	private HashMap<String, PrecursorSummary> buildPrecursorSummaryMap(DiaNNPrecursor[] diaNNPrecursors) {
+		HashMap<String, PrecursorSummary> ppMap = new HashMap<String, PrecursorSummary>();
+		if (diaNNPrecursors == null) {
+			return ppMap;
+		}
+		int sampleCount = intensityTitleIdMap != null ? intensityTitleIdMap.size() : 0;
+		for (DiaNNPrecursor pp : diaNNPrecursors) {
+			if (pp == null) {
+				continue;
+			}
+			String modseq = pp.getModSeqString();
+			if (modseq == null) {
+				continue;
+			}
+			PrecursorSummary summary = ppMap.get(modseq);
+			if (summary == null) {
+				summary = new PrecursorSummary();
+				summary.spCount = new int[sampleCount];
+				summary.individualPep = new double[sampleCount];
+				Arrays.fill(summary.individualPep, 1.0);
+				ppMap.put(modseq, summary);
+			}
+			Integer runIdObj = findRunId(pp.getRunString());
+			if (runIdObj != null) {
+				int runId = runIdObj;
+				if (runId >= 0 && runId < summary.spCount.length) {
+					summary.spCount[runId]++;
+					if (pp.getPEP() < summary.individualPep[runId]) {
+						summary.individualPep[runId] = pp.getPEP();
+					}
+				}
+			}
+			if (pp.getPEP() < summary.pep) {
+				summary.pep = pp.getPEP();
+			}
+			if (pp.getGlobalQvalue() < summary.qValue) {
+				summary.qValue = pp.getGlobalQvalue();
+			}
+			summary.miss = pp.getMissCleavage();
+			summary.mass = pp.getMass();
+			summary.proteins = pp.getProGroups();
+			summary.razorProtein = pp.getRazorProtein();
+		}
+		return ppMap;
+	}
+
+	private Integer findRunId(String runName) {
+		if (runIdMap == null || runName == null) {
+			return null;
+		}
+		Integer runId = runIdMap.get(runName);
+		if (runId != null) {
+			return runId;
+		}
+		return runIdMap.get(normalizeRunName(runName));
+	}
+
+	private static void putRunAlias(HashMap<String, Integer> map, String runName, int runId) {
+		if (map == null || runName == null) {
+			return;
+		}
+		String trimmed = runName.trim();
+		if (!trimmed.isEmpty()) {
+			map.putIfAbsent(trimmed, runId);
+		}
+		String normalized = normalizeRunName(trimmed);
+		if (!normalized.isEmpty()) {
+			map.putIfAbsent(normalized, runId);
+		}
+	}
+
+	private static boolean isIntensityColumn(String title) {
+		if (title == null) {
+			return false;
+		}
+		String lower = title.toLowerCase(Locale.ROOT);
+		return lower.endsWith(".d") || lower.endsWith(".dia") || lower.endsWith(".raw")
+				|| lower.endsWith(".mzml");
+	}
+
+	private static String normalizeRunName(String runName) {
+		if (runName == null) {
+			return "";
+		}
+		String name = runName.trim();
+		int slash = Math.max(name.lastIndexOf('\\'), name.lastIndexOf('/'));
+		if (slash >= 0 && slash < name.length() - 1) {
+			name = name.substring(slash + 1);
+		}
+		String lower = name.toLowerCase(Locale.ROOT);
+		if (lower.endsWith(".raw.dia")) {
+			return name.substring(0, name.length() - 8);
+		}
+		if (lower.endsWith(".mzml.dia")) {
+			return name.substring(0, name.length() - 9);
+		}
+		if (lower.endsWith(".d.dia")) {
+			return name.substring(0, name.length() - 6);
+		}
+		if (lower.endsWith(".mzml")) {
+			return name.substring(0, name.length() - 5);
+		}
+		if (lower.endsWith(".raw")) {
+			return name.substring(0, name.length() - 4);
+		}
+		if (lower.endsWith(".dia")) {
+			return name.substring(0, name.length() - 4);
+		}
+		if (lower.endsWith(".d")) {
+			return name.substring(0, name.length() - 2);
+		}
+		return name;
 	}
 }

@@ -223,6 +223,14 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 			HashMap<String, int[]> pepPsmCountMap, HashMap<String, int[]> pepChargeMap,
 			HashMap<String, Integer> proteinIdMap, ArrayList<String> fileList, String quanMode, String[] intensityTitle,
 			String taskName) {
+		return generatePeptideReport(peptideList, psmMap, pepPsmCountMap, pepChargeMap, proteinIdMap, fileList,
+				quanMode, intensityTitle, taskName, null);
+	}
+
+	protected boolean generatePeptideReport(ArrayList<MetaPeptide> peptideList, HashMap<String, MetaPSM> psmMap,
+			HashMap<String, int[]> pepPsmCountMap, HashMap<String, int[]> pepChargeMap,
+			HashMap<String, Integer> proteinIdMap, ArrayList<String> fileList, String quanMode, String[] intensityTitle,
+			String taskName, HashMap<String, String> razorProteinMap) {
 
 		logger.info(taskName + ": exporting peptide report started");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": exporting peptide report started");
@@ -237,7 +245,8 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 			titlesb.append("Length").append("\t");
 			titlesb.append("Missed cleavages").append("\t");
 			titlesb.append("Mass").append("\t");
-			titlesb.append("Proteins").append("\t");
+			titlesb.append("Razor protein").append("\t");
+			titlesb.append("Mapped proteins").append("\t");
 			titlesb.append("Charges").append("\t");
 			titlesb.append("Score").append("\t");
 			titlesb.append("PEP").append("\t");
@@ -280,6 +289,7 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 					mass = psm.getCalMass();
 				}
 				sb.append(mass).append("\t");
+				sb.append(resolveRazorProtein(razorProteinMap, fullSeq, psm.getBaseSequence())).append("\t");
 
 				String[] pros = peptide.getProteins();
 				if (pros != null) {
@@ -399,6 +409,17 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 		return true;
 	}
 
+	private String resolveRazorProtein(HashMap<String, String> razorProteinMap, String modSeq, String sequence) {
+		if (razorProteinMap == null) {
+			return "";
+		}
+		String razor = modSeq != null ? razorProteinMap.get(modSeq) : null;
+		if ((razor == null || razor.isEmpty()) && sequence != null) {
+			razor = razorProteinMap.get(sequence);
+		}
+		return razor != null ? razor : "";
+	}
+
 	protected boolean generateProteinReport(String[] proteins, HashMap<String, double[]> proteinIntensityMap,
 			HashMap<String, Double> proteinTotalIntensityMap, HashMap<String, HashSet<String>> totalPepCountMap,
 			HashMap<String, HashSet<String>> razorPepCountMap, HashMap<String, Integer> proteinPsmCountMap,
@@ -408,7 +429,7 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": exporting protein report started");
 
 		try {
-			final_pro_txt = new File(this.metaPar.getDbSearchResultFile(), "final_proteins.tsv");
+			final_pro_txt = new File(this.metaPar.getDbSearchResultFile(), "razor_proteins.tsv");
 			PrintWriter writer = new PrintWriter(final_pro_txt);
 
 			StringBuilder titlesb = new StringBuilder();
@@ -497,7 +518,7 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 
 	/**
 	 * Export an additional all-protein report (no razor-only restriction) using the
-	 * same table schema as final_proteins.tsv.
+	 * same table schema as razor_proteins.tsv.
 	 */
 	protected boolean generateAllProteinReport(String[] proteins, HashMap<String, double[]> proteinIntensityMap,
 			HashMap<String, Double> proteinTotalIntensityMap, HashMap<String, HashSet<String>> totalPepCountMap,
@@ -1798,6 +1819,7 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 
 			HashMap<String, Integer> psmCountMap = new HashMap<String, Integer>();
 			HashMap<String, Integer> allProteinPsmCountMap = new HashMap<String, Integer>();
+			HashMap<String, String> razorProteinMap = new HashMap<String, String>();
 
 			// Process peptides and build protein maps
 			for (int i = 0; i < quanPeps.length; i++) {
@@ -1805,6 +1827,12 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 					String stripeSequence = quanPeps[i].getSequence();
 					pepSequenceSet.add(stripeSequence);
 					peptideList.add(quanPeps[i]);
+					if (quanPeps[i].getModSeq() != null) {
+						razorProteinMap.put(quanPeps[i].getModSeq(), razorProteins[i]);
+					}
+					if (stripeSequence != null) {
+						razorProteinMap.put(stripeSequence, razorProteins[i]);
+					}
 
 					// Build razor peptide count map
 					if (razorPepCountMap.containsKey(razorProteins[i])) {
@@ -1975,7 +2003,7 @@ public abstract class MetaPilotIgcTask extends MetaPilotTask {
 			updateMessage("Generating peptide report...");
 			updateProgress(0.75, 1.0);
 			if (!parentTask.generatePeptideReport(peptideList, psmMap, pepPsmCountMap, pepChargeMap, proteinIdMap,
-					fileList, quanMode, intensityTitle, taskName)) {
+					fileList, quanMode, intensityTitle, taskName, razorProteinMap)) {
 				return false;
 			}
 

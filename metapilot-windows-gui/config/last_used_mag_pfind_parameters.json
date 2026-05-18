@@ -2536,9 +2536,9 @@
   ],
   "workflow": "DDA_MAG_PFIND",
   "input_output": {
-    "mag_database_version": "v1.0",
+    "mag_database_version": "v2.0.2",
     "host_database": "C:\\Users\\daz25hak\\MetaProAI\\database\\uniprotkb_Human_AND_reviewed_true_AND_m_2025_09_01.fasta",
-    "mag_database": "human-gut-local",
+    "mag_database": "human-gut",
     "output_directory": "Z:\\PRIDE_dataset\\PXD007819_xu_IBD\\MetaPilot",
     "append_host_db": true,
     "experiments": [
@@ -3393,7 +3393,7 @@
     "missed_cleavages": 2,
     "digestion_mode": "Semi-Specific"
   },
-  "generated_at": "2026-05-07 15:20:51",
+  "generated_at": "2026-05-17 10:05:16",
   "additional_parameters": {
     "generate_sample_specific_db": false,
     "ms2_scan_mode": "HCD-FTMS",

@@ -16,6 +16,7 @@ public class FragPipePSM extends MetaPSM {
     private double rt;
     private double probability;
     private double qValue;
+    private boolean decoy;
     
     /**
      * Constructor for FragPipePSM
@@ -38,6 +39,13 @@ public class FragPipePSM extends MetaPSM {
     public FragPipePSM(String fileName, int scan, String spectrum, String sequence, String modSeq, String mod, int charge,
             double expMass, double calMass, double massDiff, int miss, double rt, double score,
 			double probability, double qValue, String[] proteins) {
+		this(fileName, scan, spectrum, sequence, modSeq, mod, charge, expMass, calMass, massDiff, miss, rt, score,
+				probability, qValue, proteins, false);
+	}
+
+	public FragPipePSM(String fileName, int scan, String spectrum, String sequence, String modSeq, String mod, int charge,
+			double expMass, double calMass, double massDiff, int miss, double rt, double score,
+			double probability, double qValue, String[] proteins, boolean decoy) {
 		super(fileName, scan, sequence, modSeq, charge, proteins, score, qValue);
 		this.spectrum = spectrum;
 		this.mod = mod;
@@ -48,6 +56,7 @@ public class FragPipePSM extends MetaPSM {
 		this.rt = rt;
 		this.probability = probability;
 		this.qValue = qValue;
+		this.decoy = decoy;
 	}
     
     // Getters for FragPipe-specific fields
@@ -66,6 +75,10 @@ public class FragPipePSM extends MetaPSM {
     public double getqValue() {
         return qValue;
     }
+
+	public boolean isDecoy() {
+		return decoy;
+	}
     
     // Implement abstract methods from MetaPSM
     @Override

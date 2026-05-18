@@ -13,6 +13,7 @@ import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import uk.ac.quadram.metapilot.core.dia.MagPredictedPeptideProteinMapper;
 import uk.ac.quadram.metapilot.dbSearch.pfind.PFindPSM;
 import uk.ac.quadram.metapilot.dbSearch.pfind.PFindPsmReader;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNParquetReader;
@@ -340,8 +341,8 @@ public class MarkerGenomeSelector {
 			allUnique.add(seq);
 			boolean hasMarker = false;
 			for (String pro : pros) {
-				if (pro == null) continue;
-				String lookupId = pro.startsWith("REV_") ? pro.substring(4) : pro;
+				String lookupId = normalizeProteinId(pro);
+				if (lookupId.isEmpty() || isDecoyProteinId(lookupId)) continue;
 				if (markerProteinIds.contains(lookupId)) {
 					hasMarker = true;
 					break;
@@ -449,25 +450,23 @@ public class MarkerGenomeSelector {
 			HashSet<String> genomesForPsm = new HashSet<>();
 
 			for (String pro : pros) {
-				if (pro == null) {
-					continue;
-				}
-				String proteinId = pro.trim();
+				String proteinId = normalizeProteinId(pro);
 				if (proteinId.isEmpty()) {
 					continue;
 				}
 
-				boolean isDecoy = proteinId.startsWith("REV_");
-				String lookupId = isDecoy ? proteinId.substring(4) : proteinId;
+				if (isDecoyProteinId(proteinId)) {
+					continue;
+				}
 
 				String category = "ALL";
-				String proteinForGenome = lookupId;
+				String proteinForGenome = proteinId;
 				if (useMarkerCategories) {
-					category = proteinToCategory.get(lookupId);
+					category = proteinToCategory.get(proteinId);
 					if (category == null) {
-						int last = lookupId.lastIndexOf("_");
+						int last = proteinId.lastIndexOf("_");
 						if (last > 0) {
-							String baseId = lookupId.substring(0, last);
+							String baseId = proteinId.substring(0, last);
 							category = proteinToCategory.get(baseId);
 							if (category != null) {
 								proteinForGenome = baseId;
@@ -484,11 +483,6 @@ public class MarkerGenomeSelector {
 					continue;
 				}
 				
-				// don't need decoy here, because decoy genome can't have 4 types of marker proteins, so it can't help the FDR control
-				if (isDecoy) {
-					continue;
-				}
-
 				peptideHasAnyMarker = true;
 				markerProteinHits++;
 
@@ -885,9 +879,13 @@ public class MarkerGenomeSelector {
 				HashSet<String> genomesForPsm = new HashSet<>();
 
 				for (String pro : pros) {
-					String proteinId = pro.trim();
+					String proteinId = normalizeProteinId(pro);
 					if (proteinId.isEmpty())
 						continue;
+
+					if (isDecoyProteinId(proteinId)) {
+						continue;
+					}
 
 					String category = "ALL";
 					String proteinForGenome = proteinId;
@@ -1908,8 +1906,6 @@ public class MarkerGenomeSelector {
 		return kneeSelectionMode;
 	}
 
-	private static final String PREDICTED_TSV_SUFFIX = ".predicted.tsv";
-
 	/**
 	 * Sets protein information on precursors from MAG predicted TSV files (peptide→protein mapping).
 	 * User-provided library search parquet does not contain genome/protein info; this method fills
@@ -1936,67 +1932,7 @@ public class MarkerGenomeSelector {
 	 */
 	public static List<DiaNNPrecursor> setProteinInfoFromPredictedTsVs(DiaNNPrecursor[] precursors,
 			File predictedFolder, Set<String> genomeSet) {
-		if (precursors == null || precursors.length == 0 || predictedFolder == null || !predictedFolder.isDirectory()) {
-			return precursors != null && precursors.length > 0
-					? new ArrayList<>(Arrays.asList(precursors))
-					: new ArrayList<>();
-		}
-		ConcurrentHashMap<String, Set<String>> pepProMap = new ConcurrentHashMap<>();
-		for (DiaNNPrecursor pp : precursors) {
-			String sequence = pp != null ? pp.getSeqString() : null;
-			if (sequence != null && !sequence.isEmpty()) {
-				pepProMap.put(sequence, ConcurrentHashMap.newKeySet());
-			}
-		}
-		File[] files = predictedFolder.listFiles();
-		if (files != null && files.length > 0) {
-			ExecutorService executor = Executors.newFixedThreadPool(Math.min(20, files.length));
-			for (File file : files) {
-				if (!file.isFile() || !file.getName().endsWith(PREDICTED_TSV_SUFFIX)) {
-					continue;
-				}
-				if (genomeSet != null && !genomeSet.isEmpty()) {
-					String genomeId = file.getName().substring(0, file.getName().length() - PREDICTED_TSV_SUFFIX.length());
-					if (!genomeSet.contains(genomeId)) {
-						continue;
-					}
-				}
-				File f = file;
-				executor.execute(() -> {
-					try (BufferedReader reader = new BufferedReader(new FileReader(f))) {
-						reader.readLine(); // header
-						String pline;
-						while ((pline = reader.readLine()) != null) {
-							String[] cs = pline.split("\t");
-							if (cs.length > 1 && pepProMap.containsKey(cs[1])) {
-								pepProMap.get(cs[1]).add(cs[0]);
-							}
-						}
-					} catch (IOException e) {
-						LOGGER.warn("Error reading predicted TSV: {}", f.getAbsolutePath(), e);
-					}
-				});
-			}
-			executor.shutdown();
-			try {
-				executor.awaitTermination(1, TimeUnit.HOURS);
-			} catch (InterruptedException e) {
-				Thread.currentThread().interrupt();
-				LOGGER.warn("Interrupted while reading predicted TSVs");
-			}
-		}
-		ArrayList<DiaNNPrecursor> result = new ArrayList<>();
-		for (DiaNNPrecursor pp : precursors) {
-			if (pp == null) continue;
-			String sequence = pp.getSeqString();
-			if (sequence == null || sequence.isEmpty()) continue;
-			Set<String> proSet = pepProMap.get(sequence);
-			if (proSet != null && !proSet.isEmpty()) {
-				pp.setProGroups(proSet.toArray(new String[0]));
-				result.add(pp);
-			}
-		}
-		return result;
+		return MagPredictedPeptideProteinMapper.mapPrecursorsToProteins(precursors, predictedFolder, genomeSet);
 	}
 
 	/**
@@ -2021,65 +1957,7 @@ public class MarkerGenomeSelector {
 	 * @return list of PSMs that have at least one matching protein; others are skipped
 	 */
 	public static List<MetaPSM> setProteinInfoFromPredictedTsVs(MetaPSM[] psms, File predictedFolder, Set<String> genomeSet) {
-		if (psms == null || psms.length == 0 || predictedFolder == null || !predictedFolder.isDirectory()) {
-			return psms != null && psms.length > 0 ? new ArrayList<>(Arrays.asList(psms)) : new ArrayList<>();
-		}
-		ConcurrentHashMap<String, Set<String>> pepProMap = new ConcurrentHashMap<>();
-		for (MetaPSM psm : psms) {
-			String sequence = psm != null ? psm.getSequence() : null;
-			if (sequence != null && !sequence.isEmpty()) {
-				pepProMap.put(sequence, ConcurrentHashMap.newKeySet());
-			}
-		}
-		File[] files = predictedFolder.listFiles();
-		if (files != null && files.length > 0) {
-			ExecutorService executor = Executors.newFixedThreadPool(Math.min(20, files.length));
-			for (File file : files) {
-				if (!file.isFile() || !file.getName().endsWith(PREDICTED_TSV_SUFFIX)) {
-					continue;
-				}
-				if (genomeSet != null && !genomeSet.isEmpty()) {
-					String genomeId = file.getName().substring(0, file.getName().length() - PREDICTED_TSV_SUFFIX.length());
-					if (!genomeSet.contains(genomeId)) {
-						continue;
-					}
-				}
-				File f = file;
-				executor.execute(() -> {
-					try (BufferedReader reader = new BufferedReader(new FileReader(f))) {
-						reader.readLine(); // header
-						String pline;
-						while ((pline = reader.readLine()) != null) {
-							String[] cs = pline.split("\t");
-							if (cs.length > 1 && pepProMap.containsKey(cs[1])) {
-								pepProMap.get(cs[1]).add(cs[0]);
-							}
-						}
-					} catch (IOException e) {
-						LOGGER.warn("Error reading predicted TSV: {}", f.getAbsolutePath(), e);
-					}
-				});
-			}
-			executor.shutdown();
-			try {
-				executor.awaitTermination(1, TimeUnit.HOURS);
-			} catch (InterruptedException e) {
-				Thread.currentThread().interrupt();
-				LOGGER.warn("Interrupted while reading predicted TSVs");
-			}
-		}
-		ArrayList<MetaPSM> result = new ArrayList<>();
-		for (MetaPSM psm : psms) {
-			if (psm == null) continue;
-			String sequence = psm.getSequence();
-			if (sequence == null || sequence.isEmpty()) continue;
-			Set<String> proSet = pepProMap.get(sequence);
-			if (proSet != null && !proSet.isEmpty()) {
-				psm.setProteins(proSet.toArray(new String[0]));
-				result.add(psm);
-			}
-		}
-		return result;
+		return MagPredictedPeptideProteinMapper.mapPsmsToProteins(psms, predictedFolder, genomeSet);
 	}
 
 	// ----------------------------
@@ -2120,6 +1998,38 @@ public class MarkerGenomeSelector {
 			return proteinId.substring(0, underscore);
 		}
 		return proteinId;
+	}
+
+	private static String normalizeProteinId(String protein) {
+		if (protein == null) {
+			return "";
+		}
+		String id = protein.trim();
+		if (id.startsWith(">")) {
+			id = id.substring(1).trim();
+		}
+		int whitespace = firstWhitespace(id);
+		if (whitespace > 0) {
+			id = id.substring(0, whitespace);
+		}
+		return id;
+	}
+
+	private static int firstWhitespace(String value) {
+		for (int i = 0; i < value.length(); i++) {
+			if (Character.isWhitespace(value.charAt(i))) {
+				return i;
+			}
+		}
+		return -1;
+	}
+
+	private static boolean isDecoyProteinId(String proteinId) {
+		if (proteinId == null) {
+			return false;
+		}
+		String lower = proteinId.toLowerCase(Locale.ROOT);
+		return lower.startsWith("rev_") || lower.startsWith("decoy_");
 	}
 
 	/**

@@ -19,6 +19,7 @@ import java.util.regex.Pattern;
 
 import org.apache.logging.log4j.Logger;
 
+import javafx.application.Platform;
 import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
@@ -227,36 +228,39 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
 				return false;
 			}
 		}
-		// Update progress after MGF conversion
-		updateProgress(30, 100);
-		updateMessage("MGF conversion completed, starting database reduction...");
+		if (metaPar.isReduceDb()) {
+			updateProgress(30, 100);
+			updateMessage("MGF conversion completed, starting database reduction...");
 
-		// Step 3: Database reduction using MetaDbReducerTask
-		dbReducerTask = new MetaDbReducerTask(metaPar, mrp, secondBar, logger);
-		logger.info("{}: MetaDbReducerTask created, executing...", taskName);
-		dbReducerTask.execute();
-		try {
-			boolean dbReduced = dbReducerTask.get(); // Wait for completion and get result
-			if (!dbReduced) {
-				logger.error(getTaskName() + ": error in sample-specific database generation");
+			dbReducerTask = new MetaDbReducerTask(metaPar, mrp, secondBar, logger);
+			logger.info("{}: MetaDbReducerTask created, executing...", taskName);
+			dbReducerTask.execute();
+			try {
+				boolean dbReduced = dbReducerTask.get(); // Wait for completion and get result
+				if (!dbReduced) {
+					logger.error(getTaskName() + ": error in sample-specific database generation");
+					System.err.println(format.format(new Date()) + "\t" + getTaskName()
+							+ ": error in sample-specific database generation");
+					return false;
+				}
+			} catch (InterruptedException | ExecutionException e) {
+				logger.error(getTaskName() + ": error in sample-specific database generation", e);
 				System.err.println(format.format(new Date()) + "\t" + getTaskName()
-						+ ": error in sample-specific database generation");
+						+ ": error in sample-specific database generation: " + e.getMessage());
 				return false;
 			}
-		} catch (InterruptedException | ExecutionException e) {
-			logger.error(getTaskName() + ": error in sample-specific database generation", e);
-			System.err.println(format.format(new Date()) + "\t" + getTaskName()
-					+ ": error in sample-specific database generation: " + e.getMessage());
-			return false;
+
+			updateProgress(50, 100);
+			updateMessage("Database reduction completed, starting identification...");
+
+			logger.info(getTaskName() + ": sample specific database generation: finished");
+			System.out.println(format.format(new Date()) + "\t" + getTaskName()
+					+ ": sample specific database generation: finished");
+		} else {
+			updateProgress(50, 100);
+			updateMessage("Database reduction disabled, starting identification...");
+			logger.info(getTaskName() + ": sample specific database generation skipped");
 		}
-
-		// Update progress after database reduction
-		updateProgress(50, 100);
-		updateMessage("Database reduction completed, starting identification...");
-
-		logger.info(getTaskName() + ": sample specific database generation: finished");
-		System.out.println(format.format(new Date()) + "\t" + getTaskName()
-				+ ": sample specific database generation: finished");
 	
         // Step 4: Database search with Sage
         boolean identification = performIdentification();
@@ -291,6 +295,9 @@ public class DDAIgcSageTask extends MetaPilotIgcTask {
         // Update progress to completion
         updateProgress(100, 100);
         updateMessage("Workflow completed successfully!");
+        if (secondBar != null) {
+            Platform.runLater(() -> secondBar.setProgress(1.0));
+        }
 
         return true;
     }

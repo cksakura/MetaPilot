@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Locale;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -48,16 +49,10 @@ public class DiannPgMatrixReader extends FlashLfqQuanProReader {
 			for (int i = 0; i < title.length; i++) {
 				if (title[i].equals("Protein.Group") || title[i].equals("ProteinGroup")) {
 					proteinId = i;
-				} else if (title[i].endsWith(".d") || title[i].endsWith(".dia") || title[i].endsWith(".raw")) {
-					int id = title[i].lastIndexOf("\\");
-					if (id >= 0 && id < title[i].length() - 1) {
-						String fileNameI = title[i].substring(id + 1);
-						intensityTitleIdMap.put(fileNameI, i);
-						intensityTitleList.add(fileNameI);
-					} else {
-						intensityTitleIdMap.put(title[i], i);
-						intensityTitleList.add(title[i]);
-					}
+				} else if (isIntensityColumn(title[i])) {
+					String runName = normalizeRunName(title[i]);
+					intensityTitleIdMap.put(runName, i);
+					intensityTitleList.add(runName);
 				}
 			}
 
@@ -100,6 +95,49 @@ public class DiannPgMatrixReader extends FlashLfqQuanProReader {
 		FlashLfqQuanProtein protein = new FlashLfqQuanProtein(proname, intensity);
 
 		return protein;
+	}
+
+	private static boolean isIntensityColumn(String title) {
+		if (title == null) {
+			return false;
+		}
+		String lower = title.toLowerCase(Locale.ROOT);
+		return lower.endsWith(".d") || lower.endsWith(".dia") || lower.endsWith(".raw")
+				|| lower.endsWith(".mzml");
+	}
+
+	private static String normalizeRunName(String runName) {
+		if (runName == null) {
+			return "";
+		}
+		String name = runName.trim();
+		int slash = Math.max(name.lastIndexOf('\\'), name.lastIndexOf('/'));
+		if (slash >= 0 && slash < name.length() - 1) {
+			name = name.substring(slash + 1);
+		}
+		String lower = name.toLowerCase(Locale.ROOT);
+		if (lower.endsWith(".raw.dia")) {
+			return name.substring(0, name.length() - 8);
+		}
+		if (lower.endsWith(".mzml.dia")) {
+			return name.substring(0, name.length() - 9);
+		}
+		if (lower.endsWith(".d.dia")) {
+			return name.substring(0, name.length() - 6);
+		}
+		if (lower.endsWith(".mzml")) {
+			return name.substring(0, name.length() - 5);
+		}
+		if (lower.endsWith(".raw")) {
+			return name.substring(0, name.length() - 4);
+		}
+		if (lower.endsWith(".dia")) {
+			return name.substring(0, name.length() - 4);
+		}
+		if (lower.endsWith(".d")) {
+			return name.substring(0, name.length() - 2);
+		}
+		return name;
 	}
 
 }

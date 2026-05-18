@@ -4,7 +4,6 @@ import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileFilter;
-import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -25,6 +24,8 @@ import org.apache.logging.log4j.Logger;
 import javafx.application.Platform;
 import javafx.scene.control.ProgressBar;
 import javafx.scene.control.TextField;
+import uk.ac.quadram.metapilot.core.deepdetect.DeepDetectPythonRunner;
+import uk.ac.quadram.metapilot.core.deepdetect.DeepDetectWindowsRunner;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.task.MetaAbstractTask;
@@ -115,14 +116,8 @@ public class DeepDetectTask extends MetaAbstractTask {
 
 						File batFile = new File(predictedFile, name + ".deepDetect.bat");
 						try {
-							PrintWriter batWriter = new PrintWriter(batFile);
-							batWriter.println("@echo off");
-							batWriter.println("cd /d \"" + deepDetectFile.getParent() + "\"");
-							batWriter.println("\"" + deepDetectFile.getAbsolutePath() + "\" " + par.toQuotedString());
-							batWriter.close();
-						} catch (FileNotFoundException e) {
-							// TODO Auto-generated catch block
-							e.printStackTrace();
+							DeepDetectWindowsRunner.createBatchFile(deepDetectFile, par, batFile);
+						} catch (IOException e) {
 							LOGGER.error(taskName + ": error in writing the .bat file", e);
 							return false;
 						}
@@ -152,24 +147,11 @@ public class DeepDetectTask extends MetaAbstractTask {
 
 						long start = System.currentTimeMillis();
 
-						String[] args = { "cmd.exe", "/c", batFile.getAbsolutePath() };
-						ProcessBuilder pb = new ProcessBuilder(args);
-						Process p = pb.start();
-
-						BufferedInputStream in = new BufferedInputStream(p.getInputStream());
-						BufferedReader inBr = new BufferedReader(new InputStreamReader(in));
-						String[] lines = new String[1];
-						while ((lines[0] = inBr.readLine()) != null) {
-							String line = lines[0];
-							Platform.runLater(() -> System.out.println(format.format(new Date()) + "\t" + line));
+						int exitCode = DeepDetectWindowsRunner.runBatchFile(batFile,
+								line -> Platform.runLater(() -> System.out.println(format.format(new Date()) + "\t" + line)));
+						if (exitCode != 0) {
+							LOGGER.error("DeepDetect exited with code " + exitCode);
 						}
-
-						if (p.waitFor() != 0) {
-							if (p.exitValue() == 1)
-								LOGGER.error("false");
-						}
-						inBr.close();
-						in.close();
 
 						int completed = completedTasks.incrementAndGet();
 						double progress = (double) completed / (double) totalGenomeCount;
@@ -276,14 +258,8 @@ public class DeepDetectTask extends MetaAbstractTask {
 
 						File batFile = new File(predictedFile, name + ".deepDetect.bat");
 						try {
-							PrintWriter batWriter = new PrintWriter(batFile);
-							batWriter.println("@echo off");
-							batWriter.println("cd /d \"" + deepDetectFile.getParent() + "\"");
-							batWriter.println("\"" + deepDetectFile.getAbsolutePath() + "\" " + par.toQuotedString());
-							batWriter.close();
-						} catch (FileNotFoundException e) {
-							// TODO Auto-generated catch block
-							e.printStackTrace();
+							DeepDetectWindowsRunner.createBatchFile(deepDetectFile, par, batFile);
+						} catch (IOException e) {
 							LOGGER.error(taskName + ": error in writing the .bat file", e);
 							return false;
 						}
@@ -309,24 +285,12 @@ public class DeepDetectTask extends MetaAbstractTask {
 
 									long start = System.currentTimeMillis();
 
-									String[] args = { "cmd.exe", "/c", batFile.getAbsolutePath() };
-									ProcessBuilder pb = new ProcessBuilder(args);
-									Process p = pb.start();
-
-									BufferedInputStream in = new BufferedInputStream(p.getInputStream());
-									BufferedReader inBr = new BufferedReader(new InputStreamReader(in));
-									String[] lines = new String[1];
-									while ((lines[0] = inBr.readLine()) != null) {
-										String line = lines[0];
-										Platform.runLater(() -> System.out.println(format.format(new Date()) + "\t" + line));
+									int exitCode = DeepDetectWindowsRunner.runBatchFile(batFile,
+											line -> Platform.runLater(
+													() -> System.out.println(format.format(new Date()) + "\t" + line)));
+									if (exitCode != 0) {
+										LOGGER.error("DeepDetect exited with code " + exitCode);
 									}
-
-									if (p.waitFor() != 0) {
-										if (p.exitValue() == 1)
-											LOGGER.error("false");
-									}
-									inBr.close();
-									in.close();
 
 									int completed = completedTasks.incrementAndGet();
 									double progress = (double) completed / (double) totalGenomeCount;
@@ -445,14 +409,8 @@ public class DeepDetectTask extends MetaAbstractTask {
 
 		File batFile = new File(outputFile.getParent(), name + ".deepDetect.bat");
 		try {
-			PrintWriter writer = new PrintWriter(batFile);
-			writer.println("@echo off");
-			writer.println("cd /d \"" + deepDetectFile.getParent() + "\"");
-			writer.println("\"" + deepDetectFile.getAbsolutePath() + "\" " + par.toQuotedString());
-			writer.close();
-		} catch (FileNotFoundException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
+			DeepDetectWindowsRunner.createBatchFile(deepDetectFile, par, batFile);
+		} catch (IOException e) {
 			LOGGER.error(taskName + ": error in writing the .bat file", e);
 		}
 		this.batFileList.add(batFile);
@@ -479,24 +437,13 @@ public class DeepDetectTask extends MetaAbstractTask {
 					// TODO Auto-generated method stub
 
 					try {
-						Process p = Runtime.getRuntime().exec(new String[] { batFile.getAbsolutePath() });
-						BufferedInputStream in = new BufferedInputStream(p.getInputStream());
-						BufferedReader inBr = new BufferedReader(new InputStreamReader(in));
-						String line0 = "";
-						String line1 = "";
-						while ((line1 = inBr.readLine()) != null) {
-							if (!line1.equals(line0)) {
+						String[] line0 = { "" };
+						DeepDetectWindowsRunner.runBatchFile(batFile, line1 -> {
+							if (!line1.equals(line0[0])) {
 								System.out.println(format.format(new Date()) + "\t" + line1);
-								line0 = line1;
+								line0[0] = line1;
 							}
-						}
-
-						if (p.waitFor() != 0) {
-							if (p.exitValue() == 1)
-								LOGGER.error("false");
-						}
-						inBr.close();
-						in.close();
+						});
 
 					} catch (IOException | InterruptedException e) {
 						// TODO Auto-generated catch block
@@ -564,8 +511,6 @@ public class DeepDetectTask extends MetaAbstractTask {
 		}
 	}
 
-	private static final String STANDARD_AA = "ACDEFGHIKLMNPQRSTVWY";
-
 	/**
 	 * Prepares a FASTA file for DeepDetect by applying three rules:
 	 * 1. Headers without a space get a duplicated accession as protein name
@@ -575,89 +520,7 @@ public class DeepDetectTask extends MetaAbstractTask {
 	 *    standard residues ACDEFGHIKLMNPQRSTVWY) are removed entirely
 	 */
 	public static File ensureFastaHeadersHaveProteinName(File inputFile, File outputDir) throws IOException {
-		if (inputFile == null || !inputFile.exists()) {
-			return inputFile;
-		}
-
-		String baseName = inputFile.getName();
-		int lastDot = baseName.lastIndexOf('.');
-		String nameNoExt = lastDot > 0 ? baseName.substring(0, lastDot) : baseName;
-		File dir = outputDir != null && outputDir.exists() ? outputDir : inputFile.getParentFile();
-		if (dir == null) {
-			dir = new File(System.getProperty("java.io.tmpdir"));
-		}
-		File modifiedFile = new File(dir, nameNoExt + "_deepDetect_input.faa");
-
-		int skippedCount = 0;
-		int totalCount = 0;
-
-		try (BufferedReader reader = new BufferedReader(new FileReader(inputFile));
-			 PrintWriter writer = new PrintWriter(modifiedFile)) {
-
-			String header = null;
-			StringBuilder seq = new StringBuilder();
-
-			String line;
-			while ((line = reader.readLine()) != null) {
-				if (line.startsWith(">")) {
-					if (header != null) {
-						totalCount++;
-						String cleanedSeq = cleanSequence(seq.toString());
-						if (cleanedSeq != null) {
-							writer.println(header);
-							writer.println(cleanedSeq);
-						} else {
-							skippedCount++;
-						}
-					}
-					if (!line.substring(1).contains(" ")) {
-						String accession = line.substring(1).trim();
-						header = ">" + accession + " " + accession;
-					} else {
-						header = line;
-					}
-					seq = new StringBuilder();
-				} else {
-					seq.append(line.trim());
-				}
-			}
-			if (header != null) {
-				totalCount++;
-				String cleanedSeq = cleanSequence(seq.toString());
-				if (cleanedSeq != null) {
-					writer.println(header);
-					writer.println(cleanedSeq);
-				} else {
-					skippedCount++;
-				}
-			}
-		}
-
-		if (skippedCount > 0) {
-			LOGGER.info(taskName + ": skipped " + skippedCount + "/" + totalCount
-					+ " proteins with non-standard amino acids in " + inputFile.getName());
-		}
-		return modifiedFile;
-	}
-
-	/**
-	 * Cleans a protein sequence for DeepDetect: removes trailing '*' and
-	 * validates that all remaining characters are standard amino acids.
-	 * @return the cleaned sequence, or null if it contains non-standard residues
-	 */
-	private static String cleanSequence(String seq) {
-		if (seq.endsWith("*")) {
-			seq = seq.substring(0, seq.length() - 1);
-		}
-		if (seq.isEmpty()) {
-			return null;
-		}
-		for (int i = 0; i < seq.length(); i++) {
-			if (STANDARD_AA.indexOf(seq.charAt(i)) < 0) {
-				return null;
-			}
-		}
-		return seq;
+		return DeepDetectPythonRunner.ensureFastaHeadersHaveProteinName(inputFile, outputDir);
 	}
 
 	/**
@@ -697,11 +560,9 @@ public class DeepDetectTask extends MetaAbstractTask {
 		}
 		SimpleDateFormat fmt = new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss");
 		File batFile = new File(batDir, "deepDetect_test.bat");
-		try (PrintWriter batWriter = new PrintWriter(batFile)) {
-			batWriter.println("@echo off");
-			batWriter.println("cd /d \"" + deepDetectExe.getParent() + "\"");
-			batWriter.println("\"" + deepDetectExe.getAbsolutePath() + "\" " + par.toQuotedString());
-		} catch (FileNotFoundException e) {
+		try {
+			DeepDetectWindowsRunner.createBatchFile(deepDetectExe, par, batFile);
+		} catch (IOException e) {
 			LOGGER.error(taskName + ": testDeepDetect - error writing .bat file", e);
 			return false;
 		}
@@ -712,18 +573,8 @@ public class DeepDetectTask extends MetaAbstractTask {
 		AtomicInteger exitCode = new AtomicInteger(-1);
 		executor.submit(() -> {
 			try {
-				String[] args = { "cmd.exe", "/c", batFile.getAbsolutePath() };
-				ProcessBuilder pb = new ProcessBuilder(args);
-				Process p = pb.start();
-				BufferedInputStream in = new BufferedInputStream(p.getInputStream());
-				BufferedReader inBr = new BufferedReader(new InputStreamReader(in));
-				String line;
-				while ((line = inBr.readLine()) != null) {
-					System.out.println(fmt.format(new Date()) + "\t" + line);
-				}
-				exitCode.set(p.waitFor());
-				inBr.close();
-				in.close();
+				exitCode.set(DeepDetectWindowsRunner.runBatchFile(batFile,
+						line -> System.out.println(fmt.format(new Date()) + "\t" + line)));
 			} catch (IOException | InterruptedException e) {
 				LOGGER.error(taskName + ": testDeepDetect - error running process", e);
 			}

@@ -465,7 +465,8 @@ public class MaxquantPepReader extends AbstractMetaPeptideReader {
 		titlesb.append("Sequence").append("\t");
 		titlesb.append("Length").append("\t");
 		titlesb.append("Missed cleavages").append("\t");
-		titlesb.append("Proteins").append("\t");
+		titlesb.append("Razor protein").append("\t");
+		titlesb.append("Mapped proteins").append("\t");
 		titlesb.append("Charges").append("\t");
 		titlesb.append("PEP").append("\t");
 		titlesb.append("Score").append("\t");
@@ -491,6 +492,7 @@ public class MaxquantPepReader extends AbstractMetaPeptideReader {
 			sb.append(pep.getSequence()).append("\t");
 			sb.append(pep.getSequence().length()).append("\t");
 			sb.append(pep.getMissCleave()).append("\t");
+			sb.append("").append("\t");
 			sb.append(pep.getProtein()).append("\t");
 			sb.append(pep.getChargeString()).append("\t");
 			sb.append(pep.getPEP()).append("\t");

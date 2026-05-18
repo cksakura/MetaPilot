@@ -48,7 +48,7 @@ public final class FragpipeWorkflowFile {
     }
 
     public FragpipeWorkflowFile setDatabase(String fastaPath) {
-        return set("database.db-path", fastaPath);
+        return set("database.db-path", FragpipeWorkflowPaths.formatDatabasePath(fastaPath));
     }
 
     public String get(String key) {
@@ -59,9 +59,14 @@ public final class FragpipeWorkflowFile {
         Files.createDirectories(out.getParent());
         try (PrintWriter pw = new PrintWriter(Files.newBufferedWriter(out, StandardCharsets.UTF_8))) {
             for (Map.Entry<String, String> e : kv.entrySet()) {
-                pw.println(e.getKey() + "=" + (e.getValue() == null ? "" : e.getValue()));
+                String value = e.getValue() == null ? "" : e.getValue();
+                if ("database.db-path".equals(e.getKey())) {
+                    value = FragpipeWorkflowPaths.formatDatabasePath(value);
+                }
+                pw.println(e.getKey() + "=" + value);
             }
         }
     }
+
 }
 

@@ -44,7 +44,7 @@ final class HpcMagRegistryCommands {
             Path magdbCfg = HpcSiteConfig.resolveMagDbConfigPath(cmd.getOptionValue("magdb"));
             MagDbItem[][] parsed = MagDbConfigIO.parse(magdbCfg.toFile());
             if (parsed == null) {
-                System.err.println("ERROR: failed to read MAG registry: " + magdbCfg);
+                System.err.println("ERROR: failed to read MAG registry: " + magdbCfg.toAbsolutePath());
                 return 1;
             }
             System.out.println("MAG registry: " + magdbCfg);
@@ -96,7 +96,7 @@ final class HpcMagRegistryCommands {
 
             MagDbItem[][] parsed = MagDbConfigIO.parse(magdbCfg.toFile());
             if (parsed == null) {
-                System.err.println("ERROR: failed to read MAG registry: " + magdbCfg);
+                System.err.println("ERROR: failed to read MAG registry: " + magdbCfg.toAbsolutePath());
                 return 1;
             }
 
@@ -124,7 +124,9 @@ final class HpcMagRegistryCommands {
             }
 
             if (!saved) {
-                System.err.println("ERROR: failed to update MAG registry: " + magdbCfg);
+                System.err.println("ERROR: failed to update MAG registry: " + magdbCfg.toAbsolutePath()
+                        + " (catalogue=" + catalogue + ", version=" + version
+                        + ", repository=" + repo.getAbsolutePath() + ")");
                 return 1;
             }
 

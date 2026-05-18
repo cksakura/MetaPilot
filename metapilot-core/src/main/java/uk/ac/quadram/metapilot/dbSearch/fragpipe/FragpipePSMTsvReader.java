@@ -51,6 +51,7 @@ public class FragpipePSMTsvReader {
 	private int idxHyperscore;
 	private int idxProbability;
 	private int idxQvalue;
+	private int idxIsDecoy;
 	private int idxMissedCleavages;
 	private int idxProtein;
 	private int idxMappedProteins;
@@ -82,6 +83,7 @@ public class FragpipePSMTsvReader {
 		idxHyperscore = -1;
 		idxProbability = -1;
 		idxQvalue = -1;
+		idxIsDecoy = -1;
 		idxMissedCleavages = -1;
 		idxProtein = -1;
 		idxMappedProteins = -1;
@@ -129,6 +131,11 @@ public class FragpipePSMTsvReader {
 				case "Qvalue":
 				case "Q-value":
 					idxQvalue = i;
+					break;
+				case "Is Decoy":
+				case "IsDecoy":
+				case "Decoy":
+					idxIsDecoy = i;
 					break;
 				case "Number of Missed Cleavages":
 					idxMissedCleavages = i;
@@ -186,7 +193,7 @@ public class FragpipePSMTsvReader {
 		int max = 0;
 		for (int i : new int[] { idxSpectrum, idxSpectrumFile, idxPeptide, idxModifiedPeptide, idxCharge,
 				idxRetention, idxObservedMass, idxCalibratedObservedMass, idxCalculatedPeptideMass, idxDeltaMass,
-				idxHyperscore, idxProbability, idxQvalue, idxMissedCleavages, idxProtein, idxMappedProteins, idxAssignedModifications }) {
+				idxHyperscore, idxProbability, idxQvalue, idxIsDecoy, idxMissedCleavages, idxProtein, idxMappedProteins, idxAssignedModifications }) {
 			if (i > max) max = i;
 		}
 		return max;
@@ -211,8 +218,7 @@ public class FragpipePSMTsvReader {
 			int lineNum = 1;
 			while ((line = reader.readLine()) != null) {
 				lineNum++;
-				line = line.trim();
-				if (line.isEmpty())
+				if (line.trim().isEmpty())
 					continue;
 				String[] cs = line.split("\t", -1);
 				if (cs.length <= maxIdx) {
@@ -288,6 +294,7 @@ public class FragpipePSMTsvReader {
 		double score = getDouble(cs, idxHyperscore, 0.0);
 		double probability = getDouble(cs, idxProbability, 0.0);
 		double qValue = getDouble(cs, idxQvalue, 1.0);
+		boolean decoy = getBoolean(cs, idxIsDecoy, false);
 
 		// Combine delegate protein (Protein) with Mapped Proteins for full protein list
 		Set<String> proteinSet = new LinkedHashSet<>();
@@ -310,7 +317,16 @@ public class FragpipePSMTsvReader {
 			modSeq = sequence;
 
 		return new FragPipePSM(fileName, scan, spectrum, sequence, modSeq, mod, charge,
-				expMass, calMass, massDiff, miss, rt, score, probability, qValue, proteins);
+				expMass, calMass, massDiff, miss, rt, score, probability, qValue, proteins, decoy);
+	}
+
+	private boolean getBoolean(String[] row, int index, boolean defaultValue) {
+		String s = get(row, index);
+		if (s.isEmpty()) {
+			return defaultValue;
+		}
+		return "true".equalsIgnoreCase(s) || "t".equalsIgnoreCase(s) || "yes".equalsIgnoreCase(s)
+				|| "y".equalsIgnoreCase(s) || "1".equals(s);
 	}
 	
 	private static void combineToFasta(String in, String host) {

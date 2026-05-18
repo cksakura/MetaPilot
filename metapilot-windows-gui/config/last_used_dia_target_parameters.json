@@ -15,33 +15,33 @@
     "hostDB": "",
     "coreCount": 1,
     "metaWorkflow": true,
-    "microDb": "C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-gut\\v2.0.2",
+    "microDb": "C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-oral\\v1.0.1",
     "appendHostDb": false
   },
   "description": "Last used parameters",
-  "taxonomicLevel": "Choose the taxonomic level",
+  "taxonomicLevel": "Class",
   "kGG": false,
   "oxidationM": false,
   "version": "1.0",
   "magDatabase": {
     "identifier": "MGYG",
-    "catalogueID": "human-gut-local",
-    "repositoryPath": "C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-gut\\v2.0.2",
+    "catalogueID": "human-oral",
+    "repositoryPath": "C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-oral",
     "usedVersion": {
       "localAvailable": true,
-      "catalogueVersion": "v1.0",
-      "speciesCount": 4744
+      "catalogueVersion": "v1.0.1",
+      "speciesCount": 452
     }
   },
   "acetyProN": false,
   "selectedFunctions": [],
   "phosphoSTY": false,
-  "generated_at": "2026-05-03 20:11:35",
+  "generated_at": "2026-05-14 12:07:45",
   "mExcision": true,
   "carbamiC": true,
   "workflowType": "DIA_TARGET",
   "targetLibraryName": "target_library",
-  "functionalLevel": "Choose the functional level",
+  "functionalLevel": "KEGG_Pathway",
   "selectedTaxa": [],
-  "timestamp": 1777835495922
+  "timestamp": 1778756865646
 }

@@ -1,24 +1,32 @@
 package uk.ac.quadram.metapilot.core.runner;
 
+import uk.ac.quadram.metapilot.core.mag.DdaMagGenomeScoringService;
 import uk.ac.quadram.metapilot.core.taxonomy.TaxonomyRanks;
 import uk.ac.quadram.metapilot.core.tools.FormatTool;
+import uk.ac.quadram.metapilot.core.tools.ResourceLoader;
 import uk.ac.quadram.metapilot.core.workflow.ProgressCallback;
 
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 /**
- * Headless taxonomy TSV exporter (no HTML).
+ * Headless taxonomy report exporter.
  *
  * Writes:
+ * - taxonomy_analysis/Genome.html
  * - taxonomy_analysis/Genome.tsv
  * - taxonomy_analysis/Taxa.tsv (DIA-style scoring)
  * - taxonomy_analysis/Taxa_report.tsv
@@ -48,6 +56,30 @@ public final class MagTaxonomyTsvExporter {
                                                   Map<String, ? extends Set<String>> uniquePepWithILMap,
                                                   String[] intensityTitles,
                                                   ProgressCallback cb) throws IOException {
+        exportGenomeAndTaxaReports(taxonomyAnalysisDir, originalTaxaTsv, gtdbNcbiMappingTsv, genomeIntensityMap,
+                genomeScoreMap, genomeDiaStats, null, genomePsmCountMap, genomeSelectionLabel, totalPepCountMap,
+                razorPepCountMap, uniquePepCountMap, totalPepWithILMap, razorPepWithILMap, uniquePepWithILMap,
+                intensityTitles, null, cb);
+    }
+
+    public static void exportGenomeAndTaxaReports(File taxonomyAnalysisDir,
+                                                  File originalTaxaTsv,
+                                                  File gtdbNcbiMappingTsv,
+                                                  Map<String, double[]> genomeIntensityMap,
+                                                  Map<String, Double> genomeScoreMap,
+                                                  Map<String, double[]> genomeDiaStats,
+                                                  List<String> orderedGenomes,
+                                                  Map<String, Integer> genomePsmCountMap,
+                                                  Map<String, String> genomeSelectionLabel,
+                                                  Map<String, ? extends Set<String>> totalPepCountMap,
+                                                  Map<String, ? extends Set<String>> razorPepCountMap,
+                                                  Map<String, ? extends Set<String>> uniquePepCountMap,
+                                                  Map<String, ? extends Set<String>> totalPepWithILMap,
+                                                  Map<String, ? extends Set<String>> razorPepWithILMap,
+                                                  Map<String, ? extends Set<String>> uniquePepWithILMap,
+                                                  String[] intensityTitles,
+                                                  DdaMagGenomeScoringService.DdaGenomeScoreRuninfo runinfo,
+                                                  ProgressCallback cb) throws IOException {
         if (cb == null) cb = new ProgressCallback.NoOp();
         if (taxonomyAnalysisDir == null) throw new IOException("taxonomyAnalysisDir is null");
         taxonomyAnalysisDir.mkdirs();
@@ -71,11 +103,18 @@ public final class MagTaxonomyTsvExporter {
         if (gtdbNcbiMappingTsv != null && gtdbNcbiMappingTsv.exists()) {
             cb.onMessage("Loading GTDB->NCBI mapping: " + gtdbNcbiMappingTsv.getAbsolutePath());
             gtdbToNcbi = loadGtdbNcbiMap(gtdbNcbiMappingTsv);
+        } else {
+            gtdbToNcbi = loadBundledGtdbNcbiMap();
         }
+
+        File genomeHtml = new File(taxonomyAnalysisDir, "Genome.html");
+        cb.onMessage("Writing taxonomy: " + genomeHtml.getName());
+        writeGenomeHtml(genomeHtml, genomeIntensityMap.keySet(), lineageMap);
 
         File genomeTsv = new File(taxonomyAnalysisDir, "Genome.tsv");
         cb.onMessage("Writing taxonomy: " + genomeTsv.getName());
-        writeGenomeTsv(genomeTsv, genomeIntensityMap, genomeScoreMap, genomeDiaStats, genomePsmCountMap, lineageMap, gtdbToNcbi,
+        writeGenomeTsv(genomeTsv, genomeIntensityMap, genomeScoreMap, genomeDiaStats, orderedGenomes,
+                genomePsmCountMap, lineageMap, gtdbToNcbi,
                 genomeSelectionLabel,
                 totalPepCountMap, razorPepCountMap, uniquePepCountMap,
                 totalPepWithILMap, razorPepWithILMap, uniquePepWithILMap,
@@ -91,6 +130,11 @@ public final class MagTaxonomyTsvExporter {
             File rankScoresFile = new File(taxonomyAnalysisDir, "genome_rank_scores.tsv");
             cb.onMessage("Writing taxonomy: " + rankScoresFile.getName());
             writeGenomeRankScores(rankScoresFile, genomeDiaStats, totalPepCountMap, razorPepCountMap);
+            if (runinfo != null) {
+                File runinfoFile = new File(taxonomyAnalysisDir, "genome_rank_scores_runinfo.txt");
+                cb.onMessage("Writing taxonomy: " + runinfoFile.getName());
+                writeGenomeRankScoresRuninfo(runinfoFile, rankScoresFile, runinfo);
+            }
         } else {
             File taxaReportTsv = new File(taxonomyAnalysisDir, "Taxa_report.tsv");
             cb.onMessage("Writing taxonomy: " + taxaReportTsv.getName());
@@ -148,10 +192,31 @@ public final class MagTaxonomyTsvExporter {
         return out;
     }
 
+    private static HashMap<String, String> loadBundledGtdbNcbiMap() throws IOException {
+        HashMap<String, String> out = new HashMap<>();
+        try (InputStream input = ResourceLoader.load("gtdb_ncbi")) {
+            if (input == null) return out;
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(input, "UTF-8"))) {
+                br.readLine();
+                String line;
+                while ((line = br.readLine()) != null) {
+                    if (line.isBlank()) continue;
+                    String[] cs = line.split("\t");
+                    if (cs.length < 2) continue;
+                    out.put(cs[0].trim(), cs[1].trim());
+                }
+            }
+        } catch (IOException e) {
+            return out;
+        }
+        return out;
+    }
+
     private static void writeGenomeTsv(File out,
                                       Map<String, double[]> genomeIntensityMap,
                                       Map<String, Double> genomeScoreMap,
                                       Map<String, double[]> genomeDiaStats,
+                                      List<String> orderedGenomes,
                                       Map<String, Integer> genomePsmCountMap,
                                       Map<String, Lineage> lineageMap,
                                       Map<String, String> gtdbToNcbi,
@@ -164,17 +229,16 @@ public final class MagTaxonomyTsvExporter {
                                       Map<String, ? extends Set<String>> uniquePepWithILMap,
                                       String[] intensityTitles) throws IOException {
         TaxonomyRanks[] mainRanks = TaxonomyRanks.getMainRanks();
-        String[] genomes = genomeIntensityMap.keySet().toArray(new String[0]);
-        Arrays.sort(genomes);
+        String[] genomes = orderGenomes(genomeIntensityMap, orderedGenomes);
 
         try (PrintWriter pw = new PrintWriter(out)) {
             StringBuilder h = new StringBuilder();
             h.append("Genome\t");
             boolean useDiaStyleHeader = (genomeDiaStats != null && !genomeDiaStats.isEmpty());
             if (useDiaStyleHeader) {
-                h.append("S\t");
-                h.append("p_emp\t");
-                h.append("q_value\t");
+                h.append("genome_score_S\t");
+                h.append("genome_p_emp\t");
+                h.append("genome_q_value\t");
             } else {
                 h.append("Minus_log(p-value)\t");
             }
@@ -395,7 +459,7 @@ public final class MagTaxonomyTsvExporter {
         String[] statsGenomes = genomeDiaStats.keySet().toArray(new String[0]);
         Arrays.sort(statsGenomes, Comparator.comparingDouble(g -> -genomeDiaStats.get(g)[0]));
         try (PrintWriter pw = new PrintWriter(out)) {
-            pw.println("Rank\tGenome\tS\tn_peptides\tp_emp\tq_value");
+            pw.println("Rank\tGenome\tgenome_score_S\tn_peptides\tgenome_p_emp\tgenome_q_value");
             for (int r = 0; r < statsGenomes.length; r++) {
                 String g = statsGenomes[r];
                 double[] st = genomeDiaStats.get(g);
@@ -409,6 +473,90 @@ public final class MagTaxonomyTsvExporter {
                         + "\t" + FormatTool.getDF4().format(st[1]) + "\t" + FormatTool.getDF4().format(st[2]));
             }
         }
+    }
+
+    private static void writeGenomeHtml(File out, Set<String> genomes, Map<String, Lineage> lineageMap)
+            throws IOException {
+        HashMap<String, String[]> genomeMap = new HashMap<>();
+        TaxonomyRanks[] mainRanks = TaxonomyRanks.getMainRanks();
+        for (String genome : genomes) {
+            Lineage lineage = lineageMap.get(genome);
+            if (lineage == null) lineage = Lineage.empty();
+            ArrayList<String> content = new ArrayList<>();
+            content.add(genome);
+            content.add(lineage.name);
+            content.add(lineage.rank);
+            for (TaxonomyRanks rank : mainRanks) {
+                content.add(lineage.byRank.getOrDefault(rank.getName(), ""));
+            }
+            genomeMap.put(genome, content.toArray(new String[0]));
+        }
+        GenomeHtmlWriter writer = new GenomeHtmlWriter(out);
+        writer.write(genomeMap);
+        writer.close();
+    }
+
+    private static void writeGenomeRankScoresRuninfo(File out, File rankScoresFile,
+                                                     DdaMagGenomeScoringService.DdaGenomeScoreRuninfo runinfo)
+            throws IOException {
+        try (PrintWriter pw = new PrintWriter(out)) {
+            pw.println("=================================================================================");
+            pw.println("genome_rank_scores run info - diagnostic report (DDA MAG, DIA-style scoring)");
+            pw.println("=================================================================================");
+            pw.println();
+            pw.println("--- Input / Output ---");
+            pw.println("workflow\tDDA MAG post-analysis");
+            pw.println("output_scores\t" + rankScoresFile.getAbsolutePath());
+            pw.println();
+            pw.println("--- Peptide counts ---");
+            pw.println("n_peptides_target\t" + runinfo.nTargetPeptides + "\t(after PSM collapse, unique peptides only m=1)");
+            pw.println("n_peptides_decoy\t" + runinfo.nDecoyPeptides);
+            pw.println();
+            pw.println("--- Peptide sharing (target) ---");
+            pw.println("n_unique_peptides\t" + runinfo.nUniquePeptides + "\t(m=1 genome)");
+            pw.println("n_shared_peptides\t" + runinfo.nSharedPeptides + "\t(m>1 genomes, skipped in unique-only mode)");
+            pw.print("m_distribution\t");
+            List<Integer> mKeys = new ArrayList<>(runinfo.mDistribution.keySet());
+            Collections.sort(mKeys);
+            for (int i = 0; i < mKeys.size(); i++) {
+                int m = mKeys.get(i);
+                if (i > 0) pw.print(";");
+                pw.print(m + ":" + runinfo.mDistribution.get(m));
+            }
+            pw.println();
+            pw.println();
+            pw.println("--- Scoring parameters ---");
+            pw.println("top_k\t" + runinfo.k);
+            pw.println("decoy_resampling_B\t" + runinfo.B);
+            pw.println("score_cap\t" + runinfo.cap);
+            pw.println("intensity_log_min\t" + runinfo.minLog);
+            pw.println("intensity_log_max\t" + runinfo.maxLog);
+            pw.println("intensity_log_range\t" + runinfo.logRange);
+            pw.println();
+            pw.println("--- Genome counts ---");
+            pw.println("n_target_genomes\t" + (runinfo.SMap != null ? runinfo.SMap.size() : 0));
+            pw.println("n_decoy_pool_entries\t" + runinfo.decoyPoolSize);
+        }
+    }
+
+    private static String[] orderGenomes(Map<String, double[]> genomeIntensityMap, List<String> orderedGenomes) {
+        ArrayList<String> genomes = new ArrayList<>();
+        if (orderedGenomes != null) {
+            for (String genome : orderedGenomes) {
+                if (genomeIntensityMap.containsKey(genome) && !genomes.contains(genome)) {
+                    genomes.add(genome);
+                }
+            }
+        }
+        for (String genome : genomeIntensityMap.keySet()) {
+            if (!genomes.contains(genome)) {
+                genomes.add(genome);
+            }
+        }
+        if (orderedGenomes == null || orderedGenomes.isEmpty()) {
+            Collections.sort(genomes);
+        }
+        return genomes.toArray(new String[0]);
     }
 
     private static void writeTaxaReport(File out,
@@ -508,12 +656,24 @@ public final class MagTaxonomyTsvExporter {
                     bestRank = rankName;
                 }
             }
+            if (!map.containsKey(TaxonomyRanks.Superkingdom.getName()) && hasLowerRank(map)) {
+                map.put(TaxonomyRanks.Superkingdom.getName(), "Bacteria");
+            }
             return new Lineage(bestName, bestRank, map, lineage);
+        }
+
+        private static boolean hasLowerRank(HashMap<String, String> map) {
+            return map.containsKey(TaxonomyRanks.Phylum.getName())
+                    || map.containsKey(TaxonomyRanks.Class.getName())
+                    || map.containsKey(TaxonomyRanks.Order.getName())
+                    || map.containsKey(TaxonomyRanks.Family.getName())
+                    || map.containsKey(TaxonomyRanks.Genus.getName())
+                    || map.containsKey(TaxonomyRanks.Species.getName());
         }
 
         private static String rankFromPrefix(char r) {
             switch (r) {
-                case 'd': return TaxonomyRanks.Subkingdom.getName();
+                case 'd': return TaxonomyRanks.Superkingdom.getName();
                 case 'p': return TaxonomyRanks.Phylum.getName();
                 case 'c': return TaxonomyRanks.Class.getName();
                 case 'o': return TaxonomyRanks.Order.getName();

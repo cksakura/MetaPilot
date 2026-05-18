@@ -19,8 +19,11 @@ import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.dia.par.DiaMarkerParameterIO;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaMarker;
-import uk.ac.quadram.metapilot.task.dia.MetaDiaMarkerTask;
-import uk.ac.quadram.metapilot.task.dia.MetaDiaDeepMarkerTask;
+import uk.ac.quadram.metapilot.task.dia.DiaMarkerComprehensiveTask;
+import uk.ac.quadram.metapilot.task.dia.DiaMarkerCoreTask;
+import uk.ac.quadram.metapilot.task.dia.DiaMarkerDeepPerFileTask;
+import uk.ac.quadram.metapilot.task.dia.DiaMarkerDeepTogetherTask;
+import uk.ac.quadram.metapilot.task.dia.DiaRefinementMode;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagVersion;
 import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel;
 import uk.ac.quadram.metapilot.resources.MetaResourceIO;
@@ -31,8 +34,8 @@ import java.io.File;
 import java.util.Optional;
 
 /**
- * DIA Marker workflow panel: marker-based genome selection (Focus or Comprehensive)
- * using Marker4 and MetaDiaMarkerTask.
+ * DIA Marker workflow panel: marker-based genome selection (Core / Focus or Comprehensive)
+ * using Marker4 and DiaMarkerCoreTask.
  */
 public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameterDiaMarker> {
 	private static final Logger LOGGER = LogManager.getLogger(MetaPilotDiaMarkerPanel.class);
@@ -43,11 +46,11 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 	private MetadataConfigurationPanel metadataPanel;
 	// Note: consolePanel is inherited from AbstractWorkflowPanel
 
-	/** Marker workflows: Focus, Comprehensive, Deep (iterative comprehensive). */
-	private static final String WORKFLOW_FOCUS = "Focus";
-	private static final String WORKFLOW_COMPREHENSIVE = "Comprehensive";
-	private static final String WORKFLOW_DEEP = "Deep";
-	private static final String WORKFLOW_DEEP_PER_FILE = "Deep (per raw file)";
+	/** Marker workflows: Core/Focus, Comprehensive, Deep Together, Deep Per File. */
+	private static final String WORKFLOW_FOCUS = DiaRefinementMode.CORE.getDisplayLabel();
+	private static final String WORKFLOW_COMPREHENSIVE = DiaRefinementMode.COMPREHENSIVE.getDisplayLabel();
+	private static final String WORKFLOW_DEEP = DiaRefinementMode.DEEP_TOGETHER.getDisplayLabel();
+	private static final String WORKFLOW_DEEP_PER_FILE = DiaRefinementMode.DEEP_PER_FILE.getDisplayLabel();
 
 	// Parameter components
 	private ComboBox<String> workflowModeComboBox;
@@ -63,7 +66,7 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 	private CheckBox kGGCheckBox;
 
 	// Task management
-	private MetaDiaMarkerTask currentTask;
+	private DiaMarkerCoreTask currentTask;
 	private MetaResourceParameters resourceParams;
 	// currentAnalysisParams inherited from AbstractWorkflowPanel; set in startAnalysis for viewReport()
 
@@ -89,7 +92,9 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 		// Initialize reusable components
 		// Note: consolePanel is already initialized by AbstractWorkflowPanel
 		metadataPanel = new MetadataConfigurationPanel();
-		magDatabasePanel = new MagDatabaseSettingsPanel(false); // No host database for DIA Marker
+		magDatabasePanel = new MagDatabaseSettingsPanel();
+		magDatabasePanel.setHostDatabaseExtensionFilter("DIA host database files",
+				"*.fasta", "*.fa", "*.speclib", "*.parquet");
 
 		// Set up callbacks
 		metadataPanel.setParameterUpdateCallback(this::updateParameterView);
@@ -146,6 +151,11 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 	@Override
 	protected String getWorkflowName() {
 		return "DIA Marker";
+	}
+
+	@Override
+	protected boolean isHpcExportSupported() {
+		return true;
 	}
 
 	@Override
@@ -233,10 +243,10 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 		workflowModeComboBox.setValue(WORKFLOW_FOCUS);
 		workflowModeComboBox.setOnAction(e -> updateParameterView());
 		Tooltip workflowTooltip = new Tooltip(
-				"Focus: knee-based genome selection with a compact set of genomes.\n"
+				"Core / Focus: knee-based genome selection with a compact set of genomes.\n"
 				+ "Comprehensive: more inclusive genome set using comprehensive knee mode.\n"
-				+ "Deep: deep comprehensive iterative workflow (multiple rounds + combined search).\n"
-				+ "Deep (per raw file): run the full deep-marker iterative workflow independently for each raw file (results under marker/<rawname>/...).");
+				+ "Deep together: deep iterative workflow over all DIA files together.\n"
+				+ "Deep per file: run the full deep-marker iterative workflow independently for each raw file (results under marker/<rawname>/...).");
 		workflowModeComboBox.setTooltip(workflowTooltip);
 		VBox workflowBox = new VBox(5);
 		workflowBox.getChildren().addAll(workflowLabel, workflowModeComboBox);
@@ -444,6 +454,12 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 			if (selectedVersion != null) {
 				sb.append("  MAG Version: ").append(selectedVersion.getCatalogueVersion()).append("\n");
 			}
+			sb.append("  Append Host DB: ").append(magDatabasePanel.isAppendHostDb()).append("\n");
+			if (magDatabasePanel.isAppendHostDb()
+					&& magDatabasePanel.getHostDatabase() != null
+					&& !magDatabasePanel.getHostDatabase().isEmpty()) {
+				sb.append("  Host Database: ").append(magDatabasePanel.getHostDatabase()).append("\n");
+			}
 		}
 		sb.append("\n");
 
@@ -535,6 +551,8 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 			String result = ioPanel.getOutputDirectory();
 			MagDbItem selectedMagDb = magDatabasePanel.getSelectedMagDatabase();
 			String microDb = selectedMagDb != null ? selectedMagDb.getCatalogueID() : "";
+			boolean appendHostDb = magDatabasePanel.isAppendHostDb();
+			String hostDB = appendHostDb ? magDatabasePanel.getHostDatabase() : "";
 
 			int threadCount = threadsComboBox.getValue() != null ? threadsComboBox.getValue() : 4;
 
@@ -542,7 +560,7 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 			uk.ac.quadram.metapilot.task.par.MetaBaseParameter baseParams = 
 				new uk.ac.quadram.metapilot.task.par.MetaBaseParameter(
 			uk.ac.quadram.metapilot.workflow.WorkflowType.DIA_MARKER.getAnalysisType(),
-					metaData, result, microDb, false, "", "DIA", 1, threadCount, true);
+					metaData, result, microDb, appendHostDb, hostDB, "DIA", 1, threadCount, true);
 
 			// Create parameter object (MetaParameterDiaMarker for DIA Marker workflow)
 			MetaParameterDiaMarker params = new MetaParameterDiaMarker(baseParams, selectedMagDb, true, false,
@@ -581,15 +599,7 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 			String workflow = workflowModeComboBox != null && workflowModeComboBox.getValue() != null
 					? workflowModeComboBox.getValue()
 					: WORKFLOW_FOCUS;
-			if (WORKFLOW_DEEP.equals(workflow)) {
-				params.setMarkerMode("DEEP");
-			} else if (WORKFLOW_DEEP_PER_FILE.equals(workflow)) {
-				params.setMarkerMode("DEEP_PER_FILE");
-			} else if (WORKFLOW_COMPREHENSIVE.equals(workflow)) {
-				params.setMarkerMode("COMPREHENSIVE");
-			} else {
-				params.setMarkerMode("FOCUS");
-			}
+			params.setMarkerRefinementMode(DiaRefinementMode.fromDisplayLabel(workflow, DiaRefinementMode.CORE));
 
 			// Collect metadata
 			if (metadataPanel != null) {
@@ -659,12 +669,14 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 			String result = ioPanel != null ? ioPanel.getOutputDirectory() : "";
 			MagDbItem selectedMagDb = magDatabasePanel != null ? magDatabasePanel.getSelectedMagDatabase() : null;
 			String microDb = selectedMagDb != null ? selectedMagDb.getCatalogueID() : "";
+			boolean appendHostDb = magDatabasePanel != null && magDatabasePanel.isAppendHostDb();
+			String hostDB = appendHostDb && magDatabasePanel != null ? magDatabasePanel.getHostDatabase() : "";
 			int threadCount = threadsComboBox != null && threadsComboBox.getValue() != null ? threadsComboBox.getValue() : 4;
 
 			uk.ac.quadram.metapilot.task.par.MetaBaseParameter baseParams = 
 				new uk.ac.quadram.metapilot.task.par.MetaBaseParameter(
 			uk.ac.quadram.metapilot.workflow.WorkflowType.DIA_MARKER.getAnalysisType(),
-					metaData, result, microDb, false, "", "DIA", 1, threadCount, true);
+					metaData, result, microDb, appendHostDb, hostDB, "DIA", 1, threadCount, true);
 
 			MetaParameterDiaMarker params = new MetaParameterDiaMarker(baseParams, selectedMagDb, true, false,
 				new String[0], false, new String[0]);
@@ -704,15 +716,7 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 			String workflow = workflowModeComboBox != null && workflowModeComboBox.getValue() != null
 					? workflowModeComboBox.getValue()
 					: WORKFLOW_FOCUS;
-			if (WORKFLOW_DEEP.equals(workflow)) {
-				params.setMarkerMode("DEEP");
-			} else if (WORKFLOW_DEEP_PER_FILE.equals(workflow)) {
-				params.setMarkerMode("DEEP_PER_FILE");
-			} else if (WORKFLOW_COMPREHENSIVE.equals(workflow)) {
-				params.setMarkerMode("COMPREHENSIVE");
-			} else {
-				params.setMarkerMode("FOCUS");
-			}
+			params.setMarkerRefinementMode(DiaRefinementMode.fromDisplayLabel(workflow, DiaRefinementMode.CORE));
 
 			return params;
 		} catch (Exception e) {
@@ -821,6 +825,10 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 				}
 			}
 		}
+		if (magDatabasePanel != null) {
+			magDatabasePanel.setAppendHostDb(params.isAppendHostDb());
+			magDatabasePanel.setHostDatabase(params.getHostDB());
+		}
 
 		// Apply modification settings
 		if (mExcisionCheckBox != null) {
@@ -844,12 +852,12 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 
 		// Map stored genome selection strategy back to workflow combo (best effort)
 		if (workflowModeComboBox != null) {
-			String markerMode = params.getMarkerMode();
-			if ("DEEP".equalsIgnoreCase(markerMode)) {
+			DiaRefinementMode markerMode = params.getMarkerRefinementMode();
+			if (markerMode == DiaRefinementMode.DEEP_TOGETHER) {
 				workflowModeComboBox.setValue(WORKFLOW_DEEP);
-			} else if ("DEEP_PER_FILE".equalsIgnoreCase(markerMode)) {
+			} else if (markerMode == DiaRefinementMode.DEEP_PER_FILE) {
 				workflowModeComboBox.setValue(WORKFLOW_DEEP_PER_FILE);
-			} else if ("COMPREHENSIVE".equalsIgnoreCase(markerMode)) {
+			} else if (markerMode == DiaRefinementMode.COMPREHENSIVE) {
 				workflowModeComboBox.setValue(WORKFLOW_COMPREHENSIVE);
 			} else {
 				// Default and legacy fallback: treat anything else as FOCUS
@@ -902,19 +910,28 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 			MetaResourceIO resourceIO = new MetaResourceIO();
 			MetaResourceParameters mrp = resourceIO.loadParameters();
 
-			// Create task - choose Focus / Comprehensive (standard) or Deep (iterative rounds + combined)
+			// Create task from canonical mode. Persisted legacy values are normalized in the parameter class.
 			String workflow = workflowModeComboBox != null && workflowModeComboBox.getValue() != null
 					? workflowModeComboBox.getValue()
 					: WORKFLOW_FOCUS;
-			boolean deepMarker = WORKFLOW_DEEP.equals(workflow) || WORKFLOW_DEEP_PER_FILE.equals(workflow);
-			if (deepMarker) {
-				currentTask = new MetaDiaDeepMarkerTask(analysisParams, mrp,
+			DiaRefinementMode markerMode = DiaRefinementMode.fromDisplayLabel(workflow, DiaRefinementMode.CORE);
+			analysisParams.setMarkerRefinementMode(markerMode);
+			if (markerMode == DiaRefinementMode.DEEP_TOGETHER) {
+				currentTask = new DiaMarkerDeepTogetherTask(analysisParams, mrp,
 						consolePanel.getOverallProgressBar(), consolePanel.getCurrentTaskProgressBar());
-				consolePanel.appendConsoleText("Workflow: " + workflow + "\n");
+				consolePanel.appendConsoleText("Workflow: " + markerMode.getDisplayLabel() + "\n");
+			} else if (markerMode == DiaRefinementMode.DEEP_PER_FILE) {
+				currentTask = new DiaMarkerDeepPerFileTask(analysisParams, mrp,
+						consolePanel.getOverallProgressBar(), consolePanel.getCurrentTaskProgressBar());
+				consolePanel.appendConsoleText("Workflow: " + markerMode.getDisplayLabel() + "\n");
+			} else if (markerMode == DiaRefinementMode.COMPREHENSIVE) {
+				currentTask = new DiaMarkerComprehensiveTask(analysisParams, mrp,
+						consolePanel.getOverallProgressBar(), consolePanel.getCurrentTaskProgressBar());
+				consolePanel.appendConsoleText("Workflow: " + markerMode.getDisplayLabel() + "\n");
 			} else {
-				currentTask = new MetaDiaMarkerTask(analysisParams, mrp,
+				currentTask = new DiaMarkerCoreTask(analysisParams, mrp,
 						consolePanel.getOverallProgressBar(), consolePanel.getCurrentTaskProgressBar());
-				consolePanel.appendConsoleText("Workflow: " + workflow + "\n");
+				consolePanel.appendConsoleText("Workflow: " + markerMode.getDisplayLabel() + "\n");
 			}
 
 			// Set up task callbacks
@@ -1025,6 +1042,10 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 					}
 				}
 			}
+		}
+		if (magDatabasePanel != null) {
+			magDatabasePanel.setAppendHostDb(params.isAppendHostDb());
+			magDatabasePanel.setHostDatabase(params.getHostDB());
 		}
 
 		// Load thread count

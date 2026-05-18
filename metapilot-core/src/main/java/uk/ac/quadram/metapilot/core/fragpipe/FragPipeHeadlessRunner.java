@@ -38,17 +38,27 @@ public final class FragPipeHeadlessRunner {
         }
         workDir.mkdirs();
 
+        List<String> fragpipeArgs = new ArrayList<>();
+        fragpipeArgs.add("--headless");
+        fragpipeArgs.add("--workflow");
+        fragpipeArgs.add(workflowFile.getAbsolutePath());
+        fragpipeArgs.add("--manifest");
+        fragpipeArgs.add(manifestFile.getAbsolutePath());
+        fragpipeArgs.add("--workdir");
+        fragpipeArgs.add(workDir.getAbsolutePath());
+        fragpipeArgs.add("--threads");
+        fragpipeArgs.add(String.valueOf(Math.max(1, threads)));
+
         List<String> cmd = new ArrayList<>();
-        cmd.add(fragpipeExe.getAbsolutePath());
-        cmd.add("--headless");
-        cmd.add("--workflow");
-        cmd.add(workflowFile.getAbsolutePath());
-        cmd.add("--manifest");
-        cmd.add(manifestFile.getAbsolutePath());
-        cmd.add("--workdir");
-        cmd.add(workDir.getAbsolutePath());
-        cmd.add("--threads");
-        cmd.add(String.valueOf(Math.max(1, threads)));
+        if (isWindowsBatchFile(fragpipeExe)) {
+            cmd.add("cmd.exe");
+            cmd.add("/c");
+            cmd.add("call");
+            cmd.add(fragpipeExe.getAbsolutePath());
+        } else {
+            cmd.add(fragpipeExe.getAbsolutePath());
+        }
+        cmd.addAll(fragpipeArgs);
 
         cb.onMessage("Running FragPipe: " + String.join(" ", cmd));
 
@@ -79,6 +89,11 @@ public final class FragPipeHeadlessRunner {
             cb.onMessage("FragPipe exit code: " + exit);
         }
         return exit;
+    }
+
+    private static boolean isWindowsBatchFile(File file) {
+        String name = file.getName().toLowerCase();
+        return name.endsWith(".bat") || name.endsWith(".cmd");
     }
 }
 

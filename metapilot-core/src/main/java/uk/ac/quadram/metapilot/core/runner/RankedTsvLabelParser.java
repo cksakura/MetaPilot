@@ -11,9 +11,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Headless parser for MetaPilot ranked.tsv export-time labels (core/mid/tail).
- *
- * Ported from the GUI workflow (MetaPilotMagTask.buildExportSelectionFromRankedTsv).
+ * Parser for final MAG ranked TSV export-time labels (core/mid/tail).
  */
 public final class RankedTsvLabelParser {
 
@@ -72,14 +70,21 @@ public final class RankedTsvLabelParser {
                 String genome = parts[genomeIdx].trim();
                 if (genome.isEmpty()) continue;
                 result.totalRanked++;
+                boolean privilege = false;
                 if (reasonIdx >= 0 && reasonIdx < parts.length) {
                     String reason = parts[reasonIdx].trim();
-                    if ("PRIVILEGE_UNIQUE_3TYPES".equals(reason)) result.privilegeCount++;
+                    privilege = reason.startsWith("PRIVILEGE");
+                    if (privilege) result.privilegeCount++;
                     else if ("GREEDY".equals(reason)) result.greedyCount++;
                 }
                 if (allowedGenomes != null && !allowedGenomes.contains(genome)) continue;
                 try {
                     Integer.parseInt(parts[rankIdx].trim());
+                    if (privilege) {
+                        result.genomeSelectionLabel.put(genome, "core");
+                        result.orderedGenomes.add(genome);
+                        continue;
+                    }
                     if (!kneeValuesRead) {
                         int kneeStep = parseIntSafe(parts[kneeStepIdx].trim());
                         int kneeKneedle = parseIntSafe(parts[kneeKneedleIdx].trim());
@@ -103,7 +108,11 @@ public final class RankedTsvLabelParser {
                         greedyStarted = true;
                         greedyContributionCount = 1;
                     } else {
-                        if (greedyGain == 0.0) break;
+                        if (greedyGain == 0.0) {
+                            result.genomeSelectionLabel.put(genome, "tail");
+                            result.orderedGenomes.add(genome);
+                            continue;
+                        }
                         greedyContributionCount++;
                     }
                     if (greedyContributionCount <= result.focusKnee) result.genomeSelectionLabel.put(genome, "core");

@@ -114,9 +114,7 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
         // Set up callbacks for parameter updates
         metadataPanel.setParameterUpdateCallback(this::updateParameterView);
         magDatabasePanel.setParameterUpdateCallback(this::updateParameterView);
-        consolePanel.setStartCallback(this::startAnalysis);
-        consolePanel.setStopCallback(this::stopAnalysis);
-        consolePanel.setViewReportCallback(this::viewReport);
+        configureConsolePanel(consolePanel);
 
         // Create tab pane with responsive sizing
         TabPane tabPane = new TabPane();
@@ -195,6 +193,11 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
     @Override
     protected String getWorkflowName() {
         return "DDA MAG FragPipe";
+    }
+
+    @Override
+    protected boolean isHpcExportSupported() {
+        return true;
     }
     
     @Override
@@ -1368,4 +1371,4 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
      * Show error dialog
      */
     
-} 
+}

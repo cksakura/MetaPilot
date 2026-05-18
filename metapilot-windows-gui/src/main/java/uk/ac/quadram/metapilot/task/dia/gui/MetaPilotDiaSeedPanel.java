@@ -28,10 +28,12 @@ import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.task.dia.par.DiaParameterIO;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaMarker;
+import uk.ac.quadram.metapilot.task.dia.DiaRefinementMode;
+import uk.ac.quadram.metapilot.task.dia.DiaSeedComprehensiveTask;
+import uk.ac.quadram.metapilot.task.dia.DiaSeedCoreTask;
+import uk.ac.quadram.metapilot.task.dia.DiaSeedDeepTogetherTask;
+import uk.ac.quadram.metapilot.task.dia.DiaSeedDirectTask;
 import uk.ac.quadram.metapilot.task.dia.MetaDiaTask;
-import uk.ac.quadram.metapilot.task.dia.MetaDiaSeedDirectTask;
-import uk.ac.quadram.metapilot.task.dia.MetaDiaSeedIterativeTask;
-import uk.ac.quadram.metapilot.task.dia.MetaDiaDeepComprehensiveTask;
 import uk.ac.quadram.metapilot.dbSearch.deepDetect.DeepDetectTask;
 import uk.ac.quadram.metapilot.dbSearch.deepDetect.DeepDetectParameter;
 import org.apache.logging.log4j.LogManager;
@@ -51,6 +53,11 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 		implements DiaLibraryPanelNoModel.ParentPanel {
 
 	private static final Logger LOGGER = LogManager.getLogger(MetaPilotDiaSeedPanel.class);
+	private static final String SEED_DIRECT_LABEL = DiaRefinementMode.DIRECT.getDisplayLabel() + " search";
+	private static final String SEED_CORE_LABEL = DiaRefinementMode.CORE.getDisplayLabel() + " search";
+	private static final String SEED_COMPREHENSIVE_LABEL = DiaRefinementMode.COMPREHENSIVE.getDisplayLabel() + " search";
+	private static final String SEED_DEEP_TOGETHER_LABEL = DiaRefinementMode.DEEP_TOGETHER.getDisplayLabel() + " search";
+	private static final String SEED_DEEP_PER_FILE_LABEL = DiaRefinementMode.DEEP_PER_FILE.getDisplayLabel() + " search";
 
 	private MetaPilotIOPanelFX ioPanel;
 	private MagDatabaseSettingsPanel magDatabasePanel;
@@ -201,9 +208,8 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 				}
 			}
 
-			// Workflow: 0 = Direct search, 1 = Focus search, 2 = Comprehensive search, 3 = Deep comprehensive
-			int modeIndex = modeSelectionComboBox != null ? modeSelectionComboBox.getSelectionModel().getSelectedIndex() : 0;
-			boolean librarySearch = (modeIndex == 0); // Direct search only
+			DiaRefinementMode mode = getSelectedSeedRefinementMode();
+			boolean librarySearch = (mode == DiaRefinementMode.DIRECT); // Direct search only
 			boolean selfModelSearch = false;
 			boolean useModel = false;
 			String[] models = new String[0];
@@ -211,16 +217,8 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 			MetaParameterDia metaParameterDia = new MetaParameterDia(
 					metaBasePar, selectedMagDb, librarySearch, selfModelSearch, library, useModel, models);
 			
-			// Persist seed workflow mode so CLI can reproduce GUI behaviour
-			if (modeIndex == 0) {
-				metaParameterDia.setSeedMode("DIRECT");
-			} else if (modeIndex == 1) {
-				metaParameterDia.setSeedMode("FOCUS");
-			} else if (modeIndex == 2) {
-				metaParameterDia.setSeedMode("COMPREHENSIVE");
-			} else {
-				metaParameterDia.setSeedMode("DEEP");
-			}
+			// Persist seed workflow mode so CLI can reproduce GUI behaviour.
+			metaParameterDia.setSeedRefinementMode(mode);
 
 			// Modifications (used for library generation and DIA-NN search)
 			if (mExcisionCheckBox != null) metaParameterDia.setMExcision(mExcisionCheckBox.isSelected());
@@ -229,7 +227,7 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 			if (acetyProNCheckBox != null) metaParameterDia.setAcetyProN(acetyProNCheckBox.isSelected());
 			if (phosphoSTYCheckBox != null) metaParameterDia.setPhosphoSTY(phosphoSTYCheckBox.isSelected());
 			if (kGGCheckBox != null) metaParameterDia.setKGG(kGGCheckBox.isSelected());
-			boolean peptideEnabledByMode = modeIndex != 0;
+			boolean peptideEnabledByMode = mode != DiaRefinementMode.DIRECT;
 			if (usePeptideRoundCheckBox != null) {
 				metaParameterDia.setUsePeptideBasedRound(peptideEnabledByMode && usePeptideRoundCheckBox.isSelected());
 			}
@@ -323,6 +321,36 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 			if (idx >= 0) {
 				rightColumn.getChildren().set(idx, libraryPanel.getTableSection());
 			}
+		}
+	}
+
+	private DiaRefinementMode getSelectedSeedRefinementMode() {
+		String label = modeSelectionComboBox != null ? modeSelectionComboBox.getValue() : null;
+		return DiaRefinementMode.fromDisplayLabel(label, DiaRefinementMode.DIRECT);
+	}
+
+	private void setSeedModeSelection(DiaRefinementMode mode) {
+		if (modeSelectionComboBox == null) {
+			return;
+		}
+		DiaRefinementMode normalizedMode = mode != null ? mode : DiaRefinementMode.DIRECT;
+		switch (normalizedMode) {
+		case CORE:
+			modeSelectionComboBox.setValue(SEED_CORE_LABEL);
+			break;
+		case COMPREHENSIVE:
+			modeSelectionComboBox.setValue(SEED_COMPREHENSIVE_LABEL);
+			break;
+		case DEEP_TOGETHER:
+			modeSelectionComboBox.setValue(SEED_DEEP_TOGETHER_LABEL);
+			break;
+		case DEEP_PER_FILE:
+			modeSelectionComboBox.setValue(SEED_DEEP_PER_FILE_LABEL);
+			break;
+		case DIRECT:
+		default:
+			modeSelectionComboBox.setValue(SEED_DIRECT_LABEL);
+			break;
 		}
 	}
 
@@ -478,16 +506,18 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 		Label modeLabel = new Label("Workflow:");
 		modeLabel.setStyle("-fx-font-weight: bold;");
 		modeSelectionComboBox = new ComboBox<>(FXCollections.observableArrayList(
-				"Direct search",
-				"Focus search",
-				"Comprehensive search",
-				"Deep comprehensive search"));
-		modeSelectionComboBox.setValue("Direct search");
+				SEED_DIRECT_LABEL,
+				SEED_CORE_LABEL,
+				SEED_COMPREHENSIVE_LABEL,
+				SEED_DEEP_TOGETHER_LABEL,
+				SEED_DEEP_PER_FILE_LABEL));
+		modeSelectionComboBox.setValue(SEED_DIRECT_LABEL);
 		modeSelectionComboBox.setTooltip(new Tooltip(
 				"Direct search: identify with selected libraries only (no genome selection).\n" +
-				"Focus search: iterative workflow with focus genome selection (fewer, high-confidence genomes).\n" +
+				"Core / Focus search: iterative workflow with compact genome selection.\n" +
 				"Comprehensive search: iterative workflow with comprehensive genome selection (more genomes).\n" +
-				"Deep comprehensive search: iterative workflow with deep learning-based library refinement."));
+				"Deep together search: iterative workflow with deep learning-based library refinement across all DIA files.\n" +
+				"Deep per file search: planned seed mode; not supported yet."));
 		modeSelectionComboBox.setMinWidth(200);
 		modeSelectionComboBox.setPrefWidth(300);
 		modeSelectionComboBox.setMaxWidth(Double.MAX_VALUE);
@@ -520,7 +550,7 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 		usePeptideRoundCheckBox = new CheckBox("Use peptide-based rounds");
 		usePeptideRoundCheckBox.setSelected(false);
 		usePeptideRoundCheckBox.setTooltip(new Tooltip(
-				"For Focus/Comprehensive/Deep modes: build iterative microbiome library from predicted peptides."));
+				"For Core/Comprehensive/Deep modes: build iterative microbiome library from predicted peptides."));
 		usePeptideRoundCheckBox.setOnAction(e -> updateParameterView());
 
 		HBox thresholdBox = new HBox(8);
@@ -672,9 +702,7 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 			updateMagDbStatus();
 		});
 
-		consolePanel.setStartCallback(this::startAnalysis);
-		consolePanel.setStopCallback(this::stopAnalysis);
-		consolePanel.setViewReportCallback(this::viewReport);
+		configureConsolePanel(consolePanel);
 
 		magDbStatusPanel = createMagDbStatusPanel();
 
@@ -897,27 +925,19 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 					library = selectedLibs;
 				}
 			}
-			int modeIndex = modeSelectionComboBox != null ? modeSelectionComboBox.getSelectionModel().getSelectedIndex() : 0;
-			boolean librarySearch = (modeIndex == 0);
+			DiaRefinementMode mode = getSelectedSeedRefinementMode();
+			boolean librarySearch = (mode == DiaRefinementMode.DIRECT);
 			MetaParameterDia metaParameterDia = new MetaParameterDia(
 					metaBasePar, selectedMagDb, librarySearch, false, library, false, new String[0]);
 			// Keep auto-saved mode consistent with Run-mode parameter collection
-			if (modeIndex == 0) {
-				metaParameterDia.setSeedMode("DIRECT");
-			} else if (modeIndex == 1) {
-				metaParameterDia.setSeedMode("FOCUS");
-			} else if (modeIndex == 2) {
-				metaParameterDia.setSeedMode("COMPREHENSIVE");
-			} else {
-				metaParameterDia.setSeedMode("DEEP");
-			}
+			metaParameterDia.setSeedRefinementMode(mode);
 			if (mExcisionCheckBox != null) metaParameterDia.setMExcision(mExcisionCheckBox.isSelected());
 			if (carbamiCCheckBox != null) metaParameterDia.setCarbamiC(carbamiCCheckBox.isSelected());
 			if (oxidationMCheckBox != null) metaParameterDia.setOxidationM(oxidationMCheckBox.isSelected());
 			if (acetyProNCheckBox != null) metaParameterDia.setAcetyProN(acetyProNCheckBox.isSelected());
 			if (phosphoSTYCheckBox != null) metaParameterDia.setPhosphoSTY(phosphoSTYCheckBox.isSelected());
 			if (kGGCheckBox != null) metaParameterDia.setKGG(kGGCheckBox.isSelected());
-			boolean peptideEnabledByMode = modeIndex != 0;
+			boolean peptideEnabledByMode = mode != DiaRefinementMode.DIRECT;
 			if (usePeptideRoundCheckBox != null) {
 				metaParameterDia.setUsePeptideBasedRound(peptideEnabledByMode && usePeptideRoundCheckBox.isSelected());
 			}
@@ -944,8 +964,8 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 		if (usePeptideRoundCheckBox == null || detectabilityThresholdField == null || modeSelectionComboBox == null) {
 			return;
 		}
-		int modeIndex = modeSelectionComboBox.getSelectionModel().getSelectedIndex();
-		boolean peptideSectionEnabled = modeIndex != 0; // disable in Direct search
+		DiaRefinementMode mode = getSelectedSeedRefinementMode();
+		boolean peptideSectionEnabled = mode != DiaRefinementMode.DIRECT; // disable in Direct search
 		usePeptideRoundCheckBox.setDisable(!peptideSectionEnabled);
 		detectabilityThresholdField
 				.setDisable(!(peptideSectionEnabled && usePeptideRoundCheckBox.isSelected()));
@@ -969,15 +989,19 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 				showError("Validation Error", "Please select a MAG database version.");
 				return false;
 			}
-			int modeIndex = modeSelectionComboBox != null ? modeSelectionComboBox.getSelectionModel().getSelectedIndex() : 0;
-			if (modeIndex != 0 && libraryPanel != null) {
+			DiaRefinementMode mode = getSelectedSeedRefinementMode();
+			if (mode == DiaRefinementMode.DEEP_PER_FILE) {
+				showError("Validation Error", "Seed Deep per file is not supported yet.");
+				return false;
+			}
+			if (mode != DiaRefinementMode.DIRECT && libraryPanel != null) {
 				String[] libs = libraryPanel.getSelectedLibraryNames();
 				if (libs == null || libs.length == 0) {
-					showError("Validation Error", "For Focus or Comprehensive search, please select at least one spectral library.");
+					showError("Validation Error", "For Core / Focus, Comprehensive, or Deep search, please select at least one spectral library.");
 					return false;
 				}
 			}
-			if (modeIndex != 0 && usePeptideRoundCheckBox != null && usePeptideRoundCheckBox.isSelected()) {
+			if (mode != DiaRefinementMode.DIRECT && usePeptideRoundCheckBox != null && usePeptideRoundCheckBox.isSelected()) {
 				double threshold;
 				try {
 					threshold = Double.parseDouble(detectabilityThresholdField.getText().trim());
@@ -1026,38 +1050,41 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 			consolePanel.appendConsoleText("Parameters validated successfully.\n");
 			consolePanel.appendConsoleText("Result directory: " + metaParameterDia.getResult() + "\n");
 
-			int modeIndex = modeSelectionComboBox.getSelectionModel().getSelectedIndex();
-			if (modeIndex == 0) {
+			DiaRefinementMode mode = metaParameterDia.getSeedRefinementMode();
+			if (mode == DiaRefinementMode.DIRECT) {
 				// Direct seed search (no genome selection, no deep model)
 				this.currentAnalysisParams = metaParameterDia;
-				consolePanel.appendConsoleText("Workflow: Direct search\n");
-				currentTask = new MetaDiaSeedDirectTask(metaParameterDia, mrp,
+				consolePanel.appendConsoleText("Workflow: " + mode.getDisplayLabel() + " search\n");
+				currentTask = new DiaSeedDirectTask(metaParameterDia, mrp,
 						consolePanel.getOverallProgressBar(), consolePanel.getCurrentTaskProgressBar());
-			} else if (modeIndex == 3) {
-				// Deep comprehensive search (seed strategy only)
-				consolePanel.appendConsoleText("Workflow: Deep comprehensive search\n");
+			} else if (mode == DiaRefinementMode.DEEP_TOGETHER) {
+				// Deep Together search (seed strategy only)
+				consolePanel.appendConsoleText("Workflow: " + mode.getDisplayLabel() + " search\n");
 				MetaParameterDiaMarker focusParams = new MetaParameterDiaMarker(
 						metaParameterDia, metaParameterDia.getMagDbItem(),
 						false, false, metaParameterDia.getLibrary(), false, new String[0]);
-				focusParams.setMarkerMode("DEEP");
+				focusParams.setMarkerRefinementMode(mode);
 				this.currentAnalysisParams = focusParams;
-				currentTask = new MetaDiaDeepComprehensiveTask(focusParams, mrp,
+				currentTask = new DiaSeedDeepTogetherTask(focusParams, mrp,
 						consolePanel.getOverallProgressBar(), consolePanel.getCurrentTaskProgressBar());
+			} else if (mode == DiaRefinementMode.DEEP_PER_FILE) {
+				showError("Validation Error", "Seed Deep per file is not supported yet.");
+				return;
 			} else {
-				// Focus search (1) or Comprehensive search (2) – iterative seed workflow
-				consolePanel.appendConsoleText(
-						"Workflow: " + (modeIndex == 2 ? "Comprehensive" : "Focus") + " search\n");
+				// Core/Focus or Comprehensive search - iterative seed workflow
+				consolePanel.appendConsoleText("Workflow: " + mode.getDisplayLabel() + " search\n");
 				MetaParameterDiaMarker focusParams = new MetaParameterDiaMarker(
 						metaParameterDia, metaParameterDia.getMagDbItem(),
 						false, false, metaParameterDia.getLibrary(), false, new String[0]);
-				if (modeIndex == 2) {
-					focusParams.setMarkerMode("COMPREHENSIVE");
-				} else {
-					focusParams.setMarkerMode("FOCUS");
-				}
+				focusParams.setMarkerRefinementMode(mode);
 				this.currentAnalysisParams = focusParams;
-				currentTask = new MetaDiaSeedIterativeTask(focusParams, mrp,
-						consolePanel.getOverallProgressBar(), consolePanel.getCurrentTaskProgressBar());
+				if (mode == DiaRefinementMode.COMPREHENSIVE) {
+					currentTask = new DiaSeedComprehensiveTask(focusParams, mrp,
+							consolePanel.getOverallProgressBar(), consolePanel.getCurrentTaskProgressBar());
+				} else {
+					currentTask = new DiaSeedCoreTask(focusParams, mrp,
+							consolePanel.getOverallProgressBar(), consolePanel.getCurrentTaskProgressBar());
+				}
 			}
 
 			currentTask.setOnSucceeded(e -> Platform.runLater(() -> {
@@ -1386,18 +1413,12 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 
 		if (modeSelectionComboBox != null) {
 			// Prefer explicit seed mode if available
-			String seedMode = params.getSeedMode();
-			if ("FOCUS".equalsIgnoreCase(seedMode)) {
-				modeSelectionComboBox.setValue("Focus search");
-			} else if ("COMPREHENSIVE".equalsIgnoreCase(seedMode)) {
-				modeSelectionComboBox.setValue("Comprehensive search");
-			} else if ("DEEP".equalsIgnoreCase(seedMode)) {
-				modeSelectionComboBox.setValue("Deep comprehensive search");
-			} else if ("DIRECT".equalsIgnoreCase(seedMode)) {
-				modeSelectionComboBox.setValue("Direct search");
+			DiaRefinementMode seedMode = params.getSeedRefinementMode();
+			if (params.getSeedMode() != null && !params.getSeedMode().isBlank()) {
+				setSeedModeSelection(seedMode);
 			} else {
 				// Final fallback based on librarySearch flag
-				modeSelectionComboBox.setValue(params.isLibrarySearch() ? "Direct search" : "Focus search");
+				setSeedModeSelection(params.isLibrarySearch() ? DiaRefinementMode.DIRECT : DiaRefinementMode.CORE);
 			}
 		}
 

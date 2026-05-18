@@ -6,12 +6,16 @@ import javafx.application.Platform;
 // import javafx.collections.FXCollections; // Not used
 import javafx.collections.ObservableList;
 import javafx.scene.control.ProgressBar;
+import uk.ac.quadram.metapilot.core.dia.MagPredictedPeptideProteinMapper;
+import uk.ac.quadram.metapilot.core.mag.MagGenomeSelectionService;
+import uk.ac.quadram.metapilot.core.workflow.ProgressCallback;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNParquetReader;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNPrecursor;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiannParameter;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaRT;
 import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
+import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.MarkerGenomeSelector;
 
 import java.io.File;
@@ -567,7 +571,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 			return genomes;
 		}
 		File predictedFolder = new File(magDb.getCurrentFile(), "predicted");
-		List<DiaNNPrecursor> withProtein = MarkerGenomeSelector.setProteinInfoFromPredictedTsVs(precursors, predictedFolder);
+		List<DiaNNPrecursor> withProtein = MagPredictedPeptideProteinMapper.mapPrecursorsToProteins(precursors, predictedFolder);
 		if (withProtein == null || withProtein.isEmpty()) {
 			return genomes;
 		}
@@ -579,25 +583,23 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 		File rankedFile = new File(outDir, "genome_ranked.tsv");
 		File selectedFile = new File(outDir, "genome_selected.tsv");
 
-		MarkerGenomeSelector selector = new MarkerGenomeSelector();
-		selector.setKneeSelectionMode(kneeMode);
-		selector.selectMarkerGenomesWithKnee(withProtein.toArray(new DiaNNPrecursor[0]), effectiveMarker, genomesTaxaTsv,
-				evidenceFile.getAbsolutePath(), rankedFile.getAbsolutePath(), selectedFile.getAbsolutePath(), 300, true);
-		if (!selectedFile.exists()) {
-			return genomes;
+		MagGenomeSelectionService.Request selectionRequest = new MagGenomeSelectionService.Request();
+		selectionRequest.magDb = magDb;
+		selectionRequest.genomeSelectorMode = MagDbItem.MARKER4;
+		selectionRequest.genomeSelectionStrategy = kneeMode;
+		selectionRequest.diaPrecursors = withProtein.toArray(new DiaNNPrecursor[0]);
+		selectionRequest.markerFasta = effectiveMarker;
+		selectionRequest.disableMarkerFasta = effectiveMarker == null;
+		selectionRequest.genomesTaxaTsv = genomesTaxaTsv;
+		selectionRequest.evidenceFile = evidenceFile;
+		selectionRequest.rankedFile = rankedFile;
+		selectionRequest.selectedFile = selectedFile;
+		selectionRequest.maximumSelected = 300;
+		try {
+			return MagGenomeSelectionService.selectGenomes(selectionRequest, new ProgressCallback.NoOp());
+		} catch (Exception e) {
+			throw new IOException("Genome selection failed for " + parquetFile.getAbsolutePath(), e);
 		}
-		List<String> lines = Files.readAllLines(selectedFile.toPath());
-		for (int i = 1; i < lines.size(); i++) {
-			String line = lines.get(i).trim();
-			if (line.isEmpty() || line.startsWith("#")) {
-				break;
-			}
-			String[] split = line.split("\t");
-			if (split.length > 0 && !split[0].trim().isEmpty()) {
-				genomes.add(split[0].trim());
-			}
-		}
-		return genomes;
 	}
 
 	private boolean writeFastaFromGenomeSet(File outFasta, HashSet<String> genomeSet) {

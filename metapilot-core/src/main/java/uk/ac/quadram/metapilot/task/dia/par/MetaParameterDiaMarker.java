@@ -1,17 +1,18 @@
 package uk.ac.quadram.metapilot.task.dia.par;
 
 import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
+import uk.ac.quadram.metapilot.task.dia.DiaRefinementMode;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 
 /**
  * Parameter class for MAG-based DIA marker/seed workflows.
  *
  * Shared by:
- * - DIA Marker workflows (Focus / Comprehensive, and Deep Marker)
- * - DIA Seed iterative workflows (Focus / Comprehensive)
- * - Deep comprehensive DIA workflow
+ * - DIA Marker workflows (Core / Focus, Comprehensive, and Deep variants)
+ * - DIA Seed iterative workflows (Core / Focus and Comprehensive)
+ * - Seed Deep Together DIA workflow
  *
- * Focus / Comprehensive / Deep are encoded via {@link #markerMode}.
+ * Refinement mode is encoded via {@link #markerMode}.
  */
 public class MetaParameterDiaMarker extends MetaParameterDia {
 
@@ -19,9 +20,9 @@ public class MetaParameterDiaMarker extends MetaParameterDia {
 	 * Marker workflow mode persisted for UI/CLI round-trip.
 	 * <p>
 	 * Known values:
-	 * - FOCUS
+	 * - FOCUS (legacy persisted value for Core)
 	 * - COMPREHENSIVE
-	 * - DEEP (iterative rounds + combined search over all DIA files)
+	 * - DEEP (legacy persisted value for Deep Together)
 	 * - DEEP_PER_FILE (iterative workflow run independently per DIA file; results under marker/<rawname>/...)
 	 */
 	private String markerMode = "FOCUS";
@@ -51,6 +52,9 @@ public class MetaParameterDiaMarker extends MetaParameterDia {
 			boolean selfModelSearch, String[] library, boolean useModel, String[] models) {
 		super(metaPar, magDbItem, librarySearch, selfModelSearch, library, useModel, models);
 		this.setWorkflowType(uk.ac.quadram.metapilot.workflow.WorkflowType.DIA_MARKER.getAnalysisType());
+		if (magDbItem != null && magDbItem.getCatalogueID() != null && !magDbItem.getCatalogueID().isBlank()) {
+			this.setMicroDb(magDbItem.getCatalogueID());
+		}
 		if (metaPar instanceof MetaParameterDia) {
 			MetaParameterDia dia = (MetaParameterDia) metaPar;
 			this.mExcision = dia.isMExcision();
@@ -61,6 +65,14 @@ public class MetaParameterDiaMarker extends MetaParameterDia {
 			this.kGG = dia.isKGG();
 			this.setUsePeptideBasedRound(dia.isUsePeptideBasedRound());
 			this.setPeptideDetectabilityThreshold(dia.getPeptideDetectabilityThreshold());
+		}
+	}
+
+	@Override
+	public void setMagDbItem(MagDbItem magDbItem) {
+		super.setMagDbItem(magDbItem);
+		if (magDbItem != null && magDbItem.getCatalogueID() != null && !magDbItem.getCatalogueID().isBlank()) {
+			this.setMicroDb(magDbItem.getCatalogueID());
 		}
 	}
 
@@ -118,7 +130,15 @@ public class MetaParameterDiaMarker extends MetaParameterDia {
 	}
 	
 	public void setMarkerMode(String markerMode) {
-		this.markerMode = markerMode;
+		this.markerMode = DiaRefinementMode.fromMarkerMode(markerMode).getPersistedValue();
+	}
+
+	public DiaRefinementMode getMarkerRefinementMode() {
+		return DiaRefinementMode.fromMarkerMode(markerMode);
+	}
+
+	public void setMarkerRefinementMode(DiaRefinementMode mode) {
+		this.markerMode = (mode != null ? mode : DiaRefinementMode.CORE).getPersistedValue();
 	}
 
 	public int getGenomesPerRound() {

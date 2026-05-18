@@ -8,6 +8,7 @@ import java.io.PrintWriter;
 import java.util.Arrays;
 import java.util.HashMap;
 
+import uk.ac.quadram.metapilot.core.fragpipe.FragpipeWorkflowPaths;
 import uk.ac.quadram.metapilot.task.common.gui.ModificationsPanel;
 
 public class FragpipeWorkflow {
@@ -91,10 +92,11 @@ public class FragpipeWorkflow {
 	}
 	
 	public void setDatabase(String database) {
+		String formattedDatabase = FragpipeWorkflowPaths.formatDatabasePath(database);
 		if (valueMap.containsKey("database.db-path")) {
-			valueMap.get("database.db-path").setValue(database);
+			valueMap.get("database.db-path").setValue(formattedDatabase);
 		} else {
-			valueMap.put("database.db-path", new FragpipeWorkflowItem(0, "database.db-path", database));
+			valueMap.put("database.db-path", new FragpipeWorkflowItem(0, "database.db-path", formattedDatabase));
 		}
 	}
 
@@ -324,7 +326,10 @@ public class FragpipeWorkflow {
 
 		public String toString() {
 			StringBuilder sb = new StringBuilder();
-			sb.append(key).append("=").append(value.replaceAll("\\\\", "\\\\\\\\"));
+			String outputValue = "database.db-path".equals(key)
+					? FragpipeWorkflowPaths.formatDatabasePath(value)
+					: value.replace("\\", "\\\\");
+			sb.append(key).append("=").append(outputValue);
 			return sb.toString();
 		}
 

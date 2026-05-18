@@ -69,6 +69,7 @@ public class MagLocalFuncSearcher extends MagFuncSearcher {
 
 					String rank = "";
 					String[] lineage = gtdb.split(";");
+					lineage = normalizeLineage(lineage);
 					for (int i = lineage.length - 1; i >= 0; i--) {
 						if (lineage[i].length() > 3) {
 							list.add(lineage[i].substring(3));
@@ -77,7 +78,7 @@ public class MagLocalFuncSearcher extends MagFuncSearcher {
 
 							switch (rr) {
 							case 'd': {
-								rank = TaxonomyRanks.Subkingdom.getName();
+								rank = TaxonomyRanks.Superkingdom.getName();
 								break;
 							}
 							case 'p': {
@@ -118,6 +119,9 @@ public class MagLocalFuncSearcher extends MagFuncSearcher {
 						if (lineage[i].length() > 3) {
 							name = lineage[i].substring(3);
 						}
+						if (i == 0 && name.length() == 0) {
+							name = inferDomain(lineage);
+						}
 						if (i == 0) {
 							list.add(name);
 							list.add("");
@@ -130,6 +134,7 @@ public class MagLocalFuncSearcher extends MagFuncSearcher {
 						String ncbi = gnMap.get(gtdb);
 						rank = "";
 						lineage = ncbi.split(";");
+						lineage = normalizeLineage(lineage);
 						for (int i = lineage.length - 1; i >= 0; i--) {
 							if (lineage[i].length() > 3) {
 								list.add(lineage[i].substring(3));
@@ -138,7 +143,7 @@ public class MagLocalFuncSearcher extends MagFuncSearcher {
 
 								switch (rr) {
 								case 'd': {
-									rank = TaxonomyRanks.Subkingdom.getName();
+									rank = TaxonomyRanks.Superkingdom.getName();
 									break;
 								}
 								case 'p': {
@@ -179,6 +184,9 @@ public class MagLocalFuncSearcher extends MagFuncSearcher {
 							if (lineage[i].length() > 3) {
 								name = lineage[i].substring(3);
 							}
+							if (i == 0 && name.length() == 0) {
+								name = inferDomain(lineage);
+							}
 							if (i == 0) {
 								list.add(name);
 								list.add("");
@@ -202,6 +210,42 @@ public class MagLocalFuncSearcher extends MagFuncSearcher {
 		}
 
 		return genomeTaxaMap;
+	}
+
+	private static String[] normalizeLineage(String[] lineage) {
+		if (lineage == null || lineage.length == 0) {
+			return new String[0];
+		}
+		String domain = inferDomain(lineage);
+		String first = lineage[0] == null ? "" : lineage[0].trim();
+		if (first.length() > 0 && Character.toLowerCase(first.charAt(0)) == 'd') {
+			if (first.length() <= 3 || first.substring(3).trim().isEmpty()) {
+				String[] normalized = lineage.clone();
+				normalized[0] = "d__" + domain;
+				return normalized;
+			}
+			return lineage;
+		}
+		String[] normalized = new String[lineage.length + 1];
+		normalized[0] = "d__" + domain;
+		System.arraycopy(lineage, 0, normalized, 1, lineage.length);
+		return normalized;
+	}
+
+	private static String inferDomain(String[] lineage) {
+		for (String taxon : lineage) {
+			if (taxon == null || taxon.length() < 3) {
+				continue;
+			}
+			char prefix = Character.toLowerCase(taxon.charAt(0));
+			if (prefix == 'd' && taxon.length() > 3 && !taxon.substring(3).trim().isEmpty()) {
+				return taxon.substring(3).trim();
+			}
+			if (prefix == 'p' || prefix == 'c' || prefix == 'o' || prefix == 'f' || prefix == 'g' || prefix == 's') {
+				return "Bacteria";
+			}
+		}
+		return "";
 	}
 
 	public MetaProteinAnnoMag[] match(MetaProtein[] metapros) throws IOException, SQLException {

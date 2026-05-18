@@ -1,17 +1,17 @@
 # MetaPilot Resource Configuration
-# Generated on Fri May 08 11:09:54 BST 2026
+# Generated on Thu May 14 16:14:12 BST 2026
 
 BASE_PATH=C:\Users\daz25hak\MetaProAI\Resources
 
 # Tool Paths
-PYTHON=C:\Users\daz25hak\MetaProAI\Resources\python-3.13.7-embed-amd64\python.exe
-SAGE=C:\Users\daz25hak\MetaProAI\Resources\sage-v0.14.7-x86_64-pc-windows-msvc\sage.exe
-PFIND=C:\Users\daz25hak\MetaProAI\Resources\DBReducer\pFind3\bin\pFind.exe
 MSCONVERT=C:\Users\daz25hak\MetaProAI\Resources\ProteoWizard\msconvert.exe
-FRAGPIPE=C:\Users\daz25hak\MetaProAI\Resources\fragpipe\FragPipe-23.1\bin\fragpipe.bat
-FUNCDB=C:\Users\daz25hak\MetaProAI\Resources\function\func_def.db
-DIANN=C:\DIA-NN\2.3.0\diann.exe
-MAXQUANT=C:\Users\daz25hak\MetaProAI\Resources\mq_bin\MaxQuantCmd.exe
 DBREDUCER=C:\Users\daz25hak\MetaProAI\Resources\DBReducer\DBReducer\DBReducer.exe
+FUNCDB=C:\Users\daz25hak\MetaProAI\Resources\function\func_def.db
 FLASHLFQ=C:\Users\daz25hak\MetaProAI\Resources\FlashLFQ\CMD.exe
+MAXQUANT=C:\Users\daz25hak\MetaProAI\Resources\mq_bin\MaxQuantCmd.exe
+SAGE=C:\Users\daz25hak\MetaProAI\Resources\sage-v0.14.7-x86_64-pc-windows-msvc\sage.exe
 DEEPDETECT=C:\Users\daz25hak\MetaProAI\Resources\DeepDetect\DeepDetect.exe
+PFIND=C:\Users\daz25hak\MetaProAI\Resources\DBReducer\pFind3\bin\pFind.exe
+PYTHON=C:\Users\daz25hak\MetaProAI\Resources\python-3.13.7-embed-amd64\python.exe
+FRAGPIPE=C:\FragPipe\FragPipe-24.0\bin\fragpipe.bat
+DIANN=C:\DIA-NN\2.3.0\diann.exe

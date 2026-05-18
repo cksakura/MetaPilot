@@ -3,10 +3,12 @@ package uk.ac.quadram.metapilot.cli;
 import org.json.JSONObject;
 import uk.ac.quadram.metapilot.core.resources.MetaPilotResourceConfig;
 import uk.ac.quadram.metapilot.core.resources.ToolKey;
+import uk.ac.quadram.metapilot.core.report.PythonEnvironmentResolver;
 import uk.ac.quadram.metapilot.core.runner.DiaMarkerHeadlessRunner;
 import uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner;
 import uk.ac.quadram.metapilot.core.workflow.ProgressCallback;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagFragPipeParameters;
+import uk.ac.quadram.metapilot.task.dia.DiaRefinementMode;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaMarker;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.MagDbItemResolver;
@@ -25,7 +27,6 @@ import java.nio.file.Path;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
-import java.util.Locale;
 
 final class HpcStudyRunner {
 
@@ -41,14 +42,14 @@ final class HpcStudyRunner {
             ParameterIORegistry.registerAllParameterIOs();
 
             if (!BaseParameterIO.isValidParameterFilePath(paramsFile)) {
-                System.err.println("ERROR: unsupported or invalid study parameter file: " + paramsFile);
+                System.err.println("ERROR: unsupported or invalid study parameter file: " + new File(paramsFile).getAbsolutePath());
                 ParameterIORegistry.printSupportedWorkflowTypes();
                 return 2;
             }
 
             Object loaded = BaseParameterIO.loadParametersFromFilePath(paramsFile);
             if (loaded == null) {
-                System.err.println("ERROR: failed to load study parameters from: " + paramsFile);
+                System.err.println("ERROR: failed to load study parameters from: " + new File(paramsFile).getAbsolutePath());
                 return 2;
             }
 
@@ -56,7 +57,7 @@ final class HpcStudyRunner {
             MetaPilotResourceConfig rc = MetaPilotResourceConfig.load(resourcesCfg);
             List<String> issues = rc.validateMinimalLinuxCli();
             if (!issues.isEmpty()) {
-                System.err.println("ERROR: resources config is missing required keys:");
+                System.err.println("ERROR: resources config is missing required keys: " + resourcesCfg.toAbsolutePath());
                 for (String issue : issues) {
                     System.err.println("  - " + issue);
                 }
@@ -64,16 +65,16 @@ final class HpcStudyRunner {
             }
 
             if (WorkflowType.DIA_MARKER.getAnalysisType().equals(workflow)) {
-                return validateDiaMarker((MetaParameterDiaMarker) loaded, rc, magdbCfg.toFile());
+                return validateDiaMarker((MetaParameterDiaMarker) loaded, rc, resourcesCfg, magdbCfg.toFile());
             }
             if (WorkflowType.DDA_MAG_FRAGPIPE.getAnalysisType().equals(workflow)) {
-                return validateMagFragpipe((DDAMagFragPipeParameters) loaded, rc, magdbCfg.toFile());
+                return validateMagFragpipe((DDAMagFragPipeParameters) loaded, rc, resourcesCfg, magdbCfg.toFile());
             }
 
             System.err.println("ERROR: workflow is registered but not supported by the headless CLI yet: " + workflow);
             return 2;
         } catch (ClassCastException e) {
-            System.err.println("ERROR: parameter object does not match workflow type in study JSON.");
+            System.err.println("ERROR: parameter object does not match workflow type in study JSON: " + new File(paramsFile).getAbsolutePath());
             return 2;
         } catch (Exception e) {
             e.printStackTrace(System.err);
@@ -97,6 +98,10 @@ final class HpcStudyRunner {
             }
 
             Object loaded = BaseParameterIO.loadParametersFromFilePath(paramsFile);
+            if (loaded == null) {
+                System.err.println("ERROR: failed to reload study parameters after validation: " + new File(paramsFile).getAbsolutePath());
+                return 2;
+            }
             String workflow = readWorkflowType(paramsFile);
             MetaPilotResourceConfig rc = MetaPilotResourceConfig.load(resourcesCfg);
 
@@ -123,8 +128,11 @@ final class HpcStudyRunner {
                         diannExe,
                         magdbCfg.toFile(),
                         cb,
-                        inferCondaPrefixFromPython(pythonExe),
-                        funcDb);
+                        PythonEnvironmentResolver.inferCondaPrefixFromPython(pythonExe),
+                        funcDb,
+                        reportGenerationEnabled(rc),
+                        null,
+                        rc);
                 logLine(log, "INFO ", "MetaPilot HPC run finished  workflow=" + workflow);
                 return 0;
             }
@@ -132,8 +140,9 @@ final class HpcStudyRunner {
             if (WorkflowType.DDA_MAG_FRAGPIPE.getAnalysisType().equals(workflow)) {
                 DDAMagFragPipeParameters params = (DDAMagFragPipeParameters) loaded;
                 File fragpipeExe = rc.resolveToolPath(ToolKey.FRAGPIPE, null).map(Path::toFile).orElse(null);
-                File workflowFile = new File(params.getFragpipeWorkflowPath());
-                MagFragPipeHeadlessRunner.run(params, fragpipeExe, workflowFile, magdbCfg.toFile(), cb);
+                File funcDb = rc.resolveToolPath(ToolKey.FUNCDB, null).map(Path::toFile).orElse(null);
+                MagFragPipeHeadlessRunner.runWithInstalledDefaults(params, fragpipeExe, magdbCfg.toFile(),
+                        funcDb, cb, reportGenerationEnabled(rc), null, rc);
                 logLine(log, "INFO ", "MetaPilot HPC run finished  workflow=" + workflow);
                 return 0;
             }
@@ -153,10 +162,16 @@ final class HpcStudyRunner {
         }
     }
 
-    private static int validateDiaMarker(MetaParameterDiaMarker params, MetaPilotResourceConfig rc, File magdbCfg) {
+    private static int validateDiaMarker(MetaParameterDiaMarker params, MetaPilotResourceConfig rc, Path resourcesCfg, File magdbCfg) {
+        DiaRefinementMode markerMode = params.getMarkerRefinementMode();
+        if (markerMode == DiaRefinementMode.DIRECT) {
+            System.err.println("ERROR: DIA_MARKER does not support DIRECT mode. DIRECT is only valid for DIA Seed workflows.");
+            return 2;
+        }
         File diannExe = rc.resolveToolPath(ToolKey.DIANN, null).map(Path::toFile).orElse(null);
         if (diannExe == null || !diannExe.exists()) {
-            System.err.println("ERROR: DIANN is not set or does not exist in resources config.");
+            System.err.println("ERROR: DIANN is not set or does not exist in resources config: "
+                    + resourcesCfg.toAbsolutePath() + " (resolved path: " + describeFile(diannExe) + ")");
             return 2;
         }
         if (params.getMetadata() == null || params.getMetadata().getRawFiles() == null
@@ -173,17 +188,20 @@ final class HpcStudyRunner {
             mag = MagDbItemResolver.resolve(params.getMicroDb(), "MGYG", null, magdbCfg);
         }
         if (mag == null) {
-            System.err.println("ERROR: MAG database entry could not be resolved from site registry.");
+            System.err.println("ERROR: MAG database entry could not be resolved from site registry: "
+                    + magdbCfg.getAbsolutePath() + " (micro_db=" + String.valueOf(params.getMicroDb()) + ")");
             return 2;
         }
-        System.out.println("OK: DIA_MARKER study parameters validated.");
+        System.out.println("OK: DIA_MARKER study parameters validated. marker_mode="
+                + markerMode.getPersistedValue() + " (" + markerMode.getDisplayLabel() + ")");
         return 0;
     }
 
-    private static int validateMagFragpipe(DDAMagFragPipeParameters params, MetaPilotResourceConfig rc, File magdbCfg) {
+    private static int validateMagFragpipe(DDAMagFragPipeParameters params, MetaPilotResourceConfig rc, Path resourcesCfg, File magdbCfg) {
         File fragpipeExe = rc.resolveToolPath(ToolKey.FRAGPIPE, null).map(Path::toFile).orElse(null);
         if (fragpipeExe == null || !fragpipeExe.exists()) {
-            System.err.println("ERROR: FRAGPIPE is not set or does not exist in resources config.");
+            System.err.println("ERROR: FRAGPIPE is not set or does not exist in resources config: "
+                    + resourcesCfg.toAbsolutePath() + " (resolved path: " + describeFile(fragpipeExe) + ")");
             return 2;
         }
         if (params.getMetadata() == null || params.getMetadata().getRawFiles() == null
@@ -195,15 +213,21 @@ final class HpcStudyRunner {
             System.err.println("ERROR: output_directory is required in study parameters.");
             return 2;
         }
-        String workflowPath = params.getFragpipeWorkflowPath();
-        if (workflowPath == null || workflowPath.isBlank() || !new File(workflowPath).isFile()) {
-            System.err.println("ERROR: dda_settings.fragpipe_workflow must point to an existing FragPipe workflow file.");
+        try {
+            MagFragPipeHeadlessRunner.requireInstalledWorkflow(fragpipeExe, MagFragPipeHeadlessRunner.BASIC_SEARCH_WORKFLOW);
+            MagFragPipeHeadlessRunner.requireInstalledWorkflow(fragpipeExe, MagFragPipeHeadlessRunner.LFQ_MBR_WORKFLOW);
+        } catch (IOException e) {
+            System.err.println("ERROR: required FragPipe workflow is not available in the installed FragPipe folder: "
+                    + e.getMessage());
             return 2;
         }
         MagDbItem mag = MagDbItemResolver.resolve(
                 params.getMagDbCatalogueId(), "MGYG", params.getMagDbVersion(), magdbCfg);
         if (mag == null) {
-            System.err.println("ERROR: MAG database entry could not be resolved from site registry.");
+            System.err.println("ERROR: MAG database entry could not be resolved from site registry: "
+                    + magdbCfg.getAbsolutePath()
+                    + " (catalogue=" + String.valueOf(params.getMagDbCatalogueId())
+                    + ", version=" + String.valueOf(params.getMagDbVersion()) + ")");
             return 2;
         }
         System.out.println("OK: DDA_MAG_FRAGPIPE study parameters validated.");
@@ -329,30 +353,19 @@ final class HpcStudyRunner {
 
     // ────────────────────────────────────────────────────────────────────────
 
-    private static File inferCondaPrefixFromPython(File pythonExe) {
-        if (pythonExe == null) {
-            return null;
+    private static boolean reportGenerationEnabled(MetaPilotResourceConfig rc) {
+        if (rc == null) {
+            return true;
         }
-        try {
-            File bin = pythonExe.getParentFile();
-            if (bin == null) {
-                return null;
-            }
-            File prefix = bin.getParentFile();
-            if (prefix == null) {
-                return null;
-            }
-            String binName = bin.getName().toLowerCase(Locale.ROOT);
-            if (!"bin".equals(binName) && !"scripts".equals(binName)) {
-                return null;
-            }
-            File lib = new File(prefix, "lib");
-            if (lib.isDirectory()) {
-                return prefix;
-            }
-            return null;
-        } catch (Exception e) {
-            return null;
-        }
+        return rc.getRaw("GENERATE_REPORT")
+                .map(v -> {
+                    String t = v.trim().toLowerCase(java.util.Locale.ROOT);
+                    return !(t.equals("false") || t.equals("0") || t.equals("no") || t.equals("n"));
+                })
+                .orElse(true);
+    }
+
+    private static String describeFile(File file) {
+        return file == null ? "<not configured>" : file.getAbsolutePath();
     }
 }

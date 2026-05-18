@@ -1,29 +1,29 @@
 package uk.ac.quadram.metapilot.core.runner;
 
-import uk.ac.quadram.metapilot.core.mag.MagInference;
-import uk.ac.quadram.metapilot.core.tools.FormatTool;
+import uk.ac.quadram.metapilot.core.mag.DdaMagPostAnalysisService;
 import uk.ac.quadram.metapilot.core.workflow.ProgressCallback;
 import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragPipePSM;
 import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragpipePepReader;
 import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragpipePeptide;
 import uk.ac.quadram.metapilot.task.io.pep.AbstractMetaPeptideReader;
-import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPSM;
+import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
+import uk.ac.quadram.metapilot.task.par.MetaConstants;
 
 import java.io.File;
 import java.io.PrintWriter;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Headless post-analysis and TSV export for FragPipe combined outputs.
  *
- * Current scope (no HTML):
- * - Writes final_peptides.tsv and final_proteins.tsv into the workflow result root.
+ * Current scope:
+ * - Writes id.tsv, final_summary.tsv, final_peptides.tsv, and razor_proteins.tsv.
  *
  * This mirrors the GUI post-analysis maps (genome/protein intensity + peptide counts),
  * without any JavaFX dependencies.
@@ -36,6 +36,15 @@ public final class FragpipePostAnalysisTsvExporter {
     public static Result exportFinalTsvs(MagDbItem magDb,
                                          File combinedModifiedPeptideTsv,
                                          File outDir,
+                                         String taskName,
+                                         ProgressCallback cb) throws Exception {
+        return exportFinalTsvs(magDb, combinedModifiedPeptideTsv, outDir, null, taskName, cb);
+    }
+
+    public static Result exportFinalTsvs(MagDbItem magDb,
+                                         File combinedModifiedPeptideTsv,
+                                         File outDir,
+                                         File spectraDir,
                                          String taskName,
                                          ProgressCallback cb) throws Exception {
         if (cb == null) cb = new ProgressCallback.NoOp();
@@ -68,300 +77,58 @@ public final class FragpipePostAnalysisTsvExporter {
             fileList.add(key);
         }
 
-        // Build PSM maps
-        HashMap<String, MetaPSM> bestPsmByModSeq = new HashMap<>();
-        HashMap<String, int[]> pepPsmCountMap = new HashMap<>();
-        HashMap<String, int[]> pepChargeMap = new HashMap<>();
-        HashMap<String, Integer> psmCountMap = new HashMap<>();
-
-        for (MetaPSM p : psms) {
-            if (p == null) continue;
-            String modseq = p.getModSeq();
-            if (modseq == null) continue;
-
-            // best PSM per peptide by PEP (lower is better)
-            if (!bestPsmByModSeq.containsKey(modseq) || p.getPEP() < bestPsmByModSeq.get(modseq).getPEP()) {
-                bestPsmByModSeq.put(modseq, p);
-            }
-
-            // charge presence map
-            int[] charges = pepChargeMap.computeIfAbsent(modseq, k -> new int[7]);
-            int c = p.getCharge();
-            if (c >= 0 && c < charges.length) charges[c] = 1;
-
-            // per-protein psm counts
-            String[] pros = p.getProteins();
-            if (pros != null) {
-                for (String pro : pros) {
-                    if (pro == null) continue;
-                    psmCountMap.put(pro, psmCountMap.getOrDefault(pro, 0) + 1);
-                }
-            }
-        }
-
-        // For peptides that have per-file MS2 counts in FragPipe, use MetaPeptide.getMs2Counts()
-        for (FragpipePeptide pep : peps) {
-            if (pep == null) continue;
-            String modseq = pep.getModSeq();
-            if (modseq == null) continue;
-            int[] counts = pepPsmCountMap.computeIfAbsent(modseq, k -> new int[fileIdMap.size()]);
-            int[] sp = pep.getMs2Counts();
-            if (sp != null) {
-                for (int i = 0; i < Math.min(sp.length, counts.length); i++) {
-                    counts[i] = sp[i];
-                }
-            }
-        }
-
-        // Genome scoring + razor protein selection (EXACT strategy as Windows):
-        // use DIA-style scoring when PSMs exist, otherwise legacy.
-        HashMap<String, Double> genomeScoreMap;
-        HashMap<String, double[]> genomeDiaStats = null;
-        if (psms != null && psms.length > 0) {
-            MagInference.DiaStyleResult dia = MagInference.scoreGenomesDiaStyle(magDb, peps, psms, AbstractMetaPeptideReader.SHUF);
-            genomeScoreMap = dia.genomeScoreMap;
-            genomeDiaStats = dia.statsForTaxonomy;
-        } else {
-            genomeScoreMap = MagInference.scoreGenomesLegacy(magDb, peps, AbstractMetaPeptideReader.SHUF);
-        }
-        String[] razorProteins = MagInference.selectRazorProteins(magDb, peps, genomeScoreMap, AbstractMetaPeptideReader.SHUF);
-
-        // Build intensity maps + peptide count maps (ported from GUI DDAMagPostAnalysisTask).
-        HashMap<String, double[]> genomeIntensityMap = new HashMap<>();
-        HashMap<String, double[]> proteinIntensityMap = new HashMap<>();
-        HashMap<String, Double> proteinTotalIntenMap = new HashMap<>();
-
-        HashMap<String, HashSet<String>> totalPepCountMap = new HashMap<>();
-        HashMap<String, HashSet<String>> razorPepCountMap = new HashMap<>();
-        HashMap<String, HashSet<String>> uniquePepCountMap = new HashMap<>();
-
-        HashMap<String, HashSet<String>> totalPepWithILMap = new HashMap<>();
-        HashMap<String, HashSet<String>> razorPepWithILMap = new HashMap<>();
-        HashMap<String, HashSet<String>> uniquePepWithILMap = new HashMap<>();
-
-        ArrayList<MetaPeptide> peptideList = new ArrayList<>();
-
-        // build razor peptide sets for proteins + genomes (for later counting)
-        for (int i = 0; i < peps.length; i++) {
-            if (razorProteins[i] == null) continue;
-            String stripeSeq = peps[i].getSequence();
-            if (stripeSeq == null) continue;
-            peptideList.add(peps[i]);
-            boolean hasIorL = stripeSeq.contains("I") || stripeSeq.contains("L");
-
-            razorPepCountMap.computeIfAbsent(razorProteins[i], k -> new HashSet<>()).add(stripeSeq);
-            if (razorProteins[i].startsWith(magDb.getIdentifier())) {
-                String genome = razorProteins[i].split("_")[0];
-                razorPepCountMap.computeIfAbsent(genome, k -> new HashSet<>()).add(stripeSeq);
-                if (hasIorL) {
-                    razorPepWithILMap.computeIfAbsent(genome, k -> new HashSet<>()).add(stripeSeq);
-                }
-            }
-        }
-
-        for (int i = 0; i < peps.length; i++) {
-            String[] proteins = peps[i].getProteins();
-            if (proteins == null) continue;
-
-            int count = 0;
-            for (String p : proteins) {
-                if (p != null && razorPepCountMap.containsKey(p)) count++;
-            }
-            if (count <= 0) continue;
-
-            String stripeSeq = peps[i].getSequence();
-            if (stripeSeq == null) continue;
-            boolean hasIorL = stripeSeq.contains("I") || stripeSeq.contains("L");
-
-            // unique to one genome check (MAG proteins only, same genome)
-            String uniqueGenome = null;
-            boolean isUnique = true;
-            for (String p : proteins) {
-                if (p == null) continue;
-                if (p.startsWith(magDb.getIdentifier())) {
-                    String genome = p.split("_")[0];
-                    if (uniqueGenome == null) uniqueGenome = genome;
-                    else if (!uniqueGenome.equals(genome)) { isUnique = false; break; }
-                } else {
-                    isUnique = false;
-                    break;
-                }
-            }
-
-            double[] pepIntensity = peps[i].getIntensity();
-            if (pepIntensity == null) pepIntensity = new double[fileIdMap.size()];
-            double[] share = new double[pepIntensity.length];
-            for (int j = 0; j < share.length; j++) share[j] = pepIntensity[j] / (double) count;
-
-            for (String pro : proteins) {
-                if (pro == null) continue;
-                if (!razorPepCountMap.containsKey(pro)) continue;
-
-                if (pro.startsWith(magDb.getIdentifier())) {
-                    String genome = pro.split("_")[0];
-                    if (!genomeScoreMap.containsKey(genome)) continue;
-
-                    double[] gi = genomeIntensityMap.computeIfAbsent(genome, k -> new double[share.length]);
-                    for (int k = 0; k < share.length; k++) gi[k] += share[k];
-
-                    double[] pi = proteinIntensityMap.computeIfAbsent(pro, k -> new double[share.length]);
-                    double ptot = proteinTotalIntenMap.getOrDefault(pro, 0.0);
-                    for (int k = 0; k < share.length; k++) { pi[k] += share[k]; ptot += share[k]; }
-                    proteinTotalIntenMap.put(pro, ptot);
-
-                    totalPepCountMap.computeIfAbsent(genome, k -> new HashSet<>()).add(stripeSeq);
-                    totalPepCountMap.computeIfAbsent(pro, k -> new HashSet<>()).add(stripeSeq);
-                    if (hasIorL) totalPepWithILMap.computeIfAbsent(genome, k -> new HashSet<>()).add(stripeSeq);
-
-                    if (isUnique && uniqueGenome != null && uniqueGenome.equals(genome)) {
-                        uniquePepCountMap.computeIfAbsent(genome, k -> new HashSet<>()).add(stripeSeq);
-                        if (hasIorL) uniquePepWithILMap.computeIfAbsent(genome, k -> new HashSet<>()).add(stripeSeq);
-                    }
-                } else {
-                    double[] pi = proteinIntensityMap.computeIfAbsent(pro, k -> new double[share.length]);
-                    double ptot = proteinTotalIntenMap.getOrDefault(pro, 0.0);
-                    for (int k = 0; k < share.length; k++) { pi[k] += share[k]; ptot += share[k]; }
-                    proteinTotalIntenMap.put(pro, ptot);
-                    totalPepCountMap.computeIfAbsent(pro, k -> new HashSet<>()).add(stripeSeq);
-                }
-            }
-        }
-
-        // Sort proteins by total intensity
-        String[] proteins = proteinTotalIntenMap.keySet().toArray(new String[0]);
-        Arrays.sort(proteins, Comparator.comparingDouble((String p) -> proteinTotalIntenMap.getOrDefault(p, 0.0)).reversed());
-
-        // Assign numeric IDs to proteins
-        HashMap<String, Integer> proteinIdMap = new HashMap<>();
-        for (int i = 0; i < proteins.length; i++) {
-            proteinIdMap.put(proteins[i], i);
-        }
-
-        // Write peptide TSV (schema mirrors MetaPilotMagTask.generatePeptideReport)
+        DdaMagPostAnalysisService.Result analysis = DdaMagPostAnalysisService.analyze(
+                new DdaMagPostAnalysisService.Input(peps, psms, fileIdMap, fileList,
+                        AbstractMetaPeptideReader.SHUF, magDb.getIdentifier(),
+                        FragpipePostAnalysisTsvExporter::resolveFileIndex, true));
+        HashMap<String, MetaPSM> bestPsmByModSeq = analysis.psmMap;
+        HashMap<String, int[]> pepPsmCountMap = analysis.pepPsmCountMap;
+        HashMap<String, int[]> pepChargeMap = analysis.pepChargeMap;
+        HashMap<String, Integer> psmCountMap = analysis.psmCountMap;
+        int[] filePsmCount = analysis.filePsmCount;
+        HashSet<String>[] fileSequenceSets = analysis.fileSequenceSets;
+        HashMap<String, Double> genomeScoreMap = analysis.genomeScoreMap;
+        HashMap<String, double[]> genomeDiaStats = analysis.genomeDiaStats;
+        HashMap<String, double[]> genomeIntensityMap = analysis.genomeIntensityMap;
+        HashMap<String, double[]> proteinIntensityMap = analysis.proteinIntensityMap;
+        HashMap<String, Double> proteinTotalIntenMap = analysis.proteinTotalIntenMap;
+        HashMap<String, HashSet<String>> totalPepCountMap = analysis.totalPepCountMap;
+        HashMap<String, HashSet<String>> razorPepCountMap = analysis.razorPepCountMap;
+        HashMap<String, HashSet<String>> uniquePepCountMap = analysis.uniquePepCountMap;
+        HashMap<String, HashSet<String>> totalPepWithILMap = analysis.totalPepWithILMap;
+        HashMap<String, HashSet<String>> razorPepWithILMap = analysis.razorPepWithILMap;
+        HashMap<String, HashSet<String>> uniquePepWithILMap = analysis.uniquePepWithILMap;
+        String[] proteins = analysis.proteins;
+        HashMap<String, Integer> proteinIdMap = analysis.proteinIdMap;
+        HashMap<String, String> razorProteinMap = buildRazorProteinMap(peps, analysis.razorProteins);
+        MetaProtein[] metaProteins = analysis.metaProteins;
+        cb.onMessage(taskName + ": genome scoring="
+                + (analysis.genomeScoring.diaStyle ? "PSM-score/top-k/q-value" : "legacy fallback")
+                + ", genomes=" + genomeScoreMap.size());
+        File idOut = new File(outDir, "combined/id.tsv");
+        File summaryOut = new File(outDir, "final_summary.tsv");
         File pepOut = new File(outDir, "final_peptides.tsv");
+        File proOut = new File(outDir, "razor_proteins.tsv");
+        File allProOut = new File(outDir, "all_proteins.tsv");
+        cb.onMessage(taskName + ": writing " + idOut.getName());
+        DdaMagReportExportService.writeIdentificationSummary(new File(outDir, "combined"), outDir, spectraDir,
+                fileIdMap, filePsmCount, fileSequenceSets, null);
         cb.onMessage(taskName + ": writing " + pepOut.getName());
-        try (PrintWriter writer = new PrintWriter(pepOut)) {
-            StringBuilder header = new StringBuilder();
-            header.append("Sequence\tBase sequence\tLength\tMissed cleavages\tMass\tProteins\tCharges\tScore\tPEP\t");
-            for (String f : fileList) header.append("Identification type ").append(f).append("\t");
-            for (String f : fileList) header.append("MS/MS count ").append(f).append("\t");
-            header.append("Intensity\t");
-            for (String it : intensityTitles) header.append("Intensity ").append(it).append("\t");
-            header.append("Reverse\tPotential contaminant\tid\tProtein group IDs\tMS/MS Count");
-            writer.println(header);
-
-            int id = 0;
-            for (FragpipePeptide pep : peps) {
-                if (pep == null) continue;
-                String modSeq = pep.getModSeq();
-                MetaPSM bestPsm = bestPsmByModSeq.get(modSeq);
-                if (bestPsm == null) continue;
-
-                StringBuilder sb = new StringBuilder();
-                sb.append(modSeq).append("\t");
-                sb.append(pep.getSequence()).append("\t");
-                sb.append(pep.getSequence() != null ? pep.getSequence().length() : 0).append("\t");
-                sb.append(bestPsm.getMiss()).append("\t");
-                sb.append(bestPsm.getCalMass()).append("\t");
-
-                String[] pros = pep.getProteins();
-                if (pros != null) {
-                    for (String pro : pros) {
-                        if (proteinIdMap.containsKey(pro)) sb.append(pro).append(";");
-                    }
-                    if (sb.length() > 0 && sb.charAt(sb.length() - 1) == ';') sb.deleteCharAt(sb.length() - 1);
-                }
-                sb.append("\t");
-
-                int[] charge = pepChargeMap.get(modSeq);
-                if (charge != null) {
-                    StringBuilder chargesb = new StringBuilder();
-                    for (int c = 0; c < charge.length; c++) if (charge[c] == 1) chargesb.append(c).append(";");
-                    sb.append(chargesb.length() > 0 ? chargesb.substring(0, chargesb.length() - 1) : "2").append("\t");
-                } else {
-                    sb.append("2\t");
-                }
-
-                sb.append(bestPsm.getScore()).append("\t");
-                sb.append(bestPsm.getPEP()).append("\t");
-
-                int totalMsCount = 0;
-                int[] psmCounts = pepPsmCountMap.get(modSeq);
-                double[] inten = pep.getIntensity();
-                if (inten == null) inten = new double[fileIdMap.size()];
-                if (psmCounts == null) psmCounts = new int[fileIdMap.size()];
-
-                for (int j = 0; j < fileList.size(); j++) {
-                    if (psmCounts[j] > 0) {
-                        totalMsCount += psmCounts[j];
-                        sb.append("By MS/MS\t");
-                    } else if (j < inten.length && inten[j] > 0) {
-                        sb.append("MBR\t");
-                    } else {
-                        sb.append("NotDetected\t");
-                    }
-                }
-                for (int j = 0; j < fileList.size(); j++) {
-                    sb.append(psmCounts[j]).append("\t");
-                }
-
-                double totalIntensity = 0;
-                for (double v : inten) totalIntensity += v;
-                sb.append((long) Math.floor(totalIntensity)).append("\t");
-                for (double v : inten) sb.append((long) Math.floor(v)).append("\t");
-
-                sb.append("\t\t"); // Reverse, Potential contaminant
-                sb.append(id).append("\t");
-
-                if (pros != null) {
-                    for (String pro : pros) {
-                        if (proteinIdMap.containsKey(pro)) sb.append(proteinIdMap.get(pro)).append(";");
-                    }
-                    if (sb.length() > 0 && sb.charAt(sb.length() - 1) == ';') sb.deleteCharAt(sb.length() - 1);
-                }
-                sb.append("\t");
-                sb.append(totalMsCount);
-
-                writer.println(sb);
-                id++;
-            }
-        }
-
-        // Write protein TSV (schema mirrors MetaPilotMagTask.generateProteinReport)
-        File proOut = new File(outDir, "final_proteins.tsv");
+        DdaMagReportExportService.writePeptideReport(pepOut, analysis.peptideList, bestPsmByModSeq,
+                pepPsmCountMap, pepChargeMap, proteinIdMap, fileList, MetaConstants.labelFree, intensityTitles,
+                razorProteinMap);
         cb.onMessage(taskName + ": writing " + proOut.getName());
-        try (PrintWriter writer = new PrintWriter(proOut)) {
-            StringBuilder header = new StringBuilder();
-            header.append("Protein IDs\tPeptide counts (all)\tPeptide counts (razor)\tNumber of PSMs\tPEP\tIntensity\t");
-            for (String it : intensityTitles) header.append("Intensity ").append(it).append("\t");
-            header.append("Reverse\tPotential contaminant\tid\tPeptide IDs\tPeptide is razor");
-            writer.println(header);
-
-            for (int i = 0; i < proteins.length; i++) {
-                String pro = proteins[i];
-                double[] inten = proteinIntensityMap.getOrDefault(pro, new double[fileIdMap.size()]);
-                double total = proteinTotalIntenMap.getOrDefault(pro, 0.0);
-                int psmCount = psmCountMap.getOrDefault(pro, 0);
-                HashSet<String> totalPepSet = totalPepCountMap.getOrDefault(pro, new HashSet<>());
-                HashSet<String> razorPepSet = razorPepCountMap.getOrDefault(pro, new HashSet<>());
-
-                StringBuilder sb = new StringBuilder();
-                sb.append(pro).append("\t");
-                sb.append(totalPepSet.size()).append("\t");
-                sb.append(razorPepSet.size()).append("\t");
-                sb.append(psmCount).append("\t");
-                sb.append("0").append("\t"); // PEP placeholder (not computed here)
-                sb.append(FormatTool.getDFE4().format(total)).append("\t");
-                for (int j = 0; j < inten.length; j++) sb.append(FormatTool.getDFE4().format(inten[j])).append("\t");
-                sb.append("\t\t"); // Reverse, Potential contaminant
-                sb.append(i).append("\t");
-                sb.append("\t"); // Peptide IDs (optional)
-                sb.append(""); // Peptide is razor
-                writer.println(sb);
-            }
-        }
-
+        DdaMagReportExportService.writeProteinReport(proOut, proteins, proteinIntensityMap, proteinTotalIntenMap,
+                totalPepCountMap, razorPepCountMap, psmCountMap, MetaConstants.labelFree, intensityTitles,
+                analysis.peptideList, analysis.allProteinScoreMap);
+        cb.onMessage(taskName + ": writing " + allProOut.getName());
+        DdaMagReportExportService.writeAllProteinReport(allProOut, analysis.allProteins,
+                analysis.allProteinIntensityMap, analysis.allProteinTotalIntenMap, analysis.allProteinPepCountMap,
+                razorPepCountMap, analysis.allProteinPsmCountMap, MetaConstants.labelFree, intensityTitles,
+                analysis.peptideList, analysis.allProteinScoreMap);
         Result res = new Result();
+        res.idTsv = idOut;
+        res.finalSummaryTsv = summaryOut;
         res.intensityTitles = intensityTitles;
         res.genomeIntensityMap = genomeIntensityMap;
         res.genomeScoreMap = genomeScoreMap;
@@ -373,14 +140,108 @@ public final class FragpipePostAnalysisTsvExporter {
         res.totalPepWithILMap = totalPepWithILMap;
         res.razorPepWithILMap = razorPepWithILMap;
         res.uniquePepWithILMap = uniquePepWithILMap;
+        res.metaProteins = metaProteins;
         return res;
     }
 
+    private static HashMap<String, String> buildRazorProteinMap(FragpipePeptide[] peptides, String[] razorProteins) {
+        HashMap<String, String> map = new HashMap<>();
+        if (peptides == null || razorProteins == null) {
+            return map;
+        }
+        for (int i = 0; i < peptides.length && i < razorProteins.length; i++) {
+            if (peptides[i] == null || razorProteins[i] == null) {
+                continue;
+            }
+            if (peptides[i].getModSeq() != null) {
+                map.put(peptides[i].getModSeq(), razorProteins[i]);
+            }
+            if (peptides[i].getSequence() != null) {
+                map.put(peptides[i].getSequence(), razorProteins[i]);
+            }
+        }
+        return map;
+    }
+
+    /**
+     * @deprecated Identification summary output is now written by
+     *             {@link DdaMagReportExportService#writeIdentificationSummary(File, File, File, HashMap, int[], HashSet[], Map)}.
+     */
+    @Deprecated
+    private static void writeIdentificationTsv(File out,
+                                               ArrayList<String> fileList,
+                                               HashSet<String>[] fileSequenceSets,
+                                               int[] filePsmCount) throws Exception {
+        if (out.getParentFile() != null) out.getParentFile().mkdirs();
+        try (PrintWriter writer = new PrintWriter(out)) {
+            writer.println("Raw file\tUnique peptide count\tPSM count");
+            for (int i = 0; i < fileList.size(); i++) {
+                int unique = i < fileSequenceSets.length && fileSequenceSets[i] != null ? fileSequenceSets[i].size() : 0;
+                int psm = i < filePsmCount.length ? filePsmCount[i] : 0;
+                writer.println(fileList.get(i) + "\t" + unique + "\t" + psm);
+            }
+        }
+    }
+
+    /**
+     * @deprecated Identification summary output is now written by
+     *             {@link DdaMagReportExportService#writeIdentificationSummary(File, File, File, HashMap, int[], HashSet[], Map)}.
+     */
+    @Deprecated
+    private static void writeFinalSummary(File out,
+                                          ArrayList<String> fileList,
+                                          HashSet<String>[] fileSequenceSets,
+                                          int[] filePsmCount) throws Exception {
+        if (out.getParentFile() != null) out.getParentFile().mkdirs();
+        try (PrintWriter writer = new PrintWriter(out)) {
+            writer.println("Raw file\tExperiment\tMS/MS\tMS/MS Identified\tMS/MS Identified [%]\tPeptide Sequences Identified");
+
+            int totalPsmCount = 0;
+            int totalUniquePeptideCount = 0;
+            for (int i = 0; i < fileList.size(); i++) {
+                int psm = i < filePsmCount.length ? filePsmCount[i] : 0;
+                int unique = i < fileSequenceSets.length && fileSequenceSets[i] != null ? fileSequenceSets[i].size() : 0;
+                writer.println(fileList.get(i) + "\t" + fileList.get(i) + "\t"
+                        + psm + "\t" + psm + "\t1.0\t" + unique);
+                totalPsmCount += psm;
+                totalUniquePeptideCount += unique;
+            }
+
+            writer.print("Total\t\t" + totalPsmCount + "\t" + totalPsmCount + "\t1.0\t" + totalUniquePeptideCount);
+        }
+    }
+
+    private static int resolveFileIndex(String fileName, Map<String, Integer> fileIdMap, List<String> fileList) {
+        if (fileName == null || fileName.isBlank()) return -1;
+        String key = fileName.trim();
+        Integer direct = fileIdMap.get(key);
+        if (direct != null) return direct;
+
+        String base = baseNameNoExt(key);
+        for (int i = 0; i < fileList.size(); i++) {
+            String candidate = fileList.get(i);
+            if (candidate == null) continue;
+            if (key.equals(candidate.trim())) return i;
+            String candidateBase = baseNameNoExt(candidate.trim());
+            if (base.equals(candidateBase)) return i;
+        }
+        return -1;
+    }
+
+    private static String baseNameNoExt(String path) {
+        String name = new File(path).getName();
+        int dot = name.lastIndexOf('.');
+        return dot > 0 ? name.substring(0, dot) : name;
+    }
+
     public static final class Result {
+        public File idTsv;
+        public File finalSummaryTsv;
         public String[] intensityTitles;
+        public MetaProtein[] metaProteins;
         public HashMap<String, double[]> genomeIntensityMap;
         public HashMap<String, Double> genomeScoreMap;
-        /** genome -> double[]{S, p_emp, q_value} when DIA-style scoring used; null otherwise */
+        /** genome -> double[]{S, p_emp, q_value} when PSM-score/top-k scoring is used; null otherwise */
         public HashMap<String, double[]> genomeDiaStats;
         public HashMap<String, Integer> psmCountMap;
         public HashMap<String, HashSet<String>> totalPepCountMap;

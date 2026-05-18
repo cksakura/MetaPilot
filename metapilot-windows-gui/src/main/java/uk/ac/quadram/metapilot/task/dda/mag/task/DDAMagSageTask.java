@@ -17,14 +17,15 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.concurrent.ExecutionException;
 
 import org.apache.logging.log4j.Logger;
 
 import uk.ac.quadram.metapilot.dbSearch.sage.SageTask;
 import uk.ac.quadram.metapilot.quant.flashLFQ.FlashLfqTask;
+import uk.ac.quadram.metapilot.core.mag.MagGenomeSelectionService;
+import uk.ac.quadram.metapilot.core.runner.MzmlSummaryFileWriter;
+import uk.ac.quadram.metapilot.core.workflow.ProgressCallback;
 import uk.ac.quadram.metapilot.core.prodb.DecoyShuffler;
 import uk.ac.quadram.metapilot.dbSearch.sage.SagePeptide;
 import uk.ac.quadram.metapilot.dbSearch.sage.SagePSM;
@@ -63,6 +64,8 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 
 	// Logger is inherited from MetaPilotMagTask -> MetaPilotTask as an instance field
 	private static final String taskName = "DDA MAG database search by Sage workflow";
+	private static final String MARKER_SEARCH_DIR = "marker";
+	private static final String SAMPLE_DB_SEARCH_DIR = "sample_db";
 
 	public DDAMagSageTask(DDAMagSageParameters magSageParams, MetaResourceParameters mrp, ProgressBar progressBar,
 			ProgressBar secondBar, Label statusLabel) {
@@ -84,7 +87,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 							: "unknown");
 
 			// Validate that the MAG database has the required files
-			File hapFastaFile = selectedMagDb.getHapFastaFile();
+			File hapFastaFile = selectedMagDb.getHapFastaFile(magSageParams.getGenomeSelectorMode());
 			if (hapFastaFile == null || !hapFastaFile.exists()) {
 				logger.error("MAG database HAP FASTA file is null or does not exist: {}",
 						hapFastaFile != null ? hapFastaFile.getAbsolutePath() : "null");
@@ -113,7 +116,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 
 		// Validate that the MAG database has the required files
 		if (selectedMagDb != null) {
-			File hapFastaFile = selectedMagDb.getHapFastaFile();
+			File hapFastaFile = selectedMagDb.getHapFastaFile(magSageParams.getGenomeSelectorMode());
 			if (hapFastaFile == null || !hapFastaFile.exists()) {
 				logger.error("MAG database HAP FASTA file is null or does not exist: {}",
 						hapFastaFile != null ? hapFastaFile.getAbsolutePath() : "null");
@@ -353,7 +356,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		// Update progress for completion
 		updateProgress(100, 100);
 		updateMessage(getTaskName() + ": Completed successfully!");
-		Platform.runLater(() -> secondBar.setProgress(0.0));
+		Platform.runLater(() -> secondBar.setProgress(1.0));
 
 		logger.info(getTaskName() + ": finished - all workflow steps completed successfully");
 		return true;
@@ -493,66 +496,9 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 			}
 		}
 
-		File rtFile = new File(spectraDirFile, "rt.txt");
-		File ms2CountFile = new File(spectraDirFile, "ms2Count.txt");
-		
-		if (!rtFile.exists() || rtFile.length() == 0 || !ms2CountFile.exists() || ms2CountFile.length() == 0) {
-
-			PrintWriter rtWriter = new PrintWriter(rtFile);
-			PrintWriter ms2CountWriter = new PrintWriter(ms2CountFile);
-
-			rtWriter.println("FileName\tScannum\tRt");
-			ms2CountWriter.println("FileName\tMS2 count");
-
-			Pattern scanPattern = Pattern.compile("scan=(\\d+)");
-			Pattern rtPattern = Pattern.compile("name=\"scan start time\"\\s+value=\"([^\"]+)\"");
-
-			// Verify all files were converted successfully
-			for (int i = 0; i < mzMLFiles.length; i++) {
-				if (mzMLFiles[i] == null) {
-					logger.error("Failed to convert file: {}", rawFiles[i]);
-					rtWriter.close();
-					ms2CountWriter.close();
-					
-					return false;
-				}
-
-				String fileName = (new File(mzMLFiles[i])).getName();
-				fileName = fileName.substring(0, fileName.length() - ".mzML".length());
-
-				int count = 0;
-				int scannum = 0;
-				boolean isMS2 = false;
-				BufferedReader reader = new BufferedReader(new FileReader(mzMLFiles[i]));
-				String line = null;
-				while ((line = reader.readLine()) != null) {
-					line = line.trim();
-					if (line.startsWith("<spectrum index=")) {
-						Matcher matcher = scanPattern.matcher(line);
-						if (matcher.find()) {
-							scannum = Integer.parseInt(matcher.group(1));
-						}
-						isMS2 = false;
-					} else if (line.endsWith("name=\"MSn spectrum\" value=\"\"/>")) {
-						count++;
-						isMS2 = true;
-					} else if (line.startsWith("<cvParam cvRef=\"MS\" accession=\"MS:1000016\" name=\"scan start time\"")) {
-						Matcher matcher = rtPattern.matcher(line);
-						double rt = -1;
-						if (matcher.find()) {
-							rt = Double.parseDouble(matcher.group(1));
-						}
-						if (isMS2) {
-							rtWriter.println(fileName + "\t" + scannum + "\t" + rt);
-						}
-					}
-				}
-				reader.close();
-				ms2CountWriter.println(fileName + "\t" + count);
-			}
-
-			rtWriter.close();
-			ms2CountWriter.close();
+		if (!MzmlSummaryFileWriter.ensure(spectraDirFile, mzMLFiles)) {
+			logger.error("Failed to create rt.txt/ms2Count.txt from mzML files");
+			return false;
 		}
 
 		logger.info("Spectra conversion completed successfully. Converted {} files to mzML format.", rawFiles.length);
@@ -569,7 +515,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		int threadCount = magSageParams.getThreadCount();
 		logger.info("Thread configuration: {}", threadCount);
 
-		File hapFastaFile = this.magDb.getHapFastaFile();
+		File hapFastaFile = this.magDb.getHapFastaFile(magSageParams.getGenomeSelectorMode());
 		if (hapFastaFile == null || !hapFastaFile.exists()) {
 			logger.error("HAP FASTA file is null or does not exist for MAG database: {}", this.magDb.getCatalogueID());
 			return false;
@@ -579,7 +525,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		boolean needNewSearch = false;
 		int filesNeedingSearch = 0;
 		for (int i = 0; i < this.mzMLFiles.length; i++) {
-			File hapFile = new File(separateResultFolders[i], "hap");
+			File hapFile = new File(separateResultFolders[i], MARKER_SEARCH_DIR);
 			File resultFile = new File(hapFile, "results.sage.tsv");
 			if (!resultFile.exists() || resultFile.length() == 0) {
 				needNewSearch = true;
@@ -592,7 +538,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 					this.mzMLFiles.length);
 
 			for (int i = 0; i < this.mzMLFiles.length; i++) {
-				File hapFile = new File(separateResultFolders[i], "hap");
+				File hapFile = new File(separateResultFolders[i], MARKER_SEARCH_DIR);
 				if (!hapFile.exists()) {
 					hapFile.mkdirs();
 				}
@@ -622,7 +568,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 
 			// Use the generic WatchServiceLoop from the superclass
 			logger.info("Starting WatchService monitoring for high abundant database search");
-			startWatchServiceLoop(separateResultFolders, "hap", filter, filesNeedingSearch, 10, 40);
+			startWatchServiceLoop(separateResultFolders, MARKER_SEARCH_DIR, filter, filesNeedingSearch, 10, 40);
 
 			// Calculate optimal thread pool based on RAM (1 thread per 16GB)
 			int threadPool = maxTaskCount > filesNeedingSearch ? filesNeedingSearch : maxTaskCount;
@@ -635,7 +581,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		// Verify search results
 		logger.info("Verifying search results for {} folders", separateResultFolders.length);
 		for (int i = 0; i < this.separateResultFolders.length; i++) {
-			File hapFile = new File(separateResultFolders[i], "hap");
+			File hapFile = new File(separateResultFolders[i], MARKER_SEARCH_DIR);
 //			logger.info("  Cleaning and verifying results for folder {}: {}", i+1, hapFile.getAbsolutePath());
 //			SageTask.cleanSageResultFolder(hapFile, true);
 
@@ -680,14 +626,11 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 			}
 		}
 
-		MarkerGenomeSelector selector = new MarkerGenomeSelector();
-		selector.setKneeSelectionMode(magSageParams.getGenomeSelectionStrategy());
 		int maximumSelected = 300;
-		boolean enableAutoRep = useMarker4;
 		String prefix = useMarker4 ? "marker_genome" : "genome";
 
 		for (int i = 0; i < this.separateResultFolders.length; i++) {
-			File hapFile = new File(separateResultFolders[i], "hap");
+			File hapFile = new File(separateResultFolders[i], MARKER_SEARCH_DIR);
 			File dbFile = new File(hapFile, separateResultFolders[i].getName() + ".fasta");
 
 			if (dbFile.exists() && dbFile.length() > 0) {
@@ -705,28 +648,27 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 			File rankedFile = new File(hapFile, prefix + "_ranked.tsv");
 			File selectedFile = new File(hapFile, prefix + "_selected.tsv");
 
-			if (useMarker4) {
-				selector.selectMarkerGenomesWithKnee(spectraFile.getAbsolutePath(), markerFasta, genomesTaxaTsv,
-						evidenceFile.getAbsolutePath(), rankedFile.getAbsolutePath(), selectedFile.getAbsolutePath(),
-						maximumSelected, enableAutoRep);
-			} else {
-				selector.selectMarkerGenomesWithKnee(spectraFile.getAbsolutePath(), evidenceFile.getAbsolutePath(),
-						rankedFile.getAbsolutePath(), selectedFile.getAbsolutePath(), maximumSelected, enableAutoRep);
+			MagGenomeSelectionService.Request selectionRequest = new MagGenomeSelectionService.Request();
+			selectionRequest.magDb = magDb;
+			selectionRequest.genomeSelectorMode = useMarker4 ? MagDbItem.MARKER4 : MagDbItem.MARKER2;
+			selectionRequest.genomeSelectionStrategy = magSageParams.getGenomeSelectionStrategy();
+			selectionRequest.inputResultFile = spectraFile;
+			selectionRequest.markerFasta = markerFasta;
+			selectionRequest.genomesTaxaTsv = genomesTaxaTsv;
+			selectionRequest.evidenceFile = evidenceFile;
+			selectionRequest.rankedFile = rankedFile;
+			selectionRequest.selectedFile = selectedFile;
+			selectionRequest.maximumSelected = maximumSelected;
+			try {
+				MagGenomeSelectionService.selectGenomes(selectionRequest, new ProgressCallback.NoOp());
+			} catch (Exception e) {
+				logger.error("Marker selector failed for {}", spectraFile.getAbsolutePath(), e);
+				return false;
 			}
 
-			HashSet<String> genomeSet = new HashSet<>();
-			try (BufferedReader reader = new BufferedReader(new FileReader(selectedFile))) {
-				String line = reader.readLine(); // header
-				while ((line = reader.readLine()) != null) {
-					line = line.trim();
-					if (line.isEmpty() || line.startsWith("#")) {
-						break;
-					}
-					String[] parts = line.split("\t");
-					if (parts.length > 0 && !parts[0].trim().isEmpty()) {
-						genomeSet.add(parts[0].trim());
-					}
-				}
+			HashSet<String> genomeSet;
+			try {
+				genomeSet = MagGenomeSelectionService.readSelectedGenomes(selectedFile);
 			} catch (IOException e) {
 				logger.error("Error reading selected genomes from {}", selectedFile.getAbsolutePath(), e);
 				return false;
@@ -771,14 +713,15 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 	protected boolean separateSearch() {
 		int taskCount = 0;
 		for (int i = 0; i < this.separateResultFolders.length; i++) {
-			File resultFile = new File(separateResultFolders[i], "results.sage.tsv");
+			File sampleSearchDir = new File(separateResultFolders[i], SAMPLE_DB_SEARCH_DIR);
+			File resultFile = new File(sampleSearchDir, "results.sage.tsv");
 			if (resultFile.exists() && resultFile.length() > 0) {
-				logger.info("[{}] Sage search result already exists in {}", getTaskName(), separateResultFolders[i].getAbsolutePath());
+				logger.info("[{}] Sage search result already exists in {}", getTaskName(), sampleSearchDir.getAbsolutePath());
 
 				logger.info(getTaskName() + ": Sage search result already exists in "
-						+ separateResultFolders[i].getAbsolutePath());
+						+ sampleSearchDir.getAbsolutePath());
 			} else {
-				File hapFile = new File(separateResultFolders[i], "hap");
+				File hapFile = new File(separateResultFolders[i], MARKER_SEARCH_DIR);
 				File db = new File(hapFile, separateResultFolders[i].getName() + ".fasta");
 				if (!db.exists()) {
 					logger.error("[{}] sample-specific database {} was not found", getTaskName(), db);
@@ -792,16 +735,18 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		if (taskCount > 0) {
 			for (int i = 0; i < this.mzMLFiles.length; i++) {
 				File mzMLFile = new File(mzMLFiles[i]);
-				File hapFile = new File(separateResultFolders[i], "hap");
+				File hapFile = new File(separateResultFolders[i], MARKER_SEARCH_DIR);
 				File db = new File(hapFile, separateResultFolders[i].getName() + ".fasta");
-				File resultFile = new File(separateResultFolders[i], "results.sage.tsv");
+				File sampleSearchDir = new File(separateResultFolders[i], SAMPLE_DB_SEARCH_DIR);
+				sampleSearchDir.mkdirs();
+				File resultFile = new File(sampleSearchDir, "results.sage.tsv");
 				if (!resultFile.exists() || resultFile.length() == 0) {
 					if (mzMLFile.exists()) {
 						if (db.exists() && db.length() > 0) {
 							// Use the new searchMzML method with DDAMagSageParameters for sample-specific
 							// database search
 							sageTask.searchMzML(new String[] { mzMLFile.getAbsolutePath() },
-									separateResultFolders[i].getAbsolutePath(), db.getAbsolutePath(), magSageParams,
+									sampleSearchDir.getAbsolutePath(), db.getAbsolutePath(), magSageParams,
 									false);
 						} else {
 							logger.warn(
@@ -826,7 +771,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 
 			// Use the generic WatchServiceLoop from the superclass
 			logger.info("Starting WatchService monitoring for sample-specific database search");
-			startWatchServiceLoop(separateResultFolders, "", filter, taskCount, 40, 65);
+			startWatchServiceLoop(separateResultFolders, SAMPLE_DB_SEARCH_DIR, filter, taskCount, 40, 65);
 
 			// Calculate optimal thread pool based on RAM (1 thread per 16GB)
 			int threadPool = maxTaskCount > taskCount ? taskCount : maxTaskCount;
@@ -838,17 +783,18 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		for (int i = 0; i < this.separateResultFolders.length; i++) {
 //			SageTask.cleanSageResultFolder(separateResultFolders[i], true);
 
-			File hapFile = new File(separateResultFolders[i], "hap");
+			File hapFile = new File(separateResultFolders[i], MARKER_SEARCH_DIR);
 			if (hapFile.exists()) {
 //				SageTask.cleanSageResultFolder(hapFile, true);
 			}
 
-			File resultFile = new File(separateResultFolders[i], "results.sage.tsv");
+			File sampleSearchDir = new File(separateResultFolders[i], SAMPLE_DB_SEARCH_DIR);
+			File resultFile = new File(sampleSearchDir, "results.sage.tsv");
 			if (!resultFile.exists() || resultFile.length() == 0) {
 				
 				File db = new File(hapFile, separateResultFolders[i].getName() + ".fasta");
 				if(db.length()>0) {
-					logger.error("Sage search result was not found in {}", separateResultFolders[i].getAbsolutePath());
+					logger.error("Sage search result was not found in {}", sampleSearchDir.getAbsolutePath());
 					return false;
 				}
 			}
@@ -878,9 +824,10 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 				try (PrintWriter writer = new PrintWriter(combinedResultTsv)) {
 					boolean wroteHeader = false;
 					for (int i = 0; i < separateResultFolders.length; i++) {
-						File pepResultFile = new File(separateResultFolders[i], "results.sage.tsv");
+						File pepResultFile = new File(new File(separateResultFolders[i], SAMPLE_DB_SEARCH_DIR),
+								"results.sage.tsv");
 						if (!pepResultFile.exists() || pepResultFile.length() == 0) {
-							File fastaFile = new File(new File(separateResultFolders[i], "hap"),
+							File fastaFile = new File(new File(separateResultFolders[i], MARKER_SEARCH_DIR),
 									separateResultFolders[i].getName() + ".fasta");
 							if (fastaFile.length() == 0) {
 								logger.info("No proteins found from {}, skip...", separateResultFolders[i].getName());
@@ -983,33 +930,29 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 			File rankedFile = new File(combinedFile, prefix + "_ranked.tsv");
 			File selectedFile = new File(combinedFile, prefix + "_selected.tsv");
 
-			MarkerGenomeSelector selector = new MarkerGenomeSelector();
-			selector.setRepresentativeLevel("CLASS");
 			int maximumSelected = MarkerGenomeSelector.UNLIMITED_MAXIMUM_SELECTED;
-			selector.setKneeSelectionMode(magSageParams.getGenomeSelectionStrategy());
-			boolean enableAutoRep = useMarker4;
-			if (useMarker4) {
-				selector.selectMarkerGenomesWithKnee(combinedResultTsv.getAbsolutePath(), markerFasta, genomesTaxaTsv,
-						evidenceFile.getAbsolutePath(), rankedFile.getAbsolutePath(), selectedFile.getAbsolutePath(),
-						maximumSelected, enableAutoRep);
-			} else {
-				selector.selectMarkerGenomesWithKnee(combinedResultTsv.getAbsolutePath(), evidenceFile.getAbsolutePath(),
-						rankedFile.getAbsolutePath(), selectedFile.getAbsolutePath(), maximumSelected, enableAutoRep);
+			MagGenomeSelectionService.Request selectionRequest = new MagGenomeSelectionService.Request();
+			selectionRequest.magDb = magDb;
+			selectionRequest.genomeSelectorMode = useMarker4 ? MagDbItem.MARKER4 : MagDbItem.MARKER2;
+			selectionRequest.genomeSelectionStrategy = magSageParams.getGenomeSelectionStrategy();
+			selectionRequest.inputResultFile = combinedResultTsv;
+			selectionRequest.markerFasta = markerFasta;
+			selectionRequest.genomesTaxaTsv = genomesTaxaTsv;
+			selectionRequest.evidenceFile = evidenceFile;
+			selectionRequest.rankedFile = rankedFile;
+			selectionRequest.selectedFile = selectedFile;
+			selectionRequest.maximumSelected = maximumSelected;
+			selectionRequest.representativeLevel = "CLASS";
+			try {
+				MagGenomeSelectionService.selectGenomes(selectionRequest, new ProgressCallback.NoOp());
+			} catch (Exception e) {
+				logger.error("Marker selector failed for {}", combinedResultTsv.getAbsolutePath(), e);
+				return false;
 			}
 
-			HashSet<String> genomeSet = new HashSet<>();
-			try (BufferedReader reader = new BufferedReader(new FileReader(selectedFile))) {
-				String line = reader.readLine(); // header
-				while ((line = reader.readLine()) != null) {
-					line = line.trim();
-					if (line.isEmpty() || line.startsWith("#")) {
-						break;
-					}
-					String[] parts = line.split("\t");
-					if (parts.length > 0 && !parts[0].trim().isEmpty()) {
-						genomeSet.add(parts[0].trim());
-					}
-				}
+			HashSet<String> genomeSet;
+			try {
+				genomeSet = MagGenomeSelectionService.readSelectedGenomes(selectedFile);
 			} catch (IOException e) {
 				logger.error("Error reading marker selected genomes from {}", selectedFile.getAbsolutePath(), e);
 				return false;
@@ -1071,7 +1014,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 			HashSet<String> containSet = new HashSet<String>();
 			try (PrintWriter writer = new PrintWriter(combinedFastaFile)) {
 				for (int i = 0; i < separateResultFolders.length; i++) {
-					File hapFile = new File(separateResultFolders[i], "hap");
+					File hapFile = new File(separateResultFolders[i], MARKER_SEARCH_DIR);
 					File dbFile = new File(hapFile, separateResultFolders[i].getName() + ".fasta");
 					try (BufferedReader reader = new BufferedReader(new FileReader(dbFile))) {
 						String line = null;
@@ -1212,7 +1155,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 			File[] files = magSageParams.getDbSearchResultFile().listFiles();
 			for (int i = 0; i < files.length; i++) {
 				if (files[i].isDirectory() && !files[i].getName().equals("combined")
-						&& (new File(files[i], "hap")).exists()) {
+						&& (new File(new File(files[i], SAMPLE_DB_SEARCH_DIR), "results.sage.tsv")).exists()) {
 					fileIdMap.put(files[i].getName(), fileIdMap.size());
 					fileList.add(files[i].getName());
 				}

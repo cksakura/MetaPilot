@@ -1,6 +1,7 @@
 package uk.ac.quadram.metapilot.task.dia.par;
 
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
+import uk.ac.quadram.metapilot.task.dia.DiaRefinementMode;
 import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.par.MetaData;
@@ -24,7 +25,7 @@ public class MetaParameterDia extends MetaBaseParameter {
 	private boolean phosphoSTY = false;
 	private boolean kGG = false;
 	
-	// Seed workflow mode: DIRECT, FOCUS, COMPREHENSIVE, DEEP
+	// Seed workflow mode persisted for compatibility: DIRECT, FOCUS, COMPREHENSIVE, DEEP
 	private String seedMode = "DIRECT";
 
 	// Deep-seed peptide-based round mode
@@ -145,7 +146,15 @@ public class MetaParameterDia extends MetaBaseParameter {
 	}
 	
 	public void setSeedMode(String seedMode) {
-		this.seedMode = seedMode;
+		this.seedMode = DiaRefinementMode.fromSeedMode(seedMode).getPersistedValue();
+	}
+
+	public DiaRefinementMode getSeedRefinementMode() {
+		return DiaRefinementMode.fromSeedMode(seedMode);
+	}
+
+	public void setSeedRefinementMode(DiaRefinementMode mode) {
+		this.seedMode = (mode != null ? mode : DiaRefinementMode.DIRECT).getPersistedValue();
 	}
 
 	public boolean isUsePeptideBasedRound() {

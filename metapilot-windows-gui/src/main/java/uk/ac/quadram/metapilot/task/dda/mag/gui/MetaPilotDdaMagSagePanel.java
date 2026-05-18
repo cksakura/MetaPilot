@@ -22,8 +22,6 @@ import uk.ac.quadram.metapilot.core.MGYG.HapExtractor;
 import uk.ac.quadram.metapilot.task.mag.MarkerGenomeSelector;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX.ExperimentRow;
-import uk.ac.quadram.metapilot.dbSearch.deepDetect.DeepDetectParameter;
-import uk.ac.quadram.metapilot.dbSearch.deepDetect.DeepDetectTask;
 import javafx.application.Platform;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -135,9 +133,6 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 
 			// Initialize reusable components
 			consolePanel = new ConsolePanel();
-			consolePanel.setStartCallback(this::startAnalysis);
-			consolePanel.setStopCallback(this::stopAnalysis);
-			consolePanel.setViewReportCallback(this::viewReport);
 			metadataPanel = new MetadataConfigurationPanel();
 			isobaricPanel = new IsobaricLabelingPanel();
 			magDatabasePanel = new MagDatabaseSettingsPanel();
@@ -149,9 +144,7 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 				updateMetadataTable();
 			});
 			magDatabasePanel.setParameterUpdateCallback(this::updateParameterView);
-			consolePanel.setStartCallback(this::startAnalysis);
-			consolePanel.setStopCallback(this::stopAnalysis);
-			consolePanel.setViewReportCallback(this::viewReport);
+			configureConsolePanel(consolePanel);
 
 			// Create tab pane
 			TabPane tabPane = new TabPane();
@@ -714,8 +707,8 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 			confirmAlert.setTitle("Marker4 files missing");
 			confirmAlert.setHeaderText("Generate required files for 4-markers?");
 			confirmAlert.setContentText(
-					"Marker4 (Marker4_highpep) requires Marker4_highpep.fasta and genomes-taxa.tsv. These files are missing for the selected MAG database.\n\n"
-							+ "Generate them now? This may take some time (DeepDetect prediction).");
+					"Marker4 requires Marker4.fasta and genomes-taxa.tsv. These files are missing for the selected MAG database.\n\n"
+							+ "Generate them now? This may take some time.");
 			confirmAlert.getButtonTypes().setAll(ButtonType.YES, ButtonType.NO);
 			Optional<ButtonType> result = confirmAlert.showAndWait();
 			if (result.isEmpty() || result.get() != ButtonType.YES) {
@@ -769,7 +762,7 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 	}
 
 	/**
-	 * Quick check (on current thread): do Marker4_highpep.fasta and genomes-taxa.tsv exist for the selected MAG DB?
+	 * Quick check (on current thread): do Marker4.fasta and genomes-taxa.tsv exist for the selected MAG DB?
 	 */
 	private boolean marker4RequiredFilesExist() {
 		if (magDatabasePanel == null)
@@ -780,13 +773,13 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 		File currentFile = selectedDb.getCurrentFile();
 		if (currentFile == null)
 			return false;
-		File markersFile = new File(currentFile, "Marker4_highpep.fasta");
+		File markersFile = new File(currentFile, "Marker4.fasta");
 		File genomeTaxaFile = new File(currentFile, "genomes-taxa.tsv");
 		return markersFile.exists() && genomeTaxaFile.exists();
 	}
 
 	/**
-	 * Generates marker4 required files in a background thread (Marker4_highpep.fasta and genomes-taxa.tsv).
+	 * Generates marker4 required files in a background thread (Marker4.fasta and genomes-taxa.tsv).
 	 */
 	protected void generateMarker4FilesIfNeeded(Consumer<Boolean> onComplete) {
 		new Thread(() -> {
@@ -806,9 +799,9 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 					Platform.runLater(() -> onComplete.accept(false));
 					return;
 				}
-				File markersFile = new File(currentFile, "Marker4_highpep.fasta");
+				File markersFile = new File(currentFile, "Marker4.fasta");
 				if (!markersFile.exists()) {
-					ensure4markersHighpepFasta(selectedDb, markersFile);
+					ensureMarker4Fasta(selectedDb, markersFile);
 				}
 				File genomeTaxaFile = new File(currentFile, "genomes-taxa.tsv");
 				if (!genomeTaxaFile.exists()) {
@@ -824,67 +817,25 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 		}).start();
 	}
 
-	/** Default peptide detectability threshold for Marker4_highpep (peptides above this are kept). */
-	private static final double DEFAULT_DETECTABILITY_THRESHOLD = 0.8;
-
 	/**
-	 * Generates Marker4_highpep.fasta when missing: (1) extract 4-markers proteins from original DB
-	 * into Marker4.fasta, (2) run DeepDetect to predict peptide detectability → Marker4.predicted.tsv,
-	 * (3) select high-detectability peptides (threshold {@value #DEFAULT_DETECTABILITY_THRESHOLD}) and
-	 * write Marker4_highpep.fasta for search.
+	 * Generates Marker4.fasta when missing by extracting the four marker categories from the original MAG DB.
 	 */
-	private void ensure4markersHighpepFasta(MagDbItem selectedDb, File markersHighpepFile) {
-		File currentDir = markersHighpepFile.getParentFile();
+	private void ensureMarker4Fasta(MagDbItem selectedDb, File marker4File) {
 		File originalDbFolder = selectedDb.getOriginalDbFolder();
 		if (originalDbFolder == null || !originalDbFolder.exists()) {
-			LOGGER.debug("Cannot generate Marker4_highpep.fasta: original DB folder not available");
+			LOGGER.debug("Cannot generate Marker4.fasta: original DB folder not available");
 			return;
 		}
 		try {
-			// Step 1: Extract 4-markers protein FASTA from original DB (not used for search directly)
-			File fourMarkersFasta = new File(currentDir, "Marker4.fasta");
-			if (!fourMarkersFasta.exists()) {
-				HapExtractor extractor = new HapExtractor();
-				extractor.extractFourCategories(originalDbFolder, fourMarkersFasta);
-			}
-			if (!fourMarkersFasta.exists()) {
-				LOGGER.warn("Marker4.fasta was not created");
-				return;
-			}
-
-			// Step 2: Predict peptide detectability with DeepDetect
-			File predictedTsv = new File(currentDir, "Marker4.predicted.tsv");
-			if (!predictedTsv.exists()) {
-				MetaResourceParameters mrp = new MetaResourceIO().loadParameters();
-				String exePath = mrp != null ? mrp.getToolPath(MetaResourceParameters.ToolType.DEEPDETECT) : null;
-				File deepDetectExe = exePath != null && !exePath.isEmpty() ? new File(exePath) : null;
-				if (deepDetectExe == null || !deepDetectExe.exists()) {
-					LOGGER.warn("DeepDetect executable not found; cannot generate Marker4.predicted.tsv");
-					return;
-				}
-				DeepDetectParameter par = new DeepDetectParameter();
-				par.setInput(fourMarkersFasta);
-				par.setOutput(predictedTsv);
-				int timeoutHours = 4;
-				boolean ok = DeepDetectTask.testDeepDetect(deepDetectExe, par, timeoutHours);
-				if (!ok || !predictedTsv.exists()) {
-					LOGGER.warn("DeepDetect did not produce Marker4.predicted.tsv");
-					return;
-				}
-			}
-
-			// Step 3: Select high-detectability peptides and write Marker4_highpep.fasta
-			MarkerGenomeSelector.exportPeptideFasta(predictedTsv.getAbsolutePath(),
-					markersHighpepFile.getAbsolutePath(), DEFAULT_DETECTABILITY_THRESHOLD);
-
-			if (markersHighpepFile.exists()) {
-				LOGGER.info("Generated Marker4_highpep.fasta for selected MAG database: {}",
-						markersHighpepFile.getAbsolutePath());
+			HapExtractor extractor = new HapExtractor();
+			extractor.extractFourCategories(originalDbFolder, marker4File);
+			if (marker4File.exists()) {
+				LOGGER.info("Generated Marker4.fasta for selected MAG database: {}", marker4File.getAbsolutePath());
 			} else {
-				LOGGER.warn("Marker4_highpep.fasta was not written (no peptides above threshold?)");
+				LOGGER.warn("Marker4.fasta was not written");
 			}
 		} catch (IOException e) {
-			LOGGER.warn("Failed to generate Marker4_highpep.fasta", e);
+			LOGGER.warn("Failed to generate Marker4.fasta", e);
 		}
 	}
 

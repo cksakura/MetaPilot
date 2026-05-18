@@ -4,80 +4,20 @@
     "mag_db_version": "v2.0.2",
     "host_database": "C:\\Users\\daz25hak\\MetaProAI\\database\\uniprotkb_Human_AND_reviewed_true_AND_m_2025_09_01.fasta",
     "mag_database": "human-gut",
-    "output_directory": "Z:\\PRIDE_dataset\\PXD007959_xu_IBD\\MetaPilot",
+    "output_directory": "Z:\\PRIDE_dataset\\PXD050781_haonan\\MetaPilot_jumpstart\\MetaPilot",
     "append_host_db": true,
     "experiments": [
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD007959_xu_IBD\\Shelley_20160815_QE_EVesicles_514_dCA_UC_Mild.raw",
-        "experiment_name": "514_dCA_UC_Mild"
+        "file_path": "Z:\\PRIDE_dataset\\PXD050781_haonan\\MetaPilot_jumpstart\\20221208_Ailing_Jumpstart_C.raw",
+        "experiment_name": "20221208_Ailing_Jumpstart_C"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD007959_xu_IBD\\Shelley_20160815_QE_EVesicles_537_dCN_Control.raw",
-        "experiment_name": "537_dCN_Control"
+        "file_path": "Z:\\PRIDE_dataset\\PXD050781_haonan\\MetaPilot_jumpstart\\20221208_Ailing_Jumpstart_D.raw",
+        "experiment_name": "20221208_Ailing_Jumpstart_D"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD007959_xu_IBD\\Shelley_20160815_QE_EVesicles_568_dCA_CD_Mild.raw",
-        "experiment_name": "568_dCA_CD_Mild"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD007959_xu_IBD\\Shelley_20160815_QE_EVesicles_572_dCN_Control.raw",
-        "experiment_name": "572_dCN_Control"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD007959_xu_IBD\\Shelley_20160815_QE_EVesicles_573_dCA_UC.raw",
-        "experiment_name": "573_dCA_UC"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD007959_xu_IBD\\Shelley_20160815_QE_EVesicles_579_dCA_CD_Moderate.raw",
-        "experiment_name": "579_dCA_CD_Moderate"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD007959_xu_IBD\\Shelley_20160815_QE_EVesicles_580_dCA_UC_Severe.raw",
-        "experiment_name": "580_dCA_UC_Severe"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD007959_xu_IBD\\Shelley_20160815_QE_EVesicles_582_dCA_UC_Moderate.raw",
-        "experiment_name": "582_dCA_UC_Moderate"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD007959_xu_IBD\\Shelley_20160815_QE_EVesicles_590_dCN_Control.raw",
-        "experiment_name": "590_dCN_Control"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD007959_xu_IBD\\Shelley_20160815_QE_EVesicles_594_dCN_Control.raw",
-        "experiment_name": "594_dCN_Control"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD007959_xu_IBD\\Shelley_20160815_QE_EVesicles_607_dCN_Control.raw",
-        "experiment_name": "607_dCN_Control"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD007959_xu_IBD\\Shelley_20160815_QE_EVesicles_616_dCA_UC_Moderate.raw",
-        "experiment_name": "616_dCA_UC_Moderate"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD007959_xu_IBD\\Shelley_20160815_QE_EVesicles_617_dCA_UC_Severe.raw",
-        "experiment_name": "617_dCA_UC_Severe"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD007959_xu_IBD\\Shelley_20160815_QE_EVesicles_618_dCA_CD_Severe.raw",
-        "experiment_name": "618_dCA_CD_Severe"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD007959_xu_IBD\\Shelley_20160815_QE_EVesicles_620_dCA_UC_Mild.raw",
-        "experiment_name": "620_dCA_UC_Mild"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD007959_xu_IBD\\Shelley_20160815_QE_EVesicles_625_dCN_Control.raw",
-        "experiment_name": "625_dCN_Control"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD007959_xu_IBD\\Shelley_20160815_QE_EVesicles_632_dCA_CD_Inactive.raw",
-        "experiment_name": "632_dCA_CD_Inactive"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD007959_xu_IBD\\Shelley_20160815_QE_EVesicles_647_dCN_Control.raw",
-        "experiment_name": "647_dCN_Control"
+        "file_path": "Z:\\PRIDE_dataset\\PXD050781_haonan\\MetaPilot_jumpstart\\20221208_Ailing_Jumpstart_E.raw",
+        "experiment_name": "20221208_Ailing_Jumpstart_E"
       }
     ]
   },
@@ -86,13 +26,13 @@
     "missed_cleavages": 2,
     "digestion_mode": "Specific"
   },
-  "generated_at": "2026-04-14 09:14:41",
+  "generated_at": "2026-05-16 12:21:18",
   "fragpipe_workflow_configured": true,
   "additional_parameters": {
     "generate_sample_specific_db": true,
     "ms2_scan_mode": "Regular MS",
     "spectra_clustering": false,
-    "threads": 10,
+    "threads": 20,
     "genome_selector_mode": "Marker4",
     "genome_selection_strategy": "Comprehensive"
   },

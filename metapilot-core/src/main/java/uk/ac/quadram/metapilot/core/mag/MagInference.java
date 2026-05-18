@@ -23,7 +23,10 @@ import java.util.Comparator;
  * Provides:
  * - genome scoring from peptide evidence (legacy method used in GUI as fallback)
  * - razor protein selection using genome scores
+ *
+ * @deprecated Use {@link DdaMagGenomeScoringService} and {@link DdaMagProteinInferenceService}.
  */
+@Deprecated
 public final class MagInference {
 
     private MagInference() {
@@ -34,7 +37,10 @@ public final class MagInference {
      *
      * Returns genome -> score where smaller is "more significant" (p-value like),
      * matching the downstream "-log10(p)" usage in exports.
+     *
+     * @deprecated Use {@link DdaMagGenomeScoringService#refineGenomes(MetaPeptide[], String, MetaPSM[], String)}.
      */
+    @Deprecated
     public static HashMap<String, Double> scoreGenomesLegacy(MagDbItem magDb, MetaPeptide[] quanPeps, String decoySymbol) {
         if (magDb == null) throw new IllegalArgumentException("magDb is null");
         if (quanPeps == null) return new HashMap<>();
@@ -218,7 +224,10 @@ public final class MagInference {
      * - BH -> q_value
      * - returns genomeScoreMap = 1 - q_value (Windows behavior)
      * - returns statsForTaxonomy = genome -> {S, p_emp, q_value}
+     *
+     * @deprecated Use {@link DdaMagGenomeScoringService#refineGenomes(MetaPeptide[], String, MetaPSM[], String)}.
      */
+    @Deprecated
     public static DiaStyleResult scoreGenomesDiaStyle(MagDbItem magDb,
                                                      MetaPeptide[] quanPeps,
                                                      MetaPSM[] psms,
@@ -404,10 +413,11 @@ public final class MagInference {
         String[] genomes = pempMap.keySet().toArray(new String[0]);
         Arrays.sort(genomes, Comparator.comparingDouble(pempMap::get));
         int nGenomes = genomes.length;
+        HashMap<String, Double> qValueMap = computeBenjaminiHochbergQValues(pempMap);
         for (int i = 0; i < nGenomes; i++) {
             String g = genomes[i];
             double pemp = pempMap.get(g);
-            double q = Math.min(1.0, pemp * nGenomes / (i + 1));
+            double q = qValueMap.get(g);
             out.genomeScoreMap.put(g, 1.0 - q);
             out.statsForTaxonomy.put(g, new double[]{ SMap.get(g), pemp, q });
         }
@@ -428,9 +438,30 @@ public final class MagInference {
         return out;
     }
 
+    private static HashMap<String, Double> computeBenjaminiHochbergQValues(HashMap<String, Double> pValueMap) {
+        HashMap<String, Double> qValueMap = new HashMap<>();
+        if (pValueMap == null || pValueMap.isEmpty()) {
+            return qValueMap;
+        }
+        String[] ids = pValueMap.keySet().toArray(new String[0]);
+        Arrays.sort(ids, Comparator.comparingDouble(pValueMap::get));
+        int n = ids.length;
+        double minAdjusted = 1.0;
+        for (int i = n - 1; i >= 0; i--) {
+            double p = pValueMap.get(ids[i]);
+            double adjusted = Math.min(1.0, p * n / (i + 1));
+            minAdjusted = Math.min(minAdjusted, adjusted);
+            qValueMap.put(ids[i], minAdjusted);
+        }
+        return qValueMap;
+    }
+
     /**
      * Razor protein selection (ported from GUI).
+     *
+     * @deprecated Use {@link DdaMagProteinInferenceService#refineProteins(MetaPeptide[], Map, String, String)}.
      */
+    @Deprecated
     public static String[] selectRazorProteins(MagDbItem magDb, MetaPeptide[] quanPeps, HashMap<String, Double> genomeScoreMap, String decoySymbol) {
         if (magDb == null) throw new IllegalArgumentException("magDb is null");
         if (quanPeps == null) return new String[0];
@@ -504,6 +535,10 @@ public final class MagInference {
         return razorProteins;
     }
 
+    /**
+     * @deprecated Use {@link DdaMagGenomeScoringService.Result}.
+     */
+    @Deprecated
     public static final class DiaStyleResult {
         public HashMap<String, Double> genomeScoreMap;
         /** genome -> double[]{S, p_emp, q_value} */

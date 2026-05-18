@@ -32,6 +32,8 @@ public class MagDatabaseSettingsPanel extends VBox {
 	private TextField hostDBField;
 	private CheckBox appendHostDBCheckBox;
 	private Button browseHostDBButton;
+	private FileChooser.ExtensionFilter hostDatabaseExtensionFilter =
+			new FileChooser.ExtensionFilter("FASTA Files", "*.fasta", "*.fa");
 
 	// Data
 	private ObservableList<MagDbItem> availableMagDatabases = FXCollections.observableArrayList();
@@ -147,7 +149,7 @@ public class MagDatabaseSettingsPanel extends VBox {
 
 		FileChooser chooser = new FileChooser();
 		chooser.setTitle("Select Host Database File");
-		chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("FASTA Files", "*.fasta", "*.fa"));
+		chooser.getExtensionFilters().add(hostDatabaseExtensionFilter);
 		File file = chooser.showOpenDialog(getScene().getWindow());
 		if (file != null) {
 			hostDBField.setText(file.getAbsolutePath());
@@ -282,6 +284,13 @@ public class MagDatabaseSettingsPanel extends VBox {
 		if (hostDBField != null) {
 			hostDBField.setText(hostDb);
 		}
+	}
+
+	public void setHostDatabaseExtensionFilter(String description, String... extensions) {
+		if (description == null || description.isBlank() || extensions == null || extensions.length == 0) {
+			return;
+		}
+		hostDatabaseExtensionFilter = new FileChooser.ExtensionFilter(description, extensions);
 	}
 
 	// Callback setter

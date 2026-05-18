@@ -33,7 +33,7 @@ import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.util.Duration;
 import uk.ac.quadram.metapilot.task.dia.DiaLibCreateTask;
-import uk.ac.quadram.metapilot.task.dia.MetaDiaMarkerTask;
+import uk.ac.quadram.metapilot.task.dia.DiaMarkerCoreTask;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.mag.MagDbConfigIO;
@@ -652,14 +652,11 @@ public class DiaLibraryPanelNoModel extends VBox {
 			return "Reason: generated library folder is empty: " + libraryFolder.getAbsolutePath() + "\n";
 		}
 
-		File speclibFile = new File(libraryFolder, libraryName + ".speclib");
-		File tsvFile = new File(libraryFolder, libraryName + ".tsv");
 		File parquetFile = new File(libraryFolder, libraryName + ".parquet");
-		if (!speclibFile.exists() && !tsvFile.exists() && !parquetFile.exists()) {
+		if (!parquetFile.exists()) {
 			StringBuilder sb = new StringBuilder();
-			sb.append("Reason: no expected library file found in: ").append(libraryFolder.getAbsolutePath()).append("\n");
-			sb.append("Expected one of: ").append(speclibFile.getName()).append(", ")
-					.append(tsvFile.getName()).append(", ").append(parquetFile.getName()).append("\n");
+			sb.append("Reason: expected parquet library file was not found in: ").append(libraryFolder.getAbsolutePath()).append("\n");
+			sb.append("Expected: ").append(parquetFile.getName()).append("\n");
 			sb.append("Actual files: ");
 			for (int i = 0; i < contents.length; i++) {
 				if (i > 0) {
@@ -747,7 +744,7 @@ public class DiaLibraryPanelNoModel extends VBox {
 										consoleOutput.appendText("Generating Marker4 spectral library...\n");
 									}
 								});
-								boolean genOk = MetaDiaMarkerTask.generateMarker4LibraryOnly(diaPar, resourceParameters,
+								boolean genOk = DiaMarkerCoreTask.generateMarker4LibraryOnly(diaPar, resourceParameters,
 										currentMagDbItem, libraryProgressBar, null);
 								if (!genOk) {
 									Platform.runLater(() -> {
@@ -806,11 +803,9 @@ public class DiaLibraryPanelNoModel extends VBox {
 					int[] foundLibraries = { 0 };
 					for (File libraryFolder : libraryFolders) {
 						String libraryName = libraryFolder.getName();
-						File speclibFile = new File(libraryFolder, libraryName + ".speclib");
-						File tsvFile = new File(libraryFolder, libraryName + ".tsv");
 						File parquetFile = new File(libraryFolder, libraryName + ".parquet");
 
-						if (speclibFile.exists() || tsvFile.exists() || parquetFile.exists()) {
+						if (parquetFile.exists()) {
 							File infoFile = new File(libraryFolder, libraryName + "_info.txt");
 							if (infoFile.exists()) {
 								currentMagDbItem.addPepLibFromFile(libraryFolder);
@@ -939,8 +934,6 @@ public class DiaLibraryPanelNoModel extends VBox {
 
 	private void updateProgressStep(int step, String message) {
 		currentStep = step;
-		double progress = (double) step / totalSteps;
-		libraryProgressBar.setProgress(progress);
 
 		if (progressLabel != null) {
 			if (step == 0) {

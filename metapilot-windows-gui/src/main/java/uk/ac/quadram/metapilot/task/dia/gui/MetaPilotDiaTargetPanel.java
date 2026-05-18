@@ -273,9 +273,7 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 
 		// Initialize console panel
 		consolePanel = new ConsolePanel();
-		consolePanel.setStartCallback(this::startAnalysis);
-		consolePanel.setStopCallback(this::stopAnalysis);
-		consolePanel.setViewReportCallback(this::viewReport);
+		configureConsolePanel(consolePanel);
 		tabContent.getChildren().addAll(createSectionTitle("Input/Output Settings"), ioPanel,
 				createSectionTitle("Database Settings"), magDatabasePanel,
 				createSectionTitle("Taxa-Function Database Generation"), dbGenerationPanel);

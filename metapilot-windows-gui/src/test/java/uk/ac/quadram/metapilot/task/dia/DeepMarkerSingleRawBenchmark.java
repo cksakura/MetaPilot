@@ -16,14 +16,15 @@ import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.workflow.WorkflowType;
 
 /**
- * Minimal benchmark harness for testing deep marker strategies on a single raw file.
+ * Minimal benchmark harness for testing deep marker strategies on a single raw
+ * file.
  *
- * Intended usage:
- * - Run from IDE with main() or call runOnce(...)
- * - Provide raw file, output folder, MAG DB config (MAGDB_1_0.json), catalogue ID/version
- * - Optionally set genomesPerRound (e.g. 5 vs 10)
+ * Intended usage: - Run from IDE with main() or call runOnce(...) - Provide raw
+ * file, output folder, MAG DB config (MAGDB_1_0.json), catalogue ID/version -
+ * Optionally set genomesPerRound (e.g. 5 vs 10)
  *
- * This runner keeps parameters simple: defaults everywhere except what you pass.
+ * This runner keeps parameters simple: defaults everywhere except what you
+ * pass.
  */
 public final class DeepMarkerSingleRawBenchmark {
 
@@ -33,7 +34,8 @@ public final class DeepMarkerSingleRawBenchmark {
 	private static volatile boolean fxStarted = false;
 
 	private static synchronized void ensureJavaFxStarted() {
-		if (fxStarted) return;
+		if (fxStarted)
+			return;
 		try {
 			Platform.startup(() -> {
 				// no-op: just initialize toolkit
@@ -63,48 +65,36 @@ public final class DeepMarkerSingleRawBenchmark {
 		runOnce(rawFile, outDir, magdbJson, catalogueId, catalogueVersion, genomesPerRound);
 	}
 
-	public static boolean runOnce(
-			String rawFilePath,
-			String outDirPath,
-			String magDbConfigJsonPath,
-			String magDbCatalogueId,
-			String magDbCatalogueVersion,
-			int genomesPerRound
-	) throws Exception {
+	public static boolean runOnce(String rawFilePath, String outDirPath, String magDbConfigJsonPath,
+			String magDbCatalogueId, String magDbCatalogueVersion, int genomesPerRound) throws Exception {
 		ensureJavaFxStarted();
 
 		File raw = new File(rawFilePath);
 		File outDir = new File(outDirPath);
 		File magDbJson = new File(magDbConfigJsonPath);
-		if (!raw.exists()) throw new IllegalArgumentException("Raw file not found: " + raw.getAbsolutePath());
-		if (!magDbJson.exists()) throw new IllegalArgumentException("MAG DB config not found: " + magDbJson.getAbsolutePath());
+		if (!raw.exists())
+			throw new IllegalArgumentException("Raw file not found: " + raw.getAbsolutePath());
+		if (!magDbJson.exists())
+			throw new IllegalArgumentException("MAG DB config not found: " + magDbJson.getAbsolutePath());
 		outDir.mkdirs();
 
 		MagDbItem magDb = resolveMagDb(magDbJson, magDbCatalogueId, magDbCatalogueVersion);
-		if (magDb == null) throw new IllegalStateException("Failed to resolve MAG DB item from config");
+		if (magDb == null)
+			throw new IllegalStateException("Failed to resolve MAG DB item from config");
 
 		MetaResourceParameters mrp = new MetaResourceIO().loadParameters();
 
 		MetaData md = new MetaData(new String[] { raw.getAbsolutePath() }, new String[] { raw.getName() });
-		MetaBaseParameter base = new MetaBaseParameter(
-				WorkflowType.DIA_MARKER.getAnalysisType(),
-				md,
-				outDir.getAbsolutePath(),
-				magDbCatalogueId,
-				false,
-				"",
-				"DIA",
-				1,
-				Math.max(1, Runtime.getRuntime().availableProcessors() / 2),
-				true
-		);
+		MetaBaseParameter base = new MetaBaseParameter(WorkflowType.DIA_MARKER.getAnalysisType(), md,
+				outDir.getAbsolutePath(), magDbCatalogueId, false, "", "DIA", 1,
+				Math.max(1, Runtime.getRuntime().availableProcessors() / 2), true);
 
-		MetaParameterDiaMarker p = new MetaParameterDiaMarker(base, magDb, true, false, new String[0], false, new String[0]);
+		MetaParameterDiaMarker p = new MetaParameterDiaMarker(base, magDb, true, false, new String[0], false,
+				new String[0]);
 		p.setMarkerMode("DEEP_PER_FILE");
 		p.setGenomesPerRound(genomesPerRound <= 0 ? 5 : genomesPerRound);
-
 		long t0 = System.currentTimeMillis();
-		MetaDiaDeepMarkerTask task = new MetaDiaDeepMarkerTask(p, mrp, new ProgressBar(), new ProgressBar());
+		DiaMarkerDeepPerFileTask task = new DiaMarkerDeepPerFileTask(p, mrp, new ProgressBar(), new ProgressBar());
 		boolean ok = Boolean.TRUE.equals(task.call());
 		long t1 = System.currentTimeMillis();
 
@@ -118,21 +108,28 @@ public final class DeepMarkerSingleRawBenchmark {
 
 	private static MagDbItem resolveMagDb(File magDbJson, String catalogueId, String catalogueVersion) {
 		MagDbItem[][] items = MagDbConfigIO.parse(magDbJson);
-		if (items == null) return null;
+		if (items == null)
+			return null;
 
 		ArrayList<MagDbItem> flat = new ArrayList<>();
 		for (MagDbItem[] group : items) {
-			if (group == null) continue;
+			if (group == null)
+				continue;
 			for (MagDbItem it : group) {
-				if (it != null) flat.add(it);
+				if (it != null)
+					flat.add(it);
 			}
 		}
 		for (MagDbItem it : flat) {
-			if (it.getCatalogueID() == null) continue;
-			if (!it.getCatalogueID().equals(catalogueId)) continue;
-			if (it.getVersionList() == null) continue;
+			if (it.getCatalogueID() == null)
+				continue;
+			if (!it.getCatalogueID().equals(catalogueId))
+				continue;
+			if (it.getVersionList() == null)
+				continue;
 			for (MagVersion v : it.getVersionList()) {
-				if (v == null) continue;
+				if (v == null)
+					continue;
 				if (v.getCatalogueVersion() != null && v.getCatalogueVersion().equals(catalogueVersion)) {
 					it.setUsedVersion(v);
 					return it;
@@ -142,4 +139,3 @@ public final class DeepMarkerSingleRawBenchmark {
 		return null;
 	}
 }
-

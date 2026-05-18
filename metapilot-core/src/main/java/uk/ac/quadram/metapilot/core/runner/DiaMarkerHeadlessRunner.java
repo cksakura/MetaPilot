@@ -2,17 +2,20 @@ package uk.ac.quadram.metapilot.core.runner;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import uk.ac.quadram.metapilot.core.dia.Marker4LibrarySupportHeadless;
+import uk.ac.quadram.metapilot.core.dia.Marker4LibrarySupport;
 import uk.ac.quadram.metapilot.core.diann.DiaNNHeadlessRunner;
+import uk.ac.quadram.metapilot.core.mag.MagGenomeSelectionService;
+import uk.ac.quadram.metapilot.core.report.MetaPilotHtmlReportService;
+import uk.ac.quadram.metapilot.core.resources.MetaPilotResourceConfig;
 import uk.ac.quadram.metapilot.core.workflow.ProgressCallback;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNParquetReader;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNPrecursor;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiannParameter;
 import uk.ac.quadram.metapilot.task.dia.DiaLibSearchPar;
+import uk.ac.quadram.metapilot.task.dia.DiaRefinementMode;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaMarker;
 import uk.ac.quadram.metapilot.task.mag.MagDbConfigIO;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
-import uk.ac.quadram.metapilot.task.mag.MarkerGenomeSelector;
 import uk.ac.quadram.metapilot.core.MGYG.HapExtractor;
 
 import java.io.*;
@@ -30,7 +33,7 @@ import java.util.HashSet;
  * - marker/combined.speclib
  * - combined/combined.parquet + combined.pr_matrix.tsv + combined.pg_matrix.tsv
  *
- * This runner intentionally avoids HTML report generation (HPC-friendly).
+ * This runner uses the shared final HTML report service after post-analysis.
  */
 public final class DiaMarkerHeadlessRunner {
 
@@ -98,19 +101,103 @@ public final class DiaMarkerHeadlessRunner {
             File condaPrefix,
             File funcDbFile
     ) throws Exception {
+        return run(params, diannExe, magDbConfigJson, cb, condaPrefix, funcDbFile, true, null);
+    }
+
+    public static Result run(
+            MetaParameterDiaMarker params,
+            File diannExe,
+            File magDbConfigJson,
+            ProgressCallback cb,
+            File condaPrefix,
+            File funcDbFile,
+            boolean generateHtmlReport,
+            String reportPythonHint
+    ) throws Exception {
+        return run(params, diannExe, magDbConfigJson, cb, condaPrefix, funcDbFile, generateHtmlReport,
+                reportPythonHint, null);
+    }
+
+    public static Result run(
+            MetaParameterDiaMarker params,
+            File diannExe,
+            File magDbConfigJson,
+            ProgressCallback cb,
+            File condaPrefix,
+            File funcDbFile,
+            boolean generateHtmlReport,
+            String reportPythonHint,
+            MetaPilotResourceConfig reportResourceConfig
+    ) throws Exception {
+        return runInternal(params, diannExe, magDbConfigJson, cb, condaPrefix, funcDbFile, true,
+                generateHtmlReport, reportPythonHint, reportResourceConfig);
+    }
+
+    public static Result runWithoutPostAnalysis(
+            MetaParameterDiaMarker params,
+            File diannExe,
+            File magDbConfigJson,
+            ProgressCallback cb,
+            File condaPrefix,
+            File funcDbFile
+    ) throws Exception {
+        return runInternal(params, diannExe, magDbConfigJson, cb, condaPrefix, funcDbFile, false,
+                false, null, null);
+    }
+
+    private static Result runInternal(
+            MetaParameterDiaMarker params,
+            File diannExe,
+            File magDbConfigJson,
+            ProgressCallback cb,
+            File condaPrefix,
+            File funcDbFile,
+            boolean exportPostAnalysis,
+            boolean generateHtmlReport,
+            String reportPythonHint,
+            MetaPilotResourceConfig reportResourceConfig
+    ) throws Exception {
         if (cb == null) cb = new ProgressCallback.NoOp();
         if (params == null) throw new IllegalArgumentException("params is null");
         if (diannExe == null || !diannExe.exists()) throw new IOException("DIA-NN not found: " + (diannExe == null ? "null" : diannExe.getAbsolutePath()));
 
-        // Dispatch to the per-file runner when markerMode == DEEP_PER_FILE so the CLI/HPC entrypoint
-        // matches the GUI's DEEP_PER_FILE workflow (per-raw-file iterative rounds + global combined search).
-        // Returns are adapted to this runner's Result type so existing callers keep working.
-        if ("DEEP_PER_FILE".equalsIgnoreCase(params.getMarkerMode())) {
-            cb.onMessage("DIA Marker: dispatching to DEEP_PER_FILE headless runner");
-            DiaDeepPerFileMarkerHeadlessRunner.Result perFileResult =
-                    DiaDeepPerFileMarkerHeadlessRunner.run(params, diannExe, magDbConfigJson, cb, condaPrefix, funcDbFile);
+        DiaRefinementMode markerMode = params.getMarkerRefinementMode();
+        if (markerMode == DiaRefinementMode.DIRECT) {
+            throw new IOException("DIA Marker does not support DIRECT mode. DIRECT is only valid for DIA Seed workflows.");
+        }
+
+        // Dispatch deep marker modes to their dedicated headless runners. Returns are adapted
+        // to this runner's Result type so existing callers keep working.
+        if (markerMode == DiaRefinementMode.DEEP_TOGETHER) {
+            cb.onMessage("DIA Marker: dispatching to DEEP_TOGETHER headless runner");
+            DiaMarkerDeepTogetherHeadlessRunner.Result deepTogetherResult = exportPostAnalysis
+                    ? DiaMarkerDeepTogetherHeadlessRunner.run(params, diannExe, magDbConfigJson, cb, condaPrefix,
+                            funcDbFile, generateHtmlReport, reportPythonHint, reportResourceConfig)
+                    : DiaMarkerDeepTogetherHeadlessRunner.runWithoutPostAnalysis(params, diannExe, magDbConfigJson, cb,
+                            condaPrefix, funcDbFile);
             return new Result(
-                    perFileResult.resultDir,
+                    deepTogetherResult.markerDeepDir,
+                    deepTogetherResult.markerDir,
+                    deepTogetherResult.combinedDir,
+                    deepTogetherResult.markerParquet,
+                    deepTogetherResult.rankedTsv,
+                    deepTogetherResult.selectedTsv,
+                    deepTogetherResult.combinedFasta,
+                    deepTogetherResult.combinedSpeclib,
+                    deepTogetherResult.combinedParquet,
+                    deepTogetherResult.prMatrixTsv,
+                    deepTogetherResult.pgMatrixTsv
+            );
+        }
+        if (markerMode == DiaRefinementMode.DEEP_PER_FILE) {
+            cb.onMessage("DIA Marker: dispatching to DEEP_PER_FILE headless runner");
+            DiaMarkerDeepPerFileHeadlessRunner.Result perFileResult = exportPostAnalysis
+                    ? DiaMarkerDeepPerFileHeadlessRunner.run(params, diannExe, magDbConfigJson, cb, condaPrefix,
+                            funcDbFile, generateHtmlReport, reportPythonHint, reportResourceConfig)
+                    : DiaMarkerDeepPerFileHeadlessRunner.runWithoutPostAnalysis(params, diannExe, magDbConfigJson, cb,
+                            condaPrefix, funcDbFile);
+            return new Result(
+                    perFileResult.markerDeepDir,
                     new File(perFileResult.markerDeepDir, "marker"),
                     perFileResult.combinedDir,
                     null,
@@ -130,9 +217,8 @@ public final class DiaMarkerHeadlessRunner {
 
         // Mirror the Windows task: export under marker_focus / marker_comprehensive,
         // matching the folder name chosen by MetaDiaTask for non-DEEP_PER_FILE modes.
-        String markerMode = params.getMarkerMode();
         String workFolderName;
-        if ("COMPREHENSIVE".equalsIgnoreCase(markerMode) || "DEEP".equalsIgnoreCase(markerMode)) {
+        if (markerMode.usesComprehensiveSelection()) {
             workFolderName = "marker_comprehensive";
         } else {
             workFolderName = "marker_focus";
@@ -187,18 +273,18 @@ public final class DiaMarkerHeadlessRunner {
 
             String kneeMode = markerModeToKneeMode(params.getMarkerMode());
             cb.onMessage("DIA Marker: selecting genomes (mode=" + kneeMode + ")");
-            MarkerGenomeSelector selector = new MarkerGenomeSelector();
-            selector.setKneeSelectionMode(kneeMode);
-            selector.selectMarkerGenomesWithKnee(
-                    precursors,
-                    markerFasta,
-                    genomesTaxaTsv,
-                    evidenceTsv.getAbsolutePath(),
-                    rankedTsv.getAbsolutePath(),
-                    selectedTsv.getAbsolutePath(),
-                    300,
-                    true
-            );
+            MagGenomeSelectionService.Request selectionRequest = new MagGenomeSelectionService.Request();
+            selectionRequest.magDb = magDb;
+            selectionRequest.genomeSelectorMode = MagDbItem.MARKER4;
+            selectionRequest.genomeSelectionStrategy = kneeMode;
+            selectionRequest.diaPrecursors = precursors;
+            selectionRequest.markerFasta = markerFasta;
+            selectionRequest.genomesTaxaTsv = genomesTaxaTsv;
+            selectionRequest.evidenceFile = evidenceTsv;
+            selectionRequest.rankedFile = rankedTsv;
+            selectionRequest.selectedFile = selectedTsv;
+            selectionRequest.maximumSelected = 300;
+            MagGenomeSelectionService.selectGenomes(selectionRequest, cb);
         }
 
         readSelectedGenomesIntoSet(selectedTsv, selectedGenomes);
@@ -248,29 +334,33 @@ public final class DiaMarkerHeadlessRunner {
         if (!prMatrix.exists()) throw new IOException("Combined quant did not produce: " + prMatrix.getAbsolutePath());
         if (!pgMatrix.exists()) throw new IOException("Combined quant did not produce: " + pgMatrix.getAbsolutePath());
 
-        // Post-analysis + TSV exports (no HTML) under resultDir (marker_focus / marker_comprehensive),
+        runHostSearchIfRequested(resultDir, diannExe, params, diaFiles, cb, condaPrefix);
+
+        // Post-analysis + TSV/report exports under resultDir (marker_focus / marker_comprehensive),
         // matching the Windows task layout.
-        try {
-            File gtdbNcbi = null;
-            File maybe = new File("Resources", "gtdb_ncbi");
-            if (maybe.exists()) gtdbNcbi = maybe;
-            File rankedForLabels = rankedTsv != null && rankedTsv.exists() ? rankedTsv : null;
-            DiaMarkerPostAnalysisTsvExporter.export(
-                    resultDir,
-                    magDb,
-                    combinedParquet,
-                    prMatrix,
-                    rankedForLabels,
-                    gtdbNcbi,
-                    params.getMarkerMode(),
-                    funcDbFile,
-                    params.getMicroDb(),
-                    params.getQuantitativeMode(),
-                    cb
-            );
-        } catch (Exception e) {
-            cb.onMessage("WARNING: DIA marker post-analysis export failed: " + e.getMessage());
-            throw e;
+        if (exportPostAnalysis) {
+            try {
+                File gtdbNcbi = null;
+                File maybe = new File("Resources", "gtdb_ncbi");
+                if (maybe.exists()) gtdbNcbi = maybe;
+                DiaMagPostAnalysisTsvExporter.export(
+                        resultDir,
+                        magDb,
+                        combinedParquet,
+                        prMatrix,
+                        gtdbNcbi,
+                        params.getMarkerMode(),
+                        funcDbFile,
+                        params.getMicroDb(),
+                        params.getQuantitativeMode(),
+                        cb
+                );
+                runHtmlReportIfRequested(resultDir, params, generateHtmlReport, reportPythonHint,
+                        reportResourceConfig, cb);
+            } catch (Exception e) {
+                cb.onMessage("WARNING: DIA marker post-analysis export failed: " + e.getMessage());
+                throw e;
+            }
         }
 
         cb.onComplete("DIA marker complete: " + resultDir.getAbsolutePath());
@@ -345,7 +435,7 @@ public final class DiaMarkerHeadlessRunner {
             throw new IOException("Failed to create Marker4 library speclib: " + libFile.getAbsolutePath());
         }
 
-        Marker4LibrarySupportHeadless.ensureMarker4LibraryMetadata(
+        Marker4LibrarySupport.ensureMarker4LibraryMetadata(
                 diannExe,
                 condaPrefix,
                 magDb,
@@ -418,25 +508,8 @@ public final class DiaMarkerHeadlessRunner {
 
     private static void runMarkerNoQuantSearch(File diannExe, MetaParameterDiaMarker params, String[] diaFiles,
                                               File markerLibFile, File outParquet, ProgressCallback cb, File condaPrefix) throws Exception {
-        if (markerLibFile == null || !markerLibFile.exists()) {
-            throw new IOException("Marker library not found: " + (markerLibFile == null ? "null" : markerLibFile.getAbsolutePath()));
-        }
-        DiannParameter diannPar = buildDiannPar(params);
-        diannPar.setMatrices(false);
-        diannPar.setRelaxed_prot_inf(true);
-        diannPar.setReanalyse(true);
-        diannPar.setExportDecoy(true);
-
-        DiaLibSearchPar libSearchPar = new DiaLibSearchPar();
-        libSearchPar.setMbr(false);
-        libSearchPar.setDiaFiles(diaFiles);
-        libSearchPar.setThreadCount(params.getThreadCount());
-        libSearchPar.setqValue(0.01);
-
-        String cmd = diannPar.generateLibSearchNoQuant(libSearchPar, outParquet.getAbsolutePath(), markerLibFile.getAbsolutePath());
-        cmd = cmd + buildFArgs(diaFiles);
-        int exit = DiaNNHeadlessRunner.run(diannExe, cmd, outParquet.getParentFile(), cb, condaPrefix);
-        if (exit != 0) LOGGER.warn("DIA-NN marker no-quant exit code {}", exit);
+        DiaNNNoQuantLibrarySearchService.run(diannExe, params, diaFiles, markerLibFile, outParquet,
+                params.getThreadCount(), true, true, cb, condaPrefix, LOGGER, "DIA Marker");
     }
 
     private static void runCombinedQuantSearch(File diannExe, MetaParameterDiaMarker params, String[] diaFiles,
@@ -461,6 +534,138 @@ public final class DiaMarkerHeadlessRunner {
         cmd = cmd + buildFArgs(diaFiles);
         int exit = DiaNNHeadlessRunner.run(diannExe, cmd, outParquet.getParentFile(), cb, condaPrefix);
         if (exit != 0) LOGGER.warn("DIA-NN combined quant exit code {}", exit);
+    }
+
+    private static void runHtmlReportIfRequested(File resultDir, MetaParameterDiaMarker params,
+                                                 boolean generateHtmlReport, String reportPythonHint,
+                                                 MetaPilotResourceConfig reportResourceConfig,
+                                                 ProgressCallback cb) {
+        if (!generateHtmlReport) {
+            cb.onMessage("HTML report generation skipped (disabled)");
+            return;
+        }
+        cb.onMessage("DIA Marker: generating shared HTML report");
+        MetaPilotHtmlReportService.Result report = MetaPilotHtmlReportService.runStandardReportWarningOnly(
+                resultDir,
+                "DIA_MAG",
+                params != null ? params.getThreadCount() : 1,
+                reportPythonHint,
+                reportResourceConfig,
+                cb
+        );
+        if (!report.warnings.isEmpty()) {
+            cb.onMessage("WARNING: HTML report generation completed with warnings: "
+                    + String.join("; ", report.warnings));
+        }
+    }
+
+    public static void runHostSearchIfRequested(File resultDir, File diannExe, MetaParameterDiaMarker params,
+                                                String[] diaFiles, ProgressCallback cb, File condaPrefix) throws Exception {
+        if (cb == null) cb = new ProgressCallback.NoOp();
+        if (params == null || !params.isAppendHostDb()) {
+            return;
+        }
+        String hostDb = params.getHostDB();
+        if (hostDb == null || hostDb.isBlank()) {
+            throw new IOException("Append host DB is enabled but host database path is empty");
+        }
+        File hostInput = resolveUserPath(hostDb);
+        if (!hostInput.exists()) {
+            throw new IOException("Host database file not found: " + hostInput.getAbsolutePath());
+        }
+        if (resultDir == null) {
+            throw new IOException("Result directory is null for host search");
+        }
+        String[] files = diaFiles != null ? diaFiles
+                : (params.getMetadata() != null ? params.getMetadata().getRawFiles() : null);
+        if (files == null || files.length == 0) {
+            throw new IOException("No DIA files available for host search");
+        }
+
+        File hostDir = new File(resultDir, "host");
+        if (!hostDir.exists() && !hostDir.mkdirs()) {
+            throw new IOException("Failed to create host search directory: " + hostDir.getAbsolutePath());
+        }
+        cb.onMessage("DIA Marker: running optional host DB search -> " + hostDir.getAbsolutePath());
+
+        File hostLibrary = resolveHostLibraryForSearch(hostInput, hostDir, diannExe, params, cb, condaPrefix);
+
+        File hostParquet = new File(hostDir, "host.parquet");
+        File hostPrMatrix = new File(hostDir, "host.pr_matrix.tsv");
+        File hostPgMatrix = new File(hostDir, "host.pg_matrix.tsv");
+        if (!hostParquet.exists() || !hostPrMatrix.exists() || !hostPgMatrix.exists()) {
+            cb.onMessage("DIA Marker: running DIA-NN quant with host library");
+            runCombinedQuantSearch(diannExe, params, files, hostLibrary, hostParquet, cb, condaPrefix);
+        }
+        if (!hostParquet.exists()) {
+            throw new IOException("Host search did not produce: " + hostParquet.getAbsolutePath());
+        }
+        if (!hostPrMatrix.exists()) {
+            throw new IOException("Host search did not produce: " + hostPrMatrix.getAbsolutePath());
+        }
+        if (!hostPgMatrix.exists()) {
+            throw new IOException("Host search did not produce: " + hostPgMatrix.getAbsolutePath());
+        }
+    }
+
+    private static File resolveHostLibraryForSearch(File hostInput, File hostDir, File diannExe,
+                                                    MetaParameterDiaMarker params, ProgressCallback cb,
+                                                    File condaPrefix) throws Exception {
+        String name = hostInput.getName().toLowerCase();
+        if (name.endsWith(".speclib") || name.endsWith(".parquet")) {
+            cb.onMessage("DIA Marker: using host library directly: " + hostInput.getAbsolutePath());
+            return hostInput;
+        }
+        if (!name.endsWith(".fasta") && !name.endsWith(".fa")) {
+            throw new IOException("Unsupported DIA host database file type: " + hostInput.getAbsolutePath()
+                    + " (expected .fasta, .fa, .speclib, or .parquet)");
+        }
+
+        File hostSpeclib = new File(hostDir, "host.speclib");
+        if (!hostSpeclib.exists()) {
+            cb.onMessage("DIA Marker: generating host library from FASTA: " + hostInput.getAbsolutePath());
+            DiannParameter diannPar = buildDiannPar(params);
+            String cmd = diannPar.generateFasta(hostInput.getAbsolutePath(), hostSpeclib.getAbsolutePath(), false);
+            int exit = DiaNNHeadlessRunner.run(diannExe, cmd, hostDir, cb, condaPrefix);
+            if (exit != 0) LOGGER.warn("DIA-NN host library build exit code {}", exit);
+
+            File predicted = new File(hostDir, "host.predicted.speclib");
+            if (!hostSpeclib.exists() && predicted.exists()) {
+                Files.move(predicted.toPath(), hostSpeclib.toPath());
+            }
+        }
+        if (!hostSpeclib.exists()) {
+            throw new IOException("Host speclib was not created: " + hostSpeclib.getAbsolutePath());
+        }
+        return hostSpeclib;
+    }
+
+    private static File resolveUserPath(String path) {
+        if (path == null) {
+            return null;
+        }
+        String trimmed = path.trim();
+        if (trimmed.equals("~")) {
+            String home = System.getProperty("user.home", "");
+            return home == null || home.isBlank() ? new File(trimmed) : new File(home);
+        }
+        if (trimmed.startsWith("~/") || trimmed.startsWith("~\\")) {
+            String home = System.getProperty("user.home", "");
+            if (home == null || home.isBlank()) {
+                return new File(trimmed);
+            }
+            return new File(home, trimmed.substring(2));
+        }
+        String home = System.getenv("HOME");
+        if (home != null && !home.isBlank()) {
+            if (trimmed.equals("$HOME")) {
+                return new File(home);
+            }
+            if (trimmed.startsWith("$HOME/") || trimmed.startsWith("$HOME\\")) {
+                return new File(home, trimmed.substring(6));
+            }
+        }
+        return new File(trimmed);
     }
 
     static String buildFArgs(String[] diaFiles) {
@@ -495,12 +700,11 @@ public final class DiaMarkerHeadlessRunner {
     }
 
     static String markerModeToKneeMode(String markerMode) {
-        if (markerMode == null) return MarkerGenomeSelector.KNEE_MODE_FOCUS;
-        if ("COMPREHENSIVE".equalsIgnoreCase(markerMode) || "DEEP".equalsIgnoreCase(markerMode)
-                || "DEEP_PER_FILE".equalsIgnoreCase(markerMode)) {
-            return MarkerGenomeSelector.KNEE_MODE_COMPREHENSIVE;
+        DiaRefinementMode mode = DiaRefinementMode.fromMarkerMode(markerMode);
+        if (mode.usesComprehensiveSelection()) {
+            return MagGenomeSelectionService.SELECTION_STRATEGY_COMPREHENSIVE;
         }
-        return MarkerGenomeSelector.KNEE_MODE_FOCUS;
+        return MagGenomeSelectionService.SELECTION_STRATEGY_FOCUS;
     }
 
     static void readSelectedGenomesIntoSet(File selectedFile, HashSet<String> genomeSet) {

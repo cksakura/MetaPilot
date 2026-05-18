@@ -70,6 +70,16 @@ public final class MetaPilotCliApp {
             System.arraycopy(args, 1, subArgs, 0, subArgs.length);
             return runMagDownload(subArgs);
         }
+        if (args != null && args.length > 0 && "dia-marker".equalsIgnoreCase(args[0])) {
+            String[] subArgs = new String[args.length - 1];
+            System.arraycopy(args, 1, subArgs, 0, subArgs.length);
+            return runDiaMarker(subArgs);
+        }
+        if (args != null && args.length > 0 && "mag-fragpipe".equalsIgnoreCase(args[0])) {
+            String[] subArgs = new String[args.length - 1];
+            System.arraycopy(args, 1, subArgs, 0, subArgs.length);
+            return runMagFragpipe(subArgs);
+        }
         if (args != null && args.length > 0 && "resources-check".equalsIgnoreCase(args[0])) {
             String[] subArgs = new String[args.length - 1];
             System.arraycopy(args, 1, subArgs, 0, subArgs.length);
@@ -194,29 +204,40 @@ public final class MetaPilotCliApp {
 
             java.io.File diannExe = rc.getRaw("DIANN").map(java.io.File::new).orElse(null);
             if (diannExe == null || !diannExe.exists()) {
-                System.err.println("ERROR: DIANN is not set or does not exist in resources config.");
+                System.err.println("ERROR: DIANN is not set or does not exist in resources config: "
+                        + resourcesCfg.toAbsolutePath() + " (resolved path: " + describeFile(diannExe) + ")");
                 return 2;
             }
 
             // Optional: infer conda prefix from PYTHON (for LD_LIBRARY_PATH fix on older systems).
             java.io.File pythonExe = rc.resolveToolPath(uk.ac.quadram.metapilot.core.resources.ToolKey.PYTHON, null)
                     .map(java.nio.file.Path::toFile).orElse(null);
-            java.io.File condaPrefix = inferCondaPrefixFromPython(pythonExe);
+            java.io.File condaPrefix = uk.ac.quadram.metapilot.core.report.PythonEnvironmentResolver
+                    .inferCondaPrefixFromPython(pythonExe);
+            java.io.File funcDb = rc.resolveToolPath(uk.ac.quadram.metapilot.core.resources.ToolKey.FUNCDB, null)
+                    .map(java.nio.file.Path::toFile).orElse(null);
 
             uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaMarker p =
                     new uk.ac.quadram.metapilot.task.dia.par.DiaMarkerParameterIO()
                             .loadParameters(new java.io.File(paramsFile));
 
             if (p == null) {
-                System.err.println("ERROR: failed to load DIA Marker params from: " + paramsFile);
+                System.err.println("ERROR: failed to load DIA Marker params from: " + new java.io.File(paramsFile).getAbsolutePath());
                 return 2;
             }
+            uk.ac.quadram.metapilot.task.dia.DiaRefinementMode markerMode = p.getMarkerRefinementMode();
+            if (markerMode == uk.ac.quadram.metapilot.task.dia.DiaRefinementMode.DIRECT) {
+                System.err.println("ERROR: dia-marker does not support DIRECT mode. DIRECT is only valid for DIA Seed workflows.");
+                return 2;
+            }
+            System.out.println("DIA Marker mode: " + markerMode.getPersistedValue() + " ("
+                    + markerMode.getDisplayLabel() + ")");
 
             uk.ac.quadram.metapilot.core.workflow.ProgressCallback cb = new uk.ac.quadram.metapilot.core.workflow.ProgressCallback() {
                 @Override public void onProgress(double workDone, double max) { }
                 @Override public void onMessage(String message) { if (message != null && !message.isBlank()) System.out.println(message); }
                 @Override public void onComplete(Object result) { System.out.println("Done: " + result); }
-                @Override public void onError(Exception error) { System.err.println("ERROR: " + (error != null ? error.getMessage() : "unknown")); }
+                @Override public void onError(Exception error) { reportCallbackError("dia-marker", error); }
             };
 
             uk.ac.quadram.metapilot.core.runner.DiaMarkerHeadlessRunner.run(
@@ -224,10 +245,15 @@ public final class MetaPilotCliApp {
                     diannExe,
                     magdbCfg.toFile(),
                     cb,
-                    condaPrefix
+                    condaPrefix,
+                    funcDb,
+                    reportGenerationEnabled(rc, cmd.hasOption("no-report")),
+                    null,
+                    rc
             );
             return 0;
         } catch (Exception e) {
+            System.err.println("ERROR: dia-marker failed for params file: " + new java.io.File(paramsFile).getAbsolutePath());
             e.printStackTrace(System.err);
             return 1;
         }
@@ -269,14 +295,16 @@ public final class MetaPilotCliApp {
             java.io.File pythonExe = rc.resolveToolPath(uk.ac.quadram.metapilot.core.resources.ToolKey.PYTHON, null)
                     .map(java.nio.file.Path::toFile).orElse(null);
             if (pythonExe == null || !pythonExe.exists()) {
-                System.err.println("ERROR: PYTHON not found. Tip: set PYTHON_MODE=which or set PYTHON to your conda env python path.");
+                System.err.println("ERROR: PYTHON is not configured or does not exist in resources config: "
+                        + resourcesCfg.toAbsolutePath() + " (resolved path: " + describeFile(pythonExe) + ")");
                 return 2;
             }
 
             java.io.File mainPy = rc.resolveToolPath(uk.ac.quadram.metapilot.core.resources.ToolKey.DEEPDETECT, null)
                     .map(java.nio.file.Path::toFile).orElse(null);
             if (mainPy == null || !mainPy.exists()) {
-                System.err.println("ERROR: DEEPDETECT main.py not found. Set DEEPDETECT to your deepdetect_pred_pytorch/main.py path.");
+                System.err.println("ERROR: DEEPDETECT main.py is not configured or does not exist in resources config: "
+                        + resourcesCfg.toAbsolutePath() + " (resolved path: " + describeFile(mainPy) + ")");
                 return 2;
             }
 
@@ -293,12 +321,14 @@ public final class MetaPilotCliApp {
                 @Override public void onProgress(double workDone, double max) { }
                 @Override public void onMessage(String message) { if (message != null && !message.isBlank()) System.out.println(message); }
                 @Override public void onComplete(Object result) { System.out.println("Done: " + result); }
-                @Override public void onError(Exception error) { System.err.println("ERROR: " + (error != null ? error.getMessage() : "unknown")); }
+                @Override public void onError(Exception error) { reportCallbackError("deepdetect-predict", error); }
             };
 
             int exit = uk.ac.quadram.metapilot.core.deepdetect.DeepDetectPythonRunner.run(pythonExe, mainPy, par, regular, cb);
             return exit == 0 ? 0 : 1;
         } catch (Exception e) {
+            System.err.println("ERROR: deepdetect-predict failed for input=" + new java.io.File(input).getAbsolutePath()
+                    + " output=" + new java.io.File(output).getAbsolutePath());
             e.printStackTrace(System.err);
             return 1;
         }
@@ -345,14 +375,16 @@ public final class MetaPilotCliApp {
             java.io.File pythonExe = rc.resolveToolPath(uk.ac.quadram.metapilot.core.resources.ToolKey.PYTHON, null)
                     .map(java.nio.file.Path::toFile).orElse(null);
             if (pythonExe == null || !pythonExe.exists()) {
-                System.err.println("ERROR: PYTHON not found. Set PYTHON to your conda env python path (recommended).");
+                System.err.println("ERROR: PYTHON is not configured or does not exist in resources config: "
+                        + resourcesCfg.toAbsolutePath() + " (resolved path: " + describeFile(pythonExe) + ")");
                 return 2;
             }
 
             java.io.File mainPy = rc.resolveToolPath(uk.ac.quadram.metapilot.core.resources.ToolKey.DEEPDETECT, null)
                     .map(java.nio.file.Path::toFile).orElse(null);
             if (mainPy == null || !mainPy.exists()) {
-                System.err.println("ERROR: DEEPDETECT main.py not found. Set DEEPDETECT to deepdetect_pred_pytorch/main.py.");
+                System.err.println("ERROR: DEEPDETECT main.py is not configured or does not exist in resources config: "
+                        + resourcesCfg.toAbsolutePath() + " (resolved path: " + describeFile(mainPy) + ")");
                 return 2;
             }
 
@@ -378,7 +410,7 @@ public final class MetaPilotCliApp {
                 }
                 @Override public void onMessage(String message) { if (message != null && !message.isBlank()) System.out.println(message); }
                 @Override public void onComplete(Object result) { System.out.println("Done: " + result); }
-                @Override public void onError(Exception error) { System.err.println("ERROR: " + (error != null ? error.getMessage() : "unknown")); }
+                @Override public void onError(Exception error) { reportCallbackError("deepdetect-magdb", error); }
             };
 
             uk.ac.quadram.metapilot.core.deepdetect.DeepDetectMagDbHeadlessRunner.Result r =
@@ -391,6 +423,8 @@ public final class MetaPilotCliApp {
             System.out.println("Failed: " + r.failedGenomes);
             return r.failedGenomes == 0 ? 0 : 1;
         } catch (Exception e) {
+            System.err.println("ERROR: deepdetect-magdb failed for catalogue=" + catalogue
+                    + " version=" + version + " out=" + new java.io.File(out).getAbsolutePath());
             e.printStackTrace(System.err);
             return 1;
         }
@@ -416,8 +450,8 @@ public final class MetaPilotCliApp {
 
         String paramsFile = cmd.getOptionValue("params");
         String workflowFile = cmd.getOptionValue("workflow");
-        if (paramsFile == null || workflowFile == null) {
-            System.err.println("ERROR: --params and --workflow are required.");
+        if (paramsFile == null) {
+            System.err.println("ERROR: --params is required.");
             printMagFragpipeHelp(options);
             return 2;
         }
@@ -431,37 +465,87 @@ public final class MetaPilotCliApp {
 
             java.util.List<String> issues = rc.validateMinimalLinuxCli();
             if (!issues.isEmpty()) {
-                System.err.println("ERROR: resources config is missing required keys:");
+                System.err.println("ERROR: resources config is missing required keys: " + resourcesCfg.toAbsolutePath());
                 for (String issue : issues) System.err.println("  - " + issue);
                 return 2;
             }
 
             java.io.File fragpipeExe = rc.getRaw("FRAGPIPE").map(java.io.File::new).orElse(null);
+            java.io.File funcDb = rc.resolveToolPath(uk.ac.quadram.metapilot.core.resources.ToolKey.FUNCDB, null)
+                    .map(java.nio.file.Path::toFile)
+                    .orElse(null);
             if (fragpipeExe == null || !fragpipeExe.exists()) {
-                System.err.println("ERROR: FRAGPIPE is not set or does not exist in resources config.");
+                System.err.println("ERROR: FRAGPIPE is not set or does not exist in resources config: "
+                        + resourcesCfg.toAbsolutePath() + " (resolved path: " + describeFile(fragpipeExe) + ")");
                 return 2;
             }
 
             uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagFragPipeParameters p =
                     new uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagFragPipeParameterIO()
                             .loadParameters(new java.io.File(paramsFile));
+            if (p == null) {
+                System.err.println("ERROR: failed to load MAG FragPipe params from: " + new java.io.File(paramsFile).getAbsolutePath());
+                return 2;
+            }
+            java.io.File workflow = null;
+            if (workflowFile != null && !workflowFile.isBlank()) {
+                workflow = new java.io.File(workflowFile);
+                if (!workflow.exists()) {
+                    System.err.println("ERROR: --workflow does not exist: " + workflow.getAbsolutePath());
+                    return 2;
+                }
+                if (!workflow.isFile()) {
+                    System.err.println("ERROR: --workflow is not a file: " + workflow.getAbsolutePath());
+                    return 2;
+                }
+            } else {
+                try {
+                    uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.requireInstalledWorkflow(
+                            fragpipeExe, uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.BASIC_SEARCH_WORKFLOW);
+                    uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.requireInstalledWorkflow(
+                            fragpipeExe, uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.LFQ_MBR_WORKFLOW);
+                } catch (java.io.IOException e) {
+                    System.err.println("ERROR: required FragPipe workflows are not available in the installed FragPipe folder: "
+                            + e.getMessage());
+                    return 2;
+                }
+            }
 
             uk.ac.quadram.metapilot.core.workflow.ProgressCallback cb = new uk.ac.quadram.metapilot.core.workflow.ProgressCallback() {
                 @Override public void onProgress(double workDone, double max) { }
                 @Override public void onMessage(String message) { if (message != null && !message.isBlank()) System.out.println(message); }
                 @Override public void onComplete(Object result) { System.out.println("Done: " + result); }
-                @Override public void onError(Exception error) { System.err.println("ERROR: " + (error != null ? error.getMessage() : "unknown")); }
+                @Override public void onError(Exception error) { reportCallbackError("mag-fragpipe", error); }
             };
 
-            uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.run(
-                    p,
-                    fragpipeExe,
-                    new java.io.File(workflowFile),
-                    magdbCfg.toFile(),
-                    cb
-            );
+            if (workflow != null) {
+                uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.run(
+                        p,
+                        fragpipeExe,
+                        workflow,
+                        magdbCfg.toFile(),
+                        funcDb,
+                        cb,
+                        reportGenerationEnabled(rc, cmd.hasOption("no-report")),
+                        null,
+                        rc
+                );
+            } else {
+                uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.runWithInstalledDefaults(
+                        p,
+                        fragpipeExe,
+                        magdbCfg.toFile(),
+                        funcDb,
+                        cb,
+                        reportGenerationEnabled(rc, cmd.hasOption("no-report")),
+                        null,
+                        rc
+                );
+            }
             return 0;
         } catch (Exception e) {
+            System.err.println("ERROR: mag-fragpipe failed for params=" + new java.io.File(paramsFile).getAbsolutePath()
+                    + " workflow=" + (workflowFile == null ? "<installed defaults>" : new java.io.File(workflowFile).getAbsolutePath()));
             e.printStackTrace(System.err);
             return 1;
         }
@@ -502,7 +586,8 @@ public final class MetaPilotCliApp {
             }
             return 1;
         } catch (Exception e) {
-            System.err.println("ERROR: failed to load/validate resources config: " + e.getMessage());
+            System.err.println("ERROR: failed to load/validate resources config: " + cfg.toAbsolutePath()
+                    + " (" + e.getMessage() + ")");
             e.printStackTrace(System.err);
             return 1;
         }
@@ -612,7 +697,8 @@ public final class MetaPilotCliApp {
 
             return 0;
         } catch (Exception e) {
-            System.err.println("ERROR: failed to update resources config: " + e.getMessage());
+            System.err.println("ERROR: failed to update resources config: " + cfg.toAbsolutePath()
+                    + " (" + e.getMessage() + ")");
             e.printStackTrace(System.err);
             return 1;
         }
@@ -679,7 +765,7 @@ public final class MetaPilotCliApp {
 
             @Override
             public void onError(Exception error) {
-                System.err.println("ERROR: " + (error != null ? error.getMessage() : "unknown"));
+                reportCallbackError("mag-download", error);
             }
         };
 
@@ -695,6 +781,8 @@ public final class MetaPilotCliApp {
             );
             return 0;
         } catch (Exception e) {
+            System.err.println("ERROR: mag-download failed for catalogue=" + catalogue
+                    + " version=" + version + " out=" + new java.io.File(out).getAbsolutePath());
             e.printStackTrace(System.err);
             return 1;
         }
@@ -838,7 +926,7 @@ public final class MetaPilotCliApp {
                 .longOpt("workflow")
                 .hasArg()
                 .argName("FILE")
-                .desc("FragPipe workflow template (.workflow). This will be copied and DB path overridden per step.")
+                .desc("Optional FragPipe workflow template override (.workflow). Default behavior uses installed Basic-Search.workflow for HAP/sample search and LFQ-MBR.workflow for combined search.")
                 .build());
         opts.addOption(Option.builder()
                 .longOpt("resources")
@@ -851,6 +939,10 @@ public final class MetaPilotCliApp {
                 .hasArg()
                 .argName("FILE")
                 .desc("MAG DB config JSON (MAGDB_1_0.json). Default: <install>/config/MAGDB_1_0.json")
+                .build());
+        opts.addOption(Option.builder()
+                .longOpt("no-report")
+                .desc("Disable final HTML report generation")
                 .build());
         return opts;
     }
@@ -878,6 +970,10 @@ public final class MetaPilotCliApp {
                 .hasArg()
                 .argName("FILE")
                 .desc("MAG DB config JSON (MAGDB_1_0.json). Default: <install>/config/MAGDB_1_0.json")
+                .build());
+        opts.addOption(Option.builder()
+                .longOpt("no-report")
+                .desc("Disable final HTML report generation")
                 .build());
         return opts;
     }
@@ -1111,9 +1207,13 @@ public final class MetaPilotCliApp {
                 "\nExample:\n"
                         + "  java -jar metapilot-cli-1.0.0-beta.8-shaded.jar mag-fragpipe \\\n"
                         + "    --params /path/last_used_mag_fragpipe_parameters.json \\\n"
-                        + "    --workflow /path/Basic-Search.workflow \\\n"
                         + "    --resources ~/tools/metapilot/config/meta_resources.params \\\n"
-                        + "    --magdb ~/tools/metapilot/config/MAGDB_1_0.json\n",
+                        + "    --magdb ~/tools/metapilot/config/MAGDB_1_0.json\n"
+                        + "\n"
+                        + "Optional override:\n"
+                        + "  java -jar metapilot-cli-1.0.0-beta.8-shaded.jar mag-fragpipe \\\n"
+                        + "    --params /path/last_used_mag_fragpipe_parameters.json \\\n"
+                        + "    --workflow /path/Basic-Search.workflow\n",
                 true
         );
     }
@@ -1123,7 +1223,7 @@ public final class MetaPilotCliApp {
         hf.setWidth(110);
         hf.printHelp(
                 "java -jar metapilot-cli-<version>-shaded.jar dia-marker [options]",
-                "\nRun the DIA Marker workflow in headless mode (Marker4 -> genome selection -> combined library -> DIA-NN matrices).",
+                "\nRun DIA Marker in headless mode from a GUI-exported parameter file. Supported marker modes: Core/Focus, Comprehensive, Deep Together, and Deep Per File. DIA Seed modes are not supported by this command.",
                 options,
                 "\nExample:\n"
                         + "  java -jar metapilot-cli-1.0.0-beta.8-shaded.jar dia-marker \\\n"
@@ -1188,8 +1288,11 @@ public final class MetaPilotCliApp {
         out.put("BASE_PATH", "~/tools");
 
         // Keep these as simple defaults; users can override with resources-set --set KEY=VALUE.
+        out.put("JAVA_MODE", "which");
         out.put("JAVA", "java");
-        out.put("PYTHON", "python");
+        out.put("PYTHON_MODE", "which");
+        out.put("PYTHON", "python3,python");
+        out.put("GENERATE_REPORT", "true");
 
         // Core tools needed by current CLI workflows (DIA Marker + MAG FragPipe)
         out.put("DIANN_MODE", "path");
@@ -1297,25 +1400,30 @@ public final class MetaPilotCliApp {
         }
     }
 
-    /**
-     * If {@code pythonExe} is a conda env python (typically {@code <prefix>/bin/python}),
-     * return the inferred conda prefix folder ({@code <prefix>}).
-     */
-    private static java.io.File inferCondaPrefixFromPython(java.io.File pythonExe) {
-        if (pythonExe == null) return null;
-        try {
-            java.io.File bin = pythonExe.getParentFile();
-            if (bin == null) return null;
-            java.io.File prefix = bin.getParentFile();
-            if (prefix == null) return null;
-            String binName = bin.getName().toLowerCase(java.util.Locale.ROOT);
-            if (!"bin".equals(binName) && !"scripts".equals(binName)) return null;
-            java.io.File lib = new java.io.File(prefix, "lib");
-            if (lib.isDirectory()) return prefix;
-            return null;
-        } catch (Exception e) {
-            return null;
+    private static void reportCallbackError(String context, Exception error) {
+        System.err.println("ERROR [" + context + "]: " + (error != null ? error.getMessage() : "unknown"));
+    }
+
+    private static String describeFile(java.io.File file) {
+        return file == null ? "<not configured>" : file.getAbsolutePath();
+    }
+
+    private static boolean reportGenerationEnabled(
+            uk.ac.quadram.metapilot.core.resources.MetaPilotResourceConfig rc,
+            boolean cliDisabled
+    ) {
+        if (cliDisabled) {
+            return false;
         }
+        if (rc == null) {
+            return true;
+        }
+        return rc.getRaw("GENERATE_REPORT")
+                .map(v -> {
+                    String t = v.trim().toLowerCase(java.util.Locale.ROOT);
+                    return !(t.equals("false") || t.equals("0") || t.equals("no") || t.equals("n"));
+                })
+                .orElse(true);
     }
 }
 

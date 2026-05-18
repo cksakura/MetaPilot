@@ -26,6 +26,7 @@ public class ConsolePanel extends VBox {
     private Button startButton;
     private Button stopButton;
     private Button viewReportButton;
+    private Button exportHpcParamsButton;
     
     // Status panel components
     private Label statusTimeLabel;
@@ -38,6 +39,7 @@ public class ConsolePanel extends VBox {
     private Runnable startCallback;
     private Runnable stopCallback;
     private Runnable viewReportCallback;
+    private Runnable exportHpcParamsCallback;
     
     public ConsolePanel() {
         initializeUI();
@@ -100,12 +102,15 @@ public class ConsolePanel extends VBox {
         startButton = new Button("Start Analysis");
         stopButton = new Button("Stop");
         viewReportButton = new Button("View Report");
+        exportHpcParamsButton = new Button("Export HPC Params");
         stopButton.setDisable(true);
         viewReportButton.setDisable(true); // Initially disabled until analysis completes
+        exportHpcParamsButton.setDisable(true);
         startButton.setOnAction(e -> handleStart());
         stopButton.setOnAction(e -> handleStop());
         viewReportButton.setOnAction(e -> handleViewReport());
-        controlBox.getChildren().addAll(startButton, stopButton, viewReportButton);
+        exportHpcParamsButton.setOnAction(e -> handleExportHpcParams());
+        controlBox.getChildren().addAll(startButton, stopButton, viewReportButton, exportHpcParamsButton);
         
         // Status Panel (bottom)
         HBox statusPanel = new HBox(20);
@@ -140,6 +145,22 @@ public class ConsolePanel extends VBox {
     
     public void setViewReportCallback(Runnable callback) {
         this.viewReportCallback = callback;
+    }
+
+    public void setExportHpcParamsCallback(Runnable callback) {
+        this.exportHpcParamsCallback = callback;
+        if (exportHpcParamsButton != null) {
+            exportHpcParamsButton.setDisable(callback == null);
+            exportHpcParamsButton.setTooltip(callback == null ? null : new Tooltip("Export parameters for an HPC CLI run"));
+        }
+    }
+
+    public void setExportHpcParamsUnavailable(String reason) {
+        this.exportHpcParamsCallback = null;
+        if (exportHpcParamsButton != null) {
+            exportHpcParamsButton.setDisable(true);
+            exportHpcParamsButton.setTooltip(new Tooltip(reason));
+        }
     }
     
     public void setParameterText(String text) {
@@ -269,6 +290,12 @@ public class ConsolePanel extends VBox {
             viewReportCallback.run();
         }
     }
+
+    private void handleExportHpcParams() {
+        if (exportHpcParamsCallback != null) {
+            exportHpcParamsCallback.run();
+        }
+    }
     
     private void updateStatusPanel() {
         if (statusTimeLabel != null && taskStartTimeMillis > 0) {
@@ -309,4 +336,4 @@ public class ConsolePanel extends VBox {
             statusMemLabel.setText("Memory: " + usedMemory + " MB");
         }
     }
-} 
+}
