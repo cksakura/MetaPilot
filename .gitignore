@@ -1,5 +1,10 @@
 # Ignore large and generated artifacts
+/Resources/
 logs/*.log
+**/logs/*.log
+hs_err_pid*.log
+dependency-reduced-pom.xml
+pom.xml.backup
 
 # Ignore entire build and test directories
 target/
@@ -15,7 +20,4 @@ tests/
 **/__pycache__/
 *.pyc
 /target/
-*.jar
-*.jar
-*.jar
 *.jar

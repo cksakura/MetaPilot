@@ -27,6 +27,7 @@ public class DiaTargetDBGenerationPanel extends VBox {
 
 	// Current MAG database reference
 	private MagDbItem currentMagDbItem;
+	private boolean statusCheckScheduled;
 
 	// Internal progress tracking
 	private ProgressBar dbProgressBar;
@@ -116,8 +117,7 @@ public class DiaTargetDBGenerationPanel extends VBox {
 					+ (magDbItem.getCurrentFile() != null ? magDbItem.getCurrentFile().getAbsolutePath() : "null"));
 		}
 
-		// Note: Status check is only done once during panel initialization
-		// to avoid duplicate status checks when database is updated
+		scheduleDatabaseStatusCheck();
 	}
 
 	public void setMagDbItemWithVersion(MagDbItem magDbItem, MagDbItem.MagVersion selectedVersion) {
@@ -142,8 +142,7 @@ public class DiaTargetDBGenerationPanel extends VBox {
 					+ (magDbItem.getCurrentFile() != null ? magDbItem.getCurrentFile().getAbsolutePath() : "null"));
 		}
 
-		// Note: Status check is only done once during panel initialization
-		// to avoid duplicate status checks when database is updated
+		scheduleDatabaseStatusCheck();
 	}
 
 	public void setMetaParameter(MetaParameterDiaTg metaParameter) {
@@ -183,8 +182,9 @@ public class DiaTargetDBGenerationPanel extends VBox {
 
 		getChildren().addAll(titleLabel, generationBox, progressSection);
 
-		// Automatically check database status when panel is created
-		Platform.runLater(() -> checkDatabaseStatusAutomatically());
+		// Automatically check database status when panel is created or after the
+		// parent panel provides the initial selected database.
+		scheduleDatabaseStatusCheck();
 	}
 
 	private HBox createGenerationControls() {
@@ -385,7 +385,28 @@ public class DiaTargetDBGenerationPanel extends VBox {
 	/**
 	 * Automatically check database status when panel opens
 	 */
+	private void scheduleDatabaseStatusCheck() {
+		if (statusCheckScheduled) {
+			return;
+		}
+		statusCheckScheduled = true;
+		Platform.runLater(() -> {
+			statusCheckScheduled = false;
+			checkDatabaseStatusAutomatically();
+		});
+	}
+
 	private void checkDatabaseStatusAutomatically() {
+		if (consoleOutput != null) {
+			String existingText = consoleOutput.getText();
+			if (existingText == null || existingText.trim().isEmpty()
+					|| existingText.trim().startsWith("=== Database Status Check ===")) {
+				consoleOutput.clear();
+			} else {
+				consoleOutput.appendText("\n");
+			}
+		}
+
 		if (currentMagDbItem == null) {
 			if (consoleOutput != null) {
 				consoleOutput.appendText("=== Database Status Check ===\n");
@@ -412,6 +433,16 @@ public class DiaTargetDBGenerationPanel extends VBox {
 		File proFuncDb = new File(magDbFolder, "pro_func.db");
 		File eggnogDir = new File(magDbFolder, "eggNOG");
 		File taxaFile = new File(magDbFolder, "genomes-all_metadata.tsv");
+		File predictedPepDir = currentMagDbItem.getPredictedPepFile();
+		File[] predictedPepFiles = predictedPepDir != null && predictedPepDir.exists()
+				? predictedPepDir.listFiles(file -> file.isFile() && file.getName().endsWith(".predicted.tsv"))
+				: null;
+		int predictedPepCount = predictedPepFiles != null ? predictedPepFiles.length : 0;
+		int expectedPredictionCount = currentMagDbItem.getSpeciesCount();
+		boolean predictionsComplete = expectedPredictionCount > 0
+				? predictedPepCount >= expectedPredictionCount
+				: predictedPepCount > 0;
+		boolean predictionsPartial = predictedPepCount > 0 && !predictionsComplete;
 
 		if (consoleOutput != null) {
 			consoleOutput.appendText("=== Database Status Check ===\n");
@@ -421,10 +452,12 @@ public class DiaTargetDBGenerationPanel extends VBox {
 			consoleOutput.appendText("eggNOG directory: " + (eggnogDir.exists() ? "✓ Found" : "✗ Missing") + "\n");
 			consoleOutput
 					.appendText("genomes-all_metadata.tsv: " + (taxaFile.exists() ? "✓ Found" : "✗ Missing") + "\n");
+			consoleOutput.appendText("predicted peptides: " + predictedPepCount
+					+ (expectedPredictionCount > 0 ? "/" + expectedPredictionCount : "") + " .predicted.tsv files"
+					+ (predictionsComplete ? " ✓ Complete" : " ✗ Missing/incomplete") + "\n");
 
 			if (proFuncDb.exists()) {
 				consoleOutput.appendText("STATUS: ✓ Taxa-function database is available\n");
-				consoleOutput.appendText("ACTION: Ready for analysis\n");
 			} else {
 				consoleOutput.appendText("STATUS: ⚠ Taxa-function database not found\n");
 				if (eggnogDir.exists() && taxaFile.exists()) {
@@ -432,6 +465,21 @@ public class DiaTargetDBGenerationPanel extends VBox {
 				} else {
 					consoleOutput.appendText("ACTION: Required source files missing - cannot generate database\n");
 				}
+			}
+
+			if (predictionsComplete) {
+				consoleOutput.appendText("STATUS: ✓ Predicted peptides are available\n");
+			} else if (predictionsPartial) {
+				consoleOutput.appendText("STATUS: ⚠ Predicted peptides are incomplete (" + predictedPepCount
+						+ (expectedPredictionCount > 0 ? "/" + expectedPredictionCount : "") + " files)\n");
+				consoleOutput.appendText("ACTION: Go to the DIA Seed panel and run peptide prediction for this MAG database\n");
+			} else {
+				consoleOutput.appendText("STATUS: ⚠ Predicted peptides are not available\n");
+				consoleOutput.appendText("ACTION: Go to the DIA Seed panel and run peptide prediction for this MAG database\n");
+			}
+
+			if (proFuncDb.exists() && predictionsComplete) {
+				consoleOutput.appendText("ACTION: Ready for analysis\n");
 			}
 		}
 	}

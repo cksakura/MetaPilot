@@ -15,33 +15,33 @@
     "hostDB": "",
     "coreCount": 1,
     "metaWorkflow": true,
-    "microDb": "C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\honeybee-gut\\v1.0.1",
+    "microDb": "C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-gut\\v2.0.2",
     "appendHostDb": false
   },
   "description": "Last used parameters",
-  "taxonomicLevel": "Species",
+  "taxonomicLevel": "Genome",
   "kGG": false,
   "oxidationM": false,
   "version": "1.0",
   "magDatabase": {
     "identifier": "MGYG",
-    "catalogueID": "honeybee-gut",
-    "repositoryPath": "C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\honeybee-gut",
+    "catalogueID": "human-gut",
+    "repositoryPath": "C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-gut",
     "usedVersion": {
       "localAvailable": true,
-      "catalogueVersion": "v1.0.1",
-      "speciesCount": 154
+      "catalogueVersion": "v2.0.2",
+      "speciesCount": 4744
     }
   },
   "acetyProN": false,
   "selectedFunctions": [],
   "phosphoSTY": false,
-  "generated_at": "2026-03-09 12:20:58",
+  "generated_at": "2026-05-26 10:59:44",
   "mExcision": true,
   "carbamiC": true,
   "workflowType": "DIA_TARGET",
   "targetLibraryName": "target_library",
-  "functionalLevel": "KEGG_rclass",
+  "functionalLevel": "BRITE",
   "selectedTaxa": [],
-  "timestamp": 1773058858724
+  "timestamp": 1779789584047
 }

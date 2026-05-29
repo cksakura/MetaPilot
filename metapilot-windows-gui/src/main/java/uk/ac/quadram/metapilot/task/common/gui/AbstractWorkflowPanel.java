@@ -3,14 +3,24 @@ package uk.ac.quadram.metapilot.task.common.gui;
 import javafx.geometry.Insets;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Alert.AlertType;
+import javafx.scene.control.ButtonBar;
+import javafx.scene.control.ButtonType;
+import javafx.scene.control.Dialog;
+import javafx.scene.control.Label;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
+import javafx.scene.control.TextArea;
+import javafx.scene.control.TextField;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import javafx.application.Platform;
+import javafx.stage.FileChooser;
 import java.io.File;
+import java.util.Optional;
 import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.par.BaseParameterIO;
+import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.task.MetaPilotTask;
 
 /**
@@ -56,9 +66,22 @@ public abstract class AbstractWorkflowPanel<T extends MetaBaseParameter> extends
         
         // Initialize console panel
         consolePanel = new ConsolePanel();
-        consolePanel.setStartCallback(this::startAnalysis);
-        consolePanel.setStopCallback(this::stopAnalysis);
-        consolePanel.setViewReportCallback(this::viewReport);
+        configureConsolePanel(consolePanel);
+    }
+
+    protected void configureConsolePanel(ConsolePanel panel) {
+        panel.setStartCallback(this::startAnalysis);
+        panel.setStopCallback(this::stopAnalysis);
+        panel.setViewReportCallback(this::viewReport);
+        if (isHpcExportSupported()) {
+            panel.setExportHpcParamsCallback(this::exportHpcParameters);
+        } else {
+            panel.setExportHpcParamsUnavailable("HPC parameter export is only available for workflows supported by the headless CLI.");
+        }
+    }
+
+    protected boolean isHpcExportSupported() {
+        return false;
     }
     
     /**
@@ -181,6 +204,253 @@ public abstract class AbstractWorkflowPanel<T extends MetaBaseParameter> extends
             consolePanel.appendConsoleText(errorMsg + "\n");
             System.err.println("Failed to open report: " + e.getMessage());
             e.printStackTrace();
+        }
+    }
+
+    /**
+     * Export a workflow parameter file after replacing local paths with HPC paths.
+     */
+    protected void exportHpcParameters() {
+        try {
+            T params = collectParametersFromUI();
+            if (params == null) {
+                consolePanel.appendConsoleText("ERROR: No parameters available to export.\n");
+                return;
+            }
+            if (parameterIO == null) {
+                consolePanel.appendConsoleText("ERROR: No parameter writer is available for this workflow.\n");
+                return;
+            }
+
+            PathReplacement replacement = showHpcPathReplacementDialog(params);
+            if (replacement == null) {
+                return;
+            }
+
+            applyPathReplacement(params, replacement.dataLocalPrefix, replacement.dataHpcPrefix,
+                    replacement.hostLocalPrefix, replacement.hostHpcPrefix);
+
+            FileChooser chooser = new FileChooser();
+            chooser.setTitle("Export HPC Parameter File");
+            chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("JSON parameter file", "*.json"));
+            chooser.setInitialFileName(defaultHpcParameterFileName());
+            File selected = chooser.showSaveDialog(getScene() != null ? getScene().getWindow() : null);
+            if (selected == null) {
+                return;
+            }
+
+            boolean saved = parameterIO.exportParametersToFile(params, selected, "HPC parameters");
+            if (saved) {
+                consolePanel.appendConsoleText("✓ HPC parameter file exported to: " + selected.getAbsolutePath() + "\n");
+            } else {
+                consolePanel.appendConsoleText("ERROR: Failed to export HPC parameter file.\n");
+            }
+        } catch (Exception e) {
+            String errorMsg = "ERROR: Failed to export HPC parameters: " + e.getMessage();
+            consolePanel.appendConsoleText(errorMsg + "\n");
+            showError("Export HPC Parameters", errorMsg);
+        }
+    }
+
+    private PathReplacement showHpcPathReplacementDialog(T params) {
+        Dialog<PathReplacement> dialog = new Dialog<>();
+        dialog.setTitle("Export HPC Parameter File");
+        dialog.setHeaderText("Replace local path prefixes with HPC path prefixes before exporting.");
+        dialog.getDialogPane().setPrefSize(900, 620);
+
+        ButtonType exportButtonType = new ButtonType("Export", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(exportButtonType, ButtonType.CANCEL);
+
+        TextField dataLocalPrefixField = new TextField(suggestLocalPrefix(params));
+        TextField dataHpcPrefixField = new TextField();
+        TextField hostLocalPrefixField = new TextField(suggestHostLocalPrefix(params));
+        TextField hostHpcPrefixField = new TextField();
+        dataHpcPrefixField.setPromptText("/path/to/hpc/dataset");
+        hostHpcPrefixField.setPromptText("/path/to/hpc/host_database");
+        dataLocalPrefixField.setPrefColumnCount(60);
+        dataHpcPrefixField.setPrefColumnCount(60);
+        hostLocalPrefixField.setPrefColumnCount(60);
+        hostHpcPrefixField.setPrefColumnCount(60);
+        normalizeHpcPrefixField(dataHpcPrefixField);
+        normalizeHpcPrefixField(hostHpcPrefixField);
+
+        TextArea previewArea = new TextArea();
+        previewArea.setEditable(false);
+        previewArea.setWrapText(false);
+        previewArea.setPrefRowCount(12);
+        previewArea.setStyle("-fx-font-family: monospace;");
+
+        Runnable updatePreview = () -> previewArea.setText(buildPathReplacementPreview(params,
+                dataLocalPrefixField.getText(), dataHpcPrefixField.getText(),
+                hostLocalPrefixField.getText(), hostHpcPrefixField.getText()));
+        dataLocalPrefixField.textProperty().addListener((obs, oldValue, newValue) -> updatePreview.run());
+        dataHpcPrefixField.textProperty().addListener((obs, oldValue, newValue) -> updatePreview.run());
+        hostLocalPrefixField.textProperty().addListener((obs, oldValue, newValue) -> updatePreview.run());
+        hostHpcPrefixField.textProperty().addListener((obs, oldValue, newValue) -> updatePreview.run());
+        updatePreview.run();
+
+        GridPane grid = new GridPane();
+        grid.setHgap(10);
+        grid.setVgap(10);
+        grid.setPadding(new Insets(10));
+        grid.add(new Label("Data local prefix:"), 0, 0);
+        grid.add(dataLocalPrefixField, 1, 0);
+        grid.add(new Label("Data HPC prefix:"), 0, 1);
+        grid.add(dataHpcPrefixField, 1, 1);
+        grid.add(new Label("Host DB local prefix:"), 0, 2);
+        grid.add(hostLocalPrefixField, 1, 2);
+        grid.add(new Label("Host DB HPC prefix:"), 0, 3);
+        grid.add(hostHpcPrefixField, 1, 3);
+        grid.add(new Label("Preview:"), 0, 4);
+        grid.add(previewArea, 1, 4);
+        GridPane.setHgrow(dataLocalPrefixField, Priority.ALWAYS);
+        GridPane.setHgrow(dataHpcPrefixField, Priority.ALWAYS);
+        GridPane.setHgrow(hostLocalPrefixField, Priority.ALWAYS);
+        GridPane.setHgrow(hostHpcPrefixField, Priority.ALWAYS);
+        GridPane.setHgrow(previewArea, Priority.ALWAYS);
+        dialog.getDialogPane().setContent(grid);
+
+        dialog.setResultConverter(button -> {
+            if (button != exportButtonType) {
+                return null;
+            }
+            return new PathReplacement(dataLocalPrefixField.getText().trim(), dataHpcPrefixField.getText().trim(),
+                    hostLocalPrefixField.getText().trim(), hostHpcPrefixField.getText().trim());
+        });
+
+        Optional<PathReplacement> result = dialog.showAndWait();
+        if (result.isEmpty()) {
+            return null;
+        }
+        PathReplacement replacement = result.get();
+        if (replacement.dataLocalPrefix.isEmpty() || replacement.dataHpcPrefix.isEmpty()) {
+            showError("Export HPC Parameters", "Both data local prefix and data HPC prefix are required.");
+            return null;
+        }
+        if (replacement.hasPartialHostReplacement()) {
+            showError("Export HPC Parameters",
+                    "Host DB local prefix and Host DB HPC prefix must either both be filled or both be empty.");
+            return null;
+        }
+        return replacement;
+    }
+
+    private void normalizeHpcPrefixField(TextField field) {
+        final boolean[] updating = new boolean[] { false };
+        field.textProperty().addListener((obs, oldValue, newValue) -> {
+            if (updating[0] || newValue == null || newValue.indexOf('\\') < 0) {
+                return;
+            }
+            updating[0] = true;
+            field.setText(newValue.replace('\\', '/'));
+            updating[0] = false;
+        });
+    }
+
+    private String buildPathReplacementPreview(T params, String dataLocalPrefix, String dataHpcPrefix,
+            String hostLocalPrefix, String hostHpcPrefix) {
+        MetaData metadata = params != null ? params.getMetadata() : null;
+        String[] rawFiles = metadata != null ? metadata.getRawFiles() : null;
+        String example = rawFiles != null && rawFiles.length > 0 ? rawFiles[0] : "";
+        String replaced = replacePathPrefix(example, dataLocalPrefix, dataHpcPrefix);
+        String hostDb = params != null ? params.getHostDB() : "";
+        String replacedHostDb = shouldReplaceHostPath(hostLocalPrefix, hostHpcPrefix)
+                ? replacePathPrefix(hostDb, hostLocalPrefix, hostHpcPrefix)
+                : hostDb;
+        return "Raw file example:\n" + example + "\n\nAfter data replacement:\n" + replaced
+                + "\n\nHost DB example:\n" + safeText(hostDb)
+                + "\n\nAfter host DB replacement:\n" + safeText(replacedHostDb);
+    }
+
+    private void applyPathReplacement(T params, String dataLocalPrefix, String dataHpcPrefix,
+            String hostLocalPrefix, String hostHpcPrefix) {
+        MetaData metadata = params.getMetadata();
+        if (metadata != null && metadata.getRawFiles() != null) {
+            String[] rawFiles = metadata.getRawFiles();
+            String[] replaced = new String[rawFiles.length];
+            for (int i = 0; i < rawFiles.length; i++) {
+                replaced[i] = replacePathPrefix(rawFiles[i], dataLocalPrefix, dataHpcPrefix);
+            }
+            metadata.setRawFiles(replaced);
+        }
+        params.setResult(replacePathPrefix(params.getResult(), dataLocalPrefix, dataHpcPrefix));
+        params.setMicroDb(replacePathPrefix(params.getMicroDb(), dataLocalPrefix, dataHpcPrefix));
+        if (shouldReplaceHostPath(hostLocalPrefix, hostHpcPrefix)) {
+            params.setHostDB(replacePathPrefix(params.getHostDB(), hostLocalPrefix, hostHpcPrefix));
+        }
+    }
+
+    private String replacePathPrefix(String path, String localPrefix, String hpcPrefix) {
+        if (path == null || path.isBlank() || localPrefix == null || localPrefix.isBlank()) {
+            return path;
+        }
+        String normalizedPath = path.replace('\\', '/');
+        String normalizedLocal = localPrefix.replace('\\', '/');
+        if (!normalizedPath.regionMatches(true, 0, normalizedLocal, 0, normalizedLocal.length())) {
+            return path;
+        }
+        String suffix = normalizedPath.substring(normalizedLocal.length());
+        String normalizedHpc = hpcPrefix.replace('\\', '/');
+        if (normalizedHpc.endsWith("/") && suffix.startsWith("/")) {
+            suffix = suffix.substring(1);
+        } else if (!normalizedHpc.endsWith("/") && !suffix.isEmpty() && !suffix.startsWith("/")) {
+            suffix = "/" + suffix;
+        }
+        return normalizedHpc + suffix;
+    }
+
+    private String suggestLocalPrefix(T params) {
+        MetaData metadata = params != null ? params.getMetadata() : null;
+        String[] rawFiles = metadata != null ? metadata.getRawFiles() : null;
+        if (rawFiles == null || rawFiles.length == 0 || rawFiles[0] == null || rawFiles[0].isBlank()) {
+            return "";
+        }
+        File parent = new File(rawFiles[0]).getParentFile();
+        return parent != null ? parent.getAbsolutePath() : rawFiles[0];
+    }
+
+    private String suggestHostLocalPrefix(T params) {
+        String hostDb = params != null ? params.getHostDB() : null;
+        if (hostDb == null || hostDb.isBlank()) {
+            return "";
+        }
+        File parent = new File(hostDb).getParentFile();
+        return parent != null ? parent.getAbsolutePath() : hostDb;
+    }
+
+    private boolean shouldReplaceHostPath(String hostLocalPrefix, String hostHpcPrefix) {
+        return hostLocalPrefix != null && !hostLocalPrefix.isBlank()
+                && hostHpcPrefix != null && !hostHpcPrefix.isBlank();
+    }
+
+    private String safeText(String value) {
+        return value == null ? "" : value;
+    }
+
+    private String defaultHpcParameterFileName() {
+        String workflowName = getWorkflowName();
+        if (workflowName == null || workflowName.isBlank()) {
+            workflowName = "metapilot";
+        }
+        return workflowName.trim().toLowerCase().replaceAll("[^a-z0-9]+", "_") + "_hpc_parameters.json";
+    }
+
+    private static final class PathReplacement {
+        final String dataLocalPrefix;
+        final String dataHpcPrefix;
+        final String hostLocalPrefix;
+        final String hostHpcPrefix;
+
+        PathReplacement(String dataLocalPrefix, String dataHpcPrefix,
+                String hostLocalPrefix, String hostHpcPrefix) {
+            this.dataLocalPrefix = dataLocalPrefix;
+            this.dataHpcPrefix = dataHpcPrefix;
+            this.hostLocalPrefix = hostLocalPrefix;
+            this.hostHpcPrefix = hostHpcPrefix;
+        }
+
+        boolean hasPartialHostReplacement() {
+            return hostLocalPrefix.isEmpty() != hostHpcPrefix.isEmpty();
         }
     }
     

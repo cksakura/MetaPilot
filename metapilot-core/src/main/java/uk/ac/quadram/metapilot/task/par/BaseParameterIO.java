@@ -150,6 +150,22 @@ public abstract class BaseParameterIO {
 	}
 
 	/**
+	 * Save parameters to an explicitly selected file.
+	 */
+	public boolean exportParametersToFile(Object parameters, File outputFile, String description) {
+		try {
+			if (parameters == null || outputFile == null) {
+				LOGGER.warn("Cannot export parameters: parameters or output file is null");
+				return false;
+			}
+			return saveParametersToFile(parameters, outputFile, description);
+		} catch (Exception e) {
+			LOGGER.error("Failed to export parameters to " + outputFile, e);
+			return false;
+		}
+	}
+
+	/**
 	 * Save parameters as last used parameters
 	 */
 	public boolean saveLastUsedParameters(Object parameters) {

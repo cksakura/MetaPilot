@@ -13,6 +13,7 @@ import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import uk.ac.quadram.metapilot.core.dia.MagPredictedPeptideProteinMapper;
 import uk.ac.quadram.metapilot.dbSearch.pfind.PFindPSM;
 import uk.ac.quadram.metapilot.dbSearch.pfind.PFindPsmReader;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNParquetReader;
@@ -27,6 +28,12 @@ public class MarkerGenomeSelector {
 
 	/** When marker peptides are less than this fraction of total identified peptides, genome selection uses all peptides (no privilege, no representative, greedy only). */
 	public static final double MARKER_PEPTIDE_RATIO_THRESHOLD = 0.05;
+
+	/**
+	 * Post-combined ranking for export labels only (core/mid/tail). Candidates are already
+	 * restricted by the refined search database, so no fixed genome ceiling is applied.
+	 */
+	public static final int UNLIMITED_MAXIMUM_SELECTED = Integer.MAX_VALUE;
 
 	public enum RepresentativeLevel {
 		GENUS, FAMILY, ORDER, CLASS, PHYLUM
@@ -334,8 +341,8 @@ public class MarkerGenomeSelector {
 			allUnique.add(seq);
 			boolean hasMarker = false;
 			for (String pro : pros) {
-				if (pro == null) continue;
-				String lookupId = pro.startsWith("REV_") ? pro.substring(4) : pro;
+				String lookupId = normalizeProteinId(pro);
+				if (lookupId.isEmpty() || isDecoyProteinId(lookupId)) continue;
 				if (markerProteinIds.contains(lookupId)) {
 					hasMarker = true;
 					break;
@@ -443,25 +450,23 @@ public class MarkerGenomeSelector {
 			HashSet<String> genomesForPsm = new HashSet<>();
 
 			for (String pro : pros) {
-				if (pro == null) {
-					continue;
-				}
-				String proteinId = pro.trim();
+				String proteinId = normalizeProteinId(pro);
 				if (proteinId.isEmpty()) {
 					continue;
 				}
 
-				boolean isDecoy = proteinId.startsWith("REV_");
-				String lookupId = isDecoy ? proteinId.substring(4) : proteinId;
+				if (isDecoyProteinId(proteinId)) {
+					continue;
+				}
 
 				String category = "ALL";
-				String proteinForGenome = lookupId;
+				String proteinForGenome = proteinId;
 				if (useMarkerCategories) {
-					category = proteinToCategory.get(lookupId);
+					category = proteinToCategory.get(proteinId);
 					if (category == null) {
-						int last = lookupId.lastIndexOf("_");
+						int last = proteinId.lastIndexOf("_");
 						if (last > 0) {
-							String baseId = lookupId.substring(0, last);
+							String baseId = proteinId.substring(0, last);
 							category = proteinToCategory.get(baseId);
 							if (category != null) {
 								proteinForGenome = baseId;
@@ -478,11 +483,6 @@ public class MarkerGenomeSelector {
 					continue;
 				}
 				
-				// don't need decoy here, because decoy genome can't have 4 types of marker proteins, so it can't help the FDR control
-				if (isDecoy) {
-					continue;
-				}
-
 				peptideHasAnyMarker = true;
 				markerProteinHits++;
 
@@ -654,7 +654,7 @@ public class MarkerGenomeSelector {
 		// ----------------------------
 		// Apply your strategy
 		// ----------------------------
-		boolean usePrivilege = useMarkerCategories;
+		boolean usePrivilege = true;
 		SelectionResult res = selectGenomesStrategyKnee(rows, allMarkerPeptides, genomePsmIds, totalMarkerPsms,
 				maximumSelected, enableAutoRep, usePrivilege, useMarkerCategories);
 		LOGGER.info("Selection results: ranked={}, seedIncluded={}, selected={}, totalPeptides={}",
@@ -879,9 +879,13 @@ public class MarkerGenomeSelector {
 				HashSet<String> genomesForPsm = new HashSet<>();
 
 				for (String pro : pros) {
-					String proteinId = pro.trim();
+					String proteinId = normalizeProteinId(pro);
 					if (proteinId.isEmpty())
 						continue;
+
+					if (isDecoyProteinId(proteinId)) {
+						continue;
+					}
 
 					String category = "ALL";
 					String proteinForGenome = proteinId;
@@ -1081,7 +1085,7 @@ public class MarkerGenomeSelector {
 		// ----------------------------
 		// Apply your strategy
 		// ----------------------------
-		boolean usePrivilege = useMarkerCategories;
+		boolean usePrivilege = true;
 		SelectionResult res = selectGenomesStrategyKnee(rows, allMarkerPeptides, genomePsmIds, totalMarkerPsms,
 				maximumSelected, enableAutoRep, usePrivilege, useMarkerCategories);
 		LOGGER.info("Selection results: ranked={}, seedIncluded={}, selected={}, totalPeptides={}",
@@ -1255,109 +1259,146 @@ public class MarkerGenomeSelector {
 
 		HashSet<String> coveredDuringRep = new HashSet<>();
 		if (effectiveUsePrivilegeSpecies) {
-			// 1) Privileged genomes: >=3 unique marker TYPES
-			// Comparator: TotalMarkers desc (for rep selection)
-			Comparator<GenomeRow> UNIQUE_FIRST_REP = (a, b) -> {
-				if (b.totalMarkers != a.totalMarkers)
-					return b.totalMarkers - a.totalMarkers;
-				if (b.totalPsm != a.totalPsm)
-					return b.totalPsm - a.totalPsm;
-				return a.genome.compareTo(b.genome);
-			};
+			if (applyHardFilter) {
+				// Marker4 mode: privileged genomes have >=3 unique marker TYPES.
+				Comparator<GenomeRow> UNIQUE_FIRST_REP = (a, b) -> {
+					if (b.totalMarkers != a.totalMarkers)
+						return b.totalMarkers - a.totalMarkers;
+					if (b.totalPsm != a.totalPsm)
+						return b.totalPsm - a.totalPsm;
+					return a.genome.compareTo(b.genome);
+				};
 
-			List<GenomeRow> repRanked = new ArrayList<>(filtered);
-			repRanked.sort(UNIQUE_FIRST_REP);
-			res.ranked = repRanked.stream().map(x -> x.genome).collect(Collectors.toList());
-
-			for (GenomeRow r : repRanked) {
-				if (r.nCatUnique() < 3) {
-					continue;
-				}
-				HashSet<String> peps = genomeToPeps.get(r.genome);
-				int increment = peps == null ? 0 : incrementalGain(coveredDuringRep, peps);
-				double minIncrement = coveredDuringRep.size() * 0.01;
-				if (increment < minIncrement) {
-					continue;
-				}
-				res.seedIncluded.add(r.genome);
-				res.reason.put(r.genome, "PRIVILEGE_UNIQUE_3TYPES");
-				if (peps != null) {
-					coveredDuringRep.addAll(peps);
-				}
-			}
-			LOGGER.info("Privileged genomes: {}", res.seedIncluded.size());
-
-			// 2) Stepped representative selection (auto level) - optional
-			if (enableAutoRep) {
-				Set<String> representedClass = new HashSet<>();
-				Set<String> representedOrder = new HashSet<>();
-				Set<String> representedFamily = new HashSet<>();
-				Set<String> representedGenus = new HashSet<>();
-
-				for (String g : res.seedIncluded) {
-					GenomeRow rr = byId.get(g);
-					if (rr == null)
-						continue;
-					if (rr.classKey != null && !"NA".equals(rr.classKey)) {
-						representedClass.add(rr.classKey);
-					}
-					if (rr.orderKey != null && !"NA".equals(rr.orderKey)) {
-						representedOrder.add(rr.orderKey);
-					}
-					if (rr.familyKey != null && !"NA".equals(rr.familyKey) && !isNumericLikeKey(rr.familyKey)) {
-						representedFamily.add(rr.familyKey);
-					}
-					if (rr.genusKey != null && !"NA".equals(rr.genusKey) && !isNumericLikeKey(rr.genusKey)) {
-						representedGenus.add(rr.genusKey);
-					}
-				}
+				List<GenomeRow> repRanked = new ArrayList<>(filtered);
+				repRanked.sort(UNIQUE_FIRST_REP);
+				res.ranked = repRanked.stream().map(x -> x.genome).collect(Collectors.toList());
 
 				for (GenomeRow r : repRanked) {
-					if (!r.hasAll4Cats())
-						continue;
-
-					if (isSubsetOfSelected(genomeToPeps.get(r.genome), res.seedIncluded, genomeToPeps)) {
+					if (r.nCatUnique() < 3) {
 						continue;
 					}
-
 					HashSet<String> peps = genomeToPeps.get(r.genome);
 					int increment = peps == null ? 0 : incrementalGain(coveredDuringRep, peps);
 					double minIncrement = coveredDuringRep.size() * 0.01;
 					if (increment < minIncrement) {
 						continue;
 					}
-					String reason = null;
-
-					if (r.classKey != null && !"NA".equals(r.classKey) && !representedClass.contains(r.classKey)) {
-						reason = "CLASS_REP";
-						representedClass.add(r.classKey);
-					} else if (r.orderKey != null && !"NA".equals(r.orderKey) && !representedOrder.contains(r.orderKey)
-							&& increment >= 1) {
-						reason = "ORDER_REP";
-						representedOrder.add(r.orderKey);
-					} else if (r.familyKey != null && !"NA".equals(r.familyKey) && !isNumericLikeKey(r.familyKey)
-							&& !representedFamily.contains(r.familyKey) && increment >= 2) {
-						reason = "FAMILY_REP";
-						representedFamily.add(r.familyKey);
-					} else if (r.genusKey != null && !"NA".equals(r.genusKey) && !isNumericLikeKey(r.genusKey)
-							&& !representedGenus.contains(r.genusKey) && increment >= 3) {
-						reason = "GENUS_REP";
-						representedGenus.add(r.genusKey);
-					}
-
-					if (reason == null) {
-						continue;
-					}
-
 					res.seedIncluded.add(r.genome);
-					res.reason.put(r.genome, appendReason(res.reason.get(r.genome), reason));
-
+					res.reason.put(r.genome, "PRIVILEGE_UNIQUE_3TYPES");
 					if (peps != null) {
 						coveredDuringRep.addAll(peps);
 					}
 				}
+				LOGGER.info("Privileged genomes: {}", res.seedIncluded.size());
+
+				// Stepped representative selection (auto level) - marker mode only.
+				if (enableAutoRep) {
+					Set<String> representedClass = new HashSet<>();
+					Set<String> representedOrder = new HashSet<>();
+					Set<String> representedFamily = new HashSet<>();
+					Set<String> representedGenus = new HashSet<>();
+
+					for (String g : res.seedIncluded) {
+						GenomeRow rr = byId.get(g);
+						if (rr == null)
+							continue;
+						if (rr.classKey != null && !"NA".equals(rr.classKey)) {
+							representedClass.add(rr.classKey);
+						}
+						if (rr.orderKey != null && !"NA".equals(rr.orderKey)) {
+							representedOrder.add(rr.orderKey);
+						}
+						if (rr.familyKey != null && !"NA".equals(rr.familyKey) && !isNumericLikeKey(rr.familyKey)) {
+							representedFamily.add(rr.familyKey);
+						}
+						if (rr.genusKey != null && !"NA".equals(rr.genusKey) && !isNumericLikeKey(rr.genusKey)) {
+							representedGenus.add(rr.genusKey);
+						}
+					}
+
+					for (GenomeRow r : repRanked) {
+						if (!r.hasAll4Cats())
+							continue;
+
+						if (isSubsetOfSelected(genomeToPeps.get(r.genome), res.seedIncluded, genomeToPeps)) {
+							continue;
+						}
+
+						HashSet<String> peps = genomeToPeps.get(r.genome);
+						int increment = peps == null ? 0 : incrementalGain(coveredDuringRep, peps);
+						double minIncrement = coveredDuringRep.size() * 0.01;
+						if (increment < minIncrement) {
+							continue;
+						}
+						String reason = null;
+
+						if (r.classKey != null && !"NA".equals(r.classKey) && !representedClass.contains(r.classKey)) {
+							reason = "CLASS_REP";
+							representedClass.add(r.classKey);
+						} else if (r.orderKey != null && !"NA".equals(r.orderKey) && !representedOrder.contains(r.orderKey)
+								&& increment >= 1) {
+							reason = "ORDER_REP";
+							representedOrder.add(r.orderKey);
+						} else if (r.familyKey != null && !"NA".equals(r.familyKey) && !isNumericLikeKey(r.familyKey)
+								&& !representedFamily.contains(r.familyKey) && increment >= 2) {
+							reason = "FAMILY_REP";
+							representedFamily.add(r.familyKey);
+						} else if (r.genusKey != null && !"NA".equals(r.genusKey) && !isNumericLikeKey(r.genusKey)
+								&& !representedGenus.contains(r.genusKey) && increment >= 3) {
+							reason = "GENUS_REP";
+							representedGenus.add(r.genusKey);
+						}
+
+						if (reason == null) {
+							continue;
+						}
+
+						res.seedIncluded.add(r.genome);
+						res.reason.put(r.genome, appendReason(res.reason.get(r.genome), reason));
+
+						if (peps != null) {
+							coveredDuringRep.addAll(peps);
+						}
+					}
+				}
+				LOGGER.info("Seed genomes after reps: {}", res.seedIncluded.size());
+			} else {
+				// Non-marker mode: privilege genomes by unique peptide support (>= 1% of total peptides).
+				final int total = Math.max(1, res.totalPeptides);
+				final int minUnique = Math.max(1, (int) Math.ceil(total * 0.01));
+
+				Comparator<GenomeRow> UNIQUE_PEPTIDE_FIRST = (a, b) -> {
+					if (b.totalUnique != a.totalUnique)
+						return b.totalUnique - a.totalUnique;
+					if (b.totalMarkers != a.totalMarkers)
+						return b.totalMarkers - a.totalMarkers;
+					if (b.totalPsm != a.totalPsm)
+						return b.totalPsm - a.totalPsm;
+					return a.genome.compareTo(b.genome);
+				};
+
+				List<GenomeRow> repRanked = new ArrayList<>(filtered);
+				repRanked.sort(UNIQUE_PEPTIDE_FIRST);
+				res.ranked = repRanked.stream().map(x -> x.genome).collect(Collectors.toList());
+
+				for (GenomeRow r : repRanked) {
+					if (r.totalUnique < minUnique) {
+						continue;
+					}
+					HashSet<String> peps = genomeToPeps.get(r.genome);
+					int increment = peps == null ? 0 : incrementalGain(coveredDuringRep, peps);
+					double minIncrement = coveredDuringRep.size() * 0.01;
+					if (increment < minIncrement) {
+						continue;
+					}
+					res.seedIncluded.add(r.genome);
+					res.reason.put(r.genome, "PRIVILEGE_UNIQUE_PEPTIDE_1PCT");
+					if (peps != null) {
+						coveredDuringRep.addAll(peps);
+					}
+				}
+				LOGGER.info("Privileged genomes (non-marker, minUnique={} of total={}): {}", minUnique, total, res.seedIncluded.size());
 			}
-			LOGGER.info("Seed genomes after reps: {}", res.seedIncluded.size());
 		}
 
 		// 3) Greedy order (seeded), then knee on moving-average increment ratio
@@ -1865,8 +1906,6 @@ public class MarkerGenomeSelector {
 		return kneeSelectionMode;
 	}
 
-	private static final String PREDICTED_TSV_SUFFIX = ".predicted.tsv";
-
 	/**
 	 * Sets protein information on precursors from MAG predicted TSV files (peptide→protein mapping).
 	 * User-provided library search parquet does not contain genome/protein info; this method fills
@@ -1893,67 +1932,7 @@ public class MarkerGenomeSelector {
 	 */
 	public static List<DiaNNPrecursor> setProteinInfoFromPredictedTsVs(DiaNNPrecursor[] precursors,
 			File predictedFolder, Set<String> genomeSet) {
-		if (precursors == null || precursors.length == 0 || predictedFolder == null || !predictedFolder.isDirectory()) {
-			return precursors != null && precursors.length > 0
-					? new ArrayList<>(Arrays.asList(precursors))
-					: new ArrayList<>();
-		}
-		ConcurrentHashMap<String, Set<String>> pepProMap = new ConcurrentHashMap<>();
-		for (DiaNNPrecursor pp : precursors) {
-			String sequence = pp != null ? pp.getSeqString() : null;
-			if (sequence != null && !sequence.isEmpty()) {
-				pepProMap.put(sequence, ConcurrentHashMap.newKeySet());
-			}
-		}
-		File[] files = predictedFolder.listFiles();
-		if (files != null && files.length > 0) {
-			ExecutorService executor = Executors.newFixedThreadPool(Math.min(20, files.length));
-			for (File file : files) {
-				if (!file.isFile() || !file.getName().endsWith(PREDICTED_TSV_SUFFIX)) {
-					continue;
-				}
-				if (genomeSet != null && !genomeSet.isEmpty()) {
-					String genomeId = file.getName().substring(0, file.getName().length() - PREDICTED_TSV_SUFFIX.length());
-					if (!genomeSet.contains(genomeId)) {
-						continue;
-					}
-				}
-				File f = file;
-				executor.execute(() -> {
-					try (BufferedReader reader = new BufferedReader(new FileReader(f))) {
-						reader.readLine(); // header
-						String pline;
-						while ((pline = reader.readLine()) != null) {
-							String[] cs = pline.split("\t");
-							if (cs.length > 1 && pepProMap.containsKey(cs[1])) {
-								pepProMap.get(cs[1]).add(cs[0]);
-							}
-						}
-					} catch (IOException e) {
-						LOGGER.warn("Error reading predicted TSV: {}", f.getAbsolutePath(), e);
-					}
-				});
-			}
-			executor.shutdown();
-			try {
-				executor.awaitTermination(1, TimeUnit.HOURS);
-			} catch (InterruptedException e) {
-				Thread.currentThread().interrupt();
-				LOGGER.warn("Interrupted while reading predicted TSVs");
-			}
-		}
-		ArrayList<DiaNNPrecursor> result = new ArrayList<>();
-		for (DiaNNPrecursor pp : precursors) {
-			if (pp == null) continue;
-			String sequence = pp.getSeqString();
-			if (sequence == null || sequence.isEmpty()) continue;
-			Set<String> proSet = pepProMap.get(sequence);
-			if (proSet != null && !proSet.isEmpty()) {
-				pp.setProGroups(proSet.toArray(new String[0]));
-				result.add(pp);
-			}
-		}
-		return result;
+		return MagPredictedPeptideProteinMapper.mapPrecursorsToProteins(precursors, predictedFolder, genomeSet);
 	}
 
 	/**
@@ -1978,65 +1957,7 @@ public class MarkerGenomeSelector {
 	 * @return list of PSMs that have at least one matching protein; others are skipped
 	 */
 	public static List<MetaPSM> setProteinInfoFromPredictedTsVs(MetaPSM[] psms, File predictedFolder, Set<String> genomeSet) {
-		if (psms == null || psms.length == 0 || predictedFolder == null || !predictedFolder.isDirectory()) {
-			return psms != null && psms.length > 0 ? new ArrayList<>(Arrays.asList(psms)) : new ArrayList<>();
-		}
-		ConcurrentHashMap<String, Set<String>> pepProMap = new ConcurrentHashMap<>();
-		for (MetaPSM psm : psms) {
-			String sequence = psm != null ? psm.getSequence() : null;
-			if (sequence != null && !sequence.isEmpty()) {
-				pepProMap.put(sequence, ConcurrentHashMap.newKeySet());
-			}
-		}
-		File[] files = predictedFolder.listFiles();
-		if (files != null && files.length > 0) {
-			ExecutorService executor = Executors.newFixedThreadPool(Math.min(20, files.length));
-			for (File file : files) {
-				if (!file.isFile() || !file.getName().endsWith(PREDICTED_TSV_SUFFIX)) {
-					continue;
-				}
-				if (genomeSet != null && !genomeSet.isEmpty()) {
-					String genomeId = file.getName().substring(0, file.getName().length() - PREDICTED_TSV_SUFFIX.length());
-					if (!genomeSet.contains(genomeId)) {
-						continue;
-					}
-				}
-				File f = file;
-				executor.execute(() -> {
-					try (BufferedReader reader = new BufferedReader(new FileReader(f))) {
-						reader.readLine(); // header
-						String pline;
-						while ((pline = reader.readLine()) != null) {
-							String[] cs = pline.split("\t");
-							if (cs.length > 1 && pepProMap.containsKey(cs[1])) {
-								pepProMap.get(cs[1]).add(cs[0]);
-							}
-						}
-					} catch (IOException e) {
-						LOGGER.warn("Error reading predicted TSV: {}", f.getAbsolutePath(), e);
-					}
-				});
-			}
-			executor.shutdown();
-			try {
-				executor.awaitTermination(1, TimeUnit.HOURS);
-			} catch (InterruptedException e) {
-				Thread.currentThread().interrupt();
-				LOGGER.warn("Interrupted while reading predicted TSVs");
-			}
-		}
-		ArrayList<MetaPSM> result = new ArrayList<>();
-		for (MetaPSM psm : psms) {
-			if (psm == null) continue;
-			String sequence = psm.getSequence();
-			if (sequence == null || sequence.isEmpty()) continue;
-			Set<String> proSet = pepProMap.get(sequence);
-			if (proSet != null && !proSet.isEmpty()) {
-				psm.setProteins(proSet.toArray(new String[0]));
-				result.add(psm);
-			}
-		}
-		return result;
+		return MagPredictedPeptideProteinMapper.mapPsmsToProteins(psms, predictedFolder, genomeSet);
 	}
 
 	// ----------------------------
@@ -2077,6 +1998,38 @@ public class MarkerGenomeSelector {
 			return proteinId.substring(0, underscore);
 		}
 		return proteinId;
+	}
+
+	private static String normalizeProteinId(String protein) {
+		if (protein == null) {
+			return "";
+		}
+		String id = protein.trim();
+		if (id.startsWith(">")) {
+			id = id.substring(1).trim();
+		}
+		int whitespace = firstWhitespace(id);
+		if (whitespace > 0) {
+			id = id.substring(0, whitespace);
+		}
+		return id;
+	}
+
+	private static int firstWhitespace(String value) {
+		for (int i = 0; i < value.length(); i++) {
+			if (Character.isWhitespace(value.charAt(i))) {
+				return i;
+			}
+		}
+		return -1;
+	}
+
+	private static boolean isDecoyProteinId(String proteinId) {
+		if (proteinId == null) {
+			return false;
+		}
+		String lower = proteinId.toLowerCase(Locale.ROOT);
+		return lower.startsWith("rev_") || lower.startsWith("decoy_");
 	}
 
 	/**
@@ -2696,17 +2649,17 @@ public class MarkerGenomeSelector {
 		File dbFilder = new File("C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-gut\\v2.0.2\\original_db");
 
 		DiaNNParquetReader parquetReader = new DiaNNParquetReader(
-				(new File(parquetFolder, "marker.parquet")).getAbsolutePath(), "KR");
+				(new File(parquetFolder, "combined.parquet")).getAbsolutePath(), "KR");
 
 		MarkerGenomeSelector selector = new MarkerGenomeSelector();
-		selector.setKneeSelectionMode(KNEE_MODE_COMPREHENSIVE);
-//		selector.setKneeSelectionMode(KNEE_MODE_FOCUS);
+//		selector.setKneeSelectionMode(KNEE_MODE_COMPREHENSIVE);
+		selector.setKneeSelectionMode(KNEE_MODE_FOCUS);
 
 		File evidenceTsv = new File(parquetFolder, "genome_score_evidence.tsv");
 		File rankedTsv = new File(parquetFolder, "genome_score_ranked.tsv");
 		File selectedTsv = new File(parquetFolder, "genome_score_selected.tsv");
 
-		selector.selectMarkerGenomesWithKnee(parquetReader.getDiaNNPrecursors(0.01), markerFasta, taxaTsv,
+		selector.selectMarkerGenomesWithKnee(parquetReader.getDiaNNPrecursors(0.01), null, taxaTsv,
 				evidenceTsv.getAbsolutePath(), rankedTsv.getAbsolutePath(), selectedTsv.getAbsolutePath(), 300, true);
 		
 //		File fastaFile = new File(parquetFolder, "focus.fasta");
@@ -2831,7 +2784,7 @@ public class MarkerGenomeSelector {
 		File dbFilder = new File(
 				"C:\\Users\\daz25hak\\MetaProAI\\database\\MAG\\human-gut\\v2.0.2\\original_db");
 
-		MarkerGenomeSelector.testParquet("Z:\\PRIDE_dataset\\PXD051792_uMetaP\\20241012_colonic_content\\MetaPilot\\marker_deep\\marker");
+		MarkerGenomeSelector.testParquet("Z:\\PRIDE_dataset\\PXD051104_metaExpertPro\\DIA_combined\\MetaPilot\\marker_deep\\combined");
 		
 //		MarkerGenomeSelector selector = new MarkerGenomeSelector();
 //		selector.setKneeSelectionMode(KNEE_MODE_COMPREHENSIVE);

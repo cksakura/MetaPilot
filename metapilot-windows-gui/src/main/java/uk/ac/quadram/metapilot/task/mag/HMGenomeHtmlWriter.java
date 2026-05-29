@@ -6,6 +6,7 @@ import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 
 import uk.ac.quadram.metapilot.core.taxonomy.TaxonomyRanks;
 
@@ -193,20 +194,20 @@ public class HMGenomeHtmlWriter {
 		String[] genomes = genomeMap.keySet().toArray(new String[genomeMap.size()]);
 		Arrays.sort(genomes);
 		
-		// Count different taxonomic ranks
-		HashMap<String, Integer> rankCounts = new HashMap<>();
-		HashMap<String, Integer> superkingdomCounts = new HashMap<>();
+		TaxonomyRanks[] mainRanks = TaxonomyRanks.getMainRanks();
+		HashMap<String, HashSet<String>> rankTaxaCounts = new HashMap<>();
+		for (TaxonomyRanks rank : mainRanks) {
+			rankTaxaCounts.put(rank.getName(), new HashSet<>());
+		}
 		
 		for (String genome : genomes) {
 			String[] taxa = genomeMap.get(genome);
-			if (taxa.length > 2) {
-				String rank = taxa[2]; // Rank is at index 2
-				rankCounts.put(rank, rankCounts.getOrDefault(rank, 0) + 1);
-				
-				if (taxa.length > 3) {
-					String superkingdom = taxa[3]; // Superkingdom is at index 3
-					if (superkingdom != null && !superkingdom.trim().isEmpty()) {
-						superkingdomCounts.put(superkingdom, superkingdomCounts.getOrDefault(superkingdom, 0) + 1);
+			for (int i = 0; i < mainRanks.length; i++) {
+				int taxaIndex = i + 3;
+				if (taxa.length > taxaIndex) {
+					String taxon = taxa[taxaIndex];
+					if (taxon != null && !taxon.trim().isEmpty()) {
+						rankTaxaCounts.get(mainRanks[i].getName()).add(taxon.trim());
 					}
 				}
 			}
@@ -218,14 +219,13 @@ public class HMGenomeHtmlWriter {
 		this.writer.println("<div class=\"stat-number\">" + genomes.length + "</div>");
 		this.writer.println("<div class=\"stat-label\">Total Genomes</div>");
 		this.writer.println("</div>");
-		this.writer.println("<div class=\"stat-item\">");
-		this.writer.println("<div class=\"stat-number\">" + rankCounts.size() + "</div>");
-		this.writer.println("<div class=\"stat-label\">Taxonomic Ranks</div>");
-		this.writer.println("</div>");
-		this.writer.println("<div class=\"stat-item\">");
-		this.writer.println("<div class=\"stat-number\">" + superkingdomCounts.size() + "</div>");
-		this.writer.println("<div class=\"stat-label\">Superkingdoms</div>");
-		this.writer.println("</div>");
+		for (TaxonomyRanks rank : mainRanks) {
+			String rankName = rank.getName();
+			this.writer.println("<div class=\"stat-item\">");
+			this.writer.println("<div class=\"stat-number\">" + rankTaxaCounts.get(rankName).size() + "</div>");
+			this.writer.println("<div class=\"stat-label\">" + formatRankLabel(rankName) + "</div>");
+			this.writer.println("</div>");
+		}
 		this.writer.println("</div>");
 
 		// Add table container
@@ -241,8 +241,8 @@ public class HMGenomeHtmlWriter {
 		for (String title : list) {
 			this.writer.println("<th>" + title + "</th>");
 		}
-		for (TaxonomyRanks rank : TaxonomyRanks.getMainRanks()) {
-			this.writer.println("<th>" + rank + "</th>");
+		for (TaxonomyRanks rank : mainRanks) {
+			this.writer.println("<th>" + rank.getName() + "</th>");
 		}
 		this.writer.println("</tr>");
 
@@ -262,7 +262,7 @@ public class HMGenomeHtmlWriter {
 			this.writer.println("<td><span class=\"rank-badge\">" + rank + "</span></td>");
 			
 			// Taxonomic ranks
-			for (int i = 3; i < TaxonomyRanks.getMainRanks().length + 3 && i < taxa.length; i++) {
+			for (int i = 3; i < mainRanks.length + 3 && i < taxa.length; i++) {
 				String taxonValue = taxa[i] != null ? taxa[i] : "";
 				this.writer.println("<td class=\"taxonomy-cell\">" + taxonValue + "</td>");
 			}
@@ -281,5 +281,12 @@ public class HMGenomeHtmlWriter {
 		this.writer.println("</body>");
 		this.writer.println("</html>");
 		this.writer.close();
+	}
+
+	private static String formatRankLabel(String rankName) {
+		if (rankName == null || rankName.isEmpty()) {
+			return "";
+		}
+		return Character.toUpperCase(rankName.charAt(0)) + rankName.substring(1);
 	}
 }

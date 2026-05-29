@@ -442,7 +442,8 @@
 			titlesb.append("Length").append("\t");
 			titlesb.append("Missed cleavages").append("\t");
 			titlesb.append("Mass").append("\t");
-			titlesb.append("Proteins").append("\t");
+			titlesb.append("Razor protein").append("\t");
+			titlesb.append("Mapped proteins").append("\t");
 			titlesb.append("Charges").append("\t");
 			titlesb.append("Qvalue").append("\t");
 			titlesb.append("PEP").append("\t");
@@ -481,11 +482,13 @@
 				sb.append(sequence.length()).append("\t");
 				sb.append(peptide.getMissCleave()).append("\t");
 				sb.append(peptide.getMass()).append("\t");
+				String razorProtein = peptide.getRazorProtein();
+				sb.append(razorProtein != null ? razorProtein : "").append("\t");
 
 				String[] pros = peptide.getProteins();
 
 				for (String pro : pros) {
-					if (proteinIdMap.containsKey(pro)) {
+					if (pro != null) {
 						sb.append(pro).append(";");
 					}
 				}
@@ -601,7 +604,7 @@
 		ArrayList<MetaProtein> proteinList = new ArrayList<MetaProtein>();
 		try {
 
-			this.final_pro_txt = new File(resultFolderFile, "final_proteins.tsv");
+			this.final_pro_txt = new File(resultFolderFile, "razor_proteins.tsv");
 
 			PrintWriter writer = new PrintWriter(this.final_pro_txt);
 

@@ -59,7 +59,7 @@ public class SageTask {
 		File batFile = new File(configFile.getParentFile(), "sage.bat");
 		try (PrintWriter writer = new PrintWriter(batFile)) {
 			writer.println(headsb);
-			writer.println("start /B " + sageFile.getName() + " " + configFile.getAbsolutePath());
+			writer.println("\"" + sageFile.getAbsolutePath() + "\" \"" + configFile.getAbsolutePath() + "\"");
 			writer.println();
 			writer.print("exit");
 			writer.close();
@@ -1011,9 +1011,6 @@ public class SageTask {
 						ArrayList<String> commands = new ArrayList<String>();
 						commands.add("cmd.exe");
 						commands.add("/c");
-						commands.add("start");
-						commands.add("/min");
-
 						String[] cs = pari.split("\t");
 						for (String parString : cs) {
 							commands.add(parString);
@@ -1109,7 +1106,6 @@ public class SageTask {
 			ArrayList<String> cmdList = new ArrayList<String>();
 			cmdList.add("cmd.exe");
 			cmdList.add("/c");
-			cmdList.add("start");
 			cmdList.add(cmd);
 
 			ProcessBuilder pb = new ProcessBuilder(cmdList);

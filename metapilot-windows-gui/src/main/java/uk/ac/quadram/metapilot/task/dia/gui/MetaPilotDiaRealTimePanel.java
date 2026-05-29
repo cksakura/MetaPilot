@@ -1854,4 +1854,4 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         }
     }
     
-} 
+}

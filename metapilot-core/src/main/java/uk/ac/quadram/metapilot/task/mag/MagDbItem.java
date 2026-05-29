@@ -44,6 +44,7 @@ public class MagDbItem {
 
 		this.repositoryFile = null;
 		
+		this.mgygNameMap = new HashMap<String, ArrayList<String>>();
 		this.magModelMap = new HashMap<String, MagModel>();
 		this.magPepLibMap = new HashMap<String, MagPepLib>();
 	}
@@ -55,6 +56,7 @@ public class MagDbItem {
 
 		this.repositoryFile = directoryFile;
 		
+		this.mgygNameMap = new HashMap<String, ArrayList<String>>();
 		this.magModelMap = new HashMap<String, MagModel>();
 		this.magPepLibMap = new HashMap<String, MagPepLib>();
 	}
@@ -348,7 +350,7 @@ public class MagDbItem {
 	}
 
 	/**
-	 * Returns the path to Marker4_highpep.fasta (used when caller knows it exists).
+	 * Returns the path to Marker4_highpep.fasta (DIA library optimization only).
 	 */
 	public File getMarkerHighPepFastaFile() {
 		if (repositoryFile == null || !repositoryFile.exists()) {
@@ -358,6 +360,34 @@ public class MagDbItem {
 			return null;
 		}
 		return new File(currentFile, "Marker4_highpep.fasta");
+	}
+
+	/**
+	 * Returns the full Marker4 FASTA. DDA workflows must use this file, not
+	 * Marker4_highpep.fasta, so HAP searches are performed against the complete
+	 * marker database.
+	 */
+	public File getMarker4FastaFile() {
+		if (repositoryFile == null || !repositoryFile.exists()) {
+			return null;
+		}
+		if (currentFile == null || !currentFile.exists()) {
+			return null;
+		}
+		return new File(currentFile, "Marker4.fasta");
+	}
+
+	/**
+	 * Returns the DDA HAP FASTA.
+	 *
+	 * Marker4 DDA workflows intentionally use the complete Marker4.fasta. The
+	 * Marker4_highpep.fasta optimization is limited to DIA library generation.
+	 */
+	public File getHapFastaFile(String selectorMode) {
+		if (MARKER4.equalsIgnoreCase(selectorMode)) {
+			return getMarker4FastaFile();
+		}
+		return getRibElonFastaFile();
 	}
 
 	/**
@@ -587,13 +617,6 @@ public class MagDbItem {
 	public File getMarkerHighPepLibFile() {
 		return getMarker4LibFile();
 	}
-
-	public File getHapFastaFile(String selectorMode) {
-		if (MARKER4.equalsIgnoreCase(selectorMode)) {
-			return getMarker4FastaForLibrary();
-		}
-		return getRibElonFastaFile();
-	}
 	
 	public File getHapFastaHdfFile() {
 		if (repositoryFile == null || !repositoryFile.exists()) {
@@ -612,7 +635,8 @@ public class MagDbItem {
 
 	/**
 	 * Returns the target-decoy FASTA path for the given genome selector mode.
-	 * Marker4 uses Marker4_td.fasta; otherwise Marker2_td.fasta.
+	 * Marker4 uses Marker4_td.fasta generated from the full Marker4.fasta for
+	 * DDA workflows; otherwise Marker2_td.fasta.
 	 * The file may not exist yet (caller should create it via FastaManager.addDecoy if needed).
 	 */
 	public File getHapFastaTDFile(String selectorMode) {

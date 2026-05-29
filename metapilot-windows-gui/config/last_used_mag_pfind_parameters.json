@@ -11,7 +11,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "Qiao-FB1-DDA-1"
+      "sample_name": "ARA_F1_1"
     },
     {
       "treatment": "",
@@ -23,7 +23,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "Qiao-FB1-DDA-2"
+      "sample_name": "ARA_F1_2"
     },
     {
       "treatment": "",
@@ -35,7 +35,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "Qiao-FB1-DDA-3"
+      "sample_name": "ARA_F1_3"
     },
     {
       "treatment": "",
@@ -47,7 +47,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "Qiao-FB2-DDA-1"
+      "sample_name": "ARA_F2_1"
     },
     {
       "treatment": "",
@@ -59,7 +59,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "Qiao-FB2-DDA-2"
+      "sample_name": "ARA_F2_2"
     },
     {
       "treatment": "",
@@ -71,7 +71,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "Qiao-FB2-DDA-3"
+      "sample_name": "ARA_F2_3"
     },
     {
       "treatment": "",
@@ -83,7 +83,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "Qiao-FB3-DDA-1"
+      "sample_name": "ARA_F3_1"
     },
     {
       "treatment": "",
@@ -95,7 +95,7 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "Qiao-FB3-DDA-2"
+      "sample_name": "ARA_F3_2"
     },
     {
       "treatment": "",
@@ -107,52 +107,916 @@
       "label_type": "",
       "custom_field_3": "",
       "age": "",
-      "sample_name": "Qiao-FB3-DDA-3"
+      "sample_name": "ARA_F3_3"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "CEL_F1_1"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "CEL_F1_2"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "CEL_F1_3"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "CEL_F2_1"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "CEL_F2_2"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "CEL_F2_3"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "CEL_F3_1"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "CEL_F3_2"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "CEL_F3_3"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "ISO_F1_1"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "ISO_F1_2"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "ISO_F1_3"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "ISO_F2_1"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "ISO_F2_2"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "ISO_F2_3"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "ISO_F3_1"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "ISO_F3_2"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "ISO_F3_3"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "KES_F1_1"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "KES_F1_2"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "KES_F1_3"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "KES_F2_1"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "KES_F2_2"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "KES_F2_3"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "KES_F3_1"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "KES_F3_2"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "KES_F3_3"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "PBS_F1_1"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "PBS_F1_2"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "PBS_F1_3"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "PBS_F2_1"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "PBS_F2_2"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "PBS_F2_3"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "PBS_F3_1"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "PBS_F3_2"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "PBS_F3_3"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "RAF_F1_1"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "RAF_F1_2"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "RAF_F1_3"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "RAF_F2_1"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "RAF_F2_2"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "RAF_F2_3"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "RAF_F3_1"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "RAF_F3_2"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "RAF_F3_3"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "XYL3_F1_1"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "XYL3_F1_2"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "XYL3_F1_3"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "XYL3_F2_1"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "XYL3_F2_2"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "XYL3_F2_3"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "XYL3_F3_1"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "XYL3_F3_2"
+    },
+    {
+      "treatment": "",
+      "condition": "",
+      "gender": "",
+      "custom_field_1": "",
+      "custom_field_2": "",
+      "time_point": "",
+      "label_type": "",
+      "custom_field_3": "",
+      "age": "",
+      "sample_name": "XYL3_F3_3"
     }
   ],
   "workflow": "DDA_MAG_PFIND",
   "input_output": {
     "mag_database_version": "v2.0.2",
-    "host_database": "C:\\Users\\daz25hak\\MetaProAI\\database\\uniprotkb_Human_AND_reviewed_true_AND_m_2025_09_01.fasta",
+    "host_database": "",
     "mag_database": "human-gut",
-    "output_directory": "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DDA\\MetaPilot",
-    "append_host_db": true,
+    "output_directory": "Z:\\PRIDE_dataset\\PXD064733_ailing\\MetaPilot",
+    "append_host_db": false,
     "experiments": [
       {
-        "file_path": "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DDA\\Qiao-FB1-DDA-1.raw",
-        "experiment_name": "Qiao-FB1-DDA-1"
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\ARA_F1_1.raw",
+        "experiment_name": "ARA_F1_1"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DDA\\Qiao-FB1-DDA-2.raw",
-        "experiment_name": "Qiao-FB1-DDA-2"
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\ARA_F1_2.raw",
+        "experiment_name": "ARA_F1_2"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DDA\\Qiao-FB1-DDA-3.raw",
-        "experiment_name": "Qiao-FB1-DDA-3"
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\ARA_F1_3.raw",
+        "experiment_name": "ARA_F1_3"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DDA\\Qiao-FB2-DDA-1.raw",
-        "experiment_name": "Qiao-FB2-DDA-1"
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\ARA_F2_1.raw",
+        "experiment_name": "ARA_F2_1"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DDA\\Qiao-FB2-DDA-2.raw",
-        "experiment_name": "Qiao-FB2-DDA-2"
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\ARA_F2_2.raw",
+        "experiment_name": "ARA_F2_2"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DDA\\Qiao-FB2-DDA-3.raw",
-        "experiment_name": "Qiao-FB2-DDA-3"
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\ARA_F2_3.raw",
+        "experiment_name": "ARA_F2_3"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DDA\\Qiao-FB3-DDA-1.raw",
-        "experiment_name": "Qiao-FB3-DDA-1"
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\ARA_F3_1.raw",
+        "experiment_name": "ARA_F3_1"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DDA\\Qiao-FB3-DDA-2.raw",
-        "experiment_name": "Qiao-FB3-DDA-2"
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\ARA_F3_2.raw",
+        "experiment_name": "ARA_F3_2"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\IPX0003851000\\IPX0003851004\\DDA\\Qiao-FB3-DDA-3.raw",
-        "experiment_name": "Qiao-FB3-DDA-3"
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\ARA_F3_3.raw",
+        "experiment_name": "ARA_F3_3"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\CEL_F1_1.raw",
+        "experiment_name": "CEL_F1_1"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\CEL_F1_2.raw",
+        "experiment_name": "CEL_F1_2"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\CEL_F1_3.raw",
+        "experiment_name": "CEL_F1_3"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\CEL_F2_1.raw",
+        "experiment_name": "CEL_F2_1"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\CEL_F2_2.raw",
+        "experiment_name": "CEL_F2_2"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\CEL_F2_3.raw",
+        "experiment_name": "CEL_F2_3"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\CEL_F3_1.raw",
+        "experiment_name": "CEL_F3_1"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\CEL_F3_2.raw",
+        "experiment_name": "CEL_F3_2"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\CEL_F3_3.raw",
+        "experiment_name": "CEL_F3_3"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\ISO_F1_1.raw",
+        "experiment_name": "ISO_F1_1"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\ISO_F1_2.raw",
+        "experiment_name": "ISO_F1_2"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\ISO_F1_3.raw",
+        "experiment_name": "ISO_F1_3"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\ISO_F2_1.raw",
+        "experiment_name": "ISO_F2_1"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\ISO_F2_2.raw",
+        "experiment_name": "ISO_F2_2"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\ISO_F2_3.raw",
+        "experiment_name": "ISO_F2_3"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\ISO_F3_1.raw",
+        "experiment_name": "ISO_F3_1"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\ISO_F3_2.raw",
+        "experiment_name": "ISO_F3_2"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\ISO_F3_3.raw",
+        "experiment_name": "ISO_F3_3"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\KES_F1_1.raw",
+        "experiment_name": "KES_F1_1"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\KES_F1_2.raw",
+        "experiment_name": "KES_F1_2"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\KES_F1_3.raw",
+        "experiment_name": "KES_F1_3"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\KES_F2_1.raw",
+        "experiment_name": "KES_F2_1"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\KES_F2_2.raw",
+        "experiment_name": "KES_F2_2"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\KES_F2_3.raw",
+        "experiment_name": "KES_F2_3"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\KES_F3_1.raw",
+        "experiment_name": "KES_F3_1"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\KES_F3_2.raw",
+        "experiment_name": "KES_F3_2"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\KES_F3_3.raw",
+        "experiment_name": "KES_F3_3"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\PBS_F1_1.raw",
+        "experiment_name": "PBS_F1_1"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\PBS_F1_2.raw",
+        "experiment_name": "PBS_F1_2"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\PBS_F1_3.raw",
+        "experiment_name": "PBS_F1_3"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\PBS_F2_1.raw",
+        "experiment_name": "PBS_F2_1"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\PBS_F2_2.raw",
+        "experiment_name": "PBS_F2_2"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\PBS_F2_3.raw",
+        "experiment_name": "PBS_F2_3"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\PBS_F3_1.raw",
+        "experiment_name": "PBS_F3_1"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\PBS_F3_2.raw",
+        "experiment_name": "PBS_F3_2"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\PBS_F3_3.raw",
+        "experiment_name": "PBS_F3_3"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\RAF_F1_1.raw",
+        "experiment_name": "RAF_F1_1"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\RAF_F1_2.raw",
+        "experiment_name": "RAF_F1_2"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\RAF_F1_3.raw",
+        "experiment_name": "RAF_F1_3"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\RAF_F2_1.raw",
+        "experiment_name": "RAF_F2_1"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\RAF_F2_2.raw",
+        "experiment_name": "RAF_F2_2"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\RAF_F2_3.raw",
+        "experiment_name": "RAF_F2_3"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\RAF_F3_1.raw",
+        "experiment_name": "RAF_F3_1"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\RAF_F3_2.raw",
+        "experiment_name": "RAF_F3_2"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\RAF_F3_3.raw",
+        "experiment_name": "RAF_F3_3"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\XYL3_F1_1.raw",
+        "experiment_name": "XYL3_F1_1"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\XYL3_F1_2.raw",
+        "experiment_name": "XYL3_F1_2"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\XYL3_F1_3.raw",
+        "experiment_name": "XYL3_F1_3"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\XYL3_F2_1.raw",
+        "experiment_name": "XYL3_F2_1"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\XYL3_F2_2.raw",
+        "experiment_name": "XYL3_F2_2"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\XYL3_F2_3.raw",
+        "experiment_name": "XYL3_F2_3"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\XYL3_F3_1.raw",
+        "experiment_name": "XYL3_F3_1"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\XYL3_F3_2.raw",
+        "experiment_name": "XYL3_F3_2"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD064733_ailing\\XYL3_F3_3.raw",
+        "experiment_name": "XYL3_F3_3"
       }
     ]
   },
@@ -161,7 +1025,7 @@
     "missed_cleavages": 2,
     "digestion_mode": "Semi-Specific"
   },
-  "generated_at": "2026-03-07 12:17:48",
+  "generated_at": "2026-05-28 15:24:19",
   "additional_parameters": {
     "generate_sample_specific_db": false,
     "ms2_scan_mode": "HCD-FTMS",
@@ -169,7 +1033,7 @@
     "threads": 10,
     "open_search": true,
     "genome_selector_mode": "Marker4",
-    "genome_selection_strategy": "Focus"
+    "genome_selection_strategy": "Comprehensive"
   },
   "description": "Last used parameters",
   "version": "1.0",

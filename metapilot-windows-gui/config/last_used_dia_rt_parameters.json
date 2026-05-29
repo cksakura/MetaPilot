@@ -39,11 +39,11 @@
   "taskCount": 0,
   "library": [],
   "phosphoSTY": false,
-  "generated_at": "2026-03-11 09:23:04",
+  "generated_at": "2026-05-26 13:39:06",
   "mExcision": true,
   "combineResult": false,
   "carbamiC": true,
   "workflowType": "DIA_REALTIME",
   "stopNow": false,
-  "timestamp": 1773220984181
+  "timestamp": 1779799146281
 }

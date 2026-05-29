@@ -36,6 +36,7 @@ import uk.ac.quadram.metapilot.core.mod.IsobaricTag;
 import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantPep4Meta;
 import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantPepReader;
 import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantProReader;
+import javafx.application.Platform;
 import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
@@ -229,12 +230,14 @@ public class DDAIgcMaxQuantTask extends MetaPilotIgcTask {
 		if (maxquantCmd.exists()) {
 			updateProgress(50, 100);
 			updateMessage("Starting MaxQuant search...");
+			updateCurrentTaskProgress(ProgressBar.INDETERMINATE_PROGRESS);
 			logger.info("Step 3: Starting MaxQuant search...");
 
 			File peptides = maxquantSearch();
+			updateCurrentTaskProgress(1.0);
 
 			if (peptides != null && peptides.exists()) {
-				updateProgress(60, 100);
+				updateProgress(85, 100);
 				updateMessage("MaxQuant search completed, generating reports...");
 
 				File combined = peptides.getParentFile();
@@ -248,8 +251,9 @@ public class DDAIgcMaxQuantTask extends MetaPilotIgcTask {
 					reportDir.mkdirs();
 				}
 
-			updateProgress(65, 100);
+			updateProgress(88, 100);
 			updateMessage("Copying report templates...");
+			updateCurrentTaskProgress(ProgressBar.INDETERMINATE_PROGRESS);
 			reportCopyTask = new MetaPythonReportCopyTask(new File(metaPar.getResult()), logger);
 			reportCopyThread = new Thread(reportCopyTask);
 			reportCopyThread.start();
@@ -330,16 +334,18 @@ public class DDAIgcMaxQuantTask extends MetaPilotIgcTask {
 					}
 				}
 
-				updateProgress(70, 100);
+				updateCurrentTaskProgress(1.0);
+				updateProgress(92, 100);
 				updateMessage("Generating analysis reports...");
+				updateCurrentTaskProgress(ProgressBar.INDETERMINATE_PROGRESS);
 				reportThread = new Thread(reportTask);
 				reportThread.start();
 
-				updateProgress(80, 100);
+				updateProgress(95, 100);
 
 				// Generate final TSV files from the report files
 				File finalPeptidesFile = new File(metaPar.getResult(), "final_peptides.tsv");
-				File finalProteinsFile = new File(metaPar.getResult(), "final_proteins.tsv");
+				File finalProteinsFile = new File(metaPar.getResult(), "razor_proteins.tsv");
 
 				// Copy peptides report to final_peptides.tsv if it doesn't exist
 				if (!finalPeptidesFile.exists() || finalPeptidesFile.length() == 0) {
@@ -356,7 +362,7 @@ public class DDAIgcMaxQuantTask extends MetaPilotIgcTask {
 					}
 				}
 
-				// Copy proteins report to final_proteins.tsv if it doesn't exist
+				// Copy proteins report to razor_proteins.tsv if it doesn't exist
 				if (!finalProteinsFile.exists() || finalProteinsFile.length() == 0) {
 					File proReport = new File(proteins.getParentFile(),
 							proteins.getName().replace(".txt", "_report.txt"));
@@ -364,9 +370,9 @@ public class DDAIgcMaxQuantTask extends MetaPilotIgcTask {
 						try {
 							java.nio.file.Files.copy(proReport.toPath(), finalProteinsFile.toPath(),
 									java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-							logger.info(taskName + ": copied proteins report to final_proteins.tsv");
+							logger.info(taskName + ": copied proteins report to razor_proteins.tsv");
 						} catch (IOException e) {
-							logger.error(taskName + ": failed to copy proteins report to final_proteins.tsv", e);
+							logger.error(taskName + ": failed to copy proteins report to razor_proteins.tsv", e);
 						}
 					}
 				}
@@ -380,7 +386,7 @@ public class DDAIgcMaxQuantTask extends MetaPilotIgcTask {
 					if (!peptidesExist)
 						missingFiles += "final_peptides.tsv ";
 					if (!proteinsExist)
-						missingFiles += "final_proteins.tsv ";
+						missingFiles += "razor_proteins.tsv ";
 
 					logger.error(taskName + ": required output files are missing or empty: " + missingFiles.trim());
 					System.err.println(format.format(new Date()) + "\t" + taskName
@@ -389,15 +395,20 @@ public class DDAIgcMaxQuantTask extends MetaPilotIgcTask {
 					return false;
 				}
 
-				updateProgress(100, 100);
-				updateMessage("Analysis completed successfully!");
-				logger.info(taskName + ": finished - all required output files generated successfully");
-				System.out.println(format.format(new Date()) + "\t" + taskName
-						+ ": finished - all required output files generated successfully");
-
 				try {
 					reportThread.join();
-					return reportTask.get();
+					boolean reportOk = reportTask.get();
+					if (!reportOk) {
+						logger.error(getTaskName() + ": Report generation failed");
+						return false;
+					}
+					updateProgress(100, 100);
+					updateCurrentTaskProgress(1.0);
+					updateMessage("Analysis completed successfully!");
+					logger.info(taskName + ": finished - all required output files generated successfully");
+					System.out.println(format.format(new Date()) + "\t" + taskName
+							+ ": finished - all required output files generated successfully");
+					return true;
 				} catch (InterruptedException e) {
 					logger.error(getTaskName() + ": Report generation interrupted", e);
 					return false;
@@ -422,6 +433,33 @@ public class DDAIgcMaxQuantTask extends MetaPilotIgcTask {
 		}
 	}
 
+	private void updateCurrentTaskProgress(double progress) {
+		if (secondBar != null) {
+			Platform.runLater(() -> secondBar.setProgress(progress));
+		}
+	}
+
+	private int runMaxQuantCommand(File executable, File workingDirectory, String... args)
+			throws IOException, InterruptedException {
+		String[] command = new String[args.length + 1];
+		command[0] = executable.getAbsolutePath();
+		System.arraycopy(args, 0, command, 1, args.length);
+
+		ProcessBuilder pb = new ProcessBuilder(command);
+		pb.directory(workingDirectory);
+		pb.redirectErrorStream(true);
+
+		Process process = pb.start();
+		try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+			String line;
+			while ((line = reader.readLine()) != null) {
+				System.out.println(format.format(new Date()) + "\t" + taskName + ": " + line);
+				logger.info(taskName + ": " + line);
+			}
+		}
+		return process.waitFor();
+	}
+
 	private void convertPep2Report(File peptides, File peptideReport) throws IOException {
 
 		MaxquantPepReader pepReader = new MaxquantPepReader(peptides, (DDAIgcMaxQuantParameters) metaPar);
@@ -431,7 +469,8 @@ public class DDAIgcMaxQuantTask extends MetaPilotIgcTask {
 		titlesb.append("Sequence").append("\t");
 		titlesb.append("Length").append("\t");
 		titlesb.append("Missed cleavages").append("\t");
-		titlesb.append("Proteins").append("\t");
+		titlesb.append("Razor protein").append("\t");
+		titlesb.append("Mapped proteins").append("\t");
 		titlesb.append("Charges").append("\t");
 		titlesb.append("PEP").append("\t");
 		titlesb.append("Score").append("\t");
@@ -462,6 +501,7 @@ public class DDAIgcMaxQuantTask extends MetaPilotIgcTask {
 			sb.append(pep.getSequence()).append("\t");
 			sb.append(pep.getSequence().length()).append("\t");
 			sb.append(pep.getMissCleave()).append("\t");
+			sb.append("").append("\t");
 			sb.append(pep.getProtein()).append("\t");
 			sb.append(pep.getChargeString()).append("\t");
 			sb.append(pep.getPEP()).append("\t");
@@ -693,51 +733,17 @@ public class DDAIgcMaxQuantTask extends MetaPilotIgcTask {
 
 		if (!mqpar.exists()) {
 			try {
-				StringBuilder sb = new StringBuilder();
-				sb.append(maxquantCmdFile.getName());
-				sb.append(" -c ");
-				sb.append(mqpar.getAbsolutePath());
+				String commandText = maxquantCmdFile.getAbsolutePath() + " -c " + mqpar.getAbsolutePath();
+				System.out.println(format.format(new Date()) + "\t" + commandText);
+				logger.info(taskName + ": " + commandText);
 
-				int id = maxquantCmdFile.getAbsolutePath().indexOf(":");
-				if (id < 0) {
-					System.out.println(format.format(new Date()) + "\t" + taskName
-							+ ": cann't find the directory of MaxQuantCmd.exe");
-					logger.error(taskName + ": cann't find the directory of MaxQuantCmd.exe");
+				int exitCode = runMaxQuantCommand(maxquantCmdFile, maxquantCmdFile.getParentFile(), "-c",
+						mqpar.getAbsolutePath());
+				if (exitCode != 0) {
+					logger.error(taskName + ": error in creating MaxQuant parameter file, exit code " + exitCode);
+					System.err.println(
+							format.format(new Date()) + "\t" + taskName + ": error in creating MaxQuant parameter");
 				}
-
-				File batFile = new File(mqpar.getParent(), mqpar.getName() + ".bat");
-				PrintWriter batWriter = new PrintWriter(batFile);
-
-				batWriter.println(maxquantCmdFile.getAbsolutePath().substring(0, id) + ":");
-				batWriter.println("cd " + maxquantCmdFile.getParent());
-				batWriter.println(sb);
-				batWriter.println("exit");
-				batWriter.close();
-
-				System.out.println(format.format(new Date()) + "\t" + sb);
-				logger.info(taskName + ": " + sb);
-
-				String[] args = { "cmd.exe", "/c", "start", batFile.getAbsolutePath() };
-
-				ProcessBuilder pb = new ProcessBuilder(args);
-				Process p = pb.start();
-
-				BufferedInputStream in = new BufferedInputStream(p.getInputStream());
-				BufferedReader inBr = new BufferedReader(new InputStreamReader(in));
-				String lineStr;
-				while ((lineStr = inBr.readLine()) != null) {
-					System.out.println(format.format(new Date()) + "\t" + taskName + ": " + lineStr);
-				}
-
-				if (p.waitFor() != 0) {
-					if (p.exitValue() == 1) {
-						logger.error(taskName + ": error in creating MaxQuant parameter file");
-						System.err.println(
-								format.format(new Date()) + "\t" + taskName + ": error in creating MaxQuant parameter");
-					}
-				}
-				inBr.close();
-				in.close();
 
 			} catch (Exception e) {
 				logger.error(taskName + ": error in creating MaxQuant parameter file", e);
@@ -1211,51 +1217,18 @@ public class DDAIgcMaxQuantTask extends MetaPilotIgcTask {
 		}
 
 		try {
-			StringBuilder sb = new StringBuilder();
-			sb.append(maxquantCmdFile.getName());
-			sb.append(" ");
-			sb.append(parFile.getAbsolutePath());
+			String commandText = maxquantCmdFile.getAbsolutePath() + " " + parFile.getAbsolutePath();
+			System.out.println(format.format(new Date()) + "\t" + commandText);
+			logger.info(taskName + ": " + commandText);
 
-			int id = maxquantCmdFile.getAbsolutePath().indexOf(":");
-			if (id < 0) {
-				System.out.println(
-						format.format(new Date()) + "\t" + taskName + ": cann't find the directory of MaxQuantCmd.exe");
-				logger.error(taskName + ": cann't find the directory of MaxQuantCmd.exe");
+			int exitCode = runMaxQuantCommand(maxquantCmdFile, maxquantCmdFile.getParentFile(),
+					parFile.getAbsolutePath());
+			if (exitCode != 0) {
+				logger.error(taskName + ": error in database searching by MaxQuant, exit code " + exitCode);
+				System.err.println(
+						format.format(new Date()) + "\t" + taskName + ": error in database searching by MaxQuant");
+				return null;
 			}
-
-			File batFile = new File(parFile.getParent(), parFile.getName() + ".bat");
-			PrintWriter batWriter = new PrintWriter(batFile);
-
-			batWriter.println(maxquantCmdFile.getAbsolutePath().substring(0, id) + ":");
-			batWriter.println("cd " + maxquantCmdFile.getParent());
-			batWriter.println(sb);
-			batWriter.println("exit");
-			batWriter.close();
-
-			System.out.println(format.format(new Date()) + "\t" + sb);
-			logger.info(taskName + ": " + sb);
-
-			String[] args = { "cmd.exe", "/c", "start", batFile.getAbsolutePath() };
-
-			ProcessBuilder pb = new ProcessBuilder(args);
-			Process p = pb.start();
-
-			BufferedInputStream in = new BufferedInputStream(p.getInputStream());
-			BufferedReader inBr = new BufferedReader(new InputStreamReader(in));
-			String lineStr;
-			while ((lineStr = inBr.readLine()) != null) {
-				System.out.println(format.format(new Date()) + "\t" + taskName + ": " + lineStr);
-			}
-
-			if (p.waitFor() != 0) {
-				if (p.exitValue() == 1) {
-					logger.error(taskName + ": error in database searching by MaxQuant");
-					System.err.println(
-							format.format(new Date()) + "\t" + taskName + ": error in database searching by MaxQuant");
-				}
-			}
-			inBr.close();
-			in.close();
 
 		} catch (Exception e) {
 			logger.error(taskName + ": error in database searching by MaxQuant", e);

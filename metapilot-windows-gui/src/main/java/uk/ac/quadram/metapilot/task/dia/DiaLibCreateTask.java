@@ -7,18 +7,12 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.Logger;
 
-import uk.ac.quadram.metapilot.dbSearch.deepDetect.DeepDetectParameter;
-import uk.ac.quadram.metapilot.dbSearch.deepDetect.DeepDetectTask;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNParquetReader;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNTask;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiannParameter;
@@ -118,106 +112,20 @@ public class DiaLibCreateTask extends MetaAbstractTask {
 				FileUtils.copyFile(new File(filePath), destLibFile);
 			}
 		} else if (taskType == fromProtein) {
-
-			File pepFile = new File(libFile, libName + ".predicted.tsv");
-			if (!pepFile.exists()) {
-				DeepDetectTask deepDetectTask = new DeepDetectTask(metaPar, mrp, progressBar, null);
-				DeepDetectParameter deepDetectPar = new DeepDetectParameter();
-				deepDetectPar.setMissCleavage(miss);
-				if (enzyme.equals("Lys-C")) {
-					deepDetectPar.setProtease("LysC");
-				} else if (enzyme.equals("Chymotrypsin")) {
-					deepDetectPar.setProtease("Chymotrypsin");
-				} else if (enzyme.equals("AspN")) {
-					deepDetectPar.setProtease("AspN");
-				} else if (enzyme.equals("GluC")) {
-					deepDetectPar.setProtease("GluC");
-				} else {
-					deepDetectPar.setProtease("Trypsin");
-				}
-
-				deepDetectPar.setInput(new File(filePath));
-				deepDetectPar.setOutput(pepFile);
-
-				deepDetectTask.addTask(deepDetectPar);
-				deepDetectTask.run(2);
-			}
-
-			HashMap<String, Double> pepScoreMap = new HashMap<String, Double>();
-			HashMap<String, HashSet<String>> pepProMap = new HashMap<String, HashSet<String>>();
-			try (BufferedReader reader = new BufferedReader(new FileReader(pepFile))) {
-				String pline = reader.readLine();
-				while ((pline = reader.readLine()) != null) {
-					String[] cs = pline.split("\t");
-					double score = Double.parseDouble(cs[2]);
-					if (pepScoreMap.containsKey(cs[1])) {
-						if (score > pepScoreMap.get(cs[1])) {
-							pepScoreMap.put(cs[1], score);
-						}
-					} else {
-						pepScoreMap.put(cs[1], score);
-					}
-					if (pepProMap.containsKey(cs[1])) {
-						pepProMap.get(cs[1]).add(cs[0]);
-					} else {
-						HashSet<String> proSet = new HashSet<String>();
-						proSet.add(cs[0]);
-						pepProMap.put(cs[1], proSet);
-					}
-				}
-				reader.close();
-			} catch (IOException e) {
-				return fail("Error reading predicted peptide file: " + pepFile.getAbsolutePath(), e);
-			}
-
-			File pepDbFile = new File(libFile, libName + ".fasta");
-			if (!pepDbFile.exists()) {
-				List<Map.Entry<String, Double>> pepList = new ArrayList<>(pepScoreMap.entrySet());
-				pepList.sort(Map.Entry.comparingByValue(Collections.reverseOrder()));
-				String[] sortedPeps = pepList.stream().map(Map.Entry::getKey).toArray(String[]::new);
-
-				try (PrintWriter writer = new PrintWriter(pepDbFile)) {
-					for (int i = 0; i < sortedPeps.length; i++) {
-						double score = pepScoreMap.get(sortedPeps[i]);
-						if (score < 0.85) {
-							if (i > 2000000) {
-								break;
-							}
-						} else {
-							if (i > 3000000) {
-								break;
-							}
-						}
-
-						HashSet<String> proSet = pepProMap.get(sortedPeps[i]);
-						if (proSet != null && proSet.size() > 0) {
-							for (String pro : proSet) {
-								writer.println(">" + pro);
-								writer.println(sortedPeps[i]);
-							}
-						}
-					}
-
-					writer.close();
-				} catch (IOException e) {
-					return fail("Error writing peptide FASTA file: " + pepDbFile.getAbsolutePath(), e);
-				}
-			}
-
 			if (!destLibFile.exists()) {
 				File tempLibFile = new File(libFile, libName + ".predicted.speclib");
 				if (tempLibFile.exists()) {
 					tempLibFile.renameTo(destLibFile);
 				} else {
-					diaNNTask.addTask(diannPar, pepDbFile.getAbsolutePath(), destLibFile.getAbsolutePath(), false);
+					diaNNTask.addTask(diannPar, filePath, destLibFile.getAbsolutePath(), false);
 					diaNNTask.run(2);
 
 					if (tempLibFile.exists()) {
 						tempLibFile.renameTo(destLibFile);
-					} else {
+					} else if (!destLibFile.exists()) {
 						return fail(
 								"DIA-NN library generation did not produce expected file: "
-										+ tempLibFile.getAbsolutePath(),
+										+ destLibFile.getAbsolutePath(),
 								null);
 					}
 				}

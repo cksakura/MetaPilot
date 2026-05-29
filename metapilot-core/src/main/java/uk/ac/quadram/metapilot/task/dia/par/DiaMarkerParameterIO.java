@@ -125,6 +125,16 @@ public class DiaMarkerParameterIO extends BaseParameterIO {
 		return uk.ac.quadram.metapilot.workflow.WorkflowType.DIA_MARKER.getAnalysisType();
 	}
 
+	/**
+	 * Public wrapper for headless/CLI usage.
+	 * {@link BaseParameterIO#loadParametersFromFilePath(String)} relies on runtime registry initialization
+	 * that is GUI-driven today; CLI uses this explicit loader instead.
+	 */
+	public MetaParameterDiaMarker loadParameters(File inputFile) {
+		Object o = loadParametersFromFile(inputFile);
+		return (o instanceof MetaParameterDiaMarker) ? (MetaParameterDiaMarker) o : null;
+	}
+
 	@Override
 	protected boolean saveParametersToFile(Object parameters, File outputFile, String description) {
 		if (!(parameters instanceof MetaParameterDiaMarker)) {
@@ -152,7 +162,7 @@ public class DiaMarkerParameterIO extends BaseParameterIO {
 			// Input/Output settings (aligned with DIA_SEED format)
 			JSONObject ioSettings = new JSONObject();
 			ioSettings.put("output_directory", params.getResult());
-			ioSettings.put("micro_db", params.getMicroDb());
+			ioSettings.put("micro_db", resolveMagCatalogueId(params));
 			ioSettings.put("append_host_db", params.isAppendHostDb());
 			ioSettings.put("host_database", params.getHostDB());
 
@@ -190,6 +200,7 @@ public class DiaMarkerParameterIO extends BaseParameterIO {
 			// Genome-selection mode
 			// Persist only marker_mode; genomeSelectionStrategy is computed from this when loading.
 			diaSettings.put("marker_mode", params.getMarkerMode());
+			diaSettings.put("genomes_per_round", params.getGenomesPerRound());
 			diaSettings.put("use_peptide_based_round", params.isUsePeptideBasedRound());
 			diaSettings.put("peptide_detectability_threshold", params.getPeptideDetectabilityThreshold());
 
@@ -246,6 +257,25 @@ public class DiaMarkerParameterIO extends BaseParameterIO {
 		}
 	}
 
+	private String resolveMagCatalogueId(MetaParameterDiaMarker params) {
+		if (params == null) {
+			return "";
+		}
+		MagDbItem magDbItem = params.getMagDbItem();
+		if (magDbItem != null && magDbItem.getCatalogueID() != null && !magDbItem.getCatalogueID().isBlank()) {
+			return magDbItem.getCatalogueID();
+		}
+		String microDb = params.getMicroDb();
+		if (microDb == null) {
+			return "";
+		}
+		if (microDb.contains("\\") || microDb.contains("/") || new File(microDb).isAbsolute()) {
+			LOGGER.warn("DIA Marker micro_db contains a filesystem path but no MAG catalogue item was available; exporting empty micro_db instead: {}", microDb);
+			return "";
+		}
+		return microDb;
+	}
+
 	@Override
 	protected Object loadParametersFromFile(File paramFile) {
 		LOGGER.info("Loading parameters from {}", paramFile.getAbsolutePath());
@@ -271,24 +301,29 @@ public class DiaMarkerParameterIO extends BaseParameterIO {
 
 	private Object jsonToParametersUnified(JSONObject json) {
 		try {
-			// Create MetaData from input_output.experiments
 			MetaData metadata = new MetaData();
-			if (json.has("input_output") && json.getJSONObject("input_output").has("experiments")) {
-				JSONArray experiments = json.getJSONObject("input_output").getJSONArray("experiments");
-				String[] rawFiles = new String[experiments.length()];
-				String[] expNames = new String[experiments.length()];
-				int[] fractions = new int[experiments.length()];
-				int[] replicates = new int[experiments.length()];
+			if (json.has("input_output")) {
+				JSONObject ioSettings = json.getJSONObject("input_output");
+				if (ioSettings.has("experiments")) {
+					JSONArray experiments = ioSettings.getJSONArray("experiments");
+					String[] rawFiles = new String[experiments.length()];
+					String[] expNames = new String[experiments.length()];
+					int[] fractions = new int[experiments.length()];
+					int[] replicates = new int[experiments.length()];
 
-				for (int i = 0; i < experiments.length(); i++) {
-					JSONObject exp = experiments.getJSONObject(i);
-					rawFiles[i] = exp.optString("file_path", "");
-					expNames[i] = exp.optString("experiment_name", "");
-					fractions[i] = 1; // Default fraction
-					replicates[i] = 1; // Default replicate
+					for (int i = 0; i < experiments.length(); i++) {
+						JSONObject exp = experiments.getJSONObject(i);
+						rawFiles[i] = exp.optString("file_path", "");
+						expNames[i] = exp.optString("experiment_name", "");
+						fractions[i] = 1;
+						replicates[i] = 1;
+					}
+
+					metadata = new MetaData(rawFiles, expNames, fractions, replicates);
+				} else if (ioSettings.has("input_dir")) {
+					metadata = uk.ac.quadram.metapilot.task.par.HpcInputDiscovery.discoverMetaData(
+							ioSettings.optString("input_dir", ""));
 				}
-
-				metadata = new MetaData(rawFiles, expNames, fractions, replicates);
 			}
 
 			// Create MetaBaseParameter first
@@ -330,40 +365,10 @@ public class DiaMarkerParameterIO extends BaseParameterIO {
 				String catalogueId = magDbSettings.optString("catalogue_id", "");
 				String identifier = magDbSettings.optString("identifier", "");
 				String catalogueVersion = magDbSettings.optString("catalogue_version", "");
-
 				if (!catalogueId.isEmpty()) {
 					try {
-						File configFile = new File("config/MAGDB_1_0.json");
-						if (!configFile.exists()) {
-							configFile = new File("MAGDB_1_0.json");
-						}
-						if (configFile.exists()) {
-							MagDbItem[][] magDbItems = MagDbConfigIO.parse(configFile);
-							if (magDbItems != null) {
-								for (MagDbItem[] dbArray : magDbItems) {
-									if (dbArray != null) {
-										for (MagDbItem item : dbArray) {
-											if (item.getCatalogueID().equals(catalogueId)
-													&& item.getIdentifier().equals(identifier)) {
-												magDbItem = item;
-
-												if (!catalogueVersion.isEmpty()) {
-													for (MagDbItem.MagVersion version : item.getVersionList()) {
-														if (version.getCatalogueVersion().equals(catalogueVersion)) {
-															item.setUsedVersion(version);
-															break;
-														}
-													}
-												}
-												break;
-											}
-										}
-									}
-									if (magDbItem != null)
-										break;
-								}
-							}
-						}
+						magDbItem = uk.ac.quadram.metapilot.task.mag.MagDbItemResolver.resolve(
+								catalogueId, identifier, catalogueVersion, null);
 					} catch (Exception e) {
 						LOGGER.warn("Failed to load MAG database from config: " + e.getMessage());
 					}
@@ -386,6 +391,7 @@ public class DiaMarkerParameterIO extends BaseParameterIO {
 			boolean kGG = false;
 			boolean usePeptideBasedRound = false;
 			double peptideDetectabilityThreshold = 0.5;
+			int genomesPerRound = 5;
 
 			if (json.has("dia_settings")) {
 				JSONObject diaSettings = json.getJSONObject("dia_settings");
@@ -400,6 +406,8 @@ public class DiaMarkerParameterIO extends BaseParameterIO {
 				}
 
 				markerMode = diaSettings.optString("marker_mode", markerMode);
+				genomesPerRound = diaSettings.optInt("genomes_per_round", genomesPerRound);
+				if (genomesPerRound <= 0) genomesPerRound = 5;
 
 				mExcision = diaSettings.optBoolean("mExcision", mExcision);
 				carbamiC = diaSettings.optBoolean("carbamiC", carbamiC);
@@ -418,6 +426,7 @@ public class DiaMarkerParameterIO extends BaseParameterIO {
 
 			// Apply marker-specific settings
 			params.setMarkerMode(markerMode);
+			params.setGenomesPerRound(genomesPerRound);
 
 			// Apply modification settings
 			params.setMExcision(mExcision);

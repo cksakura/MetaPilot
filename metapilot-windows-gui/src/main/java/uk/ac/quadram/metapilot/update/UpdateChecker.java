@@ -29,6 +29,8 @@ import javafx.scene.layout.VBox;
  * Works with: https://github.com/cksakura/MetaPilot-Releases/releases
  */
 public class UpdateChecker {
+    public static final String CURRENT_VERSION = "1.0.0";
+
     private static final Logger LOGGER = Logger.getLogger(UpdateChecker.class.getName());
 
     // === Configuration ===
@@ -316,12 +318,12 @@ public class UpdateChecker {
     }
 
     public static String getCurrentVersion() {
-        // Prefer Implementation-Version from the shaded JAR manifest; fall back to the
-        // current project version if the manifest entry is missing during local runs.
+        // Keep the GUI release label explicit so stale local manifests cannot show an
+        // older beta version in the About dialog.
         String v = Optional.ofNullable(UpdateChecker.class.getPackage())
                 .map(Package::getImplementationVersion)
                 .orElse(null);
-        return (v != null && !v.isBlank()) ? v : "1.0.0-beta.7";
+        return (v != null && !v.isBlank() && !v.contains("-beta")) ? v : CURRENT_VERSION;
     }
 
     private static class ReleaseInfo {

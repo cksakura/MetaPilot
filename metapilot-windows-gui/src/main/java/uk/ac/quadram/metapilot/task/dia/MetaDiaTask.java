@@ -14,25 +14,22 @@ import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
+import java.sql.SQLException;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.math.NumberUtils;
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 import org.apache.commons.math3.stat.inference.MannWhitneyUTest;
-import org.dom4j.DocumentException;
-
+import uk.ac.quadram.metapilot.core.dia.DiaMagScoringService;
+import uk.ac.quadram.metapilot.core.mag.MagPostAnalysisScoringService;
+import uk.ac.quadram.metapilot.core.dia.MagPredictedPeptideProteinMapper;
 import uk.ac.quadram.metapilot.core.math.MathTool;
 import uk.ac.quadram.metapilot.core.prodb.FastaManager;
+import uk.ac.quadram.metapilot.core.runner.MagFunctionalAnnotationService;
 import uk.ac.quadram.metapilot.core.tools.FormatTool;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNParquetReader;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNPrecursor;
@@ -48,12 +45,11 @@ import uk.ac.quadram.metapilot.task.MetaPythonReportCopyTask;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaTg;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaMarker;
+import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import javafx.application.Platform;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
-import uk.ac.quadram.metapilot.task.io.pro.MetaProteinAnnoEggNog;
-import uk.ac.quadram.metapilot.task.io.pro.MetaProteinXMLReader2;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.MetaPilotMagTask;
 import uk.ac.quadram.metapilot.task.mag.MetaProteinAnnoMag;
@@ -74,7 +70,6 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 	protected String[] expNames;
 	protected int[] fractions;
 
-	protected File final_pro_xml_file;
 	protected File reportHtmlDir;
 	protected File final_summary_txt;
 	protected File resultFolderFile;
@@ -157,22 +152,22 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 			if (metaPar instanceof MetaParameterDiaTg) {
 				diaResultDir = (new File(((MetaParameterDiaTg) metaPar).getLibraryPath())).getParentFile();
 			} else if (metaPar instanceof MetaParameterDiaMarker) {
-				if (this instanceof MetaDiaDeepComprehensiveTask) {
+				if (this instanceof DiaSeedDeepPerFileTask) {
 					diaResultDir = null;
 				} else {
 					MetaParameterDiaMarker markerParams = (MetaParameterDiaMarker) metaPar;
-					String markerMode = markerParams.getMarkerMode();
+					DiaRefinementMode markerMode = markerParams.getMarkerRefinementMode();
 					String folderName;
-					if (this instanceof MetaDiaSeedIterativeTask) {
-						if ("COMPREHENSIVE".equalsIgnoreCase(markerMode) || "DEEP".equalsIgnoreCase(markerMode)) {
+					if (this instanceof DiaSeedCoreTask) {
+						if (markerMode.usesComprehensiveSelection()) {
 							folderName = "seed_comprehensive";
 						} else {
 							folderName = "seed_focus";
 						}
-					} else if (this instanceof MetaDiaDeepMarkerTask) {
+					} else if (this instanceof DiaMarkerDeepPerFileTask) {
 						folderName = "marker_deep";
 					} else {
-						if ("COMPREHENSIVE".equalsIgnoreCase(markerMode) || "DEEP".equalsIgnoreCase(markerMode)) {
+						if (markerMode.usesComprehensiveSelection()) {
 							folderName = "marker_comprehensive";
 						} else {
 							folderName = "marker_focus";
@@ -182,7 +177,7 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 					if (!diaResultDir.exists()) {
 						diaResultDir.mkdirs();
 						logger.info("Created result directory for DIA {} workflow ({}): {}",
-								(this instanceof MetaDiaSeedIterativeTask) ? "Seed" : "Marker", folderName,
+								(this instanceof DiaSeedCoreTask) ? "Seed" : "Marker", folderName,
 								diaResultDir.getAbsolutePath());
 					}
 				}
@@ -393,23 +388,8 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 			}
 			diaNNTask.run(diaFiles.length * 12);
 
-			// If combined result missing (e.g. one damaged raw file), retry by searching each file separately
-			if (!combineParquetFile.exists() && diaFiles != null && diaFiles.length > 1) {
-				String[] fallbackLibPath = metaPar instanceof MetaParameterDiaTg
-						? new String[] { ((MetaParameterDiaTg) metaPar).getLibraryPath() }
-						: libPath;
-				if (fallbackLibPath != null) {
-					List<String> damaged = runPerFileFallbackAndRetryCombined(combineParquetFile.getAbsolutePath(), fallbackLibPath);
-					if (!damaged.isEmpty()) {
-						logger.warn(getTaskName() + ": The following raw files produced no results (may be damaged): {}", damaged);
-						System.err.println(format.format(new Date()) + "\t" + getTaskName()
-								+ ": The following raw files produced no results (may be damaged): " + String.join(", ", damaged));
-					}
-				}
-			}
-
 			if (!combineParquetFile.exists()) {
-				logger.error(getTaskName() + ": identification failed - result files not created");
+				logCombinedSearchFailed(combineParquetFile, "library search");
 				return false;
 			}
 
@@ -427,181 +407,13 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 		return true;
 	}
 
-	/**
-	 * When combined search produced no output (e.g. one damaged raw file), run each raw file
-	 * separately, then re-run combined search with only successful files. Caller should log
-	 * the returned damaged list to the user.
-	 *
-	 * @param combinedParquetPath path for the final combined.parquet
-	 * @param libPath              library path(s) for the search
-	 * @return list of raw file paths that produced no result (may be damaged)
-	 */
-	protected List<String> runPerFileFallbackAndRetryCombined(String combinedParquetPath, String[] libPath) {
-		if (diaFiles == null || diaFiles.length == 0 || libPath == null || libPath.length == 0) {
-			return new ArrayList<>();
-		}
-		File combinedDir = new File(combinedParquetPath).getParentFile();
-		if (combinedDir == null || !combinedDir.exists()) {
-			return new ArrayList<>();
-		}
-		logger.info(getTaskName() + ": combined search produced no output; retrying with per-file search to isolate damaged files");
-		System.out.println(format.format(new Date()) + "\t" + getTaskName()
-				+ ": retrying with per-file search (some raw files may be damaged)");
-
-		// Run one search per raw file, but skip those that already have a non-empty per-file result
-		int queued = 0;
-		for (int i = 0; i < diaFiles.length; i++) {
-			File pf = new File(combinedDir, "per_file_" + i + ".parquet");
-			if (pf.exists() && pf.length() > 0) {
-				continue; // already completed in a previous attempt
-			}
-			String perOut = pf.getAbsolutePath();
-			diaLibSearchPar.setDiaFiles(new String[] { diaFiles[i] });
-			diaNNTask.addTask(diannPar, diaLibSearchPar, perOut, libPath);
-			queued++;
-		}
-		if (queued > 0) {
-			diaNNTask.run(queued * 12);
-		} else {
-			logger.info(getTaskName() + ": all per-file parquet outputs already exist; skipping new per-file DIA-NN runs");
-		}
-
-		List<String> goodFiles = new ArrayList<>();
-		List<String> damaged = new ArrayList<>();
-		for (int i = 0; i < diaFiles.length; i++) {
-			File pf = new File(combinedDir, "per_file_" + i + ".parquet");
-			if (pf.exists() && pf.length() > 0) {
-				goodFiles.add(diaFiles[i]);
-			} else {
-				damaged.add(diaFiles[i]);
-			}
-		}
-
-		if (goodFiles.isEmpty()) {
-			logger.error(getTaskName() + ": per-file fallback found no successful files");
-			return damaged;
-		}
-		logger.info(getTaskName() + ": re-running combined search with {} successful file(s) ({} damaged or empty)",
-				goodFiles.size(), damaged.size());
-		diaLibSearchPar.setDiaFiles(goodFiles.toArray(new String[0]));
-		diaNNTask.addTask(diannPar, diaLibSearchPar, combinedParquetPath, libPath);
-		diaNNTask.run(goodFiles.size() * 12);
-		return damaged;
-	}
-
-	/**
-	 * Same as {@link #runPerFileFallbackAndRetryCombined(String, String[])} but uses addNoQuantLibTask
-	 * (for first search: marker library or user library, no quantification).
-	 * <p>
-	 * NOTE: Unlike {@link #runPerFileFallbackAndRetryCombined(String, String[])}, this helper
-	 * does <b>not</b> re-run a combined search. It only runs per-file searches and returns
-	 * which raw files were damaged. Callers are expected to consume the per-file parquet
-	 * outputs directly (e.g. by reading per_file_*.parquet).
-	 */
-	protected List<String> runPerFileFallbackAndRetryCombinedNoQuant(String outputParquetPath, String[] libPath) {
-		if (diaFiles == null || diaFiles.length == 0 || libPath == null || libPath.length == 0) {
-			return new ArrayList<>();
-		}
-		File outDir = new File(outputParquetPath).getParentFile();
-		if (outDir == null || !outDir.exists()) {
-			return new ArrayList<>();
-		}
-		logger.info(getTaskName() + ": first search produced no output; retrying with per-file search to isolate damaged files");
-		System.out.println(format.format(new Date()) + "\t" + getTaskName()
-				+ ": retrying with per-file search (some raw files may be damaged)");
-
-		int queued = 0;
-		for (int i = 0; i < diaFiles.length; i++) {
-			File pf = new File(outDir, "per_file_" + i + ".parquet");
-			if (pf.exists() && pf.length() > 0) {
-				continue; // this raw file already has a per-file result
-			}
-			String perOut = pf.getAbsolutePath();
-			diaLibSearchPar.setDiaFiles(new String[] { diaFiles[i] });
-			diaNNTask.addNoQuantLibTask(diannPar, diaLibSearchPar, perOut, libPath);
-			queued++;
-		}
-		if (queued > 0) {
-			diaNNTask.run(queued * 12);
-		} else {
-			logger.info(getTaskName() + ": per-file fallback: all per_file_*.parquet already exist; no new DIA-NN runs scheduled");
-		}
-
-		List<String> goodFiles = new ArrayList<>();
-		List<String> damaged = new ArrayList<>();
-		for (int i = 0; i < diaFiles.length; i++) {
-			File pf = new File(outDir, "per_file_" + i + ".parquet");
-			if (pf.exists() && pf.length() > 0) {
-				goodFiles.add(diaFiles[i]);
-			} else {
-				damaged.add(diaFiles[i]);
-			}
-		}
-
-		if (goodFiles.isEmpty()) {
-			logger.error(getTaskName() + ": per-file fallback found no successful files");
-			return damaged;
-		}
-		logger.info(getTaskName() + ": per-file fallback completed with {} successful file(s) ({} damaged or empty); callers should consume per_file_*.parquet directly",
-				goodFiles.size(), damaged.size());
-		return damaged;
-	}
-
-	/**
-	 * Same as {@link #runPerFileFallbackAndRetryCombinedNoQuant(String, String[])} but uses
-	 * addTask with genLib (for first search with --out-lib, e.g. mixed microbiome+standalone).
-	 * <p>
-	 * NOTE: This helper also only runs per-file searches and does not re-run a combined
-	 * first search. Callers are expected to read per_file_*.parquet (and any corresponding
-	 * libraries) directly instead of relying on a single combined parquet.
-	 */
-	protected List<String> runPerFileFallbackAndRetryCombinedWithGenLib(String outputParquetPath, String[] libPath) {
-		if (diaFiles == null || diaFiles.length == 0 || libPath == null || libPath.length == 0) {
-			return new ArrayList<>();
-		}
-		File outDir = new File(outputParquetPath).getParentFile();
-		if (outDir == null || !outDir.exists()) {
-			return new ArrayList<>();
-		}
-		logger.info(getTaskName() + ": first search produced no output; retrying with per-file search to isolate damaged files");
-		System.out.println(format.format(new Date()) + "\t" + getTaskName()
-				+ ": retrying with per-file search (some raw files may be damaged)");
-
-		int queued = 0;
-		for (int i = 0; i < diaFiles.length; i++) {
-			File pf = new File(outDir, "per_file_" + i + ".parquet");
-			if (pf.exists() && pf.length() > 0) {
-				continue; // already completed
-			}
-			String perOut = pf.getAbsolutePath();
-			diaLibSearchPar.setDiaFiles(new String[] { diaFiles[i] });
-			diaNNTask.addTask(diannPar, diaLibSearchPar, perOut, false, true, true, libPath);
-			queued++;
-		}
-		if (queued > 0) {
-			diaNNTask.run(queued * 12);
-		} else {
-			logger.info(getTaskName() + ": per-file fallback with genLib: all per_file_*.parquet already exist; no new DIA-NN runs scheduled");
-		}
-
-		List<String> goodFiles = new ArrayList<>();
-		List<String> damaged = new ArrayList<>();
-		for (int i = 0; i < diaFiles.length; i++) {
-			File pf = new File(outDir, "per_file_" + i + ".parquet");
-			if (pf.exists() && pf.length() > 0) {
-				goodFiles.add(diaFiles[i]);
-			} else {
-				damaged.add(diaFiles[i]);
-			}
-		}
-
-		if (goodFiles.isEmpty()) {
-			logger.error(getTaskName() + ": per-file fallback found no successful files");
-			return damaged;
-		}
-		logger.info(getTaskName() + ": per-file fallback (with genLib) completed with {} successful file(s) ({} damaged or empty); callers should consume per_file_*.parquet directly",
-				goodFiles.size(), damaged.size());
-		return damaged;
+	protected void logCombinedSearchFailed(File expectedOutput, String phase) {
+		String outputPath = expectedOutput == null ? "unknown output" : expectedOutput.getAbsolutePath();
+		String message = getTaskName() + ": " + phase + " failed - expected combined DIA-NN result was not created: "
+				+ outputPath + ". One or more input files may be damaged or incompatible. Please rerun this workflow "
+				+ "using DIA per-file mode to isolate problematic files.";
+		logger.error(message);
+		System.err.println(format.format(new Date()) + "\t" + message);
 	}
 
 	@SuppressWarnings("unused")
@@ -625,7 +437,8 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 			titlesb.append("Length").append("\t");
 			titlesb.append("Missed cleavages").append("\t");
 			titlesb.append("Mass").append("\t");
-			titlesb.append("Proteins").append("\t");
+			titlesb.append("Razor protein").append("\t");
+			titlesb.append("Mapped proteins").append("\t");
 			titlesb.append("Charges").append("\t");
 			titlesb.append("Score").append("\t");
 			titlesb.append("PEP").append("\t");
@@ -659,6 +472,8 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 					sb.append(sequence.length()).append("\t");
 					sb.append(diannPp.getMissCleavage()).append("\t");
 					sb.append(diannPp.getMass()).append("\t");
+					String razorProtein = peps[i].getRazorProtein();
+					sb.append(razorProtein != null ? razorProtein : "").append("\t");
 
 					HashSet<String> proSet = pepProMap.get(sequence);
 					StringBuilder pidSb = new StringBuilder();
@@ -736,7 +551,7 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 		logger.info(getTaskName() + ": exporting protein report started");
 		logger.info("[{}] exporting protein report started", getTaskName());
 
-		this.final_pro_txt = new File(resultFolderFile, "final_proteins.tsv");
+		this.final_pro_txt = new File(resultFolderFile, "razor_proteins.tsv");
 
 		PrintWriter writer = null;
 		try {
@@ -1966,7 +1781,7 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 
 						if (proteins[j].startsWith(magDb.getIdentifier())) {
 							String genome = proteins[j].split("_")[0];
-							if (genomeScoreMap.containsKey(genome)) {
+							if (isConfidentDiaGenomeScore(genomeScoreMap, genome)) {
 								double[] genomeIntensity;
 								if (genomeIntensityMap.containsKey(genome)) {
 									genomeIntensity = genomeIntensityMap.get(genome);
@@ -2053,7 +1868,8 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 			titlesb.append("Length").append("\t");
 			titlesb.append("Missed cleavages").append("\t");
 			titlesb.append("Mass").append("\t");
-			titlesb.append("Proteins").append("\t");
+			titlesb.append("Razor protein").append("\t");
+			titlesb.append("Mapped proteins").append("\t");
 			titlesb.append("Charges").append("\t");
 			titlesb.append("Qvalue").append("\t");
 			titlesb.append("PEP").append("\t");
@@ -2092,11 +1908,13 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 				sb.append(sequence.length()).append("\t");
 				sb.append(peptide.getMissCleave()).append("\t");
 				sb.append(peptide.getMass()).append("\t");
+				String razorProtein = peptide.getRazorProtein();
+				sb.append(razorProtein != null ? razorProtein : "").append("\t");
 
 				String[] pros = peptide.getProteins();
 
 				for (String pro : pros) {
-					if (proteinIdMap.containsKey(pro)) {
+					if (pro != null) {
 						sb.append(pro).append(";");
 					}
 				}
@@ -2212,7 +2030,7 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 		ArrayList<MetaProtein> proteinList = new ArrayList<MetaProtein>();
 		try {
 
-			this.final_pro_txt = new File(resultFolderFile, "final_proteins.tsv");
+			this.final_pro_txt = new File(resultFolderFile, "razor_proteins.tsv");
 
 			PrintWriter writer = new PrintWriter(this.final_pro_txt);
 
@@ -2307,12 +2125,26 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 			funcFile.mkdir();
 		}
 
-		File funTsv = new File(funcFile, "functions.tsv");
-		final_pro_xml_file = new File(funcFile, "functions.xml");
-
 		HashMap<String, Integer> proTaxIdMap = new HashMap<String, Integer>();
 		MetaProtein[] metapros = proteinList.toArray(new MetaProtein[proteinList.size()]);
-		MetaProteinAnnoMag[] mpas = funcAnnoSqlite(metapros, quanExpNames);
+		MagFunctionalAnnotationService.Request funcRequest = new MagFunctionalAnnotationService.Request();
+		funcRequest.resultDir = resultFolderFile;
+		funcRequest.magDb = magDb;
+		funcRequest.microDbCatalogueId = metaPar.getMicroDb();
+		funcRequest.functionDefinitionDb = new File(mrp.getToolPath(ToolType.FUNCDB));
+		funcRequest.quantitativeMode = metaPar.getQuantitativeMode();
+		funcRequest.intensityTitles = quanExpNames;
+		funcRequest.metaProteins = metapros;
+		MagFunctionalAnnotationService.Result funcResult;
+		try {
+			funcResult = MagFunctionalAnnotationService.run(funcRequest);
+		} catch (Exception e) {
+			logger.error(getTaskName() + ": error in proteins functional annotations, task failed", e);
+			System.err.println(format.format(new Date()) + "\t" + getTaskName()
+					+ ": error in proteins functional annotations, task failed");
+			return false;
+		}
+		MetaProteinAnnoMag[] mpas = funcResult.annotatedProteins;
 		for (int i = 0; i < mpas.length; i++) {
 			String name = mpas[i].getPro().getName();
 			if (NumberUtils.isCreatable(mpas[i].getTax_id())) {
@@ -2322,75 +2154,18 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 			}
 		}
 
-		MetaProteinXMLReader2 funReader = null;
-		try {
-			funReader = new MetaProteinXMLReader2(final_pro_xml_file);
-		} catch (DocumentException e) {
-			// TODO Auto-generated catch block
-			logger.error(getTaskName() + ": error in reading protein function information from "
-					+ this.final_pro_xml_file.getName(), e);
-			System.err.println(format.format(new Date()) + "\t" + getTaskName()
-					+ ": error in reading protein function information from " + this.final_pro_xml_file.getName());
-			return false;
-		}
-
-		if (!funTsv.exists()) {
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": writing results to "
-					+ funTsv.getName() + " started");
-			try {
-				funReader.exportTsv(funTsv);
-				// Export separate functional category reports
-				File goReportTsv = new File(funcFile, "Gene_Ontology_id_report.tsv");
-				File ecReportTsv = new File(funcFile, "EC_id_report.tsv");
-				File keggReportTsv = new File(funcFile, "KEGG_ko_report.tsv");
-				File briteReportTsv = new File(funcFile, "BRITE_report.tsv");
-				File cogReportTsv = new File(funcFile, "COG_accession_report.tsv");
-				File nogReportTsv = new File(funcFile, "NOG_accession_report.tsv");
-				File cogCatTsv = new File(funcFile, "COG_category_report.tsv");
-				File nogCatTsv = new File(funcFile, "NOG_category_report.tsv");
-
-				funReader.exportGOReport(goReportTsv);
-				funReader.exportECReport(ecReportTsv);
-				funReader.exportKeggReport(keggReportTsv);
-				funReader.exportBriteReport(briteReportTsv);
-				funReader.exportCOGReport(cogReportTsv);
-				funReader.exportNOGReport(nogReportTsv);
-				funReader.exportCOGCategoryReport(cogCatTsv);
-				funReader.exportNOGCategoryReport(nogCatTsv);
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				logger.error(getTaskName() + ": error in writing protein function information to " + funTsv.getName(),
-						e);
-				System.err.println(format.format(new Date()) + "\t" + getTaskName()
-						+ ": error in writing protein function information to " + funTsv.getName());
-			}
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": writing results to "
-					+ funTsv.getName() + " finished");
-		}
-
 		File html = new File(funcFile, "functions.html");
-		if (!html.exists()) {
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": writing results to "
-					+ html.getName() + " started");
+		if (html.exists()) {
 			try {
-				funReader.exportHtml(html);
-
-				// Copy the generated functions.html to the reports directory
 				File reportFunctionsHtml = new File(metaPar.getReportDir(), "reports/functions.html");
 				if (reportFunctionsHtml.getParentFile() != null && !reportFunctionsHtml.getParentFile().exists()) {
 					reportFunctionsHtml.getParentFile().mkdirs();
 				}
 				Files.copy(html.toPath(), reportFunctionsHtml.toPath(), StandardCopyOption.REPLACE_EXISTING);
 				logger.info("Copied functions.html to reports directory: " + reportFunctionsHtml.getAbsolutePath());
-
 			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				logger.error(getTaskName() + ": error in writing protein function information to " + html.getName(), e);
-				System.err.println(format.format(new Date()) + "\t" + getTaskName()
-						+ ": error in writing protein function information to " + html.getName());
+				logger.error(getTaskName() + ": error copying functions.html to reports directory", e);
 			}
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": writing results to "
-					+ html.getName() + " finished");
 		}
 
 		// Copy functions.html to report directory for navigation access
@@ -2413,50 +2188,12 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 
 		updateProgress(91, 100);
 
-		MetaDiaMarkerTask.ensureCombinedRankedFromPrecursors(this, resultFolderFile);
-		File rankedLog = new File(resultFolderFile, "combined/ranked.tsv");
-		if (!rankedLog.exists()) {
-			rankedLog = new File(resultFolderFile, "marker/genome_ranked.tsv");
-		}
-		if (!rankedLog.exists()) {
-			rankedLog = new File(resultFolderFile, "seed/genome_ranked.tsv");
-		}
-		if (rankedLog.exists()) {
-			HashMap<String, String> genomeSelectionLabel = new HashMap<>();
-			MetaDiaMarkerTask.readCoreMidTailFromRankedTsv(rankedLog, genomeSelectionLabel, genomeIntensityMap.keySet());
-			MetaPilotMagTask.RankedGenomeSelectionResult rankedAll = MetaPilotMagTask
-					.buildExportSelectionFromRankedTsv(rankedLog, null);
-			int contributingAll = rankedAll.orderedGenomes.size();
-			int labeledWithIntensity = genomeSelectionLabel.size();
-			int coreCount = 0, midCount = 0, tailCount = 0;
-			for (String lbl : genomeSelectionLabel.values()) {
-				if ("core".equals(lbl)) {
-					coreCount++;
-				} else if ("mid".equals(lbl)) {
-					midCount++;
-				} else {
-					tailCount++;
-				}
-			}
-			java.util.HashSet<String> contributingSet = new java.util.HashSet<>(rankedAll.orderedGenomes);
-			java.util.HashSet<String> intensitySet = new java.util.HashSet<>(genomeIntensityMap.keySet());
-			java.util.HashSet<String> inWindowNoIntensity = new java.util.HashSet<>(contributingSet);
-			inWindowNoIntensity.removeAll(intensitySet);
-			java.util.HashSet<String> intensityBeyondWindow = new java.util.HashSet<>(intensitySet);
-			intensityBeyondWindow.removeAll(contributingSet);
-			logger.info(
-					"{}: Genome export summary – ranked_window={}, labeled_with_intensity={}, core={}, mid={}, tail={}, window_no_intensity={}, intensity_beyond_window={}",
-					getTaskName(), Integer.valueOf(contributingAll), Integer.valueOf(labeledWithIntensity),
-					Integer.valueOf(coreCount), Integer.valueOf(midCount), Integer.valueOf(tailCount),
-					Integer.valueOf(inWindowNoIntensity.size()), Integer.valueOf(intensityBeyondWindow.size()));
-		}
-
 		HashMap<String, HashSet<String>> uniquePepCountMap = new HashMap<String, HashSet<String>>();
 		HashMap<String, HashSet<String>> totalPepWithILMap = new HashMap<String, HashSet<String>>();
 		HashMap<String, HashSet<String>> razorPepWithILMap = new HashMap<String, HashSet<String>>();
 		HashMap<String, HashSet<String>> uniquePepWithILMap = new HashMap<String, HashSet<String>>();
-		fillDiaGenomeUniqueAndILMaps(peps, magDb.getIdentifier(), razorPepCountMap, uniquePepCountMap, totalPepWithILMap,
-				razorPepWithILMap, uniquePepWithILMap, genomeIntensityMap.keySet());
+		DiaMagScoringService.fillDiaGenomeUniqueAndILMaps(peps, magDb.getIdentifier(), razorPepCountMap, uniquePepCountMap,
+				totalPepWithILMap, razorPepWithILMap, uniquePepWithILMap, genomeIntensityMap.keySet());
 
 		HashMap<String, Double> genomeScoreForTaxonomy = new HashMap<>();
 		for (String g : genomeIntensityMap.keySet()) {
@@ -2740,7 +2477,7 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 
 		updateProgress(84, 100);
 
-		this.final_pro_txt = new File(resultFolderFile, "final_proteins.tsv");
+		this.final_pro_txt = new File(resultFolderFile, "razor_proteins.tsv");
 
 		boolean proReportOk = false;
 		if (!final_pro_txt.exists() || final_pro_txt.length() == 0) {
@@ -2921,7 +2658,7 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 			int qvalueId = -1;
 
 			for (int i = 0; i < title.length; i++) {
-				if (title[i].equals("Proteins")) {
+				if (title[i].equals("Mapped proteins") || title[i].equals("Proteins")) {
 					proId = i;
 				} else if (title[i].equals("PEP")) {
 					qvalueId = i;
@@ -2961,49 +2698,68 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 			funcFile.mkdir();
 		}
 
-		final_pro_xml_file = new File(funcFile, "functions.xml");
-
-		HashMap<String, double[]> proIntensityMap = new HashMap<String, double[]>();
 		HashMap<String, double[]> genomeIntensityMap = new HashMap<String, double[]>();
 
-		if (final_pro_xml_file.exists() && final_pro_xml_file.length() > 0) {
+		ArrayList<MetaProtein> list = new ArrayList<MetaProtein>();
+		String[] fileNames = null;
+		try (BufferedReader quanProReader = new BufferedReader(new FileReader(this.final_pro_txt))) {
+			String line = quanProReader.readLine();
+			String[] title = line.split("\t");
+			int id = -1;
+			int proId = -1;
+			int pepCountId = -1;
+			int scoreId = -1;
 
-			try (BufferedReader quanProReader = new BufferedReader(new FileReader(this.final_pro_txt))) {
-				String line = quanProReader.readLine();
-				String[] title = line.split("\t");
-				int proId = -1;
+			ArrayList<String> tlist = new ArrayList<String>();
+			for (int i = 0; i < title.length; i++) {
+				if (title[i].startsWith("Intensity ")) {
+					tlist.add(title[i]);
+				} else if (title[i].equals("id")) {
+					id = i;
+				} else if (title[i].equals("Majority protein IDs")) {
+					proId = i;
+				} else if (title[i].equals("Peptide counts (all)")) {
+					pepCountId = i;
+				} else if (title[i].equals("Score")) {
+					scoreId = i;
+				}
+			}
 
-				ArrayList<String> tlist = new ArrayList<String>();
-				for (int i = 0; i < title.length; i++) {
-					if (title[i].startsWith("Intensity ")) {
-						tlist.add(title[i]);
-					} else if (title[i].equals("Majority protein IDs")) {
-						proId = i;
+			fileNames = tlist.toArray(new String[tlist.size()]);
+
+			int[] fileIds = new int[fileNames.length];
+			for (int i = 0; i < fileNames.length; i++) {
+				for (int j = 0; j < title.length; j++) {
+					if (fileNames[i].equals(title[j])) {
+						fileIds[i] = j;
 					}
 				}
+			}
 
-				String[] fileNames = tlist.toArray(new String[tlist.size()]);
+			while ((line = quanProReader.readLine()) != null) {
 
-				int[] fileIds = new int[fileNames.length];
-				for (int i = 0; i < fileNames.length; i++) {
-					for (int j = 0; j < title.length; j++) {
-						if (fileNames[i].equals(title[j])) {
-							fileIds[i] = j;
-						}
-					}
-				}
+				String[] cs = line.split("\t");
+				String[] pros = cs[proId].split(";");
 
-				while ((line = quanProReader.readLine()) != null) {
+				if (pros[0].startsWith(magDb.getIdentifier())) {
 
-					String[] cs = line.split("\t");
+					int groupId = Integer.parseInt(cs[id]);
+
 					double[] intensity = new double[fileIds.length];
 					for (int i = 0; i < fileIds.length; i++) {
 						intensity[i] = Double.parseDouble(cs[fileIds[i]]);
 					}
 
-					String[] pros = cs[proId].split(";");
+					String[] pepCountSs = cs[pepCountId].split(";");
+
 					for (int i = 0; i < pros.length; i++) {
-						proIntensityMap.put(pros[i], intensity);
+
+						int pepCount = i < pepCountSs.length ? Integer.parseInt(pepCountSs[i])
+								: Integer.parseInt(pepCountSs[0]);
+
+						MetaProtein mp = new MetaProtein(groupId, i + 1, pros[i], pepCount, pepCount,
+								Double.parseDouble(cs[scoreId]), intensity);
+						list.add(mp);
 
 						if (pros[i].startsWith(magDb.getIdentifier())) {
 							String genome = pros[i].split("_")[0];
@@ -3021,200 +2777,52 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 						}
 					}
 				}
-				quanProReader.close();
-
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				logger.error(
-						getTaskName() + ": error in reading quantified proteins from " + this.final_pro_txt.getName(),
-						e);
-				System.err.println(format.format(new Date()) + "\t" + getTaskName()
-						+ ": error in reading quantified proteins from " + this.final_pro_txt.getName());
 			}
+			quanProReader.close();
 
-			logger.info(getTaskName() + ": proteins with functional annotations have been exported to "
-					+ final_pro_xml_file.getName());
-			System.out.println(format.format(new Date()) + "\t" + getTaskName()
-					+ ": proteins with functional annotations have been exported to " + final_pro_xml_file.getName());
-		} else {
-
-			ArrayList<MetaProtein> list = new ArrayList<MetaProtein>();
-			String[] fileNames = null;
-			try (BufferedReader quanProReader = new BufferedReader(new FileReader(this.final_pro_txt))) {
-				String line = quanProReader.readLine();
-				String[] title = line.split("\t");
-				int id = -1;
-				int proId = -1;
-				int pepCountId = -1;
-//				int rzPepCountId = -1;
-				int scoreId = -1;
-
-				ArrayList<String> tlist = new ArrayList<String>();
-				for (int i = 0; i < title.length; i++) {
-					if (title[i].startsWith("Intensity ")) {
-						tlist.add(title[i]);
-					} else if (title[i].equals("id")) {
-						id = i;
-					} else if (title[i].equals("Majority protein IDs")) {
-						proId = i;
-					} else if (title[i].equals("Peptide counts (all)")) {
-						pepCountId = i;
-					} else if (title[i].equals("Peptide counts (razor)")) {
-//						rzPepCountId = i;
-					} else if (title[i].equals("Score")) {
-						scoreId = i;
-					}
-				}
-
-				fileNames = tlist.toArray(new String[tlist.size()]);
-
-				int[] fileIds = new int[fileNames.length];
-				for (int i = 0; i < fileNames.length; i++) {
-					for (int j = 0; j < title.length; j++) {
-						if (fileNames[i].equals(title[j])) {
-							fileIds[i] = j;
-						}
-					}
-				}
-
-				while ((line = quanProReader.readLine()) != null) {
-
-					String[] cs = line.split("\t");
-					String[] pros = cs[proId].split(";");
-
-					if (pros[0].startsWith(magDb.getIdentifier())) {
-
-						int groupId = Integer.parseInt(cs[id]);
-
-						double[] intensity = new double[fileIds.length];
-						for (int i = 0; i < fileIds.length; i++) {
-							intensity[i] = Double.parseDouble(cs[fileIds[i]]);
-						}
-
-						String[] pepCountSs = cs[pepCountId].split(";");
-//						String[] rzPepCountSs = cs[rzPepCountId].split(";");
-
-						for (int i = 0; i < pros.length; i++) {
-
-							int pepCount = i < pepCountSs.length ? Integer.parseInt(pepCountSs[i])
-									: Integer.parseInt(pepCountSs[0]);
-//							int rzPepCount = i < rzPepCountSs.length ? Integer.parseInt(rzPepCountSs[i])
-//									: Integer.parseInt(rzPepCountSs[0]);
-
-							MetaProtein mp = new MetaProtein(groupId, i + 1, pros[i], pepCount, pepCount,
-									Double.parseDouble(cs[scoreId]), intensity);
-							list.add(mp);
-
-							if (pros[i].startsWith(magDb.getIdentifier())) {
-								String genome = pros[i].split("_")[0];
-								double[] genomeIntensity;
-								if (genomeIntensityMap.containsKey(genome)) {
-									genomeIntensity = genomeIntensityMap.get(genome);
-								} else {
-									genomeIntensity = new double[intensity.length];
-								}
-
-								for (int j = 0; j < genomeIntensity.length; j++) {
-									genomeIntensity[j] += intensity[j] / (double) pros.length;
-								}
-								genomeIntensityMap.put(genome, genomeIntensity);
-							}
-						}
-					}
-				}
-				quanProReader.close();
-
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				logger.error(
-						getTaskName() + ": error in reading quantified proteins from " + this.final_pro_txt.getName(),
-						e);
-				System.err.println(format.format(new Date()) + "\t" + getTaskName()
-						+ ": error in reading quantified proteins from " + this.final_pro_txt.getName());
-			}
-
-			updateProgress(88, 100);
-
-			MetaProtein[] metapros = list.toArray(new MetaProtein[list.size()]);
-			MetaProteinAnnoMag[] mpas = funcAnnoSqlite(metapros, fileNames);
-			for (int i = 0; i < mpas.length; i++) {
-				String name = mpas[i].getPro().getName();
-				if (NumberUtils.isCreatable(mpas[i].getTax_id())) {
-					proTaxIdMap.put(name, Integer.parseInt(mpas[i].getTax_id()));
-				} else {
-					proTaxIdMap.put(name, 131567);
-				}
-			}
+		} catch (IOException e) {
+			logger.error(getTaskName() + ": error in reading quantified proteins from " + this.final_pro_txt.getName(),
+					e);
+			System.err.println(format.format(new Date()) + "\t" + getTaskName()
+					+ ": error in reading quantified proteins from " + this.final_pro_txt.getName());
 		}
 
-		File funcResultFile = final_pro_xml_file.getParentFile();
-		File funTsv = new File(funcResultFile, "functions.tsv");
+		updateProgress(88, 100);
 
-		MetaProteinXMLReader2 funReader = null;
+		MagFunctionalAnnotationService.Request funcRequest = new MagFunctionalAnnotationService.Request();
+		funcRequest.resultDir = resultFolderFile;
+		funcRequest.magDb = magDb;
+		funcRequest.microDbCatalogueId = metaPar.getMicroDb();
+		funcRequest.functionDefinitionDb = new File(mrp.getToolPath(ToolType.FUNCDB));
+		funcRequest.analysisType = MetaConstants.pFindMag;
+		funcRequest.quantitativeMode = metaPar.getQuantitativeMode();
+		funcRequest.intensityTitles = fileNames;
+		funcRequest.metaProteins = list.toArray(new MetaProtein[list.size()]);
+
+		MagFunctionalAnnotationService.Result funcResult = null;
 		try {
-			funReader = new MetaProteinXMLReader2(final_pro_xml_file);
-		} catch (DocumentException e) {
+			funcResult = MagFunctionalAnnotationService.run(funcRequest);
+		} catch (SQLException | IOException e) {
 			// TODO Auto-generated catch block
-			logger.error(getTaskName() + ": error in reading protein function information from "
-					+ this.final_pro_xml_file.getName(), e);
+			logger.error(getTaskName() + ": error in proteins functional annotations, task failed", e);
 			System.err.println(format.format(new Date()) + "\t" + getTaskName()
-					+ ": error in reading protein function information from " + this.final_pro_xml_file.getName());
+					+ ": error in proteins functional annotations, task failed");
 			return false;
 		}
 
-		if (proTaxIdMap.size() == 0) {
-			MetaProteinAnnoEggNog[] mpas = funReader.getProteins();
-			for (int i = 0; i < mpas.length; i++) {
-				String name = mpas[i].getPro().getName();
-				if (NumberUtils.isCreatable(mpas[i].getTax_id())) {
-					proTaxIdMap.put(name, Integer.parseInt(mpas[i].getTax_id()));
-				} else {
-					proTaxIdMap.put(name, 131567);
-				}
+		for (int i = 0; i < funcResult.annotatedProteins.length; i++) {
+			String name = funcResult.annotatedProteins[i].getPro().getName();
+			if (NumberUtils.isCreatable(funcResult.annotatedProteins[i].getTax_id())) {
+				proTaxIdMap.put(name, Integer.parseInt(funcResult.annotatedProteins[i].getTax_id()));
+			} else {
+				proTaxIdMap.put(name, 131567);
 			}
 		}
 
-		if (!funTsv.exists()) {
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": writing results to "
-					+ funTsv.getName() + " started");
+		File funcResultFile = funcResult.functionalAnnotationDir;
+		File html = funcResult.functionsHtml;
+		if (html.exists()) {
 			try {
-				funReader.exportTsv(funTsv);
-				// Export separate functional category reports
-				File goReportTsv = new File(funcFile, "Gene_Ontology_id_report.tsv");
-				File ecReportTsv = new File(funcFile, "EC_id_report.tsv");
-				File keggReportTsv = new File(funcFile, "KEGG_ko_report.tsv");
-				File briteReportTsv = new File(funcFile, "BRITE_report.tsv");
-				File cogReportTsv = new File(funcFile, "COG_accession_report.tsv");
-				File nogReportTsv = new File(funcFile, "NOG_accession_report.tsv");
-				File cogCatTsv = new File(funcFile, "COG_category_report.tsv");
-				File nogCatTsv = new File(funcFile, "NOG_category_report.tsv");
-
-				funReader.exportGOReport(goReportTsv);
-				funReader.exportECReport(ecReportTsv);
-				funReader.exportKeggReport(keggReportTsv);
-				funReader.exportBriteReport(briteReportTsv);
-				funReader.exportCOGReport(cogReportTsv);
-				funReader.exportNOGReport(nogReportTsv);
-				funReader.exportCOGCategoryReport(cogCatTsv);
-				funReader.exportNOGCategoryReport(nogCatTsv);
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				logger.error(getTaskName() + ": error in writing protein function information to " + funTsv.getName(),
-						e);
-				System.err.println(format.format(new Date()) + "\t" + getTaskName()
-						+ ": error in writing protein function information to " + funTsv.getName());
-			}
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": writing results to "
-					+ funTsv.getName() + " finished");
-		}
-
-		File html = new File(funcResultFile, "functions.html");
-		if (!html.exists()) {
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": writing results to "
-					+ html.getName() + " started");
-			try {
-				funReader.exportHtml(html);
-				// Copy the generated functions.html to the reports directory
 				File reportFunctionsHtml = new File(metaPar.getReportDir(), "reports/functions.html");
 				if (reportFunctionsHtml.getParentFile() != null && !reportFunctionsHtml.getParentFile().exists()) {
 					reportFunctionsHtml.getParentFile().mkdirs();
@@ -3222,13 +2830,10 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 				Files.copy(html.toPath(), reportFunctionsHtml.toPath(), StandardCopyOption.REPLACE_EXISTING);
 				logger.info("Copied functions.html to reports directory: " + reportFunctionsHtml.getAbsolutePath());
 			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				logger.error(getTaskName() + ": error in writing protein function information to " + html.getName(), e);
+				logger.error(getTaskName() + ": error copying functions.html to reports directory", e);
 				System.err.println(format.format(new Date()) + "\t" + getTaskName()
-						+ ": error in writing protein function information to " + html.getName());
+						+ ": error copying functions.html to reports directory");
 			}
-			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": writing results to "
-					+ html.getName() + " finished");
 		}
 
 		File report_function_summary = new File(this.reportHtmlDir, "report_function_summary.html");
@@ -4393,142 +3998,22 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 
 	protected ConcurrentHashMap<String, HashMap<String, HashSet<String>>> getGenomeFromPep(HashSet<String> allPepSet,
 			int threadCount) {
-		ConcurrentHashMap<String, HashMap<String, HashSet<String>>> genomePepMap = new ConcurrentHashMap<String, HashMap<String, HashSet<String>>>();
-		HashSet<String> matchedPepSet = new HashSet<String>();
-		ExecutorService executor = Executors.newFixedThreadPool(threadCount);
 		File currentFile = super.magDb.getCurrentFile();
 		File predictPepFile = new File(currentFile, "predicted");
-		File[] files = predictPepFile.listFiles();
-		for (File file : files) {
-			executor.execute(() -> {
-				if (file.getName().endsWith(".predicted.tsv")) {
-					try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
-						HashMap<String, HashSet<String>> proPepMap = new HashMap<String, HashSet<String>>();
-						String pline = reader.readLine();
-						while ((pline = reader.readLine()) != null) {
-							String[] cs = pline.split("\t");
-							if (allPepSet.contains(cs[1])) {
-								matchedPepSet.add(cs[1]);
-								if (proPepMap.containsKey(cs[0])) {
-									proPepMap.get(cs[0]).add(cs[1]);
-								} else {
-									HashSet<String> pepSet = new HashSet<String>();
-									pepSet.add(cs[1]);
-									proPepMap.put(cs[0], pepSet);
-								}
-							}
-						}
-						if (proPepMap.size() > 0) {
-							String preFileName = file.getName();
-							String genome = preFileName.substring(0, preFileName.length() - ".predicted.tsv".length());
-							genomePepMap.put(genome, proPepMap);
-						}
-					} catch (IOException e) {
-
-						logger.error(getTaskName() + ": error in reading " + file, e);
-						System.err.println(
-								format.format(new Date()) + "\t" + getTaskName() + ": error in reading " + file);
-					}
-				}
-			});
-		}
-
-		executor.shutdown();
-
-		try {
-			if (executor.awaitTermination(1, TimeUnit.HOURS)) {
-
-				allPepSet.clear();
-				allPepSet.addAll(matchedPepSet);
-
-				logger.info(getTaskName() + ": matching peptides finished, " + allPepSet.size() + " peptides from "
-						+ genomePepMap.size() + " genomes were matched");
-				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": matching peptides finished, "
-						+ allPepSet.size() + " peptides from " + genomePepMap.size() + " genomes were matched");
-
-			} else {
-				logger.error(getTaskName()
-						+ ": the program didn't responce in a long time, increase the thread count will be helpful");
-				System.err.println(format.format(new Date()) + "\t" + getTaskName()
-						+ ": the program didn't responce in a long time, increase the thread count will be helpful");
-
-				return null;
-			}
-		} catch (InterruptedException e) {
-
-			logger.error(getTaskName() + ": error in reading predicted peptides", e);
-			System.err.println(
-					format.format(new Date()) + "\t" + getTaskName() + ": error in reading predicted peptides");
-
+		MagPredictedPeptideProteinMapper.Result result = MagPredictedPeptideProteinMapper.mapPeptides(allPepSet, predictPepFile,
+				null, threadCount);
+		if (result == null) {
 			return null;
 		}
 
-		return genomePepMap;
-	}
+		allPepSet.clear();
+		allPepSet.addAll(result.matchedPeptides);
+		logger.info(getTaskName() + ": matching peptides finished, " + allPepSet.size() + " peptides from "
+				+ result.genomeProteinPeptides.size() + " genomes were matched");
+		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": matching peptides finished, "
+				+ allPepSet.size() + " peptides from " + result.genomeProteinPeptides.size() + " genomes were matched");
 
-	@SuppressWarnings("unused")
-	private ConcurrentHashMap<String, HashSet<String>> getGenomeFromPep(HashSet<String> allPepSet,
-			HashSet<String> genomeSet, int threadCount) {
-		ConcurrentHashMap<String, HashSet<String>> genomePepMap = new ConcurrentHashMap<String, HashSet<String>>();
-		ExecutorService executor = Executors.newFixedThreadPool(threadCount);
-		File currentFile = super.magDb.getCurrentFile();
-		File predictPepFile = new File(currentFile, "predicted");
-		File[] files = predictPepFile.listFiles(f -> {
-			String name = f.getName();
-			name = name.substring(0, name.indexOf("."));
-			return genomeSet.contains(name);
-		});
-		for (File file : files) {
-			executor.execute(() -> {
-				try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
-					HashSet<String> pepSet = new HashSet<String>();
-					String pline = reader.readLine();
-					while ((pline = reader.readLine()) != null) {
-						String[] cs = pline.split("\t");
-						if (allPepSet.contains(cs[1])) {
-							pepSet.add(cs[1]);
-						}
-					}
-					if (pepSet.size() > 0) {
-						String preFileName = file.getName();
-						String genome = preFileName.substring(0, preFileName.length() - ".predicted.tsv".length());
-						genomePepMap.put(genome, pepSet);
-					}
-				} catch (IOException e) {
-
-					logger.error(getTaskName() + ": error in reading " + file, e);
-					System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in reading " + file);
-				}
-			});
-		}
-
-		executor.shutdown();
-
-		try {
-			if (executor.awaitTermination(1, TimeUnit.HOURS)) {
-				logger.info(getTaskName() + ": matching peptides finished, " + allPepSet.size() + " peptides from "
-						+ genomePepMap.size() + " genomes were matched");
-				System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": matching peptides finished, "
-						+ allPepSet.size() + " peptides from " + genomePepMap.size() + " genomes were matched");
-
-			} else {
-				logger.error(getTaskName()
-						+ ": the program didn't responce in a long time, increase the thread count will be helpful");
-				System.err.println(format.format(new Date()) + "\t" + getTaskName()
-						+ ": the program didn't responce in a long time, increase the thread count will be helpful");
-
-				return null;
-			}
-		} catch (InterruptedException e) {
-
-			logger.error(getTaskName() + ": error in reading predicted peptides", e);
-			System.err.println(
-					format.format(new Date()) + "\t" + getTaskName() + ": error in reading predicted peptides");
-
-			return null;
-		}
-
-		return genomePepMap;
+		return result.genomeProteinPeptides;
 	}
 
 	@Override
@@ -4690,7 +4175,7 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 		// Update progress for completion
 		updateProgress(100, 100);
 		updateMessage(getTaskName() + ": Completed successfully!");
-		updateSecondaryProgress(0.0); // Stop the indeterminate progress
+		updateSecondaryProgress(1.0);
 		updateMessage("Workflow completed!");
 
 		logger.info(getTaskName() + ": finished - all workflow steps completed successfully");
@@ -4882,12 +4367,6 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 	}
 
 	/**
-	 * Index in score array: S, p_emp, q_value. Used by new genome/protein scoring
-	 * scheme.
-	 */
-	protected static final int IDX_S = 0, IDX_P_EMP = 1, IDX_Q_VALUE = 2;
-
-	/**
 	 * Invokes {@link MetaPilotMagTask#performTaxonomyAnalysis} (DDA-aligned table). Used where a subclass cannot
 	 * access {@code MetaPilotMagTask} protected API through a {@link MetaDiaTask} reference (e.g. static export).
 	 */
@@ -4902,6 +4381,14 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 				intensityTitle, taskName);
 	}
 
+	protected static boolean isConfidentDiaGenomeScore(HashMap<String, double[]> genomeScoreMap, String genome) {
+		double[] score = genomeScoreMap != null ? genomeScoreMap.get(genome) : null;
+		if (score == null) {
+			return false;
+		}
+		return score.length <= DiaMagScoringService.IDX_Q_VALUE || score[DiaMagScoringService.IDX_Q_VALUE] <= 0.01;
+	}
+
 	protected HashMap<String, double[]> getLastDiaStyleGenomeStatsField() {
 		return lastDiaStyleGenomeStats;
 	}
@@ -4911,85 +4398,8 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 	}
 
 	/**
-	 * Per-genome unique peptides and I/L subsets for {@link MetaPilotMagTask#performTaxonomyAnalysis} (DDA-aligned).
-	 */
-	protected static void fillDiaGenomeUniqueAndILMaps(FlashLfqQuanPeptide[] peps, String magIdentifier,
-			HashMap<String, HashSet<String>> razorPepCountMap,
-			HashMap<String, HashSet<String>> uniquePepCountMap,
-			HashMap<String, HashSet<String>> totalPepWithILMap,
-			HashMap<String, HashSet<String>> razorPepWithILMap,
-			HashMap<String, HashSet<String>> uniquePepWithILMap,
-			java.util.Set<String> genomeKeys) {
-		if (peps == null || magIdentifier == null) {
-			return;
-		}
-		for (FlashLfqQuanPeptide pep : peps) {
-			String stripeSequence = pep.getSequence();
-			String[] proteins = pep.getProteins();
-			if (proteins == null) {
-				continue;
-			}
-			int count = 0;
-			for (String p : proteins) {
-				if (p != null && razorPepCountMap.containsKey(p)) {
-					count++;
-				}
-			}
-			if (count == 0) {
-				continue;
-			}
-			boolean hasIorL = stripeSequence != null
-					&& (stripeSequence.indexOf('I') >= 0 || stripeSequence.indexOf('L') >= 0);
-			String uniqueGenome = null;
-			boolean isUnique = true;
-			for (String p : proteins) {
-				if (p == null || p.isEmpty()) {
-					continue;
-				}
-				if (p.startsWith(magIdentifier)) {
-					String genome = p.split("_")[0];
-					if (uniqueGenome == null) {
-						uniqueGenome = genome;
-					} else if (!uniqueGenome.equals(genome)) {
-						isUnique = false;
-						break;
-					}
-				} else {
-					isUnique = false;
-					break;
-				}
-			}
-			String razorProtein = pep.getRazorProtein();
-			for (String p : proteins) {
-				if (p == null || !razorPepCountMap.containsKey(p) || !p.startsWith(magIdentifier)) {
-					continue;
-				}
-				String genome = p.split("_")[0];
-				if (!genomeKeys.contains(genome)) {
-					continue;
-				}
-				if (hasIorL) {
-					totalPepWithILMap.computeIfAbsent(genome, k -> new HashSet<>()).add(stripeSequence);
-				}
-				if (isUnique && uniqueGenome != null && uniqueGenome.equals(genome)) {
-					uniquePepCountMap.computeIfAbsent(genome, k -> new HashSet<>()).add(stripeSequence);
-					if (hasIorL) {
-						uniquePepWithILMap.computeIfAbsent(genome, k -> new HashSet<>()).add(stripeSequence);
-					}
-				}
-			}
-			if (razorProtein != null && razorProtein.startsWith(magIdentifier) && hasIorL) {
-				String genome = razorProtein.split("_")[0];
-				if (genomeKeys.contains(genome)) {
-					razorPepWithILMap.computeIfAbsent(genome, k -> new HashSet<>()).add(stripeSequence);
-				}
-			}
-		}
-	}
-
-	/**
 	 * Folder containing combined.fasta for new-scheme export. Default:
-	 * result/combined. Override in subclasses (e.g. MetaDiaMarkerTask) to use
+	 * result/combined. Override in subclasses (e.g. DiaMarkerCoreTask) to use
 	 * iterative result folder.
 	 */
 	protected File getExportFastaFolder() {
@@ -4999,352 +4409,10 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 	/**
 	 * Folder containing combined.parquet and combined.pr_matrix.tsv for new-scheme
 	 * export. Default: result/combined. Override in subclasses (e.g.
-	 * MetaDiaMarkerTask) to use combinedFile.
+	 * DiaMarkerCoreTask) to use combinedFile.
 	 */
 	protected File getExportParquetFolder() {
 		return new File(metaPar.getDbSearchResultFile(), "combined");
-	}
-
-	/**
-	 * Used by computeGenomeScoreMap / computeProteinScoreMap (new scoring scheme).
-	 */
-	protected static class PeptideEvidence {
-		String seq;
-		double bestCScore = 0;
-		double bestPEP = 1.0;
-		double bestPreQuan = 0;
-		double bestMs1Area = 0;
-		boolean isDecoy;
-		HashSet<String> proteins = new HashSet<>();
-	}
-
-	/** Used by computeGenomeScoreMap (new scoring scheme). */
-	protected static class WeightedPeptideScore {
-		String seq;
-		double e;
-		double w;
-		double we;
-		double intensityFactor = 1.0;
-	}
-
-	/** Used by computeGenomeScoreMap (new scoring scheme). */
-	protected static class GenomePeptideEntry {
-		ArrayList<WeightedPeptideScore> weightedScores = new ArrayList<>();
-	}
-
-	/**
-	 * Compute per-genome scores (S, p_emp, q_value) from precursors using
-	 * PEP/CScore+intensity scoring and decoy resampling. Uses unique peptides only
-	 * when uniquePeptidesOnly is true. Value is double[]{S, p_emp, q_value};
-	 * q_value is Benjamini–Hochberg corrected.
-	 */
-	protected HashMap<String, double[]> computeGenomeScoreMap(DiaNNPrecursor[] precursors, boolean uniquePeptidesOnly) {
-		HashMap<String, double[]> genomeScoreMap = new HashMap<>();
-		if (precursors == null || precursors.length == 0) {
-			return genomeScoreMap;
-		}
-		HashMap<String, PeptideEvidence> peptideMap = new HashMap<>();
-		for (DiaNNPrecursor pp : precursors) {
-			String seq = pp.getSeqString();
-			if (seq == null || seq.isEmpty())
-				continue;
-			int charge = pp.getCharge();
-			boolean isDecoy = pp.getIsDecoy();
-			String key = seq + "|" + charge + "|" + isDecoy;
-			double preQuan = pp.getPreQuan();
-			double ms1Area = pp.getMs1Area();
-			double cscore = pp.getCscore();
-			double pep = pp.getPEP();
-			PeptideEvidence ev = peptideMap.get(key);
-			if (ev == null) {
-				ev = new PeptideEvidence();
-				ev.seq = seq;
-				ev.bestCScore = cscore;
-				ev.bestPEP = pep;
-				ev.bestPreQuan = preQuan;
-				ev.bestMs1Area = ms1Area;
-				ev.isDecoy = isDecoy;
-				ev.proteins = new HashSet<>();
-				peptideMap.put(key, ev);
-			} else {
-				ev.bestCScore = Math.max(ev.bestCScore, cscore);
-				ev.bestPEP = Math.min(ev.bestPEP, pep);
-				ev.bestPreQuan = Math.max(ev.bestPreQuan, preQuan);
-				ev.bestMs1Area = Math.max(ev.bestMs1Area, ms1Area);
-			}
-			String[] proGroups = pp.getProGroups();
-			if (proGroups != null) {
-				for (String pro : proGroups) {
-					if (pro != null && !pro.isEmpty())
-						ev.proteins.add(pro);
-				}
-			}
-		}
-		double cap = 6.0;
-		double minLog1 = Double.MAX_VALUE, maxLog1 = -Double.MAX_VALUE;
-		double minLog2 = Double.MAX_VALUE, maxLog2 = -Double.MAX_VALUE;
-		for (PeptideEvidence ev : peptideMap.values()) {
-			double logI1 = Math.log(1.0 + Math.max(0, ev.bestPreQuan)) / Math.log(2.0);
-			double logI2 = Math.log(1.0 + Math.max(0, ev.bestMs1Area)) / Math.log(2.0);
-			minLog1 = Math.min(minLog1, logI1);
-			maxLog1 = Math.max(maxLog1, logI1);
-			minLog2 = Math.min(minLog2, logI2);
-			maxLog2 = Math.max(maxLog2, logI2);
-		}
-		double logRange1 = Math.max(1e-10, maxLog1 - minLog1);
-		double logRange2 = Math.max(1e-10, maxLog2 - minLog2);
-		final double decoyPepMax = 0.99;
-		ArrayList<Double> decoyEPool = new ArrayList<>();
-		HashMap<String, GenomePeptideEntry> genomePeptides = new HashMap<>();
-		for (Map.Entry<String, PeptideEvidence> ent : peptideMap.entrySet()) {
-			PeptideEvidence ev = ent.getValue();
-			String seq = ev.seq;
-			double e = ev.bestCScore > 0 ? Math.min(cap, Math.max(0, ev.bestCScore))
-					: Math.min(cap, Math.max(0, -Math.log10(Math.max(ev.bestPEP, 1e-10))));
-			double logI1 = Math.log(1.0 + Math.max(0, ev.bestPreQuan)) / Math.log(2.0);
-			double logI2 = Math.log(1.0 + Math.max(0, ev.bestMs1Area)) / Math.log(2.0);
-			double norm1 = (logI1 - minLog1) / logRange1;
-			double norm2 = (logI2 - minLog2) / logRange2;
-			double intensityFactor = 0.5 + 0.25 * norm1 + 0.25 * norm2;
-			if (ev.isDecoy) {
-				if (ev.bestPEP < decoyPepMax)
-					decoyEPool.add(e * intensityFactor);
-				continue;
-			}
-			HashSet<String> genomes = new HashSet<>();
-			for (String pro : ev.proteins) {
-				if (pro.startsWith(FastaManager.shuffle))
-					continue;
-				String[] parts = pro.split("_");
-				if (parts.length > 0 && !parts[0].isEmpty())
-					genomes.add(parts[0]);
-			}
-			if (genomes.isEmpty())
-				continue;
-			int m = genomes.size();
-			if (m != 1 && uniquePeptidesOnly)
-				continue;
-			double w = (m == 1) ? 1.0 : (1.0 / m);
-			double wei = w * e * intensityFactor;
-			for (String g : genomes) {
-				WeightedPeptideScore wps = new WeightedPeptideScore();
-				wps.seq = seq;
-				wps.e = e;
-				wps.w = w;
-				wps.we = wei;
-				wps.intensityFactor = intensityFactor;
-				GenomePeptideEntry ge = genomePeptides.get(g);
-				if (ge == null) {
-					ge = new GenomePeptideEntry();
-					genomePeptides.put(g, ge);
-				}
-				ge.weightedScores.add(wps);
-			}
-		}
-		int k = 5;
-		Random rnd = new Random(42);
-		int B = 10000;
-		HashMap<String, Double> SMap = new HashMap<>();
-		HashMap<String, Integer> genomeNMap = new HashMap<>();
-		HashMap<String, Integer> genomeTotalPeptidesMap = new HashMap<>();
-		for (String g : genomePeptides.keySet()) {
-			List<WeightedPeptideScore> scores = genomePeptides.get(g).weightedScores;
-			genomeTotalPeptidesMap.put(g, scores.size());
-			scores.sort((a, b) -> Double.compare(b.we, a.we));
-			int n = Math.min(k, scores.size());
-			double S = 0;
-			for (int i = 0; i < n; i++)
-				S += scores.get(i).we;
-			SMap.put(g, S);
-			genomeNMap.put(g, n);
-		}
-		if (decoyEPool.isEmpty())
-			decoyEPool.add(0.0);
-		double[] decoyArr = new double[decoyEPool.size()];
-		for (int i = 0; i < decoyArr.length; i++)
-			decoyArr[i] = decoyEPool.get(i);
-		int decoyLen = decoyArr.length;
-		int maxM = 0;
-		for (Integer m : genomeTotalPeptidesMap.values())
-			maxM = Math.max(maxM, m);
-		double[] tmp = new double[Math.max(maxM, 1)];
-		HashMap<String, Double> pempMap = new HashMap<>();
-		for (String g : SMap.keySet()) {
-			double Sg = SMap.get(g);
-			int M = genomeTotalPeptidesMap.get(g);
-			int ng = genomeNMap.get(g);
-			int count = 0;
-			for (int b = 0; b < B; b++) {
-				for (int i = 0; i < M; i++)
-					tmp[i] = decoyArr[rnd.nextInt(decoyLen)];
-				Arrays.sort(tmp, 0, M);
-				double Sb = 0;
-				for (int i = M - 1; i >= M - ng && i >= 0; i--)
-					Sb += tmp[i];
-				if (Sb >= Sg)
-					count++;
-			}
-			double pemp = (1.0 + count) / (1.0 + B);
-			pempMap.put(g, pemp);
-		}
-		String[] genomes = pempMap.keySet().toArray(new String[0]);
-		Arrays.sort(genomes, Comparator.comparingDouble(pempMap::get));
-		int nGenomes = genomes.length;
-		for (int i = 0; i < nGenomes; i++) {
-			double pemp = pempMap.get(genomes[i]);
-			double q = Math.min(1.0, pemp * nGenomes / (i + 1));
-			genomeScoreMap.put(genomes[i], new double[] { SMap.get(genomes[i]), pemp, q });
-		}
-		return genomeScoreMap;
-	}
-
-	/**
-	 * Compute per-protein scores (S, p_emp, q_value) from precursors using
-	 * PEP/CScore+intensity scoring and decoy resampling. S = sum of ALL weighted
-	 * scores per protein (no top-k).
-	 */
-	protected HashMap<String, double[]> computeProteinScoreMap(DiaNNPrecursor[] precursors) {
-		HashMap<String, double[]> proteinScoreMap = new HashMap<>();
-		if (precursors == null || precursors.length == 0) {
-			return proteinScoreMap;
-		}
-		HashMap<String, PeptideEvidence> peptideMap = new HashMap<>();
-		for (DiaNNPrecursor pp : precursors) {
-			String seq = pp.getSeqString();
-			if (seq == null || seq.isEmpty())
-				continue;
-			int charge = pp.getCharge();
-			boolean isDecoy = pp.getIsDecoy();
-			String key = seq + "|" + charge + "|" + isDecoy;
-			double preQuan = pp.getPreQuan();
-			double ms1Area = pp.getMs1Area();
-			double cscore = pp.getCscore();
-			double pep = pp.getPEP();
-			PeptideEvidence ev = peptideMap.get(key);
-			if (ev == null) {
-				ev = new PeptideEvidence();
-				ev.seq = seq;
-				ev.bestCScore = cscore;
-				ev.bestPEP = pep;
-				ev.bestPreQuan = preQuan;
-				ev.bestMs1Area = ms1Area;
-				ev.isDecoy = isDecoy;
-				ev.proteins = new HashSet<>();
-				peptideMap.put(key, ev);
-			} else {
-				ev.bestCScore = Math.max(ev.bestCScore, cscore);
-				ev.bestPEP = Math.min(ev.bestPEP, pep);
-				ev.bestPreQuan = Math.max(ev.bestPreQuan, preQuan);
-				ev.bestMs1Area = Math.max(ev.bestMs1Area, ms1Area);
-			}
-			String[] proGroups = pp.getProGroups();
-			if (proGroups != null) {
-				for (String pro : proGroups) {
-					if (pro != null && !pro.isEmpty())
-						ev.proteins.add(pro);
-				}
-			}
-		}
-		double cap = 6.0;
-		double minLog1 = Double.MAX_VALUE, maxLog1 = -Double.MAX_VALUE;
-		double minLog2 = Double.MAX_VALUE, maxLog2 = -Double.MAX_VALUE;
-		for (PeptideEvidence ev : peptideMap.values()) {
-			double logI1 = Math.log(1.0 + Math.max(0, ev.bestPreQuan)) / Math.log(2.0);
-			double logI2 = Math.log(1.0 + Math.max(0, ev.bestMs1Area)) / Math.log(2.0);
-			minLog1 = Math.min(minLog1, logI1);
-			maxLog1 = Math.max(maxLog1, logI1);
-			minLog2 = Math.min(minLog2, logI2);
-			maxLog2 = Math.max(maxLog2, logI2);
-		}
-		double logRange1 = Math.max(1e-10, maxLog1 - minLog1);
-		double logRange2 = Math.max(1e-10, maxLog2 - minLog2);
-		final double decoyPepMax = 0.99;
-		ArrayList<Double> decoyEPool = new ArrayList<>();
-		HashMap<String, ArrayList<Double>> proteinPeptides = new HashMap<>();
-		for (Map.Entry<String, PeptideEvidence> ent : peptideMap.entrySet()) {
-			PeptideEvidence ev = ent.getValue();
-			String seq = ev.seq;
-			double e = ev.bestCScore > 0 ? Math.min(cap, Math.max(0, ev.bestCScore))
-					: Math.min(cap, Math.max(0, -Math.log10(Math.max(ev.bestPEP, 1e-10))));
-			double logI1 = Math.log(1.0 + Math.max(0, ev.bestPreQuan)) / Math.log(2.0);
-			double logI2 = Math.log(1.0 + Math.max(0, ev.bestMs1Area)) / Math.log(2.0);
-			double norm1 = (logI1 - minLog1) / logRange1;
-			double norm2 = (logI2 - minLog2) / logRange2;
-			double intensityFactor = 0.5 + 0.25 * norm1 + 0.25 * norm2;
-			double wei = e * intensityFactor;
-			if (ev.isDecoy) {
-				if (ev.bestPEP < decoyPepMax)
-					decoyEPool.add(wei);
-				for (String pro : ev.proteins) {
-					if (!pro.startsWith(FastaManager.shuffle))
-						continue;
-					ArrayList<Double> weiList = proteinPeptides.get(pro);
-					if (weiList == null) {
-						weiList = new ArrayList<>();
-						proteinPeptides.put(pro, weiList);
-					}
-					weiList.add(wei);
-				}
-				continue;
-			}
-			for (String pro : ev.proteins) {
-				if (pro.startsWith(FastaManager.shuffle))
-					continue;
-				ArrayList<Double> weiList = proteinPeptides.get(pro);
-				if (weiList == null) {
-					weiList = new ArrayList<>();
-					proteinPeptides.put(pro, weiList);
-				}
-				weiList.add(wei);
-			}
-		}
-		Random rnd = new Random(42);
-		int B = 10000;
-		HashMap<String, Double> SMap = new HashMap<>();
-		HashMap<String, Integer> proteinNMap = new HashMap<>();
-		for (String pro : proteinPeptides.keySet()) {
-			ArrayList<Double> weiList = proteinPeptides.get(pro);
-			double S = 0;
-			for (double w : weiList)
-				S += w;
-			SMap.put(pro, S);
-			proteinNMap.put(pro, weiList.size());
-		}
-		if (decoyEPool.isEmpty())
-			decoyEPool.add(0.0);
-		double[] decoyArr = new double[decoyEPool.size()];
-		for (int i = 0; i < decoyArr.length; i++)
-			decoyArr[i] = decoyEPool.get(i);
-		int decoyLen = decoyArr.length;
-		int maxM = 0;
-		for (Integer m : proteinNMap.values())
-			maxM = Math.max(maxM, m);
-		double[] tmp = new double[Math.max(maxM, 1)];
-		HashMap<String, Double> pempMap = new HashMap<>();
-		for (String pro : SMap.keySet()) {
-			double Sp = SMap.get(pro);
-			int M = proteinNMap.get(pro);
-			int count = 0;
-			for (int b = 0; b < B; b++) {
-				double Sb = 0;
-				for (int i = 0; i < M; i++) {
-					tmp[i] = decoyArr[rnd.nextInt(decoyLen)];
-					Sb += tmp[i];
-				}
-				if (Sb >= Sp)
-					count++;
-			}
-			pempMap.put(pro, (1.0 + count) / (1.0 + B));
-		}
-		String[] proteins = pempMap.keySet().toArray(new String[0]);
-		Arrays.sort(proteins, Comparator.comparingDouble(pempMap::get));
-		int nProteins = proteins.length;
-		for (int i = 0; i < nProteins; i++) {
-			double pemp = pempMap.get(proteins[i]);
-			double q = Math.min(1.0, pemp * nProteins / (i + 1));
-			proteinScoreMap.put(proteins[i], new double[] { SMap.get(proteins[i]), pemp, q });
-		}
-		return proteinScoreMap;
 	}
 
 	/**
@@ -5397,66 +4465,12 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 		precursorsQ01 = applyPostParquetTransforms(precursorsQ01, parquetFolder);
 		if (precursorsQ01 == null)
 			precursorsQ01 = new DiaNNPrecursor[0];
-		HashMap<String, double[]> genomeScoreMapForFilter = computeGenomeScoreMap(precursorsQ01, true);
-		HashSet<String> genomesPempOne = new HashSet<>();
-		for (String g : genomeScoreMapForFilter.keySet()) {
-			if (genomeScoreMapForFilter.get(g)[IDX_P_EMP] >= 1.0 - 1e-9)
-				genomesPempOne.add(g);
-		}
-		ArrayList<DiaNNPrecursor> retainedList = new ArrayList<>();
-		for (DiaNNPrecursor pp : precursorsQ01) {
-			if (pp.getGlobalQvalue() >= 0.01)
-				continue;
-			String[] proGroups = pp.getProGroups();
-			if (proGroups == null || proGroups.length == 0)
-				continue;
-			ArrayList<String> keptPro = new ArrayList<>();
-			for (String pro : proGroups) {
-				if (pro == null || pro.isEmpty())
-					continue;
-				if (pro.startsWith(FastaManager.shuffle)) {
-					keptPro.add(pro);
-					continue;
-				}
-				String genome = pro.split("_").length > 0 ? pro.split("_")[0] : null;
-				if (genome != null && !genomesPempOne.contains(genome))
-					keptPro.add(pro);
-			}
-			if (!keptPro.isEmpty()) {
-				pp.setProGroups(keptPro.toArray(new String[0]));
-				retainedList.add(pp);
-			}
-		}
-		this.diaPp = retainedList.toArray(new DiaNNPrecursor[0]);
-		HashMap<String, double[]> genomeScoreMap = computeGenomeScoreMap(this.diaPp, true);
-		HashMap<String, double[]> proteinScoreMap = computeProteinScoreMap(this.diaPp);
-		ArrayList<DiaNNPrecursor> finalFilteredList = new ArrayList<>();
-		for (DiaNNPrecursor pp : this.diaPp) {
-			ArrayList<String> proList = new ArrayList<>();
-			String[] pros = pp.getProGroups();
-			String razorProtein = "";
-			double bestS = -Double.MAX_VALUE;
-			for (String pro : pros) {
-				if (proteinScoreMap.containsKey(pro)) {
-					proList.add(pro);
-					double S = proteinScoreMap.get(pro)[IDX_S];
-					if (S > bestS) {
-						bestS = S;
-						razorProtein = pro;
-					}
-				}
-			}
-			if (!proList.isEmpty()) {
-				pp.setProGroups(proList.toArray(new String[0]));
-				pp.setRazorProtein(razorProtein);
-				finalFilteredList.add(pp);
-			}
-		}
-		this.diaPp = finalFilteredList.toArray(new DiaNNPrecursor[0]);
+		MagPostAnalysisScoringService.DiaResult scoring = MagPostAnalysisScoringService.scoreDia(precursorsQ01);
+		this.diaPp = scoring.filteredPrecursors;
 		// Delegate the rest of report generation (peptide report, HTML, etc.) to the
 		// existing export flow in subclasses if they override it; otherwise run the
 		// same downstream as Marker.
-		return exportReportDownstreamFromNewScoring(genomeScoreMap, proteinScoreMap);
+		return exportReportDownstreamFromNewScoring(scoring.genomeScoreMap, scoring.proteinScoreMap);
 	}
 
 	/**
@@ -5516,14 +4530,6 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 
 	protected void setExportReportHtmlDir(File f) {
 		this.reportHtmlDir = f;
-	}
-
-	protected File getExportFinalProXmlFile() {
-		return final_pro_xml_file;
-	}
-
-	protected void setExportFinalProXmlFile(File f) {
-		this.final_pro_xml_file = f;
 	}
 
 	protected File getExportSummaryMetaFile() {
@@ -5592,7 +4598,7 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 
 	/**
 	 * Downstream report generation after new genome/protein scores (peptide TSV,
-	 * intensity maps, HTML). Default: run the same logic as MetaDiaMarkerTask
+	 * intensity maps, HTML). Default: run the same logic as DiaMarkerCoreTask
 	 * (shared implementation). Override to customize.
 	 */
 	protected boolean exportReportDownstreamFromNewScoring(HashMap<String, double[]> genomeScoreMap,

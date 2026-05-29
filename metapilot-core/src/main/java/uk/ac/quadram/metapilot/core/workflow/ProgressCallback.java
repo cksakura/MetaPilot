@@ -12,7 +12,7 @@ package uk.ac.quadram.metapilot.core.workflow;
  * 
  * @author MetaPilot Team
  * @version 1.0
- * @since 1.0.0-beta.3
+ * @since 1.0.0
  */
 public interface ProgressCallback {
     

@@ -574,15 +574,12 @@ public class DiannParameter {
 		}
 		if (Acety_proN) {
 			sb.append("--var-mod ").append("UniMod:1,42.010565,*n").append(" ");
-			sb.append("--monitor-mod UniMod:1 ");
 		}
 		if (phospho_STY) {
 			sb.append("--var-mod ").append("UniMod:21,79.966331,STY").append(" ");
-			sb.append("--monitor-mod UniMod:21 ");
 		}
 		if (k_GG) {
 			sb.append("--var-mod ").append("UniMod:121,114.042927,K").append(" ");
-			sb.append("--monitor-mod UniMod:121 ");
 			sb.append("--no-cut-after-mod ").append("UniMod:121").append(" ");
 		}
 
@@ -647,15 +644,12 @@ public class DiannParameter {
 		}
 		if (Acety_proN) {
 			sb.append("--var-mod ").append("UniMod:1,42.010565,*n").append(" ");
-			sb.append("--monitor-mod UniMod:1 ");
 		}
 		if (phospho_STY) {
 			sb.append("--var-mod ").append("UniMod:21,79.966331,STY").append(" ");
-			sb.append("--monitor-mod UniMod:21 ");
 		}
 		if (k_GG) {
 			sb.append("--var-mod ").append("UniMod:121,114.042927,K").append(" ");
-			sb.append("--monitor-mod UniMod:121 ");
 			sb.append("--no-cut-after-mod ").append("UniMod:121").append(" ");
 		}
 

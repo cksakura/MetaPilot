@@ -32,8 +32,12 @@ import org.apache.parquet.io.InputFile;
 import org.apache.parquet.schema.MessageType;
 import org.apache.parquet.schema.PrimitiveType;
 import org.apache.parquet.schema.Type;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 public class DiaNNParquetReader {
+
+	private static final Logger LOGGER = LogManager.getLogger(DiaNNParquetReader.class);
 
 	private DiaNNPrecursor[] diaNNPrecursors;
 
@@ -78,7 +82,7 @@ public class DiaNNParquetReader {
 	}
 	
 	public static HashMap<String, HashSet<String>> getPepProMap(String parquet) throws IOException {
-		System.out.println("Reading parquet file " + parquet + "......");
+		LOGGER.debug("Reading parquet file {}", parquet);
 		
 		HashMap<String, HashSet<String>> map = new HashMap<String, HashSet<String>>();
 		Path path = new Path(parquet);
@@ -95,7 +99,7 @@ public class DiaNNParquetReader {
 		PageReadStore pages;
 		while ((pages = fileReader.readNextRowGroup()) != null) {
 			long rowCount = pages.getRowCount();
-			System.out.println("Row group has " + rowCount + " rows.");
+			LOGGER.debug("Parquet row group has {} rows", rowCount);
 
 			MessageColumnIO columnIO = new ColumnIOFactory().getColumnIO(schema);
 			GroupRecordConverter recordConverter = new GroupRecordConverter(schema);
@@ -124,7 +128,7 @@ public class DiaNNParquetReader {
 	}
 	
 	public static HashMap<String, HashSet<String>> getProPepMap(String parquet) throws IOException {
-		System.out.println("Reading parquet file " + parquet + "......");
+		LOGGER.debug("Reading parquet file {}", parquet);
 
 		HashMap<String, HashSet<String>> map = new HashMap<String, HashSet<String>>();
 		Path path = new Path(parquet);
@@ -141,7 +145,7 @@ public class DiaNNParquetReader {
 		PageReadStore pages;
 		while ((pages = fileReader.readNextRowGroup()) != null) {
 			long rowCount = pages.getRowCount();
-			System.out.println("Row group has " + rowCount + " rows.");
+			LOGGER.debug("Parquet row group has {} rows", rowCount);
 
 			MessageColumnIO columnIO = new ColumnIOFactory().getColumnIO(schema);
 			GroupRecordConverter recordConverter = new GroupRecordConverter(schema);
@@ -169,7 +173,7 @@ public class DiaNNParquetReader {
 	}
 
 	public static HashSet<String> getPeptideSet(String parquet) throws IOException {
-		System.out.println("Reading parquet file " + parquet + "......");
+		LOGGER.debug("Reading parquet file {}", parquet);
 		HashSet<String> set = new HashSet<String>();
 		Path path = new Path(parquet);
 
@@ -185,7 +189,7 @@ public class DiaNNParquetReader {
 		PageReadStore pages;
 		while ((pages = fileReader.readNextRowGroup()) != null) {
 			long rowCount = pages.getRowCount();
-			System.out.println("Row group has " + rowCount + " rows.");
+			LOGGER.debug("Parquet row group has {} rows", rowCount);
 
 			MessageColumnIO columnIO = new ColumnIOFactory().getColumnIO(schema);
 			GroupRecordConverter recordConverter = new GroupRecordConverter(schema);
@@ -207,7 +211,7 @@ public class DiaNNParquetReader {
 
 	public static HashMap<String, Double> getPeptideMap(String parquet) throws IOException {
 		HashMap<String, Double> map = new HashMap<String, Double>();
-		System.out.println("Reading parquet file " + parquet + "......");
+		LOGGER.debug("Reading parquet file {}", parquet);
 		Path path = new Path(parquet);
 
 		HadoopInputFile inputFile = HadoopInputFile.fromPath(path, new Configuration());
@@ -222,7 +226,7 @@ public class DiaNNParquetReader {
 		PageReadStore pages;
 		while ((pages = fileReader.readNextRowGroup()) != null) {
 			long rowCount = pages.getRowCount();
-			System.out.println("Row group has " + rowCount + " rows.");
+			LOGGER.debug("Parquet row group has {} rows", rowCount);
 
 			MessageColumnIO columnIO = new ColumnIOFactory().getColumnIO(schema);
 			GroupRecordConverter recordConverter = new GroupRecordConverter(schema);
@@ -263,7 +267,7 @@ public class DiaNNParquetReader {
 
 		try {
 			Path path = new Path(parquet);
-			System.out.println("Reading parquet file " + parquet + "......");
+			LOGGER.debug("Reading parquet file {}", parquet);
 			HadoopInputFile inputFile = HadoopInputFile.fromPath(path, new Configuration());
 			ParquetReadOptions readOptions = ParquetReadOptions.builder().build();
 			ParquetFileReader fileReader = ParquetFileReader.open(inputFile, readOptions);
@@ -286,7 +290,7 @@ public class DiaNNParquetReader {
 				if (colNames.length() > 16) colNames.append(", ");
 				colNames.append(f.getName());
 			}
-			System.out.println(colNames);
+			LOGGER.debug(colNames.toString());
 
 			// Loop through row groups in the Parquet file
 			PageReadStore pages;
@@ -343,7 +347,7 @@ public class DiaNNParquetReader {
 			}
 			fileReader.close();
 		} catch (IOException e) {
-			e.printStackTrace();
+			LOGGER.error("Failed to read DIA-NN parquet file: " + parquet, e);
 		}
 
 		this.diaNNPrecursors = list.toArray(new DiaNNPrecursor[list.size()]);
@@ -522,7 +526,7 @@ public class DiaNNParquetReader {
 		allSet.addAll(trSet);
 		allSet.addAll(prSet);
 		int common = trSet.size() + prSet.size() - allSet.size();
-		System.out.println(ppSet.size() + "\t" + prSet.size() + "\t" + common + "\t" + trSet.size());
+		LOGGER.debug("{}\t{}\t{}\t{}", ppSet.size(), prSet.size(), common, trSet.size());
 	}
 
 	@SuppressWarnings("unused")
@@ -536,7 +540,7 @@ public class DiaNNParquetReader {
 				allPepSet.add(pp.getSeqString());
 			}
 		}
-		System.out.println("decoy\t" + pps.length + "\t" + allPepSet.size());
+		LOGGER.debug("decoy\t{}\t{}", pps.length, allPepSet.size());
 
 		ConcurrentHashMap<String, HashMap<String, HashSet<String>>> genomePepMap = new ConcurrentHashMap<String, HashMap<String, HashSet<String>>>();
 		HashSet<String> matchedPepSet = new HashSet<String>();
@@ -588,7 +592,7 @@ public class DiaNNParquetReader {
 		} catch (InterruptedException e) {
 		}
 
-		System.out.println("decoy\t" + genomePepMap.size() + "\t" + matchedPepSet.size());
+		LOGGER.debug("decoy\t{}\t{}", genomePepMap.size(), matchedPepSet.size());
 	}
 	
 	private static void changeName(String in) {

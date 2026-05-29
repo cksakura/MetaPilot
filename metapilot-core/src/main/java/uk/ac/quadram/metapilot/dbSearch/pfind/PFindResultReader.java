@@ -1622,7 +1622,8 @@ public class PFindResultReader {
 		titlesb.append("Length").append("\t");
 		titlesb.append("Missed cleavages").append("\t");
 		titlesb.append("Mass").append("\t");
-		titlesb.append("Proteins").append("\t");
+		titlesb.append("Razor protein").append("\t");
+		titlesb.append("Mapped proteins").append("\t");
 		titlesb.append("Charges").append("\t");
 		titlesb.append("Score").append("\t");
 		titlesb.append("Final score").append("\t");
@@ -1660,6 +1661,8 @@ public class PFindResultReader {
 			sb.append(pepresult[i].getLength()).append("\t");
 			sb.append(pepresult[i].getMiss()).append("\t");
 			sb.append(pepresult[i].getMass()).append("\t");
+			String razorProtein = this.razorPepProMap != null ? this.razorPepProMap.get(pepresult[i].getBaseSeq()) : null;
+			sb.append(razorProtein != null ? razorProtein : "").append("\t");
 
 			String[] proteins = pepresult[i].getProteins();
 			if (proteins.length > 0) {
@@ -1753,7 +1756,7 @@ public class PFindResultReader {
 		File quan_pro_file = new File(resultFile, "QuantifiedProteins.tsv");
 		BufferedReader quanProReader = new BufferedReader(new FileReader(quan_pro_file));
 
-		File final_pro_txt = new File(resultFile, "final_proteins.tsv");
+		File final_pro_txt = new File(resultFile, "razor_proteins.tsv");
 		PrintWriter proWriter = new PrintWriter(final_pro_txt);
 
 		line = quanProReader.readLine();

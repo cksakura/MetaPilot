@@ -85,6 +85,16 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 	public static final String version = "1.0.0";
 	public static final String versionFile = "_1_0_0.json";
 
+	private String taskLoggerName;
+	private String taskFileAppenderName;
+	private org.apache.logging.log4j.core.LoggerContext taskLoggerContext;
+	private org.apache.logging.log4j.core.appender.FileAppender taskFileAppender;
+	private java.io.PrintStream originalSystemOut;
+	private java.io.PrintStream originalSystemErr;
+	private java.io.PrintStream taskSystemOut;
+	private java.io.PrintStream taskSystemErr;
+	private java.io.PrintStream taskSystemFileOut;
+
 	public MetaPilotTask(MetaBaseParameter metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
 			ProgressBar secondBar) {
 		super(metaPar, mrp, progressBar, null);
@@ -92,6 +102,7 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 		
 		// Configure logging for this task's result folder and get the task-specific logger name
 		String taskLoggerName = this.configLog(new File(metaPar.getResult()));
+		this.taskLoggerName = taskLoggerName;
 		
 		// Initialize logger with the task-specific logger name (not the class name)
 		// This ensures the logger uses the file appender we just configured
@@ -113,6 +124,13 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 			if (this.progressBar != null) {
 				this.progressBar.setProgress(newValue.doubleValue());
 			}
+		});
+
+		this.setOnCancelled(event -> {
+			if (logger != null) {
+				logger.info("[{}] task cancelled", getTaskName());
+			}
+			cleanupTaskLogging();
 		});
 	}
 
@@ -280,9 +298,11 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 			
 			// Create file appender for task logging
 			File logFile = new File(logDir, "logging.log");
+			String logId = Long.toString(System.nanoTime());
+			String fileAppenderName = "TaskFileAppender_" + logId;
 			org.apache.logging.log4j.core.appender.FileAppender fileAppender = 
 				org.apache.logging.log4j.core.appender.FileAppender.newBuilder()
-					.setName("TaskFileAppender_" + System.currentTimeMillis())
+					.setName(fileAppenderName)
 					.withFileName(logFile.getAbsolutePath())
 					.withAppend(true)
 					.withImmediateFlush(true)
@@ -292,9 +312,12 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 			
 			fileAppender.start();
 			config.addAppender(fileAppender);
+			this.taskLoggerContext = context;
+			this.taskFileAppender = fileAppender;
+			this.taskFileAppenderName = fileAppenderName;
 			
 			// Create unique logger name for this task
-			String taskLoggerName = "TaskLogger_" + System.currentTimeMillis();
+			String taskLoggerName = "TaskLogger_" + logId;
 			
 			// Create new LoggerConfig for this task (not using root logger)
 			org.apache.logging.log4j.core.config.LoggerConfig taskLoggerConfig = 
@@ -328,13 +351,18 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 			File systemOutFile = new File(logDir, "system_output.log");
 			java.io.PrintStream fileOut = new java.io.PrintStream(
 				new java.io.FileOutputStream(systemOutFile, true), true);
+			this.originalSystemOut = System.out;
+			this.originalSystemErr = System.err;
+			this.taskSystemFileOut = fileOut;
 			
 			// Create TeeOutputStream to write to both original console and file
-			TeeOutputStream teeOut = new TeeOutputStream(System.out, fileOut);
-			TeeOutputStream teeErr = new TeeOutputStream(System.err, fileOut);
+			TeeOutputStream teeOut = new TeeOutputStream(this.originalSystemOut, fileOut);
+			TeeOutputStream teeErr = new TeeOutputStream(this.originalSystemErr, fileOut);
 			
-			System.setOut(new java.io.PrintStream(teeOut, true));
-			System.setErr(new java.io.PrintStream(teeErr, true));
+			this.taskSystemOut = new java.io.PrintStream(teeOut, true);
+			this.taskSystemErr = new java.io.PrintStream(teeErr, true);
+			System.setOut(this.taskSystemOut);
+			System.setErr(this.taskSystemErr);
 			
 			System.out.println("========================================");
 			System.out.println("System output/error redirected to: " + systemOutFile.getAbsolutePath());
@@ -348,6 +376,76 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 			System.err.println("Warning: Could not configure logging: " + e.getMessage());
 			e.printStackTrace();
 			return null;
+		}
+	}
+
+	@Override
+	protected void done() {
+		try {
+			super.done();
+		} finally {
+			cleanupTaskLogging();
+		}
+	}
+
+	private void cleanupTaskLogging() {
+		restoreTaskSystemStreams();
+		cleanupTaskFileAppender();
+	}
+
+	private void restoreTaskSystemStreams() {
+		try {
+			if (taskSystemOut != null) {
+				taskSystemOut.flush();
+			}
+			if (taskSystemErr != null) {
+				taskSystemErr.flush();
+			}
+			if (System.out == taskSystemOut && originalSystemOut != null) {
+				System.setOut(originalSystemOut);
+			}
+			if (System.err == taskSystemErr && originalSystemErr != null) {
+				System.setErr(originalSystemErr);
+			}
+			if (taskSystemFileOut != null) {
+				taskSystemFileOut.flush();
+				taskSystemFileOut.close();
+			}
+		} catch (Exception e) {
+			if (logger != null) {
+				logger.warn(getTaskName() + ": failed to clean up system output redirection", e);
+			}
+		} finally {
+			taskSystemOut = null;
+			taskSystemErr = null;
+			taskSystemFileOut = null;
+			originalSystemOut = null;
+			originalSystemErr = null;
+		}
+	}
+
+	private void cleanupTaskFileAppender() {
+		try {
+			if (taskLoggerContext == null || taskLoggerName == null || taskFileAppenderName == null) {
+				return;
+			}
+			org.apache.logging.log4j.core.config.Configuration config = taskLoggerContext.getConfiguration();
+			org.apache.logging.log4j.core.config.LoggerConfig loggerConfig = config.getLoggerConfig(taskLoggerName);
+			if (loggerConfig != null && taskLoggerName.equals(loggerConfig.getName())) {
+				loggerConfig.removeAppender(taskFileAppenderName);
+				config.removeLogger(taskLoggerName);
+			}
+			if (taskFileAppender != null) {
+				taskFileAppender.stop();
+			}
+			taskLoggerContext.updateLoggers();
+		} catch (Exception e) {
+			System.err.println("Warning: Could not clean up task logger: " + e.getMessage());
+		} finally {
+			taskLoggerContext = null;
+			taskLoggerName = null;
+			taskFileAppenderName = null;
+			taskFileAppender = null;
 		}
 	}
 

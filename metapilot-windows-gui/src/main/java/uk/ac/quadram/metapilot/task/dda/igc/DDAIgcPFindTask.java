@@ -18,6 +18,7 @@ import uk.ac.quadram.metapilot.dbSearch.pfind.PFindIsobaricTask;
 import uk.ac.quadram.metapilot.dbSearch.pfind.PFindLabelFreeTask;
 import uk.ac.quadram.metapilot.dbSearch.pfind.PFindResultReader;
 import uk.ac.quadram.metapilot.dbSearch.pfind.PFindTask;
+import javafx.application.Platform;
 import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.quant.flashLFQ.FlashLfqTask;
 import uk.ac.quadram.metapilot.quant.flashLFQ.FlashLfqQuanPepReader;
@@ -209,35 +210,39 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 		System.out.println(
 				format.format(new Date()) + "\t" + getTaskName() + ": pFind spectrum convert workflow: finished");
 
-		// Update progress before database reduction
-		updateProgress(25, 100);
-		updateMessage("Creating sample-specific database...");
+		if (metaPar.isReduceDb()) {
+			updateProgress(25, 100);
+			updateMessage("Creating sample-specific database...");
 
-		metaDbReducerTask = new MetaDbReducerTask(metaPar, mrp, secondBar, logger);
-		logger.info("{}: MetaDbReducerTask created, executing...", taskName);
-		metaDbReducerTask.execute();
-		try {
-			boolean dbReduced = metaDbReducerTask.get(); // Wait for completion and get result
-			if (!dbReduced) {
-				logger.error(getTaskName() + ": error in sample-specific database generation");
+			metaDbReducerTask = new MetaDbReducerTask(metaPar, mrp, secondBar, logger);
+			logger.info("{}: MetaDbReducerTask created, executing...", taskName);
+			metaDbReducerTask.execute();
+			try {
+				boolean dbReduced = metaDbReducerTask.get(); // Wait for completion and get result
+				if (!dbReduced) {
+					logger.error(getTaskName() + ": error in sample-specific database generation");
+					System.err.println(format.format(new Date()) + "\t" + getTaskName()
+							+ ": error in sample-specific database generation");
+					return false;
+				}
+			} catch (InterruptedException | ExecutionException e) {
+				logger.error(getTaskName() + ": error in sample-specific database generation", e);
 				System.err.println(format.format(new Date()) + "\t" + getTaskName()
-						+ ": error in sample-specific database generation");
+						+ ": error in sample-specific database generation: " + e.getMessage());
 				return false;
 			}
-		} catch (InterruptedException | ExecutionException e) {
-			logger.error(getTaskName() + ": error in sample-specific database generation", e);
-			System.err.println(format.format(new Date()) + "\t" + getTaskName()
-					+ ": error in sample-specific database generation: " + e.getMessage());
-			return false;
+
+			updateProgress(40, 100);
+			updateMessage("Database reduction completed, starting identification...");
+
+			logger.info(getTaskName() + ": sample specific database generation: finished");
+			System.out.println(format.format(new Date()) + "\t" + getTaskName()
+					+ ": sample specific database generation: finished");
+		} else {
+			updateProgress(40, 100);
+			updateMessage("Database reduction disabled, starting identification...");
+			logger.info(getTaskName() + ": sample specific database generation skipped");
 		}
-
-		// Update progress after database reduction
-		updateProgress(40, 100);
-		updateMessage("Database reduction completed, starting identification...");
-
-		logger.info(getTaskName() + ": sample specific database generation: finished");
-		System.out.println(
-				format.format(new Date()) + "\t" + getTaskName() + ": sample specific database generation: finished");
 
 		File pfindSearchFile = new File(metaPar.getResult(), "pfind_IGC_search");
 		if (!pfindSearchFile.exists()) {
@@ -307,11 +312,19 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 
 		updateProgress(80, 100);
 
-		exportReport();
+		boolean report = exportReport();
+		if (!report) {
+			logger.error(getTaskName() + ": error in report generation");
+			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": error in report generation");
+			return false;
+		}
 
 		// Update progress to completion
 		updateProgress(100, 100);
 		updateMessage("Workflow completed successfully!");
+		if (secondBar != null) {
+			Platform.runLater(() -> secondBar.setProgress(1.0));
+		}
 
 		updateProgress(100, 100);
 

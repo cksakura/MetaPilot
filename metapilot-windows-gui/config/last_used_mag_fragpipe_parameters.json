@@ -2,54 +2,2922 @@
   "workflow": "DDA_MAG_FRAGPIPE",
   "input_output": {
     "mag_db_version": "v2.0.2",
-    "host_database": "C:\\Users\\daz25hak\\MetaProAI\\database\\uniprotkb_Human_AND_reviewed_true_AND_m_2025_09_01.fasta",
+    "host_database": "",
     "mag_database": "human-gut",
-    "output_directory": "Z:\\Test\\BellAshley\\MetaPilot",
-    "append_host_db": true,
+    "output_directory": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\MetaPilot",
+    "append_host_db": false,
     "experiments": [
       {
-        "file_path": "Z:\\Test\\BellAshley\\RP-MS04-WP_260_S3-B2_1_8059.d",
-        "experiment_name": "260_S3-B2_1_8059"
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_allMixQC.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_allMixQC"
       },
       {
-        "file_path": "Z:\\Test\\BellAshley\\RP-MS04-WP_269_S3-A2_1_8047.d",
-        "experiment_name": "269_S3-A2_1_8047"
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_allMixQC_20220330191152.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_allMixQC_20220330191152"
       },
       {
-        "file_path": "Z:\\Test\\BellAshley\\RP-MS04-WP_16_S3-G7_1_8128.d",
-        "experiment_name": "16_S3-G7_1_8128"
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_allMixQC_20220403194718.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_allMixQC_20220403194718"
       },
       {
-        "file_path": "Z:\\Test\\BellAshley\\RP-MS04-WP_18_S3-B5_1_8062.d",
-        "experiment_name": "18_S3-B5_1_8062"
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_allMixQC_20220405003508.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_allMixQC_20220405003508"
       },
       {
-        "file_path": "Z:\\Test\\BellAshley\\RP-MS04-WP_272_S3-A11_1_8056.d",
-        "experiment_name": "272_S3-A11_1_8056"
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_allMixQC_20220407114914.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_allMixQC_20220407114914"
       },
       {
-        "file_path": "Z:\\Test\\BellAshley\\RP-MS04-WP_267_S3-C10_1_8081.d",
-        "experiment_name": "267_S3-C10_1_8081"
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P1A2.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P1A2"
       },
       {
-        "file_path": "Z:\\Test\\BellAshley\\RP-MS04-WP_273_S3-C6_1_8075.d",
-        "experiment_name": "273_S3-C6_1_8075"
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P1A7.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P1A7"
       },
       {
-        "file_path": "Z:\\Test\\BellAshley\\RP-MS04-WP_292_S3-H11_1_8145.d",
-        "experiment_name": "292_S3-H11_1_8145"
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P1A8.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P1A8"
       },
       {
-        "file_path": "Z:\\Test\\BellAshley\\RP-MS04-WP_280_S3-B12_1_8069.d",
-        "experiment_name": "280_S3-B12_1_8069"
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P1A9.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P1A9"
       },
       {
-        "file_path": "Z:\\Test\\BellAshley\\RP-MS04-WP_10_S3-G6_1_8127.d",
-        "experiment_name": "10_S3-G6_1_8127"
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P1A11.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P1A11"
       },
       {
-        "file_path": "Z:\\Test\\BellAshley\\RP-MS04-WP_278_S3-C11_1_8082.d",
-        "experiment_name": "278_S3-C11_1_8082"
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P1B3.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P1B3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P1B9.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P1B9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P1B11.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P1B11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P1C3.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P1C3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P1D3.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P1D3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P1D7.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P1D7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P1D8.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P1D8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P1D10.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P1D10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P1E2.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P1E2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P1E3.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P1E3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P1E7.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P1E7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P1E8.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P1E8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P1F2.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P1F2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P1F3.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P1F3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P1F4.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P1F4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P1F5.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P1F5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P1F6.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P1F6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P1F7.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P1F7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P1F8.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P1F8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P1F9.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P1F9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P1F10.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P1F10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P1G3.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P1G3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P1G10.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P1G10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P1G11.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P1G11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P1H3.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P1H3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P1H5.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P1H5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P2A2.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P2A2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P2A4.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P2A4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P2B2.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P2B2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P2B4.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P2B4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P2B8.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P2B8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P2C2.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P2C2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P2C4.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P2C4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P2C5.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P2C5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P2C8.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P2C8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P2C9.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P2C9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P2D4.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P2D4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P2D9.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P2D9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P2E3.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P2E3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P2E4.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P2E4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P2E5.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P2E5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P2E6.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P2E6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P2F2.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P2F2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P2F5.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P2F5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P2F6.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P2F6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P2F9.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P2F9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P2F11.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P2F11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P2G2.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P2G2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P2G4.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P2G4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P2G5.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P2G5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P2G6.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P2G6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P2G8.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P2G8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P2H5.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P2H5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P2H6.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P2H6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P2H8.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P2H8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P3A3.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P3A3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P3A4.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P3A4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P3A6.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P3A6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P3A7.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P3A7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P3A9.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P3A9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P3B4.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P3B4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P3B9.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P3B9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P3B11.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P3B11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P3C2.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P3C2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P3C4.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P3C4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P3C11.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P3C11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P3D2.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P3D2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P3D4.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P3D4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P3D11.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P3D11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P3E4.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P3E4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P3E5.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P3E5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P3E6.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P3E6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P3F4.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P3F4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P3F5.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P3F5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P3F6.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P3F6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P3H4.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P3H4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P3H8.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P3H8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P4A2.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P4A2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P4A4.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P4A4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P4A8.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P4A8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P4C2.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P4C2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P4C5.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P4C5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P4C7.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P4C7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P4C10.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P4C10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P4D3.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P4D3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P4D8.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P4D8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P4D10.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P4D10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P4E2.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P4E2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P4E8.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P4E8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P4E9.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P4E9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P4F2.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P4F2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P4F8.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P4F8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P4F9.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P4F9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P4F10.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P4F10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P4F11.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P4F11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P4G2.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P4G2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P4G3.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P4G3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P4G4.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P4G4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P4G5.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P4G5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P4G6.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P4G6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P4G7.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P4G7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P4G8.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P4G8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P4G9.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P4G9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P4G10.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P4G10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P4G11.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P4G11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P4H2.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P4H2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P4H5.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P4H5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P4H5_20220408194418.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P4H5_20220408194418"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P4H7.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P4H7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P4H8.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P4H8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220330_300drugs_V45_P4H10.mzML",
+        "experiment_name": "Leyuan_20220330_300drugs_V45_P4H10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_allMix_QC.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_allMix_QC"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_allMix_QC_20220410131211.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_allMix_QC_20220410131211"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_allMix_QC_20220412100717.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_allMix_QC_20220412100717"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_allMix_QC_20220413123646.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_allMix_QC_20220413123646"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P1A2.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P1A2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P1A7.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P1A7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P1A8.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P1A8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P1A9.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P1A9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P1A11.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P1A11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P1B3.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P1B3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P1B9.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P1B9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P1B11.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P1B11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P1C3.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P1C3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P1D3.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P1D3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P1D7.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P1D7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P1D8.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P1D8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P1D10.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P1D10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P1E2.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P1E2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P1E3.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P1E3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P1E7.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P1E7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P1E8.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P1E8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P1F2.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P1F2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P1F3.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P1F3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P1F4.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P1F4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P1F5.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P1F5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P1F6.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P1F6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P1F7.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P1F7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P1F8.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P1F8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P1F9.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P1F9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P1F10.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P1F10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P1G3.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P1G3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P1G10.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P1G10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P1G11.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P1G11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P1H3.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P1H3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P1H5.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P1H5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P2A2.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P2A2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P2A4.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P2A4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P2B2.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P2B2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P2B4.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P2B4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P2B8.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P2B8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P2C2.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P2C2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P2C4.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P2C4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P2C5.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P2C5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P2C8.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P2C8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P2C9.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P2C9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P2D4.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P2D4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P2D9.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P2D9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P2E3.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P2E3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P2E4.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P2E4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P2E5.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P2E5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P2E6.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P2E6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P2F2.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P2F2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P2F5.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P2F5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P2F6.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P2F6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P2F9.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P2F9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P2F11.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P2F11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P2G2.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P2G2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P2G4.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P2G4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P2G5.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P2G5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P2G6.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P2G6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P2G8.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P2G8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P2H5.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P2H5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P2H6.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P2H6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P2H8.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P2H8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P3A3.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P3A3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P3A4.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P3A4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P3A6.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P3A6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P3A7.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P3A7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P3A9.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P3A9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P3B4.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P3B4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P3B9.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P3B9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P3B11.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P3B11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P3C2.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P3C2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P3C4.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P3C4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P3C11.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P3C11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P3D2.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P3D2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P3D4.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P3D4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P3D11.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P3D11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P3E4.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P3E4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P3E5.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P3E5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P3E6.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P3E6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P3F4.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P3F4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P3F5.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P3F5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P3F6.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P3F6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P3H4.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P3H4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P3H8.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P3H8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P4A2.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P4A2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P4A4.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P4A4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P4A8.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P4A8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P4C2.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P4C2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P4C5.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P4C5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P4C7.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P4C7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P4C10.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P4C10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P4D3.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P4D3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P4D8.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P4D8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P4D10.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P4D10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P4E2.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P4E2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P4E8.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P4E8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P4E9.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P4E9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P4F2.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P4F2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P4F8.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P4F8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P4F9_20220413161632.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P4F9_20220413161632"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P4F10_check.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P4F10_check"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P4F11.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P4F11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P4G2.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P4G2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P4G3.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P4G3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P4G4.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P4G4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P4G5.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P4G5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P4G6.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P4G6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P4G7.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P4G7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P4G8.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P4G8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P4G9_20220413150313.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P4G9_20220413150313"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P4G10.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P4G10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P4G11.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P4G11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P4H2.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P4H2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P4H4.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P4H4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P4H5.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P4H5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P4H7.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P4H7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P4H8.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P4H8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220407_300drugs_V46_P4H10.mzML",
+        "experiment_name": "Leyuan_20220407_300drugs_V46_P4H10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_allMixQC.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_allMixQC"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_allMixQC_20220416051925.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_allMixQC_20220416051925"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_allMixQC_20220417144340.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_allMixQC_20220417144340"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_allMixQC_20220419000740.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_allMixQC_20220419000740"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_allMixQC_20220422170822.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_allMixQC_20220422170822"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P1A2.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P1A2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P1A7.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P1A7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P1A8.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P1A8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P1A9.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P1A9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P1A11.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P1A11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P1B3.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P1B3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P1B9.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P1B9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P1B11.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P1B11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P1C3.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P1C3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P1D3.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P1D3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P1D7.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P1D7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P1D8.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P1D8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P1D10.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P1D10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P1E2.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P1E2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P1E3.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P1E3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P1E7.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P1E7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P1E8.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P1E8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P1F2.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P1F2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P1F3.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P1F3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P1F4.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P1F4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P1F5.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P1F5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P1F6.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P1F6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P1F7.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P1F7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P1F8.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P1F8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P1F9.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P1F9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P1F10.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P1F10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P1G3.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P1G3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P1G10.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P1G10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P1G11.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P1G11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P1H3.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P1H3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P1H5.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P1H5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P2A2.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P2A2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P2A4.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P2A4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P2B2.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P2B2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P2B4.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P2B4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P2B8.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P2B8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P2C2.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P2C2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P2C4.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P2C4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P2C5.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P2C5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P2C8.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P2C8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P2C9.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P2C9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P2D4.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P2D4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P2D9.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P2D9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P2E3.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P2E3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P2E4.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P2E4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P2E5.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P2E5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P2E6.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P2E6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P2F2.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P2F2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P2F5.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P2F5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P2F6.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P2F6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P2F9.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P2F9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P2G2.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P2G2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P2G4.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P2G4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P2G5.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P2G5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P2G6.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P2G6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P2G8.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P2G8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P2H5.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P2H5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P2H6.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P2H6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P2H8.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P2H8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P3A3.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P3A3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P3A4.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P3A4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P3A6.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P3A6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P3A7.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P3A7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P3A9.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P3A9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P3B4.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P3B4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P3B9.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P3B9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P3B11.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P3B11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P3C2.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P3C2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P3C4.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P3C4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P3C11.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P3C11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P3D2.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P3D2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P3D4.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P3D4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P3D11.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P3D11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P3E4.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P3E4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P3E5.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P3E5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P3E6.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P3E6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P3F4.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P3F4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P3F5.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P3F5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P3F6.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P3F6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P3H4.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P3H4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P3H8.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P3H8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P4A2.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P4A2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P4A4.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P4A4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P4A8.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P4A8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P4C2.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P4C2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P4C5.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P4C5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P4C10.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P4C10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P4D3.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P4D3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P4D8.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P4D8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P4D10.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P4D10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P4E2.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P4E2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P4E8.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P4E8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P4E9.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P4E9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P4F2.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P4F2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P4F7.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P4F7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P4F8.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P4F8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P4F9.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P4F9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P4F10.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P4F10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P4F11.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P4F11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P4G2.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P4G2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P4G3.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P4G3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P4G4.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P4G4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P4G5.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P4G5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P4G6.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P4G6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P4G7.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P4G7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P4G8.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P4G8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P4G9.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P4G9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P4G10.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P4G10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P4G11.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P4G11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P4H2.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P4H2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P4H4.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P4H4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P4H5.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P4H5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P4H7.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P4H7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P4H8.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P4H8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220413_300drugs_V47_P4H10.mzML",
+        "experiment_name": "Leyuan_20220413_300drugs_V47_P4H10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_allMixQC.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_allMixQC"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_allMixQC_20220426175409.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_allMixQC_20220426175409"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_allMixQC_20220427202304.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_allMixQC_20220427202304"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_allMixQC_20220428225154.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_allMixQC_20220428225154"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_allMixQC_20220430012040.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_allMixQC_20220430012040"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P1A2.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P1A2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P1A7.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P1A7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P1A8.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P1A8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P1A9.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P1A9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P1A11.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P1A11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P1B3.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P1B3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P1B9.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P1B9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P1B11.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P1B11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P1C2.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P1C2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P1C3.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P1C3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P1D3.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P1D3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P1D7.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P1D7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P1D8.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P1D8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P1D10.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P1D10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P1E2.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P1E2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P1E3.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P1E3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P1E7.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P1E7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P1E8.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P1E8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P1F2.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P1F2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P1F3.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P1F3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P1F4.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P1F4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P1F5.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P1F5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P1F6.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P1F6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P1F7.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P1F7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P1F8.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P1F8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P1F9.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P1F9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P1F10.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P1F10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P1G3.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P1G3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P1G10.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P1G10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P1G11.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P1G11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P1H3.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P1H3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P1H5.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P1H5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P2A2.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P2A2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P2A4.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P2A4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P2B2.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P2B2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P2B4.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P2B4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P2B8.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P2B8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P2C2.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P2C2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P2C4.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P2C4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P2C5.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P2C5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P2C8.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P2C8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P2C9.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P2C9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P2D4.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P2D4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P2D9.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P2D9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P2E3.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P2E3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P2E4.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P2E4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P2E5.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P2E5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P2E6.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P2E6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P2F2.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P2F2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P2F5.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P2F5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P2F6.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P2F6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P2F9.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P2F9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P2F11.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P2F11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P2G2.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P2G2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P2G4.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P2G4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P2G5.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P2G5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P2G6.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P2G6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P2G8.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P2G8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P2H5.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P2H5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P2H6.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P2H6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P2H8.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P2H8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P3A3.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P3A3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P3A4.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P3A4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P3A6.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P3A6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P3A7.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P3A7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P3A9.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P3A9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P3B4.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P3B4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P3B9.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P3B9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P3B11.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P3B11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P3C2.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P3C2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P3C4_low.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P3C4_low"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P3C11.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P3C11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P3D2.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P3D2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P3D4.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P3D4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P3D11.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P3D11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P3E4.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P3E4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P3E5.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P3E5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P3E6.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P3E6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P3F4.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P3F4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P3F5.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P3F5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P3F6.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P3F6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P3H4.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P3H4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P3H8.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P3H8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P4A2.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P4A2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P4A4.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P4A4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P4A8.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P4A8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P4C2.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P4C2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P4C5.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P4C5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P4C7.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P4C7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P4C10.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P4C10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P4D3.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P4D3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P4D8.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P4D8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P4D10.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P4D10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P4E2.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P4E2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P4E8.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P4E8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P4E9.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P4E9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P4F2.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P4F2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P4F8.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P4F8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P4F9.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P4F9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P4F10.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P4F10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P4F11.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P4F11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P4G2.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P4G2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P4G3.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P4G3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P4G4.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P4G4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P4G5.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P4G5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P4G6.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P4G6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P4G7.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P4G7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P4G8.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P4G8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P4G9.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P4G9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P4G10.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P4G10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P4G11.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P4G11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P4H2.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P4H2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P4H4.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P4H4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P4H5.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P4H5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P4H7.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P4H7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P4H8.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P4H8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220424_300drugs_V48_P4H10.mzML",
+        "experiment_name": "Leyuan_20220424_300drugs_V48_P4H10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_allMixQC2.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_allMixQC2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_allMixQC2_20220503133912.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_allMixQC2_20220503133912"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_allMixQC2_20220504032212.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_allMixQC2_20220504032212"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_allMixQC2_20220505080908.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_allMixQC2_20220505080908"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_allMixQC2_20220506125559.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_allMixQC2_20220506125559"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_allMixQC2_20220507174253.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_allMixQC2_20220507174253"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_allMixQC2_20220508164421.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_allMixQC2_20220508164421"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_allMixQC3.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_allMixQC3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_allMixQC3_20220526152932.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_allMixQC3_20220526152932"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_allMixQC3_20220527201628.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_allMixQC3_20220527201628"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_allMixQC3_20220529010315.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_allMixQC3_20220529010315"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_allMixQC3_20220530054956.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_allMixQC3_20220530054956"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_allMixQC3_20220531060024.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_allMixQC3_20220531060024"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P1A2.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P1A2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P1A7.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P1A7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P1A8.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P1A8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P1A9.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P1A9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P1A11.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P1A11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P1B3.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P1B3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P1B9.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P1B9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P1B11.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P1B11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P1C3.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P1C3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P1D3.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P1D3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P1D7.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P1D7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P1D8.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P1D8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P1D10.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P1D10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P1E2.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P1E2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P1E3.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P1E3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P1E7.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P1E7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P1E8.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P1E8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P1F2.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P1F2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P1F3.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P1F3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P1F4.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P1F4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P1F5.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P1F5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P1F6.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P1F6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P1F7.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P1F7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P1F8.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P1F8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P1F9.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P1F9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P1F10.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P1F10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P1G3.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P1G3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P1G10.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P1G10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P1G11.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P1G11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P1H3.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P1H3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P1H5.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P1H5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P2A2.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P2A2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P2A4.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P2A4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P2B2.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P2B2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P2B4.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P2B4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P2B8.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P2B8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P2C2.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P2C2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P2C4.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P2C4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P2C5.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P2C5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P2C8.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P2C8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P2C9.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P2C9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P2D4.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P2D4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P2D9.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P2D9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P2E3.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P2E3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P2E4.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P2E4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P2E5.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P2E5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P2E6.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P2E6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P2F2.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P2F2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P2F5.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P2F5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P2F6.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P2F6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P2F9.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P2F9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P2F11.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P2F11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P2G2.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P2G2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P2G4.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P2G4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P2G5.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P2G5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P2G6.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P2G6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P2G8.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P2G8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P2H5.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P2H5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P2H6.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P2H6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P2H8.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P2H8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P3A3.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P3A3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P3A4.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P3A4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P3A6.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P3A6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P3A7.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P3A7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P3A9.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P3A9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P3B4.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P3B4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P3B9.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P3B9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P3B11.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P3B11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P3C2.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P3C2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P3C4.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P3C4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P3C11.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P3C11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P3D2.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P3D2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P3D4.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P3D4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P3D11.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P3D11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P3E4.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P3E4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P3E5.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P3E5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P3E6.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P3E6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P3F4.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P3F4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P3F5.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P3F5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P3F6.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P3F6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P3H4.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P3H4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P3H8.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P3H8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P4A2.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P4A2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P4A4.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P4A4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P4A8.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P4A8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P4C2.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P4C2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P4C5.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P4C5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P4C7.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P4C7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P4C10.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P4C10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P4D3.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P4D3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P4D8.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P4D8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P4D10.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P4D10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P4E2.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P4E2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P4E8.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P4E8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P4E9.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P4E9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P4F2.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P4F2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P4F8.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P4F8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P4F9.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P4F9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P4F10.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P4F10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P4F11.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P4F11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P4G2.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P4G2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P4G3.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P4G3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P4G4.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P4G4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P4G5.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P4G5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P4G6.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P4G6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P4G7.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P4G7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P4G8.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P4G8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P4G9.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P4G9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P4G10.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P4G10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P4H2.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P4H2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P4H4.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P4H4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P4H5.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P4H5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P4H7.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P4H7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P4H8.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P4H8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220501_300drugs_V49_P4H10.mzML",
+        "experiment_name": "Leyuan_20220501_300drugs_V49_P4H10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P1A2.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P1A2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P1A7.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P1A7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P1A8.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P1A8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P1A9.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P1A9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P1A11.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P1A11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P1B3.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P1B3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P1B9.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P1B9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P1B11.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P1B11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P1C3.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P1C3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P1D3.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P1D3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P1D7.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P1D7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P1D8.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P1D8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P1D10.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P1D10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P1E2.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P1E2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P1E3.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P1E3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P1E3_20220526094400.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P1E3_20220526094400"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P1E7.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P1E7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P1E8.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P1E8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P1F2.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P1F2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P1F3.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P1F3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P1F4.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P1F4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P1F5.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P1F5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P1F6.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P1F6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P1F7.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P1F7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P1F8.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P1F8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P1F9.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P1F9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P1F10.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P1F10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P1G3.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P1G3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P1G10.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P1G10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P1G11.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P1G11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P1H3.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P1H3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P1H5.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P1H5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P2A2.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P2A2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P2A4.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P2A4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P2B2.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P2B2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P2B4.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P2B4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P2B8.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P2B8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P2C2.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P2C2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P2C4.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P2C4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P2C5.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P2C5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P2C8.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P2C8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P2C9.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P2C9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P2D4.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P2D4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P2D9.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P2D9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P2E3.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P2E3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P2E4.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P2E4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P2E5.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P2E5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P2E6.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P2E6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P2F2.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P2F2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P2F5.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P2F5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P2F6.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P2F6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P2F9.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P2F9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P2F11.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P2F11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P2G2.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P2G2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P2G4.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P2G4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P2G5.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P2G5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P2G6.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P2G6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P2G8.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P2G8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P2H5.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P2H5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P2H6.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P2H6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P2H8.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P2H8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P3A3.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P3A3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P3A4.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P3A4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P3A6.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P3A6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P3A7.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P3A7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P3A9.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P3A9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P3B4.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P3B4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P3B9.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P3B9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P3B11.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P3B11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P3C2.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P3C2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P3C4.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P3C4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P3C11.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P3C11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P3D2.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P3D2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P3D4.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P3D4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P3D11.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P3D11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P3E4.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P3E4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P3E5.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P3E5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P3E6.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P3E6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P3F4.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P3F4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P3F5.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P3F5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P3F6.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P3F6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P3H4.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P3H4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P3H8.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P3H8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P4A2.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P4A2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P4A4.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P4A4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P4A8.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P4A8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P4C2.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P4C2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P4C5.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P4C5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P4C7.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P4C7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P4C10.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P4C10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P4D3.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P4D3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P4D8.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P4D8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P4D10.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P4D10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P4E2.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P4E2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P4E8.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P4E8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P4E9.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P4E9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P4F2.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P4F2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P4F8.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P4F8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P4F9.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P4F9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P4F10.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P4F10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P4F11.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P4F11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P4G2.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P4G2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P4G3.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P4G3"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P4G4.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P4G4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P4G5.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P4G5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P4G6.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P4G6"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P4G7.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P4G7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P4G8.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P4G8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P4G9.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P4G9"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P4G10.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P4G10"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P4G11.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P4G11"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P4H2.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P4H2"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P4H4.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P4H4"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P4H5.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P4H5"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P4H7.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P4H7"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P4H8.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P4H8"
+      },
+      {
+        "file_path": "Y:\\automatic\\project_rawfiles_Archived\\Leyuan\\20220330_300drugs_LFQ\\Leyuan_20220524_300drugs_V52_P4H10.mzML",
+        "experiment_name": "Leyuan_20220524_300drugs_V52_P4H10"
       }
     ]
   },
@@ -58,13 +2926,13 @@
     "missed_cleavages": 2,
     "digestion_mode": "Specific"
   },
-  "generated_at": "2026-03-11 09:01:20",
+  "generated_at": "2026-05-26 13:38:29",
   "fragpipe_workflow_configured": true,
   "additional_parameters": {
     "generate_sample_specific_db": true,
     "ms2_scan_mode": "Regular MS",
     "spectra_clustering": false,
-    "threads": 10,
+    "threads": 20,
     "genome_selector_mode": "Marker4",
     "genome_selection_strategy": "Comprehensive"
   },

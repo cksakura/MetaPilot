@@ -2,26 +2,12 @@ package uk.ac.quadram.metapilot.core.MGYG;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-
 import javafx.concurrent.Task;
 
-import java.text.SimpleDateFormat;
-
-import org.apache.commons.net.ftp.FTPClient;
-import org.apache.commons.net.ftp.FTPFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import uk.ac.quadram.metapilot.core.tools.ResumableDownloadTaskJavaFX;
+import uk.ac.quadram.metapilot.core.workflow.ProgressCallback;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 
 /**
@@ -61,22 +47,13 @@ import uk.ac.quadram.metapilot.task.mag.MagDbItem;
  */
 public class MGYGFtpTaskJavaFX extends Task<Boolean> {
 
-	private static final String server = "ftp.ebi.ac.uk";
-	private static final int port = 21;
-	private static final String user = "anonymous";
-	private static final String pass = "";
-
-	private static final String mgnify = "/pub/databases/metagenomics/mgnify_genomes";
-
 	private MagDbItem item;
 	private MagDbItem[] repositoryItems;
 
-	private long missLength = 146;
 	private int waitHours = 4;
 	
 	private static String taskName = "MGnify database FTP task";
 	private static final Logger LOGGER = LogManager.getLogger(MGYGFtpTaskJavaFX.class);
-	private SimpleDateFormat format = new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss");
 	
 	/**
 	 * Default constructor for repository discovery
@@ -149,118 +126,45 @@ public class MGYGFtpTaskJavaFX extends Task<Boolean> {
 	 * Discover all available MGnify repositories
 	 */
 	private void getRepositories() {
-		ArrayList<MagDbItem> list = new ArrayList<MagDbItem>();
-		FTPClient ftpClient = new FTPClient();
-
 		try {
-			// connect and login to the server
-			ftpClient.connect(server, port);
-			ftpClient.login(user, pass);
-
-			// use passive mode to pass firewall
-			ftpClient.enterLocalPassiveMode();
-
-			updateMessage("Connected to " + server);
-			System.out.println("---Connected to " + server + "---");
-
-			FTPFile[] mgnifyFiles = ftpClient.listFiles(mgnify);
-			int finishCount = 0;
-			int totalFiles = mgnifyFiles.length;
-
-			for (FTPFile mgnifyFile : mgnifyFiles) {
-				if (isCancelled()) {
-					break;
+			ProgressCallback cb = new ProgressCallback() {
+				@Override
+				public void onProgress(double workDone, double max) {
+					if (isCancelled()) {
+						Thread.currentThread().interrupt();
+						return;
+					}
+					updateProgress(workDone, max);
 				}
-				
-				if (mgnifyFile.isDirectory()) {
-					try {
-						String catalogueID = mgnifyFile.getName();
-						String path = mgnify + "/" + catalogueID;
 
-						updateMessage("Processing catalog: " + catalogueID);
+				@Override
+				public void onMessage(String message) {
+					if (isCancelled()) {
+						Thread.currentThread().interrupt();
+						return;
+					}
+					updateMessage(message);
+				}
 
-						MagDbItem magDbItem = new MagDbItem(catalogueID, "MGYG");
+				@Override
+				public void onComplete(Object result) {
+					// no-op
+				}
 
-						FTPFile[] files = ftpClient.listFiles(path);
-
-						String version = "";
-						Date date = null;
-						if (files.length == 1) {
-							Calendar calendar = files[0].getTimestamp();
-							date = calendar.getTime();
-							version = files[0].getName();
-						} else {
-							Calendar calendar = files[0].getTimestamp();
-							version = files[0].getName();
-							date = calendar.getTime();
-
-							for (int j = 1; j < files.length; j++) {
-								if (files[j].getTimestamp().after(calendar)) {
-									version = files[j].getName();
-									calendar = files[j].getTimestamp();
-									date = calendar.getTime();
-								}
-							}
-						}
-						ftpClient.changeWorkingDirectory(path);
-
-						FTPFile[] genomeFile = ftpClient.listFiles(path + "/" + version);
-						int speciesCount = 0;
-
-						for (int j = 0; j < genomeFile.length; j++) {
-							String nameJ = genomeFile[j].getName();
-							if (nameJ.equals("species_catalogue")) {
-
-								String pathString = path + "/" + version + "/" + nameJ;
-								FTPFile[] speciesFiles = ftpClient.listFiles(pathString);
-
-								for (FTPFile speciesFile : speciesFiles) {
-
-									String parent = speciesFile.getName();
-									FTPFile[] subSpeciesFiles = ftpClient.listFiles(pathString + "/" + parent);
-									speciesCount += subSpeciesFiles.length;
-
-									for (FTPFile subSpeciesFile : subSpeciesFiles) {
-										String child = subSpeciesFile.getName();
-										magDbItem.addMgygName(parent, child);
-									}
-								}
-							}
-						}
-
-						magDbItem.addVersion(version, speciesCount, date, false);
-						list.add(magDbItem);
-
-						finishCount++;
-
-						// Update progress
-						double progress = ((double) finishCount / (double) totalFiles) * 100.0;
-						updateProgress(progress, 100);
-
-						String message = catalogueID + " detected, " + speciesCount + " species found";
-						updateMessage(message);
-						System.out.println(format.format(new Date()) + "\t" + message);
-						
-					} catch (IOException e) {
-						LOGGER.error("Error processing catalog: " + mgnifyFile.getName(), e);
-						e.printStackTrace();
+				@Override
+				public void onError(Exception error) {
+					if (error != null) {
+						updateMessage("Connection error: " + error.getMessage());
 					}
 				}
-			}
+			};
 
-			ftpClient.logout();
-			ftpClient.disconnect();
-
-			updateMessage("Disconnected from server");
-			System.out.println("---Disconnected---");
+			this.repositoryItems = MGYGRepositoryService.discoverRepositories(cb);
 
 		} catch (IOException ex) {
 			LOGGER.error("FTP connection error", ex);
-			ex.printStackTrace();
 			updateMessage("Connection error: " + ex.getMessage());
 		}
-
-		this.repositoryItems = list.toArray(new MagDbItem[list.size()]);
 	}
 	
 	/**
@@ -269,137 +173,45 @@ public class MGYGFtpTaskJavaFX extends Task<Boolean> {
 	 * @param localItems Local repository items to compare
 	 */
 	private void compareRepositories(MagDbItem[] localItems) {
-		ArrayList<MagDbItem> list = new ArrayList<MagDbItem>();
-		FTPClient ftpClient = new FTPClient();
-
 		try {
-			// connect and login to the server
-			ftpClient.connect(server, port);
-			ftpClient.login(user, pass);
-
-			// use passive mode to pass firewall
-			ftpClient.enterLocalPassiveMode();
-
-			updateMessage("Connected to " + server);
-			System.out.println("---Connected to " + server + "---");
-
-			FTPFile[] mgnifyFiles = ftpClient.listFiles(mgnify);
-			int totalFiles = mgnifyFiles.length;
-			int processedFiles = 0;
-
-			L: for (FTPFile mgnifyFile : mgnifyFiles) {
-				if (isCancelled()) {
-					break;
+			ProgressCallback cb = new ProgressCallback() {
+				@Override
+				public void onProgress(double workDone, double max) {
+					if (isCancelled()) {
+						Thread.currentThread().interrupt();
+						return;
+					}
+					updateProgress(workDone, max);
 				}
-				
-				if (mgnifyFile.isDirectory()) {
-					try {
-						String catalogueId = mgnifyFile.getName();
-						String path = mgnify + "/" + catalogueId;
-						FTPFile[] files = ftpClient.listFiles(path);
 
-						updateMessage("Checking catalog: " + catalogueId);
+				@Override
+				public void onMessage(String message) {
+					if (isCancelled()) {
+						Thread.currentThread().interrupt();
+						return;
+					}
+					updateMessage(message);
+				}
 
-						String version = "";
-						Date date = null;
-						if (files.length == 1) {
-							Calendar calendar = files[0].getTimestamp();
-							version = files[0].getName();
-							date = calendar.getTime();
-						} else {
-							Calendar calendar = files[0].getTimestamp();
-							version = files[0].getName();
-							date = calendar.getTime();
+				@Override
+				public void onComplete(Object result) {
+					// no-op
+				}
 
-							for (int j = 1; j < files.length; j++) {
-								if (files[j].getTimestamp().after(calendar)) {
-									version = files[j].getName();
-									calendar = files[j].getTimestamp();
-									date = calendar.getTime();
-								}
-							}
-						}
-
-						MagDbItem magDbItem = null;
-						for (int i = 0; i < localItems.length; i++) {
-							if (localItems[i].getCatalogueID().equals(catalogueId)) {
-								if (localItems[i].getCatalogueVersion().equals(version)) {
-									list.add(localItems[i]);
-									String message = localItems[i].getCatalogueID() + " " + 
-													localItems[i].getCatalogueVersion() + " already exists";
-									updateMessage(message);
-									System.out.println(format.format(new Date()) + "\t" + message);
-									
-									processedFiles++;
-									updateProgress((double) processedFiles / totalFiles * 100, 100);
-									continue L;
-								} else {
-									magDbItem = localItems[i];
-								}
-							}
-						}
-						if (magDbItem == null) {
-							magDbItem = new MagDbItem(catalogueId, "MGYG");
-						} else {
-							magDbItem.resetMgygMap();
-						}
-						
-						String message = "Parsing new MAG database " + catalogueId;
-						updateMessage(message);
-						System.out.println(format.format(new Date()) + "\t" + message);
-
-						ftpClient.changeWorkingDirectory(path);
-
-						FTPFile[] genomeFile = ftpClient.listFiles(path + "/" + version);
-						int speciesCount = 0;
-
-						for (int j = 0; j < genomeFile.length; j++) {
-							String nameJ = genomeFile[j].getName();
-							if (nameJ.equals("species_catalogue")) {
-
-								String pathString = path + "/" + version + "/" + nameJ;
-								FTPFile[] speciesFiles = ftpClient.listFiles(pathString);
-
-								for (FTPFile speciesFile : speciesFiles) {
-
-									String parent = speciesFile.getName();
-									FTPFile[] subSpeciesFiles = ftpClient.listFiles(pathString + "/" + parent);
-									speciesCount += subSpeciesFiles.length;
-
-									for (FTPFile subSpeciesFile : subSpeciesFiles) {
-										String child = subSpeciesFile.getName();
-										magDbItem.addMgygName(parent, child);
-									}
-								}
-							}
-						}
-
-						magDbItem.addVersion(version, speciesCount, date, true);
-						list.add(magDbItem);
-
-						processedFiles++;
-						updateProgress((double) processedFiles / totalFiles * 100, 100);
-
-					} catch (IOException e) {
-						LOGGER.error("Error comparing catalog: " + mgnifyFile.getName(), e);
-						e.printStackTrace();
+				@Override
+				public void onError(Exception error) {
+					if (error != null) {
+						updateMessage("Connection error: " + error.getMessage());
 					}
 				}
-			}
+			};
 
-			ftpClient.logout();
-			ftpClient.disconnect();
-
-			updateMessage("Comparison completed");
-			System.out.println("---Disconnected---");
+			this.repositoryItems = MGYGRepositoryService.compareRepositories(localItems, cb);
 
 		} catch (IOException ex) {
 			LOGGER.error("FTP connection error during comparison", ex);
-			ex.printStackTrace();
 			updateMessage("Connection error: " + ex.getMessage());
 		}
-
-		this.repositoryItems = list.toArray(new MagDbItem[list.size()]);
 	}
 	
 	/**
@@ -415,163 +227,97 @@ public class MGYGFtpTaskJavaFX extends Task<Boolean> {
 
 		String catalogueId = item.getCatalogueID();
 		String version = item.getCatalogueVersion();
-		HashMap<String, ArrayList<String>> map = item.getMgygNameMap();
-		File dbFile = new File(item.getRepositoryFile(), item.getCatalogueVersion());
-		
-		updateMessage("Setting up download directories for " + catalogueId);
-		
-		if (!dbFile.exists()) {
-			dbFile.mkdirs();
+
+		// The GUI stores repositoryFile as the catalogue folder (…/<catalogueId>).
+		// The core downloader writes to <base>/<catalogueId>/<version>, so we pass the parent directory as base.
+		File catalogueDir = item.getRepositoryFile();
+		if (catalogueDir == null) {
+			updateMessage("ERROR: Local repository is not set for catalogue: " + catalogueId);
+			return false;
+		}
+		File baseDir = catalogueDir.getParentFile();
+		if (baseDir == null) {
+			updateMessage("ERROR: Invalid local repository: " + catalogueDir.getAbsolutePath());
+			return false;
 		}
 
-		File originalDbFile = new File(dbFile, "original_db");
-		if (!originalDbFile.exists()) {
-			originalDbFile.mkdir();
-		}
+		updateMessage("Starting MGYG download (headless core implementation)...");
+		updateProgress(0, 100);
 
-		File eggnogDbFile = new File(dbFile, "eggNOG");
-		if (!eggnogDbFile.exists()) {
-			eggnogDbFile.mkdir();
-		}
-
-		String baseLink = "http://" + server + "/" + mgnify + "/" + catalogueId + "/" + version;
-
-		ExecutorService executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() / 2);
-		ArrayList<Future<?>> flist = new ArrayList<Future<?>>();
-
-		updateMessage("Downloading metadata file...");
-		updateProgress(5, 100);
-
-		// Download metadata file
-		File localMetaFile = new File(dbFile, "genomes-all_metadata.tsv");
-		if (!localMetaFile.exists() || localMetaFile.length() <= missLength) {
-			ResumableDownloadTaskJavaFX task = new ResumableDownloadTaskJavaFX(baseLink + "/genomes-all_metadata.tsv",
-					localMetaFile.getAbsolutePath(), false);
-			Future<?> f = executor.submit(task);
-			flist.add(f);
-		}
-
-		updateMessage("Preparing genome file downloads...");
-		updateProgress(10, 100);
-
-		// Download genome files
-		for (String parent : map.keySet()) {
-			if (isCancelled()) {
-				executor.shutdownNow();
-				updateMessage("Download cancelled by user");
-				return false;
-			}
-			
-			ArrayList<String> list = map.get(parent);
-			for (String child : list) {
+		final long[] lastProgressUpdateMs = new long[] { 0L };
+		ProgressCallback cb = new ProgressCallback() {
+			@Override
+			public void onProgress(double workDone, double max) {
 				if (isCancelled()) {
-					executor.shutdownNow();
-					updateMessage("Download cancelled by user");
-					return false;
+					Thread.currentThread().interrupt();
+					return;
 				}
-				
-				String faaLink = baseLink + "/species_catalogue/" + parent + "/" + child + "/genome/" + child + ".faa";
-				String eggnogLink = baseLink + "/species_catalogue/" + parent + "/" + child + "/genome/" + child
-						+ "_eggNOG.tsv";
-
-				File faaFile = new File(originalDbFile, child + ".faa");
-				File eggnogFile = new File(eggnogDbFile, child + "_eggNOG.tsv");
-
-				if (!faaFile.exists() || faaFile.length() <= missLength) {
-					ResumableDownloadTaskJavaFX task = new ResumableDownloadTaskJavaFX(faaLink, faaFile.getAbsolutePath(), false);
-					Future<?> f = executor.submit(task);
-					flist.add(f);
+				// Throttle JavaFX updates
+				long now = System.currentTimeMillis();
+				if (now - lastProgressUpdateMs[0] < 250) {
+					return;
 				}
+				lastProgressUpdateMs[0] = now;
 
-				if (!eggnogFile.exists() || eggnogFile.length() <= missLength) {
-					ResumableDownloadTaskJavaFX task = new ResumableDownloadTaskJavaFX(eggnogLink, eggnogFile.getAbsolutePath(),
-							false);
-					Future<?> f = executor.submit(task);
-					flist.add(f);
+				double pct = 0.0;
+				if (max > 0) {
+					pct = (workDone / max) * 100.0;
 				}
-			}
-		}
-
-		updateMessage("Downloading " + flist.size() + " files...");
-		updateProgress(15, 100);
-
-		// Monitor download progress
-		for (int i = 0; i < flist.size(); i++) {
-			if (isCancelled()) {
-				executor.shutdownNow();
-				updateMessage("Download cancelled by user");
-				return false;
-			}
-			
-			Future<?> f = flist.get(i);
-			try {
-				f.get();
-			} catch (InterruptedException | ExecutionException e) {
-				LOGGER.error("Error downloading file", e);
-				e.printStackTrace();
+				if (pct < 0) pct = 0;
+				if (pct > 100) pct = 100;
+				updateProgress(pct, 100);
 			}
 
-			// Update progress from 15% to 85% during downloads
-			double progress = 15 + (i * 70.0 / (double) flist.size());
-			updateProgress(progress, 100);
-			updateMessage("Downloaded " + (i + 1) + " of " + flist.size() + " files");
-		}
+			@Override
+			public void onMessage(String message) {
+				if (isCancelled()) {
+					Thread.currentThread().interrupt();
+					return;
+				}
+				updateMessage(message);
+			}
 
-		boolean finish = false;
+			@Override
+			public void onComplete(Object result) {
+				updateProgress(100, 100);
+			}
+
+			@Override
+			public void onError(Exception error) {
+				// Surface the error message via JavaFX message property; exception will still be thrown to Task
+				if (error != null) {
+					updateMessage("ERROR: " + error.getMessage());
+				}
+			}
+		};
 
 		try {
-			updateMessage("Waiting for all downloads to complete...");
-			executor.shutdown();
+			// Resume is safer for large downloads and matches expected HPC behavior.
+			boolean resume = true;
+			int threads = Math.max(1, Runtime.getRuntime().availableProcessors() / 2);
 
-			finish = executor.awaitTermination(waitHours, TimeUnit.HOURS);
+			MGYGMagDownloader.downloadCatalogue(catalogueId, version, baseDir, resume, threads, waitHours, cb);
 
-			updateProgress(90, 100);
-
-			if (finish) {
-				if (isCancelled()) {
-					updateMessage("Download cancelled by user");
-					return false;
-				}
-				
-				updateMessage("Extracting high abundant proteins...");
-				LOGGER.info(taskName + ": extracting high abundant proteins...");
-				System.out.println(
-						format.format(new Date()) + "\t" + taskName + ": extracting high abundant proteins...");
-
-				HapExtractor extractor = new HapExtractor();
-				
-				File marker2File = new File(dbFile, "Marker2.fasta");
-				extractor.extractTwoMarkers(originalDbFile, marker2File);
-				
-				File marker4File = new File(dbFile, "Marker4.fasta");
-				extractor.extractFourCategories(originalDbFile, marker4File);
-
-				updateProgress(95, 100);
-				
-				item.setAvailable();
-
-				updateMessage("Download completed successfully!");
-				LOGGER.info(taskName + ": finished");
-				System.out.println(format.format(new Date()) + "\t" + taskName + ": finished");
-
-				updateProgress(100, 100);
-				finish = true;
-
-			} else {
-				String errorMsg = "Task didn't finish in " + waitHours + " hours, please try again";
-				updateMessage(errorMsg);
-				LOGGER.info(taskName + ": " + errorMsg);
-				System.out.println(format.format(new Date()) + "\t" + taskName + ": " + errorMsg);
+			if (isCancelled()) {
+				updateMessage("Download cancelled by user");
+				return false;
 			}
 
-		} catch (InterruptedException | IOException e) {
+			item.setAvailable();
+			updateMessage("Download completed successfully!");
+			updateProgress(100, 100);
+			return true;
+
+		} catch (IOException e) {
+			if (isCancelled() || Thread.currentThread().isInterrupted()) {
+				updateMessage("Download cancelled");
+				return false;
+			}
 			String errorMsg = "Download failed: " + e.getMessage();
 			updateMessage(errorMsg);
 			LOGGER.error(taskName + ": failed", e);
-			System.out.println(format.format(new Date()) + "\t" + taskName + ": failed");
+			return false;
 		}
-
-		return finish;
 	}
 	
 	/**

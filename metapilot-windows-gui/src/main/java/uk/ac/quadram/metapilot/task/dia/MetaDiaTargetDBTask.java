@@ -1,6 +1,5 @@
 package uk.ac.quadram.metapilot.task.dia;
 
-import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
@@ -45,14 +44,14 @@ public class MetaDiaTargetDBTask extends MetaAbstractTask {
 
 	@Override
 	protected Boolean call() throws Exception {
+		updateMessage(taskName + ": preparing Python database generation script");
+		updateProgress(0, 100);
+
 		// Create the Python script for database generation
 		File pythonFile = new File(magDbDir, "profuncSql.py");
 
-		try (InputStream inputStream = MetaDiaTargetDBTask.class
-				.getResourceAsStream("/python_scripts/db/profuncSql.py");
-				BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
+		try (InputStream inputStream = MetaDiaTargetDBTask.class.getResourceAsStream("/python_scripts/db/profuncSql.py");
 				PrintWriter writer = new PrintWriter(pythonFile)) {
-
 			if (inputStream == null) {
 				logger.error(taskName + ": profuncSql.py not found in classpath at /python_scripts/db/profuncSql.py");
 				System.err.println(
@@ -60,6 +59,7 @@ public class MetaDiaTargetDBTask extends MetaAbstractTask {
 				return false;
 			}
 
+			BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
 			String line;
 			while ((line = reader.readLine()) != null) {
 				writer.println(line);
@@ -93,43 +93,35 @@ public class MetaDiaTargetDBTask extends MetaAbstractTask {
 		}
 
 		try {
-			File batFile = new File(pythonFile.getParent(), pythonFile.getName() + ".bat");
-			PrintWriter batWriter = new PrintWriter(batFile);
-
 			File pythonExeFile = new File(mrp.getToolPath(ToolType.PYTHON));
+			if (!pythonExeFile.exists()) {
+				logger.error(taskName + ": Python executable was not found: " + pythonExeFile.getAbsolutePath());
+				return false;
+			}
 
-			StringBuilder sb = new StringBuilder();
-			sb.append(pythonExeFile.getName()).append(" ");
-			sb.append(pythonFile.getAbsolutePath());
+			updateMessage(taskName + ": creating taxa-function SQL database");
+			updateProgress(10, 100);
 
-			batWriter.println("@echo off");
-			batWriter.println("cd /d \"" + pythonExeFile.getParent() + "\"");
-			batWriter.println("start /B " + sb);
-
-			batWriter.println("if errorlevel 1 (");
-			batWriter.println("\techo Error: Failed to start the application.");
-			batWriter.println(") else (");
-			batWriter.println("\techo Application started successfully.");
-			batWriter.println(")");
-			batWriter.print("exit");
-			batWriter.close();
-
-			String[] args = { "cmd.exe", "/c", "start", batFile.getAbsolutePath() };
-			ProcessBuilder pb = new ProcessBuilder(args);
+			ProcessBuilder pb = new ProcessBuilder(pythonExeFile.getAbsolutePath(), pythonFile.getAbsolutePath());
+			pb.directory(new File(magDbDir));
+			pb.redirectErrorStream(true);
 			Process p = pb.start();
-			BufferedInputStream in = new BufferedInputStream(p.getInputStream());
-			BufferedReader inBr = new BufferedReader(new InputStreamReader(in));
-			String lineStr = null;
-			while ((lineStr = inBr.readLine()) != null) {
-				System.out.println(lineStr);
+			try (BufferedReader inBr = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+				String lineStr;
+				while ((lineStr = inBr.readLine()) != null) {
+					System.out.println(lineStr);
+					logger.info(taskName + ": " + lineStr);
+				}
 			}
 
-			if (p.waitFor() != 0) {
-				if (p.exitValue() == 1)
-					System.err.println("false");
+			int exitCode = p.waitFor();
+			if (exitCode != 0) {
+				logger.error(taskName + ": Python database generation failed, exit code " + exitCode);
+				return false;
 			}
-			inBr.close();
-			in.close();
+
+			updateProgress(100, 100);
+			updateMessage(taskName + ": database created successfully");
 		} catch (Exception e) {
 			logger.error(taskName + ": error in creating the taxa-function SQL database", e);
 			System.err.println(

@@ -6,7 +6,7 @@
 
 	<groupId>uk.ac.quadram</groupId>
 	<artifactId>metapilot-parent</artifactId>
-	<version>1.0.0-beta.7</version>
+	<version>1.0.0</version>
 	<packaging>pom</packaging>
 
 	<name>MetaPilot Parent</name>
@@ -16,6 +16,7 @@
 	<modules>
 		<module>metapilot-core</module>
 		<module>metapilot-windows-gui</module>
+		<module>metapilot-cli</module>
 		<module>metapilot-web</module>
 	</modules>
 

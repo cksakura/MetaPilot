@@ -1,17 +1,17 @@
 # MetaPilot Resource Configuration
-# Generated on Thu Sep 04 10:08:52 BST 2025
+# Generated on Thu May 14 16:14:12 BST 2026
 
 BASE_PATH=C:\Users\daz25hak\MetaProAI\Resources
 
 # Tool Paths
-PYTHON=C:\Users\daz25hak\MetaProAI\Resources\python-3.13.7-embed-amd64\python.exe
-FRAGPIPE=C:\Users\daz25hak\MetaProAI\Resources\fragpipe\FragPipe-23.1\bin\fragpipe.bat
-FLASHLFQ=C:\Users\daz25hak\MetaProAI\Resources\FlashLFQ\CMD.exe
+MSCONVERT=C:\Users\daz25hak\MetaProAI\Resources\ProteoWizard\msconvert.exe
+DBREDUCER=C:\Users\daz25hak\MetaProAI\Resources\DBReducer\DBReducer\DBReducer.exe
 FUNCDB=C:\Users\daz25hak\MetaProAI\Resources\function\func_def.db
+FLASHLFQ=C:\Users\daz25hak\MetaProAI\Resources\FlashLFQ\CMD.exe
 MAXQUANT=C:\Users\daz25hak\MetaProAI\Resources\mq_bin\MaxQuantCmd.exe
 SAGE=C:\Users\daz25hak\MetaProAI\Resources\sage-v0.14.7-x86_64-pc-windows-msvc\sage.exe
 DEEPDETECT=C:\Users\daz25hak\MetaProAI\Resources\DeepDetect\DeepDetect.exe
-DIANN=C:\Users\daz25hak\MetaProAI\Resources\DiaNN\diann.exe
 PFIND=C:\Users\daz25hak\MetaProAI\Resources\DBReducer\pFind3\bin\pFind.exe
-DBREDUCER=C:\Users\daz25hak\MetaProAI\Resources\DBReducer\DBReducer\DBReducer.exe
-MSCONVERT=C:\Users\daz25hak\MetaProAI\Resources\ProteoWizard\msconvert.exe
+PYTHON=C:\Users\daz25hak\MetaProAI\Resources\python-3.13.7-embed-amd64\python.exe
+FRAGPIPE=C:\FragPipe\FragPipe-24.0\bin\fragpipe.bat
+DIANN=C:\DIA-NN\2.3.0\diann.exe

@@ -13,8 +13,8 @@ import org.springframework.stereotype.Service;
  * the /topic/jobs/{jobId}/progress destination.</p>
  * 
  * @author MetaPilot Team
- * @version 1.0.0-beta.3
- * @since 1.0.0-beta.3
+ * @version 1.0.0
+ * @since 1.0.0
  */
 @Service
 public class ProgressBroadcastService {

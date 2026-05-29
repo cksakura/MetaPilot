@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# MetaPilot CLI launcher (Linux).
+# Put this script next to the shaded JAR.
+#
+# Optional environment variables:
+# - METAPILOT_JAR: path to shaded jar (default: <this_dir>/metapilot-cli-1.0.0-shaded.jar)
+# - METAPILOT_JAVA_OPTS: JVM options (e.g. "-Xmx48g")
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+JAR="${METAPILOT_JAR:-$SCRIPT_DIR/metapilot-cli-1.0.0-shaded.jar}"
+JAVA_OPTS="${METAPILOT_JAVA_OPTS:-}"
+
+if [[ ! -f "$JAR" ]]; then
+  echo "ERROR: MetaPilot CLI jar not found: $JAR" >&2
+  echo "Expected shaded jar next to this script:" >&2
+  echo "  $SCRIPT_DIR/metapilot-cli-1.0.0-shaded.jar" >&2
+  echo "Or set METAPILOT_JAR to the jar path." >&2
+  exit 2
+fi
+
+exec java $JAVA_OPTS -jar "$JAR" "$@"

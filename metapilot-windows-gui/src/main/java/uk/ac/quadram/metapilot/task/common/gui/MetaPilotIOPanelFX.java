@@ -65,10 +65,23 @@ public class MetaPilotIOPanelFX extends VBox {
         experimentTable = new TableView<>(experimentData);
         experimentTable.setEditable(true);
         experimentTable.setPrefHeight(250);
+
+        TableColumn<ExperimentRow, Void> indexCol = new TableColumn<>("#");
+        indexCol.setCellFactory(column -> new TableCell<ExperimentRow, Void>() {
+            @Override
+            protected void updateItem(Void item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty ? null : String.valueOf(getIndex() + 1));
+            }
+        });
+        indexCol.setPrefWidth(50);
+        indexCol.setEditable(false);
+        indexCol.setSortable(false);
+        indexCol.setStyle("-fx-alignment: CENTER;");
         
         TableColumn<ExperimentRow, String> fileCol = new TableColumn<>("File Path");
         fileCol.setCellValueFactory(cellData -> cellData.getValue().filePathProperty());
-        fileCol.setPrefWidth(400);
+        fileCol.setPrefWidth(360);
         fileCol.setCellFactory(TextFieldTableCell.forTableColumn(new DefaultStringConverter()));
         fileCol.setOnEditCommit(event -> {
             event.getRowValue().setFilePath(event.getNewValue());
@@ -168,7 +181,7 @@ public class MetaPilotIOPanelFX extends VBox {
         });
         fractionCol.setPrefWidth(80);
         
-        experimentTable.getColumns().setAll(fileCol, expCol, fractionCol);
+        experimentTable.getColumns().setAll(indexCol, fileCol, expCol, fractionCol);
 
         HBox expButtonBox = new HBox(10);
         removeExperimentButton = new Button("Remove Selected");
@@ -481,7 +494,7 @@ public class MetaPilotIOPanelFX extends VBox {
         choiceAlert.setHeaderText("What would you like to select?");
         choiceAlert.setContentText("Choose your option:");
         
-        ButtonType filesButton = new ButtonType("Files (.raw, .mzML, .wiff)");
+        ButtonType filesButton = new ButtonType("Files (.raw, .mzML, .dia, .wiff)");
         ButtonType foldersButton = new ButtonType(".d Folders");
         ButtonType cancelButton = new ButtonType("Cancel", ButtonBar.ButtonData.CANCEL_CLOSE);
         
@@ -500,7 +513,7 @@ public class MetaPilotIOPanelFX extends VBox {
         FileChooser fileChooser = new FileChooser();
         fileChooser.setTitle("Select Raw Files");
         fileChooser.getExtensionFilters().addAll(
-            new FileChooser.ExtensionFilter("Raw Files", "*.raw", "*.mzML", "*.wiff"),
+            new FileChooser.ExtensionFilter("Raw Files", "*.raw", "*.mzML", "*.dia", "*.wiff"),
             new FileChooser.ExtensionFilter("All Files", "*.*")
         );
         List<File> files = fileChooser.showOpenMultipleDialog(getScene().getWindow());

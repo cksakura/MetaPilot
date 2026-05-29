@@ -48,7 +48,7 @@ public class MetaPeptideTsvReader extends AbstractMetaPeptideReader {
 					seqId = i;
 				} else if (title[i].equals("Length")) {
 					lengthId = i;
-				} else if (title[i].equals("Proteins")) {
+				} else if (title[i].equals("Mapped proteins") || title[i].equals("Proteins")) {
 					prosId = i;
 				} else if (title[i].equals("Charges")) {
 					chargeId = i;

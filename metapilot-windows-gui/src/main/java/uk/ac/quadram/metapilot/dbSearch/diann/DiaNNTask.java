@@ -110,7 +110,7 @@ public class DiaNNTask {
 			 * 
 			 * writer.println(); writer.println("endlocal");
 			 */
-			writer.println("start /B " + diaNNFile.getName() + " --cfg " + cfgFile.getAbsolutePath());
+			writer.println("\"" + diaNNFile.getAbsolutePath() + "\" --cfg \"" + cfgFile.getAbsolutePath() + "\"");
 			writer.println();
 			writer.print("exit");
 			writer.close();
@@ -148,7 +148,7 @@ public class DiaNNTask {
 		File cfgFile = new File(out + ".cfg");
 		try (PrintWriter writer = new PrintWriter(batFile)) {
 			writer.println(headsb);
-			writer.println("start /B " + diaNNFile.getName() + " --cfg " + cfgFile.getAbsolutePath());
+			writer.println("\"" + diaNNFile.getAbsolutePath() + "\" --cfg \"" + cfgFile.getAbsolutePath() + "\"");
 			writer.print("exit");
 			writer.close();
 
@@ -201,7 +201,7 @@ public class DiaNNTask {
 			 * + diaNNFile.getName() + " " + cmd + "!files!"); writer.println();
 			 * writer.println("endlocal"); writer.println();
 			 */
-			writer.println("start /B " + diaNNFile.getName() + " --cfg " + cfgFile.getAbsolutePath());
+			writer.println("\"" + diaNNFile.getAbsolutePath() + "\" --cfg \"" + cfgFile.getAbsolutePath() + "\"");
 			writer.println();
 			writer.print("exit");
 			writer.close();
@@ -252,7 +252,7 @@ public class DiaNNTask {
 			 * + diaNNFile.getName() + " " + cmd + "!files!"); writer.println();
 			 * writer.println("endlocal"); writer.println();
 			 */
-			writer.println("start /B " + diaNNFile.getName() + " --cfg " + cfgFile.getAbsolutePath());
+			writer.println("\"" + diaNNFile.getAbsolutePath() + "\" --cfg \"" + cfgFile.getAbsolutePath() + "\"");
 			writer.println();
 			writer.print("exit");
 			writer.close();
@@ -303,7 +303,7 @@ public class DiaNNTask {
 			 * + diaNNFile.getName() + " " + cmd + "!files!"); writer.println();
 			 * writer.println("endlocal"); writer.println();
 			 */
-			writer.println("start /B " + diaNNFile.getName() + " --cfg " + cfgFile.getAbsolutePath());
+			writer.println("\"" + diaNNFile.getAbsolutePath() + "\" --cfg \"" + cfgFile.getAbsolutePath() + "\"");
 			writer.println();
 			writer.print("exit");
 			writer.close();
@@ -355,7 +355,7 @@ public class DiaNNTask {
 			 * + diaNNFile.getName() + " " + cmd + "!files!"); writer.println();
 			 * writer.println("endlocal"); writer.println();
 			 */
-			writer.println("start /B " + diaNNFile.getName() + " --cfg " + cfgFile.getAbsolutePath());
+			writer.println("\"" + diaNNFile.getAbsolutePath() + "\" --cfg \"" + cfgFile.getAbsolutePath() + "\"");
 			writer.println();
 			writer.print("exit");
 			writer.close();
@@ -410,7 +410,7 @@ public class DiaNNTask {
 			 * + diaNNFile.getName() + " " + cmd + "!files!"); writer.println();
 			 * writer.println("endlocal"); writer.println();
 			 */
-			writer.println("start /B " + diaNNFile.getName() + " --cfg " + cfgFile.getAbsolutePath());
+			writer.println("\"" + diaNNFile.getAbsolutePath() + "\" --cfg \"" + cfgFile.getAbsolutePath() + "\"");
 			writer.println();
 			writer.print("exit");
 			writer.close();
@@ -449,7 +449,7 @@ public class DiaNNTask {
 		File cfgFile = new File(out + ".cfg");
 		try (PrintWriter writer = new PrintWriter(batFile)) {
 			writer.println(headsb);
-			writer.println("start /B " + diaNNFile.getName() + " --cfg " + cfgFile.getAbsolutePath());
+			writer.println("\"" + diaNNFile.getAbsolutePath() + "\" --cfg \"" + cfgFile.getAbsolutePath() + "\"");
 			writer.println();
 			writer.print("exit");
 			writer.close();
@@ -498,7 +498,7 @@ public class DiaNNTask {
 			 * + diaNNFile.getName() + " " + cmd + "!files!"); writer.println();
 			 * writer.println("endlocal"); writer.println();
 			 */
-			writer.println("start /B " + diaNNFile.getName() + " --cfg " + cfgFile.getAbsolutePath());
+			writer.println("\"" + diaNNFile.getAbsolutePath() + "\" --cfg \"" + cfgFile.getAbsolutePath() + "\"");
 			writer.println();
 			writer.print("exit");
 			writer.close();
@@ -537,7 +537,7 @@ public class DiaNNTask {
 		File batFile = new File(libOut + ".bat");
 		try (PrintWriter writer = new PrintWriter(batFile)) {
 			writer.print(headsb);
-			writer.println("start /B " + diaNNFile.getName() + " " + cmd);
+			writer.println("\"" + diaNNFile.getAbsolutePath() + "\" " + cmd);
 			writer.print(tailsb);
 			writer.close();
 		} catch (IOException e) {
@@ -559,7 +559,7 @@ public class DiaNNTask {
 		File batFile = new File(tsv + ".bat");
 		try (PrintWriter writer = new PrintWriter(batFile)) {
 			writer.print(headsb);
-			writer.println("start /B " + diaNNFile.getName() + " " + cmd);
+			writer.println("\"" + diaNNFile.getAbsolutePath() + "\" " + cmd);
 			writer.print(tailsb);
 			writer.close();
 		} catch (IOException e) {
@@ -581,7 +581,7 @@ public class DiaNNTask {
 		File batFile = new File(tsv + ".bat");
 		try (PrintWriter writer = new PrintWriter(batFile)) {
 			writer.print(headsb);
-			writer.println("start /B " + diaNNFile.getName() + " " + cmd);
+			writer.println("\"" + diaNNFile.getAbsolutePath() + "\" " + cmd);
 			writer.print(tailsb);
 			writer.close();
 		} catch (IOException e) {
@@ -603,7 +603,7 @@ public class DiaNNTask {
 		File batFile = new File(tsv + ".bat");
 		try (PrintWriter writer = new PrintWriter(batFile)) {
 			writer.print(headsb);
-			writer.println("start /B " + diaNNFile.getName() + " " + cmd);
+			writer.println("\"" + diaNNFile.getAbsolutePath() + "\" " + cmd);
 			writer.print(tailsb);
 			writer.close();
 		} catch (IOException e) {
@@ -644,7 +644,7 @@ public class DiaNNTask {
 		File batFile = outDir != null ? new File(outDir, "speclib2parquet.bat") : new File("speclib2parquet.bat");
 		try (PrintWriter writer = new PrintWriter(batFile)) {
 			writer.print(headsb);
-			writer.println("start /B " + diaNNFile.getName() + " " + cmd);
+			writer.println("\"" + diaNNFile.getAbsolutePath() + "\" " + cmd);
 			writer.print(tailsb);
 			writer.close();
 		} catch (IOException e) {
@@ -694,9 +694,6 @@ public class DiaNNTask {
 						ArrayList<String> commands = new ArrayList<String>();
 						commands.add("cmd.exe");
 						commands.add("/c");
-						commands.add("start");
-						commands.add("/min");
-
 						String[] cs = pari.split("\t");
 						for (String parString : cs) {
 							commands.add(parString);
@@ -834,7 +831,6 @@ public class DiaNNTask {
 			ArrayList<String> cmdList = new ArrayList<String>();
 			cmdList.add("cmd.exe");
 			cmdList.add("/c");
-			cmdList.add("start");
 			cmdList.add(cmd);
 
 			ProcessBuilder pb = new ProcessBuilder(cmdList);

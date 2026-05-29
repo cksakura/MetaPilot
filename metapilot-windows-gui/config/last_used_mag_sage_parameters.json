@@ -19,26 +19,22 @@
   "workflow": "DDA_MAG_SAGE",
   "input_output": {
     "mag_database_version": "v2.0.2",
-    "host_database": "",
+    "host_database": "C:\\Users\\daz25hak\\MetaProAI\\database\\uniprotkb_Human_AND_reviewed_true_AND_m_2025_09_01.fasta",
     "mag_database": "human-gut",
-    "output_directory": "Z:\\PRIDE_dataset\\PXD060335_campi2_test\\MetaPilot",
-    "append_host_db": false,
+    "output_directory": "Z:\\PRIDE_dataset\\PXD050781_haonan\\MetaPilot_jumpstart\\MetaPilot",
+    "append_host_db": true,
     "experiments": [
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD060335_campi2_test\\20230815_CAMPI2_CEA_F_M2_R1_QE3_2ug_1D_DirectLoad_RP180grad.raw",
-        "experiment_name": "20230815_CAMPI2_CEA_F_M2_R1_QE3_2ug_1D_DirectLoad_RP180grad"
+        "file_path": "Z:\\PRIDE_dataset\\PXD050781_haonan\\MetaPilot_jumpstart\\20221208_Ailing_Jumpstart_C.raw",
+        "experiment_name": "20221208_Ailing_Jumpstart_C"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD060335_campi2_test\\20230815_CAMPI2_CEA_F_M4_R1_QE3_2ug_1D_DirectLoad_RP180grad.raw",
-        "experiment_name": "20230815_CAMPI2_CEA_F_M4_R1_QE3_2ug_1D_DirectLoad_RP180grad"
+        "file_path": "Z:\\PRIDE_dataset\\PXD050781_haonan\\MetaPilot_jumpstart\\20221208_Ailing_Jumpstart_D.raw",
+        "experiment_name": "20221208_Ailing_Jumpstart_D"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD060335_campi2_test\\20230815_CAMPI2_CEB_F_M2_R1_QE3_2ug_1D_DirectLoad_RP180grad.raw",
-        "experiment_name": "20230815_CAMPI2_CEB_F_M2_R1_QE3_2ug_1D_DirectLoad_RP180grad"
-      },
-      {
-        "file_path": "Z:\\PRIDE_dataset\\PXD060335_campi2_test\\20230815_CAMPI2_ESA_F_M2_R1_QE3_2ug_1D_DirectLoad_RP180grad.raw",
-        "experiment_name": "20230815_CAMPI2_ESA_F_M2_R1_QE3_2ug_1D_DirectLoad_RP180grad"
+        "file_path": "Z:\\PRIDE_dataset\\PXD050781_haonan\\MetaPilot_jumpstart\\20221208_Ailing_Jumpstart_E.raw",
+        "experiment_name": "20221208_Ailing_Jumpstart_E"
       }
     ]
   },
@@ -47,7 +43,7 @@
     "missed_cleavages": 2,
     "digestion_mode": "Specific"
   },
-  "generated_at": "2026-02-06 14:40:25",
+  "generated_at": "2026-05-15 13:45:23",
   "additional_parameters": {
     "generate_sample_specific_db": true,
     "spectra_clustering": false,

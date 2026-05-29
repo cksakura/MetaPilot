@@ -8,6 +8,8 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -26,7 +28,7 @@ public class FragpipePepReader extends AbstractMetaPeptideReader {
 	protected int sequenceId = -1;
 	protected int modSeqId = -1;
 	protected int proteinId = -1;
-//	protected int subProGroupId = -1;
+	protected int subProGroupId = -1;
 	protected int chargeId = -1;
 	protected int lengthId = -1;
 
@@ -103,7 +105,7 @@ public class FragpipePepReader extends AbstractMetaPeptideReader {
 				} else if (title[i].equals("Protein")) {
 					proteinId = i;
 				} else if (title[i].equals("Mapped Proteins")) {
-//					subProGroupId = i;
+					subProGroupId = i;
 				} else if (title[i].equals("Charges")) {
 					chargeId = i;
 				} else if (title[i].equals("Peptide Length")) {
@@ -318,11 +320,11 @@ public class FragpipePepReader extends AbstractMetaPeptideReader {
 	}
 
 	protected FragpipePeptide parse() {
-		String[] cs = line.split("\t");
+		String[] cs = line.split("\t", -1);
 		String seqString = cs[sequenceId];
 		String modSeq = modSeqId > -1 ? cs[modSeqId] : seqString;
 
-		String[] proteins = new String[] { cs[proteinId] };
+		String[] proteins = parseProteinList(cs);
 		boolean isDecoy = cs[proteinId].startsWith(SHUF);
 
 		int length = Integer.parseInt(cs[lengthId]);
@@ -483,11 +485,12 @@ public class FragpipePepReader extends AbstractMetaPeptideReader {
 						int calculatedMassId = -1;
 						int deltaMassId = -1;
 						int hyperscoreId = -1;
-						int probabilityId = -1;
-						int qvalueId = -1;
-						int missedCleavagesId = -1;
-						int proteinId = -1;
-						int modId = -1;
+							int probabilityId = -1;
+							int qvalueId = -1;
+							int missedCleavagesId = -1;
+							int proteinId = -1;
+							int mappedProteinsId = -1;
+							int modId = -1;
 
 						// Find column indices
 						for (int j = 0; j < title.length; j++) {
@@ -534,6 +537,9 @@ public class FragpipePepReader extends AbstractMetaPeptideReader {
 							case "Protein":
 								proteinId = j;
 								break;
+							case "Mapped Proteins":
+								mappedProteinsId = j;
+								break;
 							case "Assigned Modifications":
 								modId = j;
 								break;
@@ -565,12 +571,13 @@ public class FragpipePepReader extends AbstractMetaPeptideReader {
 							double probability = probabilityId >= 0 ? Double.parseDouble(cs[probabilityId]) : 0.0;
 							double qValue = qvalueId >= 0 ? Double.parseDouble(cs[qvalueId]) : 1.0;
 							String protein = proteinId >= 0 ? cs[proteinId] : "";
+							String mappedProteins = mappedProteinsId >= 0 && mappedProteinsId < cs.length ? cs[mappedProteinsId] : "";
 							String mod = modId >= 0 ? cs[modId] : "";
 							String modSeq = mod.length() >= 0
 									? PeptideModificationFormatter.getModifiedPeptideSequence(sequence, mod)
 									: sequence;
 
-							String[] proteins = protein.isEmpty() ? new String[] {} : new String[] { protein };
+							String[] proteins = parseProteinList(protein, mappedProteins);
 
 							FragPipePSM psm = new FragPipePSM(fileNames[i], scan, spectrum, sequence, modSeq, mod,
 									charge, expMass, calMass, massDiff, miss, rt, score, probability, qValue, proteins);
@@ -619,5 +626,27 @@ public class FragpipePepReader extends AbstractMetaPeptideReader {
 	 */
 	public FragPipePSM[] getPSMs() {
 		return psms;
+	}
+
+	private String[] parseProteinList(String[] row) {
+		String protein = proteinId >= 0 && proteinId < row.length ? row[proteinId] : "";
+		String mappedProteins = subProGroupId >= 0 && subProGroupId < row.length ? row[subProGroupId] : "";
+		return parseProteinList(protein, mappedProteins);
+	}
+
+	private static String[] parseProteinList(String protein, String mappedProteins) {
+		Set<String> proteinSet = new LinkedHashSet<>();
+		if (protein != null && !protein.trim().isEmpty()) {
+			proteinSet.add(protein.trim());
+		}
+		if (mappedProteins != null && !mappedProteins.trim().isEmpty()) {
+			for (String mapped : mappedProteins.split(",")) {
+				String trimmed = mapped.trim();
+				if (!trimmed.isEmpty()) {
+					proteinSet.add(trimmed);
+				}
+			}
+		}
+		return proteinSet.toArray(new String[0]);
 	}
 }

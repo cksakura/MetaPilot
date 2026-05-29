@@ -5,7 +5,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>uk.ac.quadram</groupId>
 	<artifactId>metapilot</artifactId>
-	<version>1.0.0-beta.2</version>
+	<version>1.0.0</version>
 	<packaging>jar</packaging>
 	<name>MetaPilot</name>
 	<url>http://maven.apache.org</url>

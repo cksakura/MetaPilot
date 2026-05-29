@@ -368,7 +368,8 @@ System.out.println(genome+"\t"+ psmCount);
 			titlesb.append("Sequence").append("\t");
 			titlesb.append("Base sequence").append("\t");
 			titlesb.append("Length").append("\t");
-			titlesb.append("Proteins").append("\t");
+			titlesb.append("Razor protein").append("\t");
+			titlesb.append("Mapped proteins").append("\t");
 			titlesb.append("Charges").append("\t");
 			titlesb.append("Score").append("\t");
 
@@ -397,6 +398,7 @@ System.out.println(genome+"\t"+ psmCount);
 				sb.append(peps[i].getModSeq()).append("\t");
 				sb.append(sequence).append("\t");
 				sb.append(peps[i].getLength()).append("\t");
+				sb.append(resolveRazorProtein(sequence, razorProPepMap)).append("\t");
 
 				String[] proteins = peps[i].getProteins();
 				if (proteins.length > 0) {
@@ -611,6 +613,19 @@ System.out.println(genome+"\t"+ psmCount);
 			// TODO Auto-generated catch block
 		}
 		return true;
+	}
+
+	private static String resolveRazorProtein(String sequence, HashMap<String, HashSet<String>> razorProPepMap) {
+		if (sequence == null || razorProPepMap == null) {
+			return "";
+		}
+		for (String protein : razorProPepMap.keySet()) {
+			HashSet<String> peptides = razorProPepMap.get(protein);
+			if (peptides != null && peptides.contains(sequence)) {
+				return protein;
+			}
+		}
+		return "";
 	}
 	
 	@SuppressWarnings("unused")
