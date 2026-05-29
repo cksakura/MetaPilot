@@ -6,8 +6,8 @@ import java.time.LocalDateTime;
  * Progress update message sent via WebSocket.
  * 
  * @author MetaPilot Team
- * @version 1.0.0-beta.3
- * @since 1.0.0-beta.3
+ * @version 1.0.0
+ * @since 1.0.0
  */
 public class ProgressMessage {
     

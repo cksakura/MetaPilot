@@ -1,6 +1,6 @@
 # MetaPilot Linux Installation
 
-This guide covers the current Linux/headless setup for MetaPilot `1.0.0-beta.8`.
+This guide covers the current Linux/headless setup for MetaPilot `1.0.0`.
 
 The canonical Linux entry point is `metapilot-cli`. The Spring Boot `metapilot-web` module is a web/API wrapper that launches a JAR subprocess and should be deployed only when a browser/API front end is needed.
 
@@ -8,36 +8,38 @@ The canonical Linux entry point is `metapilot-cli`. The Spring Boot `metapilot-w
 
 - Linux x86_64 system or HPC login/compute environment.
 - Java 17+.
-- Maven 3.6+ for source builds.
 - DIA-NN for DIA Marker.
 - FragPipe/MSFragger for DDA MAG FragPipe.
 - Python where report-generation helpers are enabled.
 - Access to a configured MAG database registry and local MAG database folders.
 
-## Build From Source
+## Install From Release ZIP
 
-```bash
-git clone <metapilot-repository-url>
-cd MetaPilot
-mvn -pl metapilot-core,metapilot-cli -am -DskipTests package
-```
+Use the MetaPilot Linux CLI release ZIP. Building from source is not part of the supported user installation path.
 
-Optional: build every module.
+Example layout after extraction:
 
-```bash
-mvn clean package -DskipTests
+```text
+/opt/metapilot/
+  metapilot-cli-1.0.0-shaded.jar
+  metapilot
+  config/
+    meta_resources.params.template
+    MAGDB_1_0.json
+  docs/
+  examples/
 ```
 
 ## Initialize Site Configuration
 
 ```bash
-java -jar metapilot-cli/target/metapilot-cli-1.0.0-beta.8-shaded.jar init
+java -jar /opt/metapilot/metapilot-cli-1.0.0-shaded.jar init
 ```
 
 Then set tool paths:
 
 ```bash
-java -jar metapilot-cli/target/metapilot-cli-1.0.0-beta.8-shaded.jar resources-set \
+java -jar /opt/metapilot/metapilot-cli-1.0.0-shaded.jar resources-set \
   --set DIANN=/opt/tools/diann/diann-linux \
   --set FRAGPIPE=/opt/tools/fragpipe-24.0/bin/fragpipe \
   --set FRAGPIPE_TOOLS=/opt/tools/fragpipe-24.0/tools \
@@ -49,7 +51,7 @@ java -jar metapilot-cli/target/metapilot-cli-1.0.0-beta.8-shaded.jar resources-s
 Validate:
 
 ```bash
-java -jar metapilot-cli/target/metapilot-cli-1.0.0-beta.8-shaded.jar resources-check
+java -jar /opt/metapilot/metapilot-cli-1.0.0-shaded.jar resources-check
 ```
 
 ## MAG Database Setup
@@ -57,13 +59,23 @@ java -jar metapilot-cli/target/metapilot-cli-1.0.0-beta.8-shaded.jar resources-c
 List registered databases:
 
 ```bash
-java -jar metapilot-cli/target/metapilot-cli-1.0.0-beta.8-shaded.jar mag-list
+java -jar /opt/metapilot/metapilot-cli-1.0.0-shaded.jar mag-list
 ```
 
-Register a local database:
+Download and prepare a supported MAG catalogue before registration:
 
 ```bash
-java -jar metapilot-cli/target/metapilot-cli-1.0.0-beta.8-shaded.jar mag-register \
+java -jar /opt/metapilot/metapilot-cli-1.0.0-shaded.jar mag-download \
+  --catalogue human-gut \
+  --version v2.0.2 \
+  --out /data/metapilot/MAG \
+  --resume
+```
+
+Register the downloaded or otherwise prepared local database:
+
+```bash
+java -jar /opt/metapilot/metapilot-cli-1.0.0-shaded.jar mag-register \
   --catalogue human-gut \
   --version v2.0.2 \
   --identifier MGYG \
@@ -84,14 +96,14 @@ Export a parameter JSON from the GUI or generate one through an existing workflo
 Validate:
 
 ```bash
-java -jar metapilot-cli/target/metapilot-cli-1.0.0-beta.8-shaded.jar params-validate \
+java -jar /opt/metapilot/metapilot-cli-1.0.0-shaded.jar params-validate \
   --params /data/studies/study_parameters.json
 ```
 
 Run:
 
 ```bash
-java -jar metapilot-cli/target/metapilot-cli-1.0.0-beta.8-shaded.jar run \
+java -jar /opt/metapilot/metapilot-cli-1.0.0-shaded.jar run \
   --params /data/studies/study_parameters.json
 ```
 
@@ -102,19 +114,7 @@ Currently supported by the generic headless runner:
 
 ## Optional Web Wrapper
 
-Build:
-
-```bash
-mvn -pl metapilot-web -am -DskipTests package
-```
-
-Run:
-
-```bash
-java -jar metapilot-web/target/metapilot-web-1.0.0-beta.8.jar
-```
-
-The web module exposes REST and static UI resources, but the CLI remains the preferred execution path for production headless runs.
+If a release package includes the optional web wrapper, deploy that packaged artifact separately when a browser/API front end is needed. The CLI remains the preferred execution path for production headless runs.
 
 ## Verification Checklist
 

@@ -22,8 +22,8 @@ import java.util.Map;
  * Handles uploading of parameter files and resource files to the server.
  * 
  * @author MetaPilot Team
- * @version 1.0.0-beta.3
- * @since 1.0.0-beta.3
+ * @version 1.0.0
+ * @since 1.0.0
  */
 @RestController
 @RequestMapping("/api/files")

@@ -2,7 +2,7 @@
 
 MetaPilot is a metaproteomics workflow platform for DDA and DIA datasets. It combines established search engines with MAG-aware genome selection, refined search-space construction, taxonomy export and functional annotation.
 
-This page reflects the current repository state for `1.0.0-beta.8`.
+This page reflects the formal release package for `1.0.0`.
 
 ## Applications
 
@@ -13,19 +13,24 @@ This page reflects the current repository state for `1.0.0-beta.8`.
 | `metapilot-cli` | Headless command-line runner. | Linux/HPC runner for selected workflows |
 | `metapilot-web` | Spring Boot web wrapper. | Server/API wrapper that launches a JAR subprocess |
 
-## Build
+## Installation
 
-Build the maintained runtime modules:
+Install MetaPilot from the release ZIP package. Public releases are distributed as ready-to-run application artifacts; building from source is not part of the supported user installation path.
 
-```bash
-mvn -pl metapilot-core,metapilot-cli,metapilot-windows-gui -am -DskipTests package
+Typical release contents:
+
+```text
+MetaPilot-1.0.0/
+  metapilot-cli-1.0.0-shaded.jar
+  metapilot
+  config/
+    meta_resources.params.template
+    MAGDB_1_0.json
+  docs/
+  examples/
 ```
 
-Build all modules, including the web wrapper:
-
-```bash
-mvn clean package -DskipTests
-```
+Extract the ZIP to a local folder on Windows or to shared storage on Linux/HPC. Use the included executable, launcher script or CLI JAR for the workflows described below.
 
 ## Required Tools
 
@@ -165,9 +170,9 @@ GUI workflows may also generate HTML reports.
 Use the CLI for currently supported headless workflows:
 
 ```bash
-java -jar metapilot-cli-1.0.0-beta.8-shaded.jar init
-java -jar metapilot-cli-1.0.0-beta.8-shaded.jar params-validate --params study.json
-java -jar metapilot-cli-1.0.0-beta.8-shaded.jar run --params study.json
+java -jar metapilot-cli-1.0.0-shaded.jar init
+java -jar metapilot-cli-1.0.0-shaded.jar params-validate --params study.json
+java -jar metapilot-cli-1.0.0-shaded.jar run --params study.json
 ```
 
 See [CLI Reference](cli-reference.md) for command details and current support limits.

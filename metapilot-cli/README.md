@@ -19,5 +19,12 @@ java -jar metapilot-cli/target/metapilot-cli-*-shaded.jar --version
 
 ## Status
 
-This module currently provides CLI scaffolding only. Workflow execution will be added as workflow/task code is refactored to be JavaFX-independent (using `metapilot-core`).
+This module provides the headless entry point for the MetaPilot `1.0.0` release.
+
+Current headless execution supports:
+
+- `DIA_MARKER`: Core/Focus, Comprehensive, Deep together, and Deep per file modes.
+- `DDA_MAG_FRAGPIPE`: MAG-aware DDA FragPipe workflow.
+
+Use `--help` to list the current command surface, including resource setup, MAG database registration, parameter validation, and workflow execution commands.
 

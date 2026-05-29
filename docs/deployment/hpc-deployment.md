@@ -1,6 +1,6 @@
 # MetaPilot HPC Deployment
 
-This guide describes the current HPC deployment model for MetaPilot `1.0.0-beta.8`.
+This guide describes the current HPC deployment model for MetaPilot `1.0.0`.
 
 ## Current Deployment Model
 
@@ -17,8 +17,8 @@ The Windows GUI remains the primary interface for configuring and running all GU
 
 ```text
 /opt/metapilot/
-  metapilot-cli-1.0.0-beta.8-shaded.jar
-  metapilot-web-1.0.0-beta.8.jar          # optional
+  metapilot-cli-1.0.0-shaded.jar
+  metapilot-web-1.0.0.jar          # optional
 
 /data/metapilot/
   site/
@@ -49,7 +49,7 @@ DEEPDETECT=/opt/tools/deepdetect/DeepDetect
 Validate before submitting jobs:
 
 ```bash
-java -jar /opt/metapilot/metapilot-cli-1.0.0-beta.8-shaded.jar resources-check \
+java -jar /opt/metapilot/metapilot-cli-1.0.0-shaded.jar resources-check \
   --resources /data/metapilot/site/meta_resources.params
 ```
 
@@ -66,7 +66,7 @@ java -jar /opt/metapilot/metapilot-cli-1.0.0-beta.8-shaded.jar resources-check \
 
 set -euo pipefail
 
-JAR=/opt/metapilot/metapilot-cli-1.0.0-beta.8-shaded.jar
+JAR=/opt/metapilot/metapilot-cli-1.0.0-shaded.jar
 PARAMS=/data/metapilot/studies/study_parameters.json
 RESOURCES=/data/metapilot/site/meta_resources.params
 MAGDB=/data/metapilot/site/MAGDB_1_0.json
@@ -88,18 +88,29 @@ DIA Deep per file can run multiple per-raw-file workers. Tune concurrency for no
 
 ```bash
 export METAPILOT_DEEP_PER_FILE_POOL=2
-export METAPILOT_DEEP_PER_FILE_RAM_PER_TASK_GB=80
+export METAPILOT_DEEP_PER_FILE_RAM_PER_TASK_GB=30
 ```
 
 Use a conservative pool first, then increase only after measuring peak memory on your data.
 
-## Web/API Wrapper
+## MAG FragPipe Concurrency
 
-The `metapilot-web` module can be deployed when users need a browser/API front end:
+DDA MAG FragPipe per-sample searches default to a conservative 60 GB per concurrent task estimate. To use more of a node when the data set is known to need less memory, set an explicit concurrency:
 
 ```bash
-mvn -pl metapilot-web -am -DskipTests package
-java -jar metapilot-web/target/metapilot-web-1.0.0-beta.8.jar
+java -jar metapilot-cli-1.0.0-shaded.jar run \
+  --params /path/to/dda_mag_fragpipe_parameters.json \
+  --fragpipe-parallel-tasks 4
+```
+
+The parameter JSON can also store this as `additional_parameters.fragpipe_parallel_tasks`. If the requested concurrency exceeds the memory-safe estimate, MetaPilot logs a warning and continues with the user-requested value.
+
+## Web/API Wrapper
+
+If the release package includes the optional `metapilot-web` artifact, deploy it when users need a browser/API front end:
+
+```bash
+java -jar /opt/metapilot/metapilot-web-1.0.0.jar
 ```
 
 Configure network access, upload limits and logging through `metapilot-web/src/main/resources/application.properties` or external Spring Boot configuration.
@@ -108,7 +119,7 @@ For production execution, prefer submitting CLI jobs through the scheduler rathe
 
 ## Operational Checklist
 
-- Build and record the exact MetaPilot commit.
+- Record the exact MetaPilot release version and package checksum.
 - Pin DIA-NN, FragPipe and DeepDetect versions.
 - Store `meta_resources.params` and `MAGDB_1_0.json` with the study outputs.
 - Keep GUI-exported parameter JSON files with results.

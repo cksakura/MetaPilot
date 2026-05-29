@@ -1,6 +1,6 @@
 # MetaPilot Web Progress Status
 
-This note records the current web progress/API implementation for `1.0.0-beta.8`.
+This note records the current web progress/API implementation for `1.0.0`.
 
 ## Current Role
 
@@ -87,7 +87,7 @@ mvn -pl metapilot-web -am -DskipTests package
 Run locally:
 
 ```bash
-java -jar metapilot-web/target/metapilot-web-1.0.0-beta.8.jar
+java -jar metapilot-web/target/metapilot-web-1.0.0.jar
 ```
 
 Then open:

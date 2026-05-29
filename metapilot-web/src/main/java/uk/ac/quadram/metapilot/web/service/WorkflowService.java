@@ -26,8 +26,8 @@ import java.util.concurrent.*;
  * dependencies in the web module.</p>
  * 
  * @author MetaPilot Team
- * @version 1.0.0-beta.3
- * @since 1.0.0-beta.3
+ * @version 1.0.0
+ * @since 1.0.0
  */
 @Service
 public class WorkflowService {
@@ -271,10 +271,10 @@ public class WorkflowService {
         
         // Otherwise, try common locations
         String[] possibleJars = {
-            "../metapilot-windows-gui/target/metapilot-windows-gui-1.0.0-beta.8-shaded.jar",
-            "../../metapilot-windows-gui/target/metapilot-windows-gui-1.0.0-beta.8-shaded.jar",
-            "./metapilot-windows-gui-1.0.0-beta.8-shaded.jar",
-            "../metapilot-windows-gui-1.0.0-beta.8-shaded.jar"
+            "../metapilot-windows-gui/target/metapilot-windows-gui-1.0.0-shaded.jar",
+            "../../metapilot-windows-gui/target/metapilot-windows-gui-1.0.0-shaded.jar",
+            "./metapilot-windows-gui-1.0.0-shaded.jar",
+            "../metapilot-windows-gui-1.0.0-shaded.jar"
         };
         
         for (String jarPath : possibleJars) {

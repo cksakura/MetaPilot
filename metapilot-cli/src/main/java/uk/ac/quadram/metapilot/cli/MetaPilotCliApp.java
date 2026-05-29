@@ -836,7 +836,7 @@ public final class MetaPilotCliApp {
                 "\n" + (validateOnly ? "Validate" : "Run") + " a headless study from a parameter JSON file.",
                 options,
                 "\nExample:\n"
-                        + "  java -jar metapilot-cli-1.0.0-beta.8-shaded.jar " + command
+                        + "  java -jar metapilot-cli-1.0.0-shaded.jar " + command
                         + " --params /path/study_params.json\n",
                 true
         );
@@ -1123,11 +1123,11 @@ public final class MetaPilotCliApp {
                         + "  deepdetect-predict  Run DeepDetect PyTorch prediction (python main.py)\n"
                         + "  deepdetect-magdb    Predict peptides for all genomes in a MAG DB\n"
                         + "\nExamples:\n"
-                        + "  java -jar metapilot-cli-1.0.0-beta.8-shaded.jar init\n"
-                        + "  java -jar metapilot-cli-1.0.0-beta.8-shaded.jar run --params /path/study_params.json\n"
-                        + "  java -jar metapilot-cli-1.0.0-beta.8-shaded.jar params-validate --params /path/study_params.json\n"
-                        + "  java -jar metapilot-cli-1.0.0-beta.8-shaded.jar resources-check\n"
-                        + "  java -jar metapilot-cli-1.0.0-beta.8-shaded.jar mag-download --help\n",
+                        + "  java -jar metapilot-cli-1.0.0-shaded.jar init\n"
+                        + "  java -jar metapilot-cli-1.0.0-shaded.jar run --params /path/study_params.json\n"
+                        + "  java -jar metapilot-cli-1.0.0-shaded.jar params-validate --params /path/study_params.json\n"
+                        + "  java -jar metapilot-cli-1.0.0-shaded.jar resources-check\n"
+                        + "  java -jar metapilot-cli-1.0.0-shaded.jar mag-download --help\n",
                 true
         );
     }
@@ -1140,7 +1140,7 @@ public final class MetaPilotCliApp {
                 "\nRun DeepDetect prediction using the Python entrypoint (main.py).",
                 options,
                 "\nExample:\n"
-                        + "  java -jar metapilot-cli-1.0.0-beta.8-shaded.jar deepdetect-predict \\\n"
+                        + "  java -jar metapilot-cli-1.0.0-shaded.jar deepdetect-predict \\\n"
                         + "    --input /path/genome.faa --output /path/genome.predicted.tsv\n",
                 true
         );
@@ -1156,7 +1156,7 @@ public final class MetaPilotCliApp {
                         + "Outputs: <out>/<catalogue>/<version>/predicted/*.predicted.tsv",
                 options,
                 "\nExample:\n"
-                        + "  java -jar metapilot-cli-1.0.0-beta.8-shaded.jar deepdetect-magdb \\\n"
+                        + "  java -jar metapilot-cli-1.0.0-shaded.jar deepdetect-magdb \\\n"
                         + "    --catalogue human-gut --version v2.0.2 --threads 4\n",
                 true
         );
@@ -1170,7 +1170,7 @@ public final class MetaPilotCliApp {
                 "\nValidate a MetaPilot resource configuration for Linux/HPC CLI execution.",
                 options,
                 "\nExample:\n"
-                        + "  java -jar metapilot-cli-1.0.0-beta.8-shaded.jar resources-check --file ~/tools/metapilot/config/meta_resources.params\n",
+                        + "  java -jar metapilot-cli-1.0.0-shaded.jar resources-check --file ~/tools/metapilot/config/meta_resources.params\n",
                 true
         );
     }
@@ -1184,15 +1184,15 @@ public final class MetaPilotCliApp {
                 options,
                 "\nExamples:\n"
                         + "  # Create a starter template (first time)\n"
-                        + "  java -jar metapilot-cli-1.0.0-beta.8-shaded.jar resources-set --template --print\n"
+                        + "  java -jar metapilot-cli-1.0.0-shaded.jar resources-set --template --print\n"
                         + "\n"
-                        + "  java -jar metapilot-cli-1.0.0-beta.8-shaded.jar resources-set \\\n"
+                        + "  java -jar metapilot-cli-1.0.0-shaded.jar resources-set \\\n"
                         + "    --set SYSTEM=linux --set RESOURCE_AUTO_DETECTED=true\n"
                         + "\n"
-                        + "  java -jar metapilot-cli-1.0.0-beta.8-shaded.jar resources-set \\\n"
+                        + "  java -jar metapilot-cli-1.0.0-shaded.jar resources-set \\\n"
                         + "    --set DIANN=/opt/diann/diann-linux --set FRAGPIPE=/opt/fragpipe/bin/fragpipe --print\n"
                         + "\n"
-                        + "  java -jar metapilot-cli-1.0.0-beta.8-shaded.jar resources-set --unset BASE_PATH --dry-run --print\n",
+                        + "  java -jar metapilot-cli-1.0.0-shaded.jar resources-set --unset BASE_PATH --dry-run --print\n",
                 true
         );
     }
@@ -1205,13 +1205,13 @@ public final class MetaPilotCliApp {
                 "\nRun the MAG+FragPipe workflow in headless mode (HAP search -> genome selection -> sample-specific search).",
                 options,
                 "\nExample:\n"
-                        + "  java -jar metapilot-cli-1.0.0-beta.8-shaded.jar mag-fragpipe \\\n"
+                        + "  java -jar metapilot-cli-1.0.0-shaded.jar mag-fragpipe \\\n"
                         + "    --params /path/last_used_mag_fragpipe_parameters.json \\\n"
                         + "    --resources ~/tools/metapilot/config/meta_resources.params \\\n"
                         + "    --magdb ~/tools/metapilot/config/MAGDB_1_0.json\n"
                         + "\n"
                         + "Optional override:\n"
-                        + "  java -jar metapilot-cli-1.0.0-beta.8-shaded.jar mag-fragpipe \\\n"
+                        + "  java -jar metapilot-cli-1.0.0-shaded.jar mag-fragpipe \\\n"
                         + "    --params /path/last_used_mag_fragpipe_parameters.json \\\n"
                         + "    --workflow /path/Basic-Search.workflow\n",
                 true
@@ -1226,7 +1226,7 @@ public final class MetaPilotCliApp {
                 "\nRun DIA Marker in headless mode from a GUI-exported parameter file. Supported marker modes: Core/Focus, Comprehensive, Deep Together, and Deep Per File. DIA Seed modes are not supported by this command.",
                 options,
                 "\nExample:\n"
-                        + "  java -jar metapilot-cli-1.0.0-beta.8-shaded.jar dia-marker \\\n"
+                        + "  java -jar metapilot-cli-1.0.0-shaded.jar dia-marker \\\n"
                         + "    --params /path/last_used_dia_marker_parameters.json \\\n"
                         + "    --resources ~/tools/metapilot/config/meta_resources.params \\\n"
                         + "    --magdb ~/tools/metapilot/config/MAGDB_1_0.json\n",
@@ -1373,11 +1373,11 @@ public final class MetaPilotCliApp {
                 "\nDownload one MGYG MAG catalogue+version and generate Marker FASTA files.",
                 options,
                 "\nExample:\n"
-                        + "  java -jar metapilot-cli-1.0.0-beta.8-shaded.jar mag-download \\\n"
+                        + "  java -jar metapilot-cli-1.0.0-shaded.jar mag-download \\\n"
                         + "    --catalogue human-gut --version v2.0.2 --out /data/magdb --resume\n"
                         + "\n"
                         + "  # Default output (next to jar): <jar-folder>/magdb/<catalogue>/<version>/...\n"
-                        + "  java -jar metapilot-cli-1.0.0-beta.8-shaded.jar mag-download \\\n"
+                        + "  java -jar metapilot-cli-1.0.0-shaded.jar mag-download \\\n"
                         + "    --catalogue human-gut --version v2.0.2 --resume\n",
                 true
         );

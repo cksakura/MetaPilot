@@ -11,7 +11,7 @@ MetaPilot Web is a Spring Boot application that provides a REST API and web UI f
 - ✅ **REST API** for programmatic job submission and monitoring
 - ✅ **Web UI** for easy job configuration and submission
 - ✅ **Job Management** with status tracking and cancellation
-- ✅ **Real-time Progress** (coming soon via WebSocket)
+- ✅ **Real-time Progress** via WebSocket/STOMP messages
 
 ## Quick Start
 
@@ -34,7 +34,7 @@ mvn clean package -pl metapilot-web -am -DskipTests
 
 ```bash
 # Run the web server
-java -jar metapilot-web/target/metapilot-web-1.0.0-beta.2.jar
+java -jar metapilot-web/target/metapilot-web-1.0.0.jar
 
 # Or use Spring Boot Maven plugin
 mvn spring-boot:run -pl metapilot-web
@@ -110,11 +110,9 @@ metapilot-web/
 
 ## Current Limitations
 
-⚠️ **Important**: The current implementation includes a placeholder workflow execution. To enable actual workflow execution:
+⚠️ **Important**: The web module launches MetaPilot workflow execution through a separate JAR process. Keep the configured subprocess command aligned with the current `metapilot-cli` command surface before using the web wrapper in production.
 
-1. **Option A**: Add JavaFX dependency to the web module (not recommended for server deployment)
-2. **Option B**: Refactor tasks to use `ProgressCallback` interface (recommended long-term solution)
-3. **Option C**: Execute workflows via separate CLI process (workaround)
+For production Linux/HPC execution, prefer `metapilot-cli` directly unless the web API/UI layer is specifically required.
 
 ## Development
 

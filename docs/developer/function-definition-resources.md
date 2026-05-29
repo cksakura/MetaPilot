@@ -1,6 +1,6 @@
 # Function Definition Resources
 
-Current version target: `1.0.0-beta.8`.
+Current version target: `1.0.0`.
 
 MetaPilot uses `Resources/function/func_def.db` as the runtime lookup database for
 functional annotation names and definitions. The maintained rebuild script is:

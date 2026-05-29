@@ -1,24 +1,30 @@
 # MetaPilot CLI Reference
 
-This page describes the current headless CLI surface for MetaPilot `1.0.0-beta.8`.
+This page describes the current headless CLI surface for MetaPilot `1.0.0`.
 
 The CLI module is intended for Linux/HPC operation, but only a subset of workflows has headless runners today. The Windows GUI remains the broadest workflow surface.
 
-## Build
+## Release Package
 
-From the repository root:
+Use the CLI JAR included in the MetaPilot release ZIP. Public releases are distributed as ready-to-run artifacts; building from source is not part of the supported user installation path.
 
-```bash
-mvn -pl metapilot-core,metapilot-cli -am -DskipTests package
+Example release artifact:
+
+```text
+MetaPilot-1.0.0-linux-cli.zip
 ```
 
-The shaded CLI JAR is built under `metapilot-cli/target/`.
+Example extracted CLI JAR:
+
+```text
+metapilot-cli-1.0.0-shaded.jar
+```
 
 ## Commands
 
 ```bash
-java -jar metapilot-cli-1.0.0-beta.8-shaded.jar --help
-java -jar metapilot-cli-1.0.0-beta.8-shaded.jar --version
+java -jar metapilot-cli-1.0.0-shaded.jar --help
+java -jar metapilot-cli-1.0.0-shaded.jar --version
 ```
 
 Current commands:
@@ -60,7 +66,7 @@ Seed Deep per file is exposed in the canonical mode model but is still blocked b
 Initialize site configuration:
 
 ```bash
-java -jar metapilot-cli-1.0.0-beta.8-shaded.jar init
+java -jar metapilot-cli-1.0.0-shaded.jar init
 ```
 
 Useful resource keys include:
@@ -77,7 +83,7 @@ Useful resource keys include:
 Set values:
 
 ```bash
-java -jar metapilot-cli-1.0.0-beta.8-shaded.jar resources-set \
+java -jar metapilot-cli-1.0.0-shaded.jar resources-set \
   --set DIANN=/opt/tools/diann/diann-linux \
   --set FRAGPIPE=/opt/tools/fragpipe-24.0/bin/fragpipe \
   --set FRAGPIPE_TOOLS=/opt/tools/fragpipe-24.0/tools \
@@ -87,7 +93,7 @@ java -jar metapilot-cli-1.0.0-beta.8-shaded.jar resources-set \
 Validate values:
 
 ```bash
-java -jar metapilot-cli-1.0.0-beta.8-shaded.jar resources-check
+java -jar metapilot-cli-1.0.0-shaded.jar resources-check
 ```
 
 ## Running Parameter Files
@@ -95,21 +101,21 @@ java -jar metapilot-cli-1.0.0-beta.8-shaded.jar resources-check
 Export a parameter JSON from the GUI, then validate it:
 
 ```bash
-java -jar metapilot-cli-1.0.0-beta.8-shaded.jar params-validate \
+java -jar metapilot-cli-1.0.0-shaded.jar params-validate \
   --params /path/to/study_parameters.json
 ```
 
 Run it:
 
 ```bash
-java -jar metapilot-cli-1.0.0-beta.8-shaded.jar run \
+java -jar metapilot-cli-1.0.0-shaded.jar run \
   --params /path/to/study_parameters.json
 ```
 
 Override resource or MAG database registry paths:
 
 ```bash
-java -jar metapilot-cli-1.0.0-beta.8-shaded.jar run \
+java -jar metapilot-cli-1.0.0-shaded.jar run \
   --params /path/to/study_parameters.json \
   --resources /path/to/meta_resources.params \
   --magdb /path/to/MAGDB_1_0.json
@@ -120,7 +126,7 @@ The runner writes `logging.log` in the study output directory when it can resolv
 ## Direct DIA Marker Runner
 
 ```bash
-java -jar metapilot-cli-1.0.0-beta.8-shaded.jar dia-marker \
+java -jar metapilot-cli-1.0.0-shaded.jar dia-marker \
   --params /path/to/dia_marker_parameters.json \
   --resources /path/to/meta_resources.params \
   --magdb /path/to/MAGDB_1_0.json
@@ -138,7 +144,7 @@ Supported marker modes are persisted as:
 ## Direct DDA MAG FragPipe Runner
 
 ```bash
-java -jar metapilot-cli-1.0.0-beta.8-shaded.jar mag-fragpipe \
+java -jar metapilot-cli-1.0.0-shaded.jar mag-fragpipe \
   --params /path/to/dda_mag_fragpipe_parameters.json \
   --resources /path/to/meta_resources.params \
   --magdb /path/to/MAGDB_1_0.json
@@ -146,18 +152,38 @@ java -jar metapilot-cli-1.0.0-beta.8-shaded.jar mag-fragpipe \
 
 FragPipe must have the required installed workflows available under the configured installation.
 
+MAG FragPipe per-sample searches default to memory-safe concurrency using a 60 GB per task estimate. Advanced users can override the concurrent task count:
+
+```bash
+java -jar metapilot-cli-1.0.0-shaded.jar run \
+  --params /path/to/dda_mag_fragpipe_parameters.json \
+  --fragpipe-parallel-tasks 4
+```
+
+The same override is available on `mag-fragpipe`. If the requested value is above the memory-safe estimate, MetaPilot logs a warning and proceeds with the requested concurrency.
+
 ## MAG Database Registry
 
 List registered MAG databases:
 
 ```bash
-java -jar metapilot-cli-1.0.0-beta.8-shaded.jar mag-list
+java -jar metapilot-cli-1.0.0-shaded.jar mag-list
 ```
 
-Register a local database:
+Download and prepare a supported MAG catalogue before registration:
 
 ```bash
-java -jar metapilot-cli-1.0.0-beta.8-shaded.jar mag-register \
+java -jar metapilot-cli-1.0.0-shaded.jar mag-download \
+  --catalogue human-gut \
+  --version v2.0.2 \
+  --out /data/metapilot/MAG \
+  --resume
+```
+
+Register the downloaded or otherwise prepared local database:
+
+```bash
+java -jar metapilot-cli-1.0.0-shaded.jar mag-register \
   --catalogue human-gut \
   --version v2.0.2 \
   --identifier MGYG \

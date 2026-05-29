@@ -25,7 +25,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 PROJECT_NAME="MetaPilot"
-VERSION="1.0.0-beta.3"
+VERSION="1.0.0"
 BUILD_PROFILE="linux-web"
 MAVEN_OPTS="-Xmx2g"
 
@@ -173,4 +173,3 @@ main() {
 
 # Run main function
 main "$@"
-
