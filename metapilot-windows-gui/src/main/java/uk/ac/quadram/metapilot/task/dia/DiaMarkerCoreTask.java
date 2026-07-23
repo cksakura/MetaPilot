@@ -33,6 +33,7 @@ import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.core.dia.DiaMagScoringService;
 import uk.ac.quadram.metapilot.core.dia.Marker4LibrarySupport;
 import uk.ac.quadram.metapilot.core.mag.MagGenomeSelectionService;
+import uk.ac.quadram.metapilot.core.mag.Marker4ResourcePreparer;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNParquetReader;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNPrecursor;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiannPrMatrixReader;
@@ -778,44 +779,8 @@ public class DiaMarkerCoreTask extends MetaDiaTask {
 	}
 
 	private void ensureGenomesTaxaFile(File genomeTaxaFile) {
-		File genomeAllFile = magDb.getOriginalTaxaFile();
-		if (genomeAllFile == null || !genomeAllFile.exists()) {
-			logger.error("Cannot generate genomes-taxa.tsv: original taxa file not available");
-			return;
-		}
-		try (BufferedReader reader = new BufferedReader(new FileReader(genomeAllFile))) {
-			String headerLine = reader.readLine();
-			if (headerLine == null) {
-				return;
-			}
-			String[] title = headerLine.split("\t");
-			int repId = -1;
-			int lineageId = -1;
-			for (int i = 0; i < title.length; i++) {
-				if ("Species_rep".equals(title[i])) {
-					repId = i;
-				} else if ("Lineage".equals(title[i])) {
-					lineageId = i;
-				}
-			}
-			if (repId < 0 || lineageId < 0) {
-				logger.error("Cannot generate genomes-taxa.tsv: Species_rep or Lineage column not found");
-				return;
-			}
-			Map<String, String> map = new HashMap<>();
-			String line;
-			while ((line = reader.readLine()) != null) {
-				String[] cs = line.split("\t");
-				if (cs.length > Math.max(repId, lineageId) && !map.containsKey(cs[repId])) {
-					map.put(cs[repId], cs[lineageId]);
-				}
-			}
-			try (PrintWriter writer = new PrintWriter(genomeTaxaFile)) {
-				writer.println("Genome\tLineage");
-				for (String key : map.keySet()) {
-					writer.println(key + "\t" + map.get(key));
-				}
-			}
+		try {
+			Marker4ResourcePreparer.ensureGenomesTaxaTsv(magDb, genomeTaxaFile, createGuiProgressCallback());
 			logger.info("Generated genomes-taxa.tsv: {}", genomeTaxaFile.getAbsolutePath());
 		} catch (IOException e) {
 			logger.error("Could not generate genomes-taxa.tsv", e);

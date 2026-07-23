@@ -93,7 +93,7 @@ class BaseReportGenerator:
         intensity_cols = self._detect_intensity_columns(df)
 
         if not intensity_cols and metadata is not None:
-            metadata_name_columns = ['Raw file', 'Raw File', 'Raw', 'RawFile', 'File', 'File Name', 'Sample']
+            metadata_name_columns = ['comment[data file]']
             metadata_candidates = []
             for name_col in metadata_name_columns:
                 if name_col in metadata.columns:
@@ -134,12 +134,12 @@ class BaseReportGenerator:
         sample_names = raw_sample_names
         if metadata is not None and len(raw_sample_names) > 0:
             try:
-                # Create mapping from raw file names to experiment names
+                # Create mapping from raw file names to experiment (source) names
                 raw_to_exp = {}
-                if 'Raw' in metadata.columns and 'Experiment' in metadata.columns:
+                if 'comment[data file]' in metadata.columns and 'source name' in metadata.columns:
                     for _, row in metadata.iterrows():
-                        raw_name = row['Raw']
-                        exp_name = row['Experiment']
+                        raw_name = row['comment[data file]']
+                        exp_name = row['source name']
                         raw_to_exp[raw_name] = exp_name
                 
                 # Map sample names to experiment names
@@ -184,10 +184,11 @@ class BaseReportGenerator:
     def _get_classification_column(self, metadata, sample_names):
         """
         Determine which metadata column to use for sample classification.
-        
-        Rules:
-        1. If only 1 metadata column (after Raw, Experiment) -> use it
-        2. If multiple metadata columns -> use "Condition" if present, otherwise first column
+
+        Rules (SDRF-Proteomics metadata format):
+        1. If only 1 characteristics/factor column (after the SDRF system columns) -> use it
+        2. If multiple -> prefer "factor value[condition]"/"characteristics[condition]" if present,
+           otherwise first remaining column
         
         Returns:
             tuple: (classification_column_name, sample_to_group_dict) or (None, None) if not available
@@ -195,49 +196,50 @@ class BaseReportGenerator:
         if metadata is None or len(metadata.columns) == 0:
             return None, None
         
-        # Identify non-metadata columns (system columns)
-        system_cols = {'Raw', 'Experiment', 'raw', 'experiment', 'Sample', 'sample', 
-                       'File', 'file', 'RawFile', 'Raw File', 'Raw file'}
-        
+        # Identify non-metadata columns (SDRF system columns)
+        system_cols = {'source name', 'comment[data file]',
+                       'comment[fraction identifier]', 'comment[technical replicate]'}
+
         # Get metadata columns (columns that are not system columns)
         meta_cols = [col for col in metadata.columns if col not in system_cols]
-        
-        # Exclude "Species"/"species" - taxonomic rank, not sample classification
-        species_cols = {'Species', 'species', 'SPECIES'}
+
+        # Exclude "characteristics[species]" - taxonomic rank, not sample classification
+        species_cols = {'characteristics[species]'}
         meta_cols = [c for c in meta_cols if c not in species_cols]
-        
+
         if not meta_cols:
             return None, None
-        
-        # Determine classification column - prefer Condition for sample grouping
+
+        # Determine classification column - prefer the SDRF factor value (studied variable),
+        # falling back to the characteristics[condition] column it mirrors
         class_col = None
         if len(meta_cols) == 1:
             # Only one metadata column - use it (unless it's species)
             class_col = meta_cols[0]
         else:
-            # Multiple metadata columns - strongly prefer "Condition"
-            condition_variants = ['Condition', 'condition', 'CONDITION']
+            # Multiple metadata columns - strongly prefer the SDRF condition factor/characteristic
+            condition_variants = ['factor value[condition]', 'characteristics[condition]']
             for variant in condition_variants:
                 if variant in meta_cols:
                     class_col = variant
                     break
-            
-            # If no Condition, use first non-species column
+
+            # If no condition column, use first non-species column
             if class_col is None:
                 class_col = meta_cols[0]
-        
+
         # Build sample-to-group mapping
-        # Try Experiment, Sample, then Raw column (case-insensitive header lookup)
+        # Try SDRF "source name", then "comment[data file]" (case-sensitive header lookup)
         sample_groups = {}
-        
+
         def _get_col(candidates):
             for c in candidates:
                 if c in metadata.columns:
                     return c
             return None
-        
-        exp_col = _get_col(['Experiment', 'experiment', 'Sample', 'sample'])
-        raw_col = _get_col(['Raw', 'raw', 'Raw file', 'RawFile'])
+
+        exp_col = _get_col(['source name'])
+        raw_col = _get_col(['comment[data file]'])
         
         # Use 'Unknown' only for truly missing (NaN or empty); keep "None", "NA" etc. as valid values
         def _group_val(val):

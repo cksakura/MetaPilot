@@ -80,6 +80,11 @@ public final class MetaPilotCliApp {
             System.arraycopy(args, 1, subArgs, 0, subArgs.length);
             return runMagFragpipe(subArgs);
         }
+        if (args != null && args.length > 0 && "pfind-mag-report".equalsIgnoreCase(args[0])) {
+            String[] subArgs = new String[args.length - 1];
+            System.arraycopy(args, 1, subArgs, 0, subArgs.length);
+            return runPfindMagReport(subArgs);
+        }
         if (args != null && args.length > 0 && "resources-check".equalsIgnoreCase(args[0])) {
             String[] subArgs = new String[args.length - 1];
             System.arraycopy(args, 1, subArgs, 0, subArgs.length);
@@ -201,6 +206,7 @@ public final class MetaPilotCliApp {
         java.nio.file.Path magdbCfg = resolveMagDbConfigPath(cmd.getOptionValue("magdb"));
 
         try {
+            uk.ac.quadram.metapilot.task.mag.MagDbItemResolver.setDefaultConfigFile(magdbCfg.toFile());
             uk.ac.quadram.metapilot.core.resources.MetaPilotResourceConfig rc =
                     uk.ac.quadram.metapilot.core.resources.MetaPilotResourceConfig.load(resourcesCfg);
 
@@ -462,6 +468,7 @@ public final class MetaPilotCliApp {
         java.nio.file.Path magdbCfg = resolveMagDbConfigPath(cmd.getOptionValue("magdb"));
 
         try {
+            uk.ac.quadram.metapilot.task.mag.MagDbItemResolver.setDefaultConfigFile(magdbCfg.toFile());
             uk.ac.quadram.metapilot.core.resources.MetaPilotResourceConfig rc =
                     uk.ac.quadram.metapilot.core.resources.MetaPilotResourceConfig.load(resourcesCfg);
 
@@ -493,6 +500,8 @@ public final class MetaPilotCliApp {
             if (fragpipeParallelTasks > 0) {
                 p.setFragpipeParallelTasks(fragpipeParallelTasks);
             }
+            boolean identificationOnly = cmd.hasOption("identification-only");
+
             java.io.File workflow = null;
             if (workflowFile != null && !workflowFile.isBlank()) {
                 workflow = new java.io.File(workflowFile);
@@ -508,8 +517,12 @@ public final class MetaPilotCliApp {
                 try {
                     uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.requireInstalledWorkflow(
                             fragpipeExe, uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.BASIC_SEARCH_WORKFLOW);
-                    uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.requireInstalledWorkflow(
-                            fragpipeExe, uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.LFQ_MBR_WORKFLOW);
+                    // Identification-only runs never reach the combined/quant search, so the
+                    // LFQ-MBR workflow doesn't need to be installed for this mode.
+                    if (!identificationOnly) {
+                        uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.requireInstalledWorkflow(
+                                fragpipeExe, uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.LFQ_MBR_WORKFLOW);
+                    }
                 } catch (java.io.IOException e) {
                     System.err.println("ERROR: required FragPipe workflows are not available in the installed FragPipe folder: "
                             + e.getMessage());
@@ -524,7 +537,15 @@ public final class MetaPilotCliApp {
                 @Override public void onError(Exception error) { reportCallbackError("mag-fragpipe", error); }
             };
 
-            if (workflow != null) {
+            if (identificationOnly) {
+                if (workflow != null) {
+                    uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.runIdentificationOnly(
+                            p, fragpipeExe, workflow, magdbCfg.toFile(), cb);
+                } else {
+                    uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.runIdentificationOnlyWithInstalledDefaults(
+                            p, fragpipeExe, magdbCfg.toFile(), cb);
+                }
+            } else if (workflow != null) {
                 uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.run(
                         p,
                         fragpipeExe,
@@ -552,6 +573,94 @@ public final class MetaPilotCliApp {
         } catch (Exception e) {
             System.err.println("ERROR: mag-fragpipe failed for params=" + new java.io.File(paramsFile).getAbsolutePath()
                     + " workflow=" + (workflowFile == null ? "<installed defaults>" : new java.io.File(workflowFile).getAbsolutePath()));
+            e.printStackTrace(System.err);
+            return 1;
+        }
+    }
+
+    /**
+     * Headless-only: resume a DDA MAG pFind workflow from an already-produced
+     * FlashLFQ label-free quantification (QuantifiedPeptides.tsv + psms.tsv) and
+     * run post-analysis, taxonomy, functional annotation, and the final HTML
+     * report. pFind identification and FlashLFQ quantification themselves still
+     * require the Windows GUI - this only continues from their output.
+     */
+    private static int runPfindMagReport(String[] args) {
+        Options options = buildPfindMagReportOptions();
+        CommandLineParser parser = new DefaultParser();
+
+        CommandLine cmd;
+        try {
+            cmd = parser.parse(options, args);
+        } catch (ParseException e) {
+            System.err.println("ERROR: " + e.getMessage());
+            printPfindMagReportHelp(options);
+            return 2;
+        }
+
+        if (cmd.hasOption("help")) {
+            printPfindMagReportHelp(options);
+            return 0;
+        }
+
+        String paramsFile = cmd.getOptionValue("params");
+        if (paramsFile == null) {
+            System.err.println("ERROR: --params is required.");
+            printPfindMagReportHelp(options);
+            return 2;
+        }
+
+        java.nio.file.Path resourcesCfg = resolveResourcesConfigPath(cmd.getOptionValue("resources"));
+        java.nio.file.Path magdbCfg = resolveMagDbConfigPath(cmd.getOptionValue("magdb"));
+
+        try {
+            uk.ac.quadram.metapilot.core.resources.MetaPilotResourceConfig rc =
+                    uk.ac.quadram.metapilot.core.resources.MetaPilotResourceConfig.load(resourcesCfg);
+
+            java.io.File funcDb = rc.resolveToolPath(uk.ac.quadram.metapilot.core.resources.ToolKey.FUNCDB, null)
+                    .map(java.nio.file.Path::toFile)
+                    .orElse(null);
+
+            uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagPfindParameters p =
+                    new uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagPfindParameterIO()
+                            .loadParameters(new java.io.File(paramsFile));
+            if (p == null) {
+                System.err.println("ERROR: failed to load MAG pFind params from: " + new java.io.File(paramsFile).getAbsolutePath());
+                return 2;
+            }
+
+            java.io.File quantifiedPeptides = null;
+            String quantifiedPeptidesOpt = cmd.getOptionValue("quantified-peptides");
+            if (quantifiedPeptidesOpt != null && !quantifiedPeptidesOpt.isBlank()) {
+                quantifiedPeptides = new java.io.File(quantifiedPeptidesOpt);
+            }
+            java.io.File psms = null;
+            String psmsOpt = cmd.getOptionValue("psms");
+            if (psmsOpt != null && !psmsOpt.isBlank()) {
+                psms = new java.io.File(psmsOpt);
+            }
+
+            uk.ac.quadram.metapilot.core.workflow.ProgressCallback cb = new uk.ac.quadram.metapilot.core.workflow.ProgressCallback() {
+                @Override public void onProgress(double workDone, double max) { }
+                @Override public void onMessage(String message) { if (message != null && !message.isBlank()) System.out.println(message); }
+                @Override public void onComplete(Object result) { System.out.println("Done: " + result); }
+                @Override public void onError(Exception error) { reportCallbackError("pfind-mag-report", error); }
+            };
+
+            uk.ac.quadram.metapilot.core.runner.PfindMagHeadlessRunner.run(
+                    p,
+                    magdbCfg.toFile(),
+                    quantifiedPeptides,
+                    psms,
+                    funcDb,
+                    cb,
+                    reportGenerationEnabled(rc, cmd.hasOption("no-report")),
+                    null,
+                    rc
+            );
+            return 0;
+        } catch (Exception e) {
+            System.err.println("ERROR: pfind-mag-report failed for params=" + new java.io.File(paramsFile).getAbsolutePath());
             e.printStackTrace(System.err);
             return 1;
         }
@@ -844,7 +953,7 @@ public final class MetaPilotCliApp {
                 "\n" + (validateOnly ? "Validate" : "Run") + " a headless study from a parameter JSON file.",
                 options,
                 "\nExample:\n"
-                        + "  java -jar metapilot-cli-1.0.0-shaded.jar " + command
+                        + "  java -jar metapilot-cli-1.1.0-shaded.jar " + command
                         + " --params /path/study_params.json\n",
                 true
         );
@@ -953,6 +1062,13 @@ public final class MetaPilotCliApp {
                 .desc("Disable final HTML report generation")
                 .build());
         opts.addOption(Option.builder()
+                .longOpt("identification-only")
+                .desc("Headless-only: stop after identification (marker search, genome selection, sample-specific "
+                        + "search). Skips the combined FASTA build, combined quantification search, and all "
+                        + "post-analysis export (final_peptides.tsv, taxonomy, functional annotation, HTML report). "
+                        + "Does not affect the Windows GUI.")
+                .build());
+        opts.addOption(Option.builder()
                 .longOpt("fragpipe-parallel-tasks")
                 .hasArg()
                 .argName("N")
@@ -963,6 +1079,54 @@ public final class MetaPilotCliApp {
                 .hasArg()
                 .argName("N")
                 .desc("Alias for --fragpipe-parallel-tasks")
+                .build());
+        return opts;
+    }
+
+    private static Options buildPfindMagReportOptions() {
+        Options opts = new Options();
+        opts.addOption(Option.builder("h")
+                .longOpt("help")
+                .desc("Show help")
+                .build());
+        opts.addOption(Option.builder()
+                .longOpt("params")
+                .hasArg()
+                .argName("FILE")
+                .desc("MAG pFind parameters JSON (e.g. last_used_mag_pfind_parameters.json). Only used for the "
+                        + "MAG DB catalogue/version, raw file list, and output directory - identification/quant "
+                        + "parameters are not re-run.")
+                .build());
+        opts.addOption(Option.builder()
+                .longOpt("resources")
+                .hasArg()
+                .argName("FILE")
+                .desc("Resource configuration file (default resolution same as resources-check)")
+                .build());
+        opts.addOption(Option.builder()
+                .longOpt("magdb")
+                .hasArg()
+                .argName("FILE")
+                .desc("MAG DB config JSON (MAGDB_1_0.json). Default: <install>/config/MAGDB_1_0.json")
+                .build());
+        opts.addOption(Option.builder()
+                .longOpt("quantified-peptides")
+                .hasArg()
+                .argName("FILE")
+                .desc("Override path to QuantifiedPeptides.tsv. Default: "
+                        + "<output_directory>/pfind_MAG_search/combined/QuantifiedPeptides.tsv (same location the "
+                        + "Windows GUI writes it to)")
+                .build());
+        opts.addOption(Option.builder()
+                .longOpt("psms")
+                .hasArg()
+                .argName("FILE")
+                .desc("Override path to psms.tsv. Default: "
+                        + "<output_directory>/pfind_MAG_search/combined/psms.tsv")
+                .build());
+        opts.addOption(Option.builder()
+                .longOpt("no-report")
+                .desc("Disable final HTML report generation")
                 .build());
         return opts;
     }
@@ -1143,11 +1307,11 @@ public final class MetaPilotCliApp {
                         + "  deepdetect-predict  Run DeepDetect PyTorch prediction (python main.py)\n"
                         + "  deepdetect-magdb    Predict peptides for all genomes in a MAG DB\n"
                         + "\nExamples:\n"
-                        + "  java -jar metapilot-cli-1.0.0-shaded.jar init\n"
-                        + "  java -jar metapilot-cli-1.0.0-shaded.jar run --params /path/study_params.json\n"
-                        + "  java -jar metapilot-cli-1.0.0-shaded.jar params-validate --params /path/study_params.json\n"
-                        + "  java -jar metapilot-cli-1.0.0-shaded.jar resources-check\n"
-                        + "  java -jar metapilot-cli-1.0.0-shaded.jar mag-download --help\n",
+                        + "  java -jar metapilot-cli-1.1.0-shaded.jar init\n"
+                        + "  java -jar metapilot-cli-1.1.0-shaded.jar run --params /path/study_params.json\n"
+                        + "  java -jar metapilot-cli-1.1.0-shaded.jar params-validate --params /path/study_params.json\n"
+                        + "  java -jar metapilot-cli-1.1.0-shaded.jar resources-check\n"
+                        + "  java -jar metapilot-cli-1.1.0-shaded.jar mag-download --help\n",
                 true
         );
     }
@@ -1160,7 +1324,7 @@ public final class MetaPilotCliApp {
                 "\nRun DeepDetect prediction using the Python entrypoint (main.py).",
                 options,
                 "\nExample:\n"
-                        + "  java -jar metapilot-cli-1.0.0-shaded.jar deepdetect-predict \\\n"
+                        + "  java -jar metapilot-cli-1.1.0-shaded.jar deepdetect-predict \\\n"
                         + "    --input /path/genome.faa --output /path/genome.predicted.tsv\n",
                 true
         );
@@ -1176,7 +1340,7 @@ public final class MetaPilotCliApp {
                         + "Outputs: <out>/<catalogue>/<version>/predicted/*.predicted.tsv",
                 options,
                 "\nExample:\n"
-                        + "  java -jar metapilot-cli-1.0.0-shaded.jar deepdetect-magdb \\\n"
+                        + "  java -jar metapilot-cli-1.1.0-shaded.jar deepdetect-magdb \\\n"
                         + "    --catalogue human-gut --version v2.0.2 --threads 4\n",
                 true
         );
@@ -1190,7 +1354,7 @@ public final class MetaPilotCliApp {
                 "\nValidate a MetaPilot resource configuration for Linux/HPC CLI execution.",
                 options,
                 "\nExample:\n"
-                        + "  java -jar metapilot-cli-1.0.0-shaded.jar resources-check --file ~/tools/metapilot/config/meta_resources.params\n",
+                        + "  java -jar metapilot-cli-1.1.0-shaded.jar resources-check --file ~/tools/metapilot/config/meta_resources.params\n",
                 true
         );
     }
@@ -1204,15 +1368,15 @@ public final class MetaPilotCliApp {
                 options,
                 "\nExamples:\n"
                         + "  # Create a starter template (first time)\n"
-                        + "  java -jar metapilot-cli-1.0.0-shaded.jar resources-set --template --print\n"
+                        + "  java -jar metapilot-cli-1.1.0-shaded.jar resources-set --template --print\n"
                         + "\n"
-                        + "  java -jar metapilot-cli-1.0.0-shaded.jar resources-set \\\n"
+                        + "  java -jar metapilot-cli-1.1.0-shaded.jar resources-set \\\n"
                         + "    --set SYSTEM=linux --set RESOURCE_AUTO_DETECTED=true\n"
                         + "\n"
-                        + "  java -jar metapilot-cli-1.0.0-shaded.jar resources-set \\\n"
+                        + "  java -jar metapilot-cli-1.1.0-shaded.jar resources-set \\\n"
                         + "    --set DIANN=/opt/diann/diann-linux --set FRAGPIPE=/opt/fragpipe/bin/fragpipe --print\n"
                         + "\n"
-                        + "  java -jar metapilot-cli-1.0.0-shaded.jar resources-set --unset BASE_PATH --dry-run --print\n",
+                        + "  java -jar metapilot-cli-1.1.0-shaded.jar resources-set --unset BASE_PATH --dry-run --print\n",
                 true
         );
     }
@@ -1225,15 +1389,48 @@ public final class MetaPilotCliApp {
                 "\nRun the MAG+FragPipe workflow in headless mode (HAP search -> genome selection -> sample-specific search).",
                 options,
                 "\nExample:\n"
-                        + "  java -jar metapilot-cli-1.0.0-shaded.jar mag-fragpipe \\\n"
+                        + "  java -jar metapilot-cli-1.1.0-shaded.jar mag-fragpipe \\\n"
                         + "    --params /path/last_used_mag_fragpipe_parameters.json \\\n"
                         + "    --resources ~/tools/metapilot/config/meta_resources.params \\\n"
                         + "    --magdb ~/tools/metapilot/config/MAGDB_1_0.json\n"
                         + "\n"
                         + "Optional override:\n"
-                        + "  java -jar metapilot-cli-1.0.0-shaded.jar mag-fragpipe \\\n"
+                        + "  java -jar metapilot-cli-1.1.0-shaded.jar mag-fragpipe \\\n"
                         + "    --params /path/last_used_mag_fragpipe_parameters.json \\\n"
-                        + "    --workflow /path/Basic-Search.workflow\n",
+                        + "    --workflow /path/Basic-Search.workflow\n"
+                        + "\n"
+                        + "Identification only (stop after ID, skip combined quantification search and all post-analysis export):\n"
+                        + "  java -jar metapilot-cli-1.1.0-shaded.jar mag-fragpipe \\\n"
+                        + "    --params /path/last_used_mag_fragpipe_parameters.json \\\n"
+                        + "    --resources ~/tools/metapilot/config/meta_resources.params \\\n"
+                        + "    --magdb ~/tools/metapilot/config/MAGDB_1_0.json \\\n"
+                        + "    --identification-only\n",
+                true
+        );
+    }
+
+    private static void printPfindMagReportHelp(Options options) {
+        HelpFormatter hf = new HelpFormatter();
+        hf.setWidth(110);
+        hf.printHelp(
+                "java -jar metapilot-cli-<version>-shaded.jar pfind-mag-report [options]",
+                "\nResume a DDA MAG pFind workflow headlessly from an already-produced FlashLFQ label-free "
+                        + "quantification (QuantifiedPeptides.tsv + psms.tsv), and run post-analysis, taxonomy, "
+                        + "functional annotation, and the final HTML report. pFind identification and FlashLFQ "
+                        + "quantification themselves still require the Windows GUI; only their output is required "
+                        + "here, no other intermediate result files are checked.",
+                options,
+                "\nExample (files at the same location the Windows GUI wrote them to):\n"
+                        + "  java -jar metapilot-cli-1.1.0-shaded.jar pfind-mag-report \\\n"
+                        + "    --params /path/last_used_mag_pfind_parameters.json \\\n"
+                        + "    --resources ~/tools/metapilot/config/meta_resources.params \\\n"
+                        + "    --magdb ~/tools/metapilot/config/MAGDB_1_0.json\n"
+                        + "\n"
+                        + "Explicit override (files copied elsewhere on the HPC machine):\n"
+                        + "  java -jar metapilot-cli-1.1.0-shaded.jar pfind-mag-report \\\n"
+                        + "    --params /path/last_used_mag_pfind_parameters.json \\\n"
+                        + "    --quantified-peptides /data/transfer/combined/QuantifiedPeptides.tsv \\\n"
+                        + "    --psms /data/transfer/combined/psms.tsv\n",
                 true
         );
     }
@@ -1246,7 +1443,7 @@ public final class MetaPilotCliApp {
                 "\nRun DIA Marker in headless mode from a GUI-exported parameter file. Supported marker modes: Core/Focus, Comprehensive, Deep Together, and Deep Per File. DIA Seed modes are not supported by this command.",
                 options,
                 "\nExample:\n"
-                        + "  java -jar metapilot-cli-1.0.0-shaded.jar dia-marker \\\n"
+                        + "  java -jar metapilot-cli-1.1.0-shaded.jar dia-marker \\\n"
                         + "    --params /path/last_used_dia_marker_parameters.json \\\n"
                         + "    --resources ~/tools/metapilot/config/meta_resources.params \\\n"
                         + "    --magdb ~/tools/metapilot/config/MAGDB_1_0.json\n",
@@ -1393,11 +1590,11 @@ public final class MetaPilotCliApp {
                 "\nDownload one MGYG MAG catalogue+version and generate Marker FASTA files.",
                 options,
                 "\nExample:\n"
-                        + "  java -jar metapilot-cli-1.0.0-shaded.jar mag-download \\\n"
+                        + "  java -jar metapilot-cli-1.1.0-shaded.jar mag-download \\\n"
                         + "    --catalogue human-gut --version v2.0.2 --out /data/magdb --resume\n"
                         + "\n"
                         + "  # Default output (next to jar): <jar-folder>/magdb/<catalogue>/<version>/...\n"
-                        + "  java -jar metapilot-cli-1.0.0-shaded.jar mag-download \\\n"
+                        + "  java -jar metapilot-cli-1.1.0-shaded.jar mag-download \\\n"
                         + "    --catalogue human-gut --version v2.0.2 --resume\n",
                 true
         );
@@ -1454,4 +1651,3 @@ public final class MetaPilotCliApp {
                 .orElse(true);
     }
 }
-

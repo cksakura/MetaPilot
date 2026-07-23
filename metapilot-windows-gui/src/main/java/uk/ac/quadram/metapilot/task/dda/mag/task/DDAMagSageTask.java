@@ -24,6 +24,8 @@ import org.apache.logging.log4j.Logger;
 import uk.ac.quadram.metapilot.dbSearch.sage.SageTask;
 import uk.ac.quadram.metapilot.quant.flashLFQ.FlashLfqTask;
 import uk.ac.quadram.metapilot.core.mag.MagGenomeSelectionService;
+import uk.ac.quadram.metapilot.core.mag.MagResultLayoutUtil;
+import uk.ac.quadram.metapilot.core.mag.Marker4ResourcePreparer;
 import uk.ac.quadram.metapilot.core.runner.MzmlSummaryFileWriter;
 import uk.ac.quadram.metapilot.core.workflow.ProgressCallback;
 import uk.ac.quadram.metapilot.core.prodb.DecoyShuffler;
@@ -66,6 +68,18 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 	private static final String taskName = "DDA MAG database search by Sage workflow";
 	private static final String MARKER_SEARCH_DIR = "marker";
 	private static final String SAMPLE_DB_SEARCH_DIR = "sample_db";
+
+	/**
+	 * Sage is the third DDA MAG engine to use the nested
+	 * {@code search_results/<sample>/} layout instead of writing sample
+	 * folders directly under the workflow result root - matching pFind and
+	 * FragPipe. See {@link MagResultLayoutUtil} for the rationale and the
+	 * migration of pre-existing flat-layout result folders.
+	 */
+	@Override
+	protected boolean useNestedSearchResultsLayout() {
+		return true;
+	}
 
 	public DDAMagSageTask(DDAMagSageParameters magSageParams, MetaResourceParameters mrp, ProgressBar progressBar,
 			ProgressBar secondBar, Label statusLabel) {
@@ -611,6 +625,12 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		File markerFasta = null;
 		File genomesTaxaTsv = null;
 		if (useMarker4) {
+			try {
+				Marker4ResourcePreparer.ensureSelectionResources(magDb, new ProgressCallback.NoOp());
+			} catch (IOException e) {
+				logger.error("Failed to prepare Marker4 resources", e);
+				return false;
+			}
 			markerFasta = new File(currentFile, "Marker4.fasta");
 			if (markerFasta == null || !markerFasta.exists()) {
 				logger.error("Marker FASTA file was not found: {}",
@@ -910,6 +930,12 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 			File markerFasta = null;
 			File genomesTaxaTsv = null;
 			if (useMarker4) {
+				try {
+					Marker4ResourcePreparer.ensureSelectionResources(magDb, new ProgressCallback.NoOp());
+				} catch (IOException e) {
+					logger.error("Failed to prepare Marker4 resources", e);
+					return false;
+				}
 				markerFasta = new File(currentFile, "Marker4.fasta");
 				if (markerFasta == null || !markerFasta.exists()) {
 					logger.error("Marker FASTA file was not found: {}",
@@ -1152,12 +1178,19 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 						+ ": error in reading the experimental design from " + expDesignFile);
 			}
 		} else {
-			File[] files = magSageParams.getDbSearchResultFile().listFiles();
-			for (int i = 0; i < files.length; i++) {
-				if (files[i].isDirectory() && !files[i].getName().equals("combined")
-						&& (new File(new File(files[i], SAMPLE_DB_SEARCH_DIR), "results.sage.tsv")).exists()) {
-					fileIdMap.put(files[i].getName(), fileIdMap.size());
-					fileList.add(files[i].getName());
+			// Sage uses the nested search_results/<sample>/ layout (see
+			// MagResultLayoutUtil / useNestedSearchResultsLayout()); scan sample
+			// folders there rather than directly under the result root.
+			File searchResultsDir = new File(magSageParams.getDbSearchResultFile(),
+					MagResultLayoutUtil.SEARCH_RESULTS_DIR_NAME);
+			File[] files = searchResultsDir.listFiles();
+			if (files != null) {
+				for (int i = 0; i < files.length; i++) {
+					if (files[i].isDirectory() && !files[i].getName().equals("combined")
+							&& (new File(new File(files[i], SAMPLE_DB_SEARCH_DIR), "results.sage.tsv")).exists()) {
+						fileIdMap.put(files[i].getName(), fileIdMap.size());
+						fileList.add(files[i].getName());
+					}
 				}
 			}
 		}
@@ -1185,6 +1218,17 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		// Create and execute the post-analysis task directly
 		DDAMagPostAnalysisTask postAnalysisTask = new DDAMagPostAnalysisTask(metaPar, mrp, secondBar, quanPeps, psms,
 				fileIdMap, fileList, quanMode, intensityTitle, getTaskName(), AbstractMetaPeptideReader.SHUF, this);
+
+		// Forward the post-analysis task's own genuine progress (already bound to
+		// secondBar) into the main progress bar too, mapped into the 85-100 range
+		// this step covers - otherwise the main bar sits frozen at 85 for the
+		// entire, potentially long, post-analysis + report-generation duration.
+		postAnalysisTask.progressProperty().addListener((obs, oldVal, newVal) -> {
+			double p = newVal == null ? 0 : newVal.doubleValue();
+			if (p >= 0) {
+				updateProgress(85 + p * 15, 100);
+			}
+		});
 
 		// Execute the task and wait for completion
 		Thread taskThread = new Thread(postAnalysisTask);

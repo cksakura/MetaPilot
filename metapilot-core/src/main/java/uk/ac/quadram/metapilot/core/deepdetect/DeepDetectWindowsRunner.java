@@ -74,7 +74,7 @@ public final class DeepDetectWindowsRunner {
 		File createdBatchFile = createBatchFile(deepDetectExe, parameter, batchFile);
 		return runBatchFile(createdBatchFile, outputHandler);
 	}
-	
+
 	public static void main(String[] args) throws IOException {
 		DeepDetectParameter par = new DeepDetectParameter();
 		par.setInput(new File("Z:\\PRIDE_dataset\\MetaPep\\MetaPep_peptide_sequence_database_for_deepdetect.fasta"));;

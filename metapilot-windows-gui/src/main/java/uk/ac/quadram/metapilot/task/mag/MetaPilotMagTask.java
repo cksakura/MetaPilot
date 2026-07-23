@@ -32,6 +32,7 @@ import uk.ac.quadram.metapilot.core.mag.DdaMagGenomeScoringService;
 import uk.ac.quadram.metapilot.core.mag.DdaMagPostAnalysisService;
 import uk.ac.quadram.metapilot.core.mag.DdaMagProteinInferenceService;
 import uk.ac.quadram.metapilot.core.mag.MagPostAnalysisScoringService;
+import uk.ac.quadram.metapilot.core.mag.MagResultLayoutUtil;
 import uk.ac.quadram.metapilot.core.math.MathTool;
 import uk.ac.quadram.metapilot.core.prodb.FastaManager;
 import uk.ac.quadram.metapilot.core.runner.DdaMagReportExportService;
@@ -106,6 +107,25 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 				+ totalMemorySize + " GB, the max number of tasks is set as " + maxTaskCount);
 	}
 
+	/**
+	 * Whether this engine writes per-raw-file sample folders nested under
+	 * {@code search_results/} (see {@link MagResultLayoutUtil}) instead of
+	 * directly under the workflow result root.
+	 *
+	 * Defaults to {@code false} (legacy flat layout, one folder per raw file as
+	 * a sibling of {@code combined/}, {@code taxonomy_analysis/}, etc.), kept
+	 * only as the safe default for this base class. Both concrete subclasses
+	 * that use it - {@code DDAMagPfindTask} and {@code DDAMagSageTask} - now
+	 * override this to {@code true}. (FragPipe's GUI task, {@code
+	 * DDAMagFragPipeTask}, also overrides it to {@code true} for consistency,
+	 * though its real per-sample work happens in {@code
+	 * MagFragPipeHeadlessRunner}, which resolves the same layout
+	 * independently.)
+	 */
+	protected boolean useNestedSearchResultsLayout() {
+		return false;
+	}
+
 	protected void createSeparateFolders() {
 		MetaData metaData = metaPar.getMetadata();
 		if (metaData == null) {
@@ -132,13 +152,22 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			this.combinedFile.mkdir();
 		}
 
+		File sampleFoldersRoot;
+		if (useNestedSearchResultsLayout()) {
+			sampleFoldersRoot = MagResultLayoutUtil.resolveSearchResultsRoot(metaPar.getDbSearchResultFile());
+			logger.info("Using nested search_results layout, sample folders root: {}",
+					sampleFoldersRoot.getAbsolutePath());
+		} else {
+			sampleFoldersRoot = metaPar.getDbSearchResultFile();
+		}
+
 		this.rawFileNames = new String[rawFiles.length];
 		this.separateResultFolders = new File[rawFiles.length];
 		this.expNameMap = new HashMap<String, String>();
 
 		for (int i = 0; i < rawFiles.length; i++) {
 			rawFileNames[i] = rawFiles[i].substring(rawFiles[i].lastIndexOf("\\") + 1, rawFiles[i].lastIndexOf("."));
-			this.separateResultFolders[i] = new File(metaPar.getDbSearchResultFile(), rawFileNames[i]);
+			this.separateResultFolders[i] = new File(sampleFoldersRoot, rawFileNames[i]);
 			if (!this.separateResultFolders[i].exists()) {
 				this.separateResultFolders[i].mkdir();
 				logger.info("  Created result directory: {}", this.separateResultFolders[i].getAbsolutePath());

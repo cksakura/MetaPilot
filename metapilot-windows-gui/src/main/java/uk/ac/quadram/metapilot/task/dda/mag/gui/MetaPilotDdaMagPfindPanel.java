@@ -17,6 +17,7 @@ import uk.ac.quadram.metapilot.task.common.gui.MetadataConfigurationPanel;
 import uk.ac.quadram.metapilot.task.common.gui.IsobaricLabelingPanel;
 import uk.ac.quadram.metapilot.task.common.gui.MagDatabaseSettingsPanel;
 import uk.ac.quadram.metapilot.task.common.gui.PFindModificationPanel;
+import uk.ac.quadram.metapilot.core.mag.Marker4ResourcePreparer;
 import uk.ac.quadram.metapilot.core.MGYG.HapExtractor;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel;
@@ -691,45 +692,11 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
 	}
 
 	/**
-	 * Derives genomes-taxa.tsv from the MAG DB original taxa file if present (Species_rep, Lineage columns).
+	 * Derives genomes-taxa.tsv from the MAG DB original taxa file if present.
 	 */
 	private void ensureGenomesTaxaFile(MagDbItem selectedDb, File genomeTaxaFile) {
-		File genomeAllFile = selectedDb.getOriginalTaxaFile();
-		if (genomeAllFile == null || !genomeAllFile.exists()) {
-			return;
-		}
-		try (BufferedReader reader = new BufferedReader(new FileReader(genomeAllFile))) {
-			String headerLine = reader.readLine();
-			if (headerLine == null) {
-				return;
-			}
-			String[] title = headerLine.split("\t");
-			int repId = -1;
-			int lineageId = -1;
-			for (int i = 0; i < title.length; i++) {
-				if ("Species_rep".equals(title[i])) {
-					repId = i;
-				} else if ("Lineage".equals(title[i])) {
-					lineageId = i;
-				}
-			}
-			if (repId < 0 || lineageId < 0) {
-				return;
-			}
-			HashMap<String, String> map = new HashMap<>();
-			String line;
-			while ((line = reader.readLine()) != null) {
-				String[] cs = line.split("\t");
-				if (cs.length > Math.max(repId, lineageId) && !map.containsKey(cs[repId])) {
-					map.put(cs[repId], cs[lineageId]);
-				}
-			}
-			try (PrintWriter writer = new PrintWriter(genomeTaxaFile)) {
-				writer.println("Genome\tLineage");
-				for (String key : map.keySet()) {
-					writer.println(key + "\t" + map.get(key));
-				}
-			}
+		try {
+			Marker4ResourcePreparer.ensureGenomesTaxaTsv(selectedDb, genomeTaxaFile, null);
 		} catch (IOException e) {
 			LOGGER.debug("Could not derive genomes-taxa.tsv from original taxa file", e);
 		}

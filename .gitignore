@@ -2,6 +2,7 @@
 /Resources/
 logs/*.log
 **/logs/*.log
+/logging.log
 hs_err_pid*.log
 dependency-reduced-pom.xml
 pom.xml.backup
@@ -21,3 +22,7 @@ tests/
 *.pyc
 /target/
 *.jar
+
+# Local clustering benchmarks and sample-analysis outputs
+/representative_*.tsv
+/species_overlap_*/

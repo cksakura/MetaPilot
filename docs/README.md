@@ -2,7 +2,7 @@
 
 This folder contains the current release-facing documentation for MetaPilot, plus an archive of historical implementation notes.
 
-Current version target: `1.0.0`.
+Current version target: `1.1.0`.
 
 ## User Guides
 
@@ -22,6 +22,7 @@ Current version target: `1.0.0`.
 - [Cleanup Plan](developer/cleanup.md) - cleanup scope, design targets, known findings, and validation command.
 - [Duplicate Classes Removed](developer/duplicate-classes-removed.md) - record of duplicate GUI/core classes removed during cleanup.
 - [Function Definition Resources](developer/function-definition-resources.md) - how to rebuild `func_def.db` and current bundled database counts.
+- [Result Folder Cleaning](developer/result-folder-cleaning.md) - workflow-specific Basic/Deep clean contract, resumability checkpoints, and final deliverables.
 - [WebSocket Progress](developer/websocket-progress.md) - current web progress/API status and remaining web hardening work.
 
 ## Archive

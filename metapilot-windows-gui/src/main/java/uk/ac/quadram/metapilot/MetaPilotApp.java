@@ -16,6 +16,7 @@ import javafx.stage.Stage;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.stage.FileChooser;
+import javafx.stage.Modality;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.prefs.Preferences;
@@ -39,6 +40,7 @@ import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceIO;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.ui.ResourceConfigPanel;
+import uk.ac.quadram.metapilot.ui.ResultCleanerPanel;
 import uk.ac.quadram.metapilot.registration.RegistrationManager;
 import uk.ac.quadram.metapilot.registration.UserRegistration;
 import uk.ac.quadram.metapilot.ui.RegistrationDialog;
@@ -376,7 +378,7 @@ public class MetaPilotApp extends Application {
 		primaryStage.setOnCloseRequest(event -> {
 			try {
 				// Check if there are unsaved changes in the resource panel
-				Tab resourcesTabRef = tabPane.getTabs().get(1); // Resources tab is the second tab
+				Tab resourcesTabRef = resourcesTab;
 				if (resourcesTabRef != null && resourcesTabRef.getContent() instanceof ResourceConfigPanel) {
 					ResourceConfigPanel configPanel = (ResourceConfigPanel) resourcesTabRef.getContent();
 					if (!configPanel.checkUnsavedChanges()) {
@@ -1485,6 +1487,9 @@ public class MetaPilotApp extends Application {
 
 		// Tools menu
 		Menu toolsMenu = new Menu("Tools");
+		MenuItem cleanerItem = new MenuItem("Clean Result Folder...");
+		cleanerItem.setOnAction(e -> showResultCleanerDialog(primaryStage));
+
 		MenuItem resourcesItem = new MenuItem("Configure Resources...");
 		resourcesItem.setOnAction(e -> {
 			Scene scene = primaryStage.getScene();
@@ -1501,7 +1506,7 @@ public class MetaPilotApp extends Application {
 			tabPane.getSelectionModel().select(databaseTab);
 		});
 
-		toolsMenu.getItems().addAll(resourcesItem, databaseItem);
+		toolsMenu.getItems().addAll(cleanerItem, new SeparatorMenuItem(), resourcesItem, databaseItem);
 
 		// Help menu
 		Menu helpMenu = new Menu("Help");
@@ -1517,6 +1522,25 @@ public class MetaPilotApp extends Application {
 		menuBar.getMenus().addAll(fileMenu, toolsMenu, helpMenu);
 
 		return menuBar;
+	}
+
+	private void showResultCleanerDialog(Stage owner) {
+		Stage cleanerStage = new Stage();
+		cleanerStage.setTitle("Result Folder Cleaner");
+		cleanerStage.initOwner(owner);
+		cleanerStage.initModality(Modality.WINDOW_MODAL);
+
+		Scene scene = new Scene(new ResultCleanerPanel(), 1200, 850);
+		try {
+			scene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
+		} catch (Exception e) {
+			System.err.println("Could not load stylesheet: " + e.getMessage());
+		}
+
+		cleanerStage.setScene(scene);
+		cleanerStage.setMinWidth(1000);
+		cleanerStage.setMinHeight(700);
+		cleanerStage.show();
 	}
 
 	/**

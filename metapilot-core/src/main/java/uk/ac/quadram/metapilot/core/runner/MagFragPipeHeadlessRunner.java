@@ -3,6 +3,7 @@ package uk.ac.quadram.metapilot.core.runner;
 import uk.ac.quadram.metapilot.core.fragpipe.FragPipeHeadlessRunner;
 import uk.ac.quadram.metapilot.core.fragpipe.FragpipeWorkflowFile;
 import uk.ac.quadram.metapilot.core.mag.MagGenomeSelectionService;
+import uk.ac.quadram.metapilot.core.mag.MagResultLayoutUtil;
 import uk.ac.quadram.metapilot.core.prodb.DecoyShuffler;
 import uk.ac.quadram.metapilot.core.prodb.FastaManager;
 import uk.ac.quadram.metapilot.core.report.MetaPilotHtmlReportService;
@@ -10,7 +11,6 @@ import uk.ac.quadram.metapilot.core.resources.MetaPilotResourceConfig;
 import uk.ac.quadram.metapilot.core.workflow.ProgressCallback;
 import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragpipePSMTsvReader;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagFragPipeParameters;
-import uk.ac.quadram.metapilot.task.mag.MagDbConfigIO;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPSM;
 import uk.ac.quadram.metapilot.task.par.MetaData;
@@ -34,6 +34,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Headless implementation of the MAG+FragPipe workflow (first CLI-ready slice).
@@ -44,6 +45,21 @@ import java.util.concurrent.TimeUnit;
  * (combined_modified_peptide.tsv / combined_protein.tsv)
  *
  * Uses shared core TSV/report services and skips GUI-only visualization steps.
+ *
+ * <p>
+ * This is the single execution path for FragPipe MAG - the Windows GUI task
+ * ({@code DDAMagFragPipeTask.callViaCoreRunner()}) delegates entirely to
+ * {@link #run} rather than doing its own per-sample work, so this class is
+ * where per-raw-file sample folders (marker search, sample-DB search) are
+ * both written and resumed/skipped-if-already-done. Since this change, those
+ * per-sample folders nest under {@code search_results/} (see
+ * {@code MagResultLayoutUtil}) instead of sitting flat under {@code resultRoot}
+ * - resolved once via {@code MagResultLayoutUtil.resolveSearchResultsRoot()}
+ * near the top of {@code runInternal()}, before Step A's parallel execution
+ * starts, so the one-time legacy-folder migration never races a parallel
+ * worker thread. {@code combined/}, {@code taxonomy_analysis/},
+ * {@code functional_annotation/}, and {@code report/} remain siblings of
+ * {@code search_results/}, unaffected.
  */
 public final class MagFragPipeHeadlessRunner {
 
@@ -54,6 +70,23 @@ public final class MagFragPipeHeadlessRunner {
 	private static final long BYTES_PER_GB = 1024L * 1024L * 1024L;
 	private static final long MIN_MEMORY_PER_FRAGPIPE_TASK_BYTES = 60L * BYTES_PER_GB;
 	private static final Object DECOY_FASTA_LOCK = new Object();
+
+	// Coarse step-to-percent mapping for cb.onProgress(...), on a 0-100 scale
+	// covering this entire run() call. Neither this class nor the lower-level
+	// FragPipeHeadlessRunner process wrapper parses fragpipe.bat's own output
+	// into a numeric fraction, so these step boundaries (plus per-sample
+	// increments within Steps A/C, see runParallelSampleTasks) are the only
+	// progress signal callers get.
+	private static final double STEP_A_START_PERCENT = 5;
+	private static final double STEP_A_END_PERCENT = 30;
+	private static final double STEP_B_START_PERCENT = 30;
+	private static final double STEP_B_END_PERCENT = 40;
+	private static final double STEP_C_START_PERCENT = 40;
+	private static final double STEP_C_END_PERCENT = 65;
+	private static final double STEP_DEF_START_PERCENT = 65;
+	private static final double STEP_DEF_END_PERCENT = 75;
+	private static final double STEP_GHI_START_PERCENT = 75;
+	private static final double STEP_GHI_END_PERCENT = 80;
 
 	private MagFragPipeHeadlessRunner() {
 	}
@@ -93,7 +126,7 @@ public final class MagFragPipeHeadlessRunner {
 			File magdbConfigJson, File funcDbFile, ProgressCallback cb, boolean generateHtmlReport,
 			String reportPythonHint, MetaPilotResourceConfig reportResourceConfig) throws Exception {
 		return runInternal(params, resourcesFragpipe, workflowTemplate, magdbConfigJson, funcDbFile, cb, true,
-				generateHtmlReport, reportPythonHint, reportResourceConfig);
+				generateHtmlReport, reportPythonHint, reportResourceConfig, false);
 	}
 
 	public static Result runWithInstalledDefaults(DDAMagFragPipeParameters params, File resourcesFragpipe,
@@ -117,18 +150,49 @@ public final class MagFragPipeHeadlessRunner {
 			File magdbConfigJson, File funcDbFile, ProgressCallback cb, boolean generateHtmlReport,
 			String reportPythonHint, MetaPilotResourceConfig reportResourceConfig) throws Exception {
 		return runInternal(params, resourcesFragpipe, null, magdbConfigJson, funcDbFile, cb, true,
-				generateHtmlReport, reportPythonHint, reportResourceConfig);
+				generateHtmlReport, reportPythonHint, reportResourceConfig, false);
 	}
 
 	public static Result runWithoutPostAnalysis(DDAMagFragPipeParameters params, File resourcesFragpipe,
 			File workflowTemplate, File magdbConfigJson, ProgressCallback cb) throws Exception {
 		return runInternal(params, resourcesFragpipe, workflowTemplate, magdbConfigJson, null, cb, false,
-				false, null, null);
+				false, null, null, false);
+	}
+
+	/**
+	 * Headless-only identification mode: runs Step A (marker search), Step B
+	 * (genome selection + sample-specific FASTA build) and Step C
+	 * (sample-specific search) and then stops. The combined FASTA build and
+	 * combined quantification search (Step D/E/F, which produce
+	 * combined_modified_peptide.tsv / combined_protein.tsv) and all downstream
+	 * post-analysis export (Step G/H/I: final_peptides.tsv, taxonomy, functional
+	 * annotation, HTML report - all of which depend on the combined quant
+	 * output) are skipped entirely.
+	 *
+	 * This is a brand new entry point, not a flag on the existing {@code run}
+	 * methods, so it cannot change behavior for any existing caller - in
+	 * particular the Windows GUI task ({@code DDAMagFragPipeTask}), which only
+	 * ever calls {@link #run} / {@link #runWithInstalledDefaults}, is
+	 * unaffected. Only headless callers (CLI, HPC study runner) that explicitly
+	 * opt in by calling this method will use identification-only mode.
+	 */
+	public static Result runIdentificationOnly(DDAMagFragPipeParameters params, File resourcesFragpipe,
+			File workflowTemplate, File magdbConfigJson, ProgressCallback cb) throws Exception {
+		return runInternal(params, resourcesFragpipe, workflowTemplate, magdbConfigJson, null, cb, false,
+				false, null, null, true);
+	}
+
+	/** Identification-only mode using the FragPipe installation's own installed workflow templates. */
+	public static Result runIdentificationOnlyWithInstalledDefaults(DDAMagFragPipeParameters params,
+			File resourcesFragpipe, File magdbConfigJson, ProgressCallback cb) throws Exception {
+		return runInternal(params, resourcesFragpipe, null, magdbConfigJson, null, cb, false, false, null,
+				null, true);
 	}
 
 	private static Result runInternal(DDAMagFragPipeParameters params, File resourcesFragpipe, File workflowTemplate,
 			File magdbConfigJson, File funcDbFile, ProgressCallback cb, boolean exportPostAnalysis,
-			boolean generateHtmlReport, String reportPythonHint, MetaPilotResourceConfig reportResourceConfig)
+			boolean generateHtmlReport, String reportPythonHint, MetaPilotResourceConfig reportResourceConfig,
+			boolean identificationOnly)
 			throws Exception {
 		if (cb == null)
 			cb = new ProgressCallback.NoOp();
@@ -140,14 +204,21 @@ public final class MagFragPipeHeadlessRunner {
 			throw new IllegalArgumentException("No raw files in parameters metadata");
 		}
 
-		// Resolve MAG DB item from MAGDB_1_0.json using catalogueId + version
-		MagDbItem mag = resolveMagDb(params.getMagDbCatalogueId(), params.getMagDbVersion(), magdbConfigJson);
+		// Resolve MAG DB item from MAGDB_1_0.json using catalogueId + identifier + version
+		MagDbItem mag = params.getMagDbItem();
+		if (mag == null || mag.getCurrentFile() == null || !mag.getCurrentFile().exists()) {
+			mag = resolveMagDb(params.getMagDbCatalogueId(), params.getMagDbIdentifier(),
+					params.getMagDbVersion(), magdbConfigJson);
+		}
 		if (mag == null) {
 			throw new IllegalArgumentException("MAG database not found in " + magdbConfigJson + " for catalogue="
-					+ params.getMagDbCatalogueId() + " version=" + params.getMagDbVersion());
+					+ params.getMagDbCatalogueId() + " identifier=" + params.getMagDbIdentifier()
+					+ " version=" + params.getMagDbVersion());
 		}
+		params.setMagDbItem(mag);
 
-		cb.onMessage("Using MAG DB: " + mag.getCatalogueID() + " / " + mag.getUsedVersion().getCatalogueVersion());
+		cb.onMessage("Using MAG DB: " + mag.getCatalogueID() + " [" + mag.getIdentifier() + "] / "
+				+ mag.getUsedVersion().getCatalogueVersion());
 		cb.onMessage(
 				"MAG DB folder: " + (mag.getCurrentFile() != null ? mag.getCurrentFile().getAbsolutePath() : "null"));
 
@@ -155,6 +226,15 @@ public final class MagFragPipeHeadlessRunner {
 		File resultRoot = new File(params.getResult(), "fragpipe_MAG_search");
 		resultRoot.mkdirs();
 		cb.onMessage("Result root: " + resultRoot.getAbsolutePath());
+
+		// Per-raw-file sample folders (marker search, sample-DB search) now nest
+		// under search_results/ instead of sitting flat as siblings of combined/,
+		// taxonomy_analysis/, functional_annotation/, report/ - matching pFind's
+		// layout (see MagResultLayoutUtil). Resolved exactly once, here,
+		// synchronously and before Step A's parallel execution begins, so the
+		// one-time legacy-folder migration never races a parallel worker thread.
+		File searchResultsRoot = MagResultLayoutUtil.resolveSearchResultsRoot(resultRoot);
+		cb.onMessage("Search results root: " + searchResultsRoot.getAbsolutePath());
 
 		String[] rawFiles = md.getRawFiles();
 		String[] expNames = md.getExpNames();
@@ -192,17 +272,20 @@ public final class MagFragPipeHeadlessRunner {
 				+ parallelPlan.detectedMemoryGb + ", memorySource=" + parallelPlan.memorySource);
 
 		File basicWorkflowTemplate = resolveBasicWorkflowTemplate(resourcesFragpipe, workflowTemplate);
-		File combinedWorkflowTemplate = resolveCombinedWorkflowTemplate(resourcesFragpipe, workflowTemplate);
+		// Identification-only runs never reach the combined/quant search, so don't
+		// require the LFQ-MBR workflow template to be resolvable/installed for them.
+		File combinedWorkflowTemplate = identificationOnly ? null
+				: resolveCombinedWorkflowTemplate(resourcesFragpipe, workflowTemplate);
 
 		// Step A: per-sample marker searches
 		cb.onMessage("Step A: running marker searches (per sample) ...");
-		runStepAParallel(rawFiles, expNames, params, mag, resourcesFragpipe, basicWorkflowTemplate, resultRoot,
+		runStepAParallel(rawFiles, expNames, params, mag, resourcesFragpipe, basicWorkflowTemplate, searchResultsRoot,
 				parallelTasks, perTaskThreads, cb);
 
 		// Step B: select genomes and build sample-specific FASTAs
 		cb.onMessage("Step B: selecting genomes and building sample-specific FASTAs ...");
 		for (int i = 0; i < rawFiles.length; i++) {
-			File sampleDir = new File(resultRoot, baseNameNoExt(rawFiles[i]));
+			File sampleDir = new File(searchResultsRoot, baseNameNoExt(rawFiles[i]));
 			File markerDir = new File(sampleDir, MARKER_SEARCH_DIR);
 
 			File fpOut = fragPipeResultFolder(markerDir, expNames, i);
@@ -241,15 +324,34 @@ public final class MagFragPipeHeadlessRunner {
 			if (!sampleFasta.exists() || sampleFasta.length() == 0) {
 				throw new IOException("Sample-specific FASTA is empty: " + sampleFasta.getAbsolutePath());
 			}
+
+			double stepBPct = STEP_B_START_PERCENT
+					+ (STEP_B_END_PERCENT - STEP_B_START_PERCENT) * (i + 1) / rawFiles.length;
+			cb.onProgress(stepBPct, 100);
 		}
 
 		// Step C: sample-specific searches (per sample)
 		cb.onMessage("Step C: running sample-specific searches (per sample) ...");
-		runStepCParallel(rawFiles, expNames, params, resourcesFragpipe, basicWorkflowTemplate, resultRoot,
+		runStepCParallel(rawFiles, expNames, params, resourcesFragpipe, basicWorkflowTemplate, searchResultsRoot,
 				parallelTasks, perTaskThreads, cb);
+
+		if (identificationOnly) {
+			// Headless identification-only mode: stop here. Skip the combined FASTA
+			// build and combined quantification search (Step D/E/F) and all
+			// post-analysis export (Step G/H/I), since those all depend on the
+			// combined quant output (combined_modified_peptide.tsv / combined_protein.tsv)
+			// that this mode intentionally never produces.
+			cb.onMessage(
+					"Identification-only mode: skipping combined FASTA build, combined quantification search, and post-analysis export.");
+			cb.onProgress(100, 100);
+			cb.onMessage("MAG+FragPipe headless run completed (identification only).");
+			cb.onComplete(resultRoot.getAbsolutePath());
+			return new Result(resultRoot, null, null, null);
+		}
 
 		// Step D/E/F (CLI slice): build combined FASTA and run combined search for
 		// quant outputs.
+		cb.onProgress(STEP_DEF_START_PERCENT, 100);
 		cb.onMessage("Step D/E/F: building combined FASTA and running combined search ...");
 		File combinedDir = new File(resultRoot, "combined");
 		combinedDir.mkdirs();
@@ -260,7 +362,7 @@ public final class MagFragPipeHeadlessRunner {
 			LinkedHashMap<String, String> fastaMap = new LinkedHashMap<>();
 
 			for (int i = 0; i < rawFiles.length; i++) {
-				File sampleDir = new File(resultRoot, baseNameNoExt(rawFiles[i]));
+				File sampleDir = new File(searchResultsRoot, baseNameNoExt(rawFiles[i]));
 				File sampleSearchDir = new File(sampleDir, SAMPLE_DB_SEARCH_DIR);
 				File fpOut = fragPipeResultFolder(sampleSearchDir, expNames, i);
 				File proteinFas = new File(fpOut, "protein.fas");
@@ -316,7 +418,8 @@ public final class MagFragPipeHeadlessRunner {
 
 		File quanPep = new File(combinedDir, "combined_modified_peptide.tsv");
 		File quanPro = new File(combinedDir, "combined_protein.tsv");
-		if (!quanPep.exists() || !quanPro.exists() || quanPep.length() == 0 || quanPro.length() == 0) {
+		cleanupMarkerSearchIntermediates(rawFiles, searchResultsRoot, cb);
+		if (!quanPep.exists() || quanPep.length() == 0) {
 			cb.onMessage("Running combined FragPipe search (quant outputs) ...");
 			int exit = FragPipeHeadlessRunner.run(resourcesFragpipe, combinedWorkflow, combinedManifest, combinedDir,
 					threads, cb);
@@ -325,18 +428,21 @@ public final class MagFragPipeHeadlessRunner {
 			}
 			cleanupCombinedProtXml(combinedDir, cb);
 		} else {
-			cb.onMessage("Combined quant outputs already exist: " + quanPep.getName() + ", " + quanPro.getName());
+			cb.onMessage("Combined peptide output already exists: " + quanPep.getName());
 			cleanupCombinedProtXml(combinedDir, cb);
 		}
 
 		// Step G (headless): shared post-analysis and report exports.
 		if (exportPostAnalysis) {
+			cb.onProgress(STEP_GHI_START_PERCENT, 100);
 			cb.onMessage("Step G: post-analysis + TSV export ...");
 			FragpipePostAnalysisTsvExporter.Result post = FragpipePostAnalysisTsvExporter.exportFinalTsvs(mag, quanPep,
 					resultRoot, spectraDirForSummary, "DDA MAG FragPipe", cb);
+			cb.onProgress(STEP_GHI_START_PERCENT + (STEP_GHI_END_PERCENT - STEP_GHI_START_PERCENT) / 3, 100);
 
 			cb.onMessage("Step H: taxonomy report export ...");
 			exportTaxonomyTsvs(params, quanPep, mag, resultRoot, post, cb);
+			cb.onProgress(STEP_GHI_START_PERCENT + (STEP_GHI_END_PERCENT - STEP_GHI_START_PERCENT) * 2 / 3, 100);
 
 			if (funcDbFile != null && funcDbFile.isFile()) {
 				cb.onMessage("Step I: functional annotation report export ...");
@@ -355,6 +461,7 @@ public final class MagFragPipeHeadlessRunner {
 			}
 			runHtmlReportIfRequested(resultRoot, params, generateHtmlReport, reportPythonHint,
 					reportResourceConfig, cb);
+			cb.onProgress(STEP_GHI_END_PERCENT, 100);
 		}
 
 		cb.onMessage("MAG+FragPipe headless run completed.");
@@ -383,41 +490,9 @@ public final class MagFragPipeHeadlessRunner {
 		}
 	}
 
-	private static MagDbItem resolveMagDb(String catalogueId, String version, File magdbConfigJson) {
-		if (catalogueId == null || catalogueId.isBlank())
-			return null;
-		if (magdbConfigJson == null || !magdbConfigJson.exists())
-			return null;
-
-		MagDbItem[][] all = MagDbConfigIO.parse(magdbConfigJson);
-		if (all == null)
-			return null;
-		for (MagDbItem[] group : all) {
-			if (group == null)
-				continue;
-			for (MagDbItem item : group) {
-				if (item == null)
-					continue;
-				if (!catalogueId.equals(item.getCatalogueID()))
-					continue;
-				// Find matching version in versionList
-				if (version != null && !version.isBlank()) {
-					for (MagDbItem.MagVersion mv : item.getVersionList()) {
-						if (mv != null && version.equals(mv.getCatalogueVersion())) {
-							item.setUsedVersion(mv);
-							return item;
-						}
-					}
-				}
-				// fallback: use the default localAvailable version
-				MagDbItem.MagVersion used = item.getUsedVersion();
-				if (used != null) {
-					item.setUsedVersion(used);
-					return item;
-				}
-			}
-		}
-		return null;
+	private static MagDbItem resolveMagDb(String catalogueId, String identifier, String version, File magdbConfigJson) {
+		return uk.ac.quadram.metapilot.task.mag.MagDbItemResolver.resolve(
+				catalogueId, identifier, version, magdbConfigJson);
 	}
 
 	private static void writeManifest(File manifest, String rawFile, String expName) throws IOException {
@@ -446,10 +521,11 @@ public final class MagFragPipeHeadlessRunner {
 	}
 
 	private static void runStepAParallel(String[] rawFiles, String[] expNames, DDAMagFragPipeParameters params,
-			MagDbItem mag, File resourcesFragpipe, File basicWorkflowTemplate, File resultRoot, int parallelTasks,
+			MagDbItem mag, File resourcesFragpipe, File basicWorkflowTemplate, File searchResultsRoot, int parallelTasks,
 			int perTaskThreads, ProgressCallback cb) throws Exception {
-		runParallelSampleTasks(rawFiles, parallelTasks, "FragPipe-StepA", rawFile -> {
-			File sampleDir = new File(resultRoot, baseNameNoExt(rawFile));
+		runParallelSampleTasks(rawFiles, parallelTasks, "FragPipe-StepA", STEP_A_START_PERCENT, STEP_A_END_PERCENT, cb,
+				rawFile -> {
+			File sampleDir = new File(searchResultsRoot, baseNameNoExt(rawFile));
 			File markerDir = new File(sampleDir, MARKER_SEARCH_DIR);
 			markerDir.mkdirs();
 
@@ -602,10 +678,11 @@ public final class MagFragPipeHeadlessRunner {
 	}
 
 	private static void runStepCParallel(String[] rawFiles, String[] expNames, DDAMagFragPipeParameters params,
-			File resourcesFragpipe, File basicWorkflowTemplate, File resultRoot, int parallelTasks, int perTaskThreads,
+			File resourcesFragpipe, File basicWorkflowTemplate, File searchResultsRoot, int parallelTasks, int perTaskThreads,
 			ProgressCallback cb) throws Exception {
-		runParallelSampleTasks(rawFiles, parallelTasks, "FragPipe-StepC", rawFile -> {
-			File sampleDir = new File(resultRoot, baseNameNoExt(rawFile));
+		runParallelSampleTasks(rawFiles, parallelTasks, "FragPipe-StepC", STEP_C_START_PERCENT, STEP_C_END_PERCENT, cb,
+				rawFile -> {
+			File sampleDir = new File(searchResultsRoot, baseNameNoExt(rawFile));
 			File markerDir = new File(sampleDir, MARKER_SEARCH_DIR);
 			File sampleFasta = new File(markerDir, sampleDir.getName() + ".fasta");
 
@@ -642,6 +719,56 @@ public final class MagFragPipeHeadlessRunner {
 		});
 	}
 
+	private static void cleanupMarkerSearchIntermediates(String[] rawFiles, File searchResultsRoot, ProgressCallback cb) {
+		if (rawFiles == null || searchResultsRoot == null) {
+			return;
+		}
+		for (String rawFile : rawFiles) {
+			File markerDir = new File(new File(searchResultsRoot, baseNameNoExt(rawFile)), MARKER_SEARCH_DIR);
+			deleteMatchingFiles(markerDir, cb, ".pepindex");
+
+			File[] markerResultDirs = markerDir.listFiles(File::isDirectory);
+			if (markerResultDirs == null) {
+				continue;
+			}
+			for (File markerResultDir : markerResultDirs) {
+				deleteMatchingFiles(markerResultDir, cb, ".xml");
+			}
+		}
+	}
+
+	private static void deleteMatchingFiles(File directory, ProgressCallback cb, String... suffixes) {
+		if (directory == null || suffixes == null) {
+			return;
+		}
+		File[] files = directory.listFiles(File::isFile);
+		if (files == null) {
+			return;
+		}
+		for (File file : files) {
+			String fileName = file.getName().toLowerCase(java.util.Locale.ROOT);
+			boolean matches = false;
+			for (String suffix : suffixes) {
+				String expectedSuffix = suffix.toLowerCase(java.util.Locale.ROOT);
+				if (fileName.endsWith(expectedSuffix)) {
+					matches = true;
+					break;
+				}
+			}
+			if (!matches) {
+				continue;
+			}
+			try {
+				if (Files.deleteIfExists(file.toPath())) {
+					cb.onMessage("Deleted FragPipe marker intermediate: " + file.getAbsolutePath());
+				}
+			} catch (IOException e) {
+				cb.onMessage("WARNING: could not delete FragPipe marker intermediate "
+						+ file.getAbsolutePath() + ": " + e.getMessage());
+			}
+		}
+	}
+
 	private static void cleanupCombinedProtXml(File searchDir, ProgressCallback cb) {
 		if (searchDir == null) {
 			return;
@@ -657,11 +784,31 @@ public final class MagFragPipeHeadlessRunner {
 		}
 	}
 
+	/**
+	 * Runs {@code task} once per raw file (in parallel if {@code parallelTasks
+	 * > 1}), reporting coarse progress to {@code cb.onProgress(...)} as each
+	 * sample completes - mapped linearly across {@code [stepStartPercent,
+	 * stepEndPercent]} of the overall 0-100 run. This is the only progress
+	 * signal Step A/C produce: neither this class nor the lower-level {@code
+	 * FragPipeHeadlessRunner} process wrapper parses per-sample fragpipe.bat
+	 * output into a numeric progress fraction, so without this the GUI
+	 * progress bar previously never moved during the entire run (it only ever
+	 * received {@code onMessage} text, never {@code onProgress}).
+	 */
 	private static void runParallelSampleTasks(String[] rawFiles, int parallelTasks, String threadNamePrefix,
-			SampleTask task) throws Exception {
+			double stepStartPercent, double stepEndPercent, ProgressCallback cb, SampleTask task) throws Exception {
+		int total = rawFiles.length;
+		AtomicInteger completedCount = new AtomicInteger(0);
+		SampleTask reportingTask = rawFile -> {
+			task.run(rawFile);
+			int completed = completedCount.incrementAndGet();
+			double pct = stepStartPercent + (stepEndPercent - stepStartPercent) * completed / total;
+			cb.onProgress(pct, 100);
+		};
+
 		if (parallelTasks <= 1 || rawFiles.length <= 1) {
 			for (String rawFile : rawFiles) {
-				task.run(rawFile);
+				reportingTask.run(rawFile);
 			}
 			return;
 		}
@@ -675,7 +822,7 @@ public final class MagFragPipeHeadlessRunner {
 		try {
 			for (String rawFile : rawFiles) {
 				futures.add(executor.submit(() -> {
-					task.run(rawFile);
+					reportingTask.run(rawFile);
 					return null;
 				}));
 			}

@@ -7,6 +7,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.Map;
 
 public class MetaData {
 
@@ -574,19 +575,70 @@ public class MetaData {
 		this.refChannelId = refChannelId;
 	}
 
+	/**
+	 * Maps GUI metadata column titles (from the Metadata configuration panel dropdown,
+	 * e.g. "Age", "Gender", "Condition") to their canonical SDRF-Proteomics characteristics
+	 * term. Any column title not found here is used as-is (lowercased) as a custom
+	 * characteristics term.
+	 */
+	private static final Map<String, String> SDRF_CHARACTERISTIC_TERMS = new HashMap<String, String>();
+	static {
+		SDRF_CHARACTERISTIC_TERMS.put("age", "age");
+		SDRF_CHARACTERISTIC_TERMS.put("gender", "sex");
+		SDRF_CHARACTERISTIC_TERMS.put("condition", "condition");
+		SDRF_CHARACTERISTIC_TERMS.put("treatment", "treatment");
+		SDRF_CHARACTERISTIC_TERMS.put("time point", "time point");
+		SDRF_CHARACTERISTIC_TERMS.put("bmi", "bmi");
+	}
+
+	/**
+	 * Resolves the SDRF characteristics term for a Metadata configuration panel column title.
+	 * Known titles (Age, Gender, Condition, Treatment, Time Point, BMI) map to their canonical
+	 * SDRF term; any other/custom title is lowercased and used as-is; a missing/blank title
+	 * falls back to "column&lt;index+1&gt;" so the header is never "characteristics[]".
+	 */
+	private static String sdrfTermFor(String colName, int columnIndex) {
+		if (colName == null || colName.trim().isEmpty()) {
+			return "column" + (columnIndex + 1);
+		}
+		String key = colName.trim().toLowerCase();
+		String mapped = SDRF_CHARACTERISTIC_TERMS.get(key);
+		return mapped != null ? mapped : key;
+	}
+
+	/**
+	 * Exports the metadata table in SDRF-Proteomics-compatible column format
+	 * (source name / comment[data file] / comment[fraction identifier] /
+	 * comment[technical replicate] / characteristics[...] / factor value[condition]).
+	 * This is the file used as input for report generation.
+	 */
 	public void exportMetadata(File result) throws FileNotFoundException {
 		int metaTypeCount = this.getMetaTypeCount();
 		PrintWriter writer = new PrintWriter(result);
-		StringBuilder title = new StringBuilder();
-		title.append("Raw").append("\t");
-		title.append("Experiment");
+
 		// Use only column names from Metadata configuration panel (metaTypeTitles). Do not use "meta1", "meta2", etc.
 		String[] titles = getMetaTypeTitles();
 		int effectiveMetaCols = (titles != null && titles.length > 0) ? Math.min(metaTypeCount, titles.length) : metaTypeCount;
+		String[] sdrfTerms = new String[effectiveMetaCols];
 		for (int i = 0; i < effectiveMetaCols; i++) {
-			String colName = (titles != null && i < titles.length && titles[i] != null && !titles[i].isEmpty())
-					? titles[i] : "";
-			title.append("\t").append(colName);
+			String colName = (titles != null && i < titles.length) ? titles[i] : null;
+			sdrfTerms[i] = sdrfTermFor(colName, i);
+		}
+
+		StringBuilder title = new StringBuilder();
+		title.append("source name").append("\t");
+		title.append("comment[data file]").append("\t");
+		title.append("comment[fraction identifier]").append("\t");
+		title.append("comment[technical replicate]");
+		for (int i = 0; i < effectiveMetaCols; i++) {
+			title.append("\t").append("characteristics[").append(sdrfTerms[i]).append("]");
+		}
+		// Factor value columns mirror the "condition" characteristics column(s), per SDRF convention
+		// of marking the studied variable separately from descriptive characteristics.
+		for (int i = 0; i < effectiveMetaCols; i++) {
+			if ("condition".equals(sdrfTerms[i])) {
+				title.append("\t").append("factor value[condition]");
+			}
 		}
 		writer.println(title);
 
@@ -595,9 +647,7 @@ public class MetaData {
 			String[] expNames = getExpNames();
 			String[][] metainfo = getMetaInfo();
 
-			StringBuilder[] sbs = new StringBuilder[expNames.length];
-
-			for (int i = 0; i < sbs.length; i++) {
+			for (int i = 0; i < expNames.length; i++) {
 				// Extract raw file name without path and extension (supports both Windows and Unix paths)
 				String rawPath = raws[i];
 				int lastSep = Math.max(rawPath.lastIndexOf("\\"), rawPath.lastIndexOf("/"));
@@ -607,16 +657,25 @@ public class MetaData {
 				if (dotIndex > 0) {
 					rawName = rawName.substring(0, dotIndex);
 				}
-				sbs[i] = new StringBuilder();
-				sbs[i].append(rawName).append("\t");
-				sbs[i].append(expNames[i]);
-				// Safely access metainfo - write same number of columns as headers (effectiveMetaCols)
-				if (metainfo != null && i < metainfo.length) {
-					for (int j = 0; j < effectiveMetaCols && j < metainfo[i].length; j++) {
-						sbs[i].append("\t").append(metainfo[i][j] != null ? metainfo[i][j] : "");
+
+				StringBuilder sb = new StringBuilder();
+				sb.append(expNames[i]).append("\t"); // source name
+				sb.append(rawName).append("\t"); // comment[data file]
+				sb.append(fractions[i]).append("\t"); // comment[fraction identifier]
+				sb.append(replicates[i]); // comment[technical replicate]
+
+				String[] rowMeta = (metainfo != null && i < metainfo.length) ? metainfo[i] : null;
+				for (int j = 0; j < effectiveMetaCols; j++) {
+					String val = (rowMeta != null && j < rowMeta.length && rowMeta[j] != null) ? rowMeta[j] : "";
+					sb.append("\t").append(val);
+				}
+				for (int j = 0; j < effectiveMetaCols; j++) {
+					if ("condition".equals(sdrfTerms[j])) {
+						String val = (rowMeta != null && j < rowMeta.length && rowMeta[j] != null) ? rowMeta[j] : "";
+						sb.append("\t").append(val);
 					}
 				}
-				writer.println(sbs[i]);
+				writer.println(sb);
 			}
 		} else {
 			String[] expNames = getExpNames();
@@ -629,12 +688,20 @@ public class MetaData {
 					int id = i * LabelTitles.length + j;
 
 					StringBuilder sb = new StringBuilder();
-					sb.append(expNames[i] + "_" + LabelTitles[j]).append("\t");
-					sb.append(id < labelExpNames.length ? labelExpNames[id] : "");
-					// Safely access metainfo - write same number of columns as headers (effectiveMetaCols)
-					if (metainfo != null && id < metainfo.length) {
-						for (int k = 0; k < effectiveMetaCols && k < metainfo[id].length; k++) {
-							sb.append("\t").append(metainfo[id][k] != null ? metainfo[id][k] : "");
+					sb.append(id < labelExpNames.length ? labelExpNames[id] : "").append("\t"); // source name
+					sb.append(expNames[i] + "_" + LabelTitles[j]).append("\t"); // comment[data file]
+					sb.append(fractions[i]).append("\t"); // comment[fraction identifier]
+					sb.append(replicates[i]); // comment[technical replicate]
+
+					String[] rowMeta = (metainfo != null && id < metainfo.length) ? metainfo[id] : null;
+					for (int k = 0; k < effectiveMetaCols; k++) {
+						String val = (rowMeta != null && k < rowMeta.length && rowMeta[k] != null) ? rowMeta[k] : "";
+						sb.append("\t").append(val);
+					}
+					for (int k = 0; k < effectiveMetaCols; k++) {
+						if ("condition".equals(sdrfTerms[k])) {
+							String val = (rowMeta != null && k < rowMeta.length && rowMeta[k] != null) ? rowMeta[k] : "";
+							sb.append("\t").append(val);
 						}
 					}
 					writer.println(sb);
