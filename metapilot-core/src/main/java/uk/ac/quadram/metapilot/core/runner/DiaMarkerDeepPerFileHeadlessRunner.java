@@ -7,10 +7,13 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -18,6 +21,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -54,8 +58,8 @@ import uk.ac.quadram.metapilot.task.mag.MagDbItem;
  * library from the peptides identified across <i>all</i> per-file rounds (for low
  * missingness) and runs one final quantifying DIA-NN search across all DIA files.
  *
- * <p>Per-file parallelism follows the same RAM-budget rule as the GUI:
- * {@code poolSize = totalRAM_GB / 32} (sequential when total RAM &lt; 32 GB);
+ * <p>Per-file parallelism follows the DIA-NN RAM-budget rule:
+ * {@code poolSize = totalRAM_GB / 30} (sequential when total RAM &lt; 30 GB);
  * each concurrent worker is given {@code totalThreads / poolSize} DIA-NN threads.
  *
  * <p>Outputs (under {@code <resultDir>/marker_deep/}):
@@ -80,7 +84,42 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
     private static final double RELATIVE_GAIN_THRESHOLD = 0.015;
     private static final int CONSECUTIVE_ROUNDS_FOR_PLATEAU = 2;
 
+    // Overall progress is reported on the same 0-100 scale the GUI task uses around this
+    // runner (updateProgress(2,100) right before calling in, updateProgress(97,100) right
+    // after it returns), so these bands sit inside [2, 97] and give real, monotonically
+    // increasing feedback instead of the bar sitting frozen for the whole run.
+    private static final double PROGRESS_SETUP_END = 5.0;
+    private static final double PROGRESS_INITIAL_EVIDENCE_START = 5.0;
+    private static final double PROGRESS_INITIAL_EVIDENCE_END = 10.0;
+    private static final double PROGRESS_PERFILE_START = 10.0;
+    private static final double PROGRESS_PERFILE_END = 85.0;
+    private static final double PROGRESS_COMBINED_START = 85.0;
+    private static final double PROGRESS_COMBINED_FASTA = 88.0;
+    private static final double PROGRESS_COMBINED_SPECLIB = 91.0;
+    private static final double PROGRESS_COMBINED_END = 95.0;
+    // Kept below the GUI's own updateProgress(97,100) checkpoint (set right after this
+    // runner returns, for "generating combined report") so progress stays monotonic.
+    private static final double PROGRESS_FINAL = 96.0;
+
     private DiaMarkerDeepPerFileHeadlessRunner() {
+    }
+
+    /** Report progress as a 0-100 percentage (matches the surrounding GUI updateProgress(x,100) calls). */
+    private static void reportProgress(ProgressCallback cb, double pct) {
+        if (cb == null) {
+            return;
+        }
+        cb.onProgress(Math.max(0.0, Math.min(100.0, pct)), 100.0);
+    }
+
+    /** Report progress for {@code completed}/{@code total} discrete units of work within [bandStart, bandEnd]. */
+    private static void reportBandProgress(ProgressCallback cb, int completed, int total, double bandStart,
+            double bandEnd) {
+        if (cb == null || total <= 0) {
+            return;
+        }
+        double fraction = Math.max(0.0, Math.min(1.0, (double) completed / (double) total));
+        reportProgress(cb, bandStart + (bandEnd - bandStart) * fraction);
     }
 
     public static final class Result {
@@ -171,6 +210,7 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
         DiaMarkerHeadlessRunner.ensureMarker4Files(magDb, diannExe, params, cb);
         cb.onMessage(TASK_NAME + ": preparing Marker4 library");
         DiaMarkerHeadlessRunner.ensureMarker4Library(magDb, diannExe, params, cb, condaPrefix);
+        reportProgress(cb, PROGRESS_SETUP_END);
 
         // Per-file folder layout:  <resultDir>/marker_deep/marker/<rawname>/...
         File markerDeepDir = new File(resultDir, "marker_deep");
@@ -195,9 +235,10 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
         int poolSize = decision.poolSize;
         int perTaskThreads = decision.perTaskThreads;
         String decisionMsg = String.format(
-                "per-file processing budget -> poolSize=%d, perTaskThreads=%d, totalThreads=%d, files=%d, "
-                        + "memorySource=%s (%s), effectiveMemoryGB=%d, ramPerTaskGB=%d, explicitOverride=%s",
+                "per-file processing budget -> maxConcurrentTasks=%d, perTaskThreads=%d, totalThreads=%d, files=%d, "
+                        + "rule=%s, memorySource=%s (%s), effectiveMemoryGB=%d, ramPerTaskGB=%d, explicitOverride=%s",
                 poolSize, perTaskThreads, totalThreads, diaFiles.length,
+                "min(files, memoryGB/ramPerTaskGB, totalThreads/" + DeepIterativeCommonSupport.MIN_THREADS_PER_TASK + ")",
                 decision.memorySource, decision.memorySourceDetail,
                 decision.effectiveMemoryGB, decision.ramPerTaskGB, decision.explicitOverride);
         LOGGER.info("{}: {}", TASK_NAME, decisionMsg);
@@ -207,13 +248,65 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
 
         ConcurrentHashMap<String, Integer> perFileLastRound = new ConcurrentHashMap<>();
 
+        boolean representativeClustering = params.isRepresentativeClusteringEnabled();
+        String[] filesForIterativeRounds = diaFiles;
+        if (representativeClustering) {
+            cb.onMessage(TASK_NAME + ": representative clustering enabled (preset="
+                    + params.getRepresentativeClusteringPreset() + ")");
+            boolean initialOk;
+            if (poolSize <= 1) {
+                initialOk = runInitialEvidenceSequential(diaFiles, perFileDirs, perFileNames,
+                        diannExe, params, magDb, condaPrefix, perTaskThreads, cb);
+            } else {
+                initialOk = runInitialEvidenceParallel(diaFiles, perFileDirs, perFileNames,
+                        diannExe, params, magDb, condaPrefix, poolSize, perTaskThreads, cb);
+            }
+            if (!initialOk) {
+                if (params.isRepresentativeClusteringDryRun()) {
+                    LOGGER.warn("{}: representative clustering initial evidence failed during grouping dry run",
+                            TASK_NAME);
+                    throw new IOException(TASK_NAME + ": grouping dry run failed before clustering reports could be written");
+                }
+                LOGGER.warn("{}: representative clustering initial evidence failed; falling back to full per-file mode",
+                        TASK_NAME);
+                cb.onMessage("WARNING: representative clustering failed before grouping; falling back to full per-file mode");
+                representativeClustering = false;
+            } else {
+                RepresentativePeptideClusterer.Result grouping = buildRepresentativeGrouping(diaFiles, perFileDirs,
+                        perFileNames, params);
+                writeRepresentativeGroupsTsv(new File(markerDeepDir, "representative_groups.tsv"), grouping);
+                writeRepresentativePairwiseTsv(new File(markerDeepDir, "representative_pairwise_similarity.tsv"),
+                        grouping, params);
+                writeRepresentativeClusteringSummaryTsv(new File(markerDeepDir,
+                        "representative_clustering_summary.tsv"), grouping, params);
+                if (params.isRepresentativeClusteringDryRun()) {
+                    cb.onMessage(TASK_NAME + ": grouping dry run completed; reports written under "
+                            + markerDeepDir.getAbsolutePath());
+                    return new Result(resultDir, markerDeepDir, new File(markerDeepDir, "combined"),
+                            null, null, null, null, null);
+                }
+                if (grouping.representativeFiles.isEmpty()) {
+                    LOGGER.warn("{}: representative clustering produced no representatives; falling back to full per-file mode",
+                            TASK_NAME);
+                    cb.onMessage("WARNING: representative clustering produced no representatives; falling back to full per-file mode");
+                    representativeClustering = false;
+                } else {
+                    filesForIterativeRounds = grouping.representativeFiles.toArray(new String[0]);
+                    cb.onMessage(TASK_NAME + ": representative clustering selected "
+                            + filesForIterativeRounds.length + " representatives from " + diaFiles.length
+                            + " raw files");
+                }
+            }
+        }
+
         boolean ok;
-        if (poolSize <= 1) {
-            ok = runPerFileSequential(diaFiles, perFileDirs, perFileNames, perFileLastRound,
+        if (poolSize <= 1 || filesForIterativeRounds.length <= 1) {
+            ok = runPerFileSequential(filesForIterativeRounds, perFileDirs, perFileNames, perFileLastRound,
                     diannExe, params, magDb, condaPrefix, perTaskThreads, cb);
         } else {
-            ok = runPerFileParallel(diaFiles, perFileDirs, perFileNames, perFileLastRound,
-                    diannExe, params, magDb, condaPrefix, poolSize, perTaskThreads, cb);
+            int iterativePoolSize = Math.min(poolSize, filesForIterativeRounds.length);
+            ok = runPerFileParallel(filesForIterativeRounds, perFileDirs, perFileNames, perFileLastRound,
+                    diannExe, params, magDb, condaPrefix, iterativePoolSize, perTaskThreads, cb);
         }
         if (!ok) {
             throw new IOException(TASK_NAME + ": one or more per-file workers failed");
@@ -238,7 +331,7 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
 
         if (!runGlobalCombinedFromPerFileRounds(diaFiles, perFileDirs, orderedLastRound,
                 combinedDir, combinedFasta, combinedSpeclib, combinedParquet,
-                diannExe, params, condaPrefix, cb)) {
+                diannExe, params, condaPrefix, representativeClustering, cb)) {
             throw new IOException(TASK_NAME + ": global combined search failed");
         }
 
@@ -276,6 +369,7 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
             }
         }
 
+        reportProgress(cb, PROGRESS_FINAL);
         cb.onComplete("DIA Deep Marker (per-file) complete: " + resultDir.getAbsolutePath());
         return new Result(resultDir, markerDeepDir, combinedDir, combinedFasta, combinedSpeclib,
                 combinedParquet, prMatrix, pgMatrix);
@@ -322,6 +416,7 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
                 return false;
             }
             perFileLastRound.put(raw, lastRound);
+            reportBandProgress(cb, i + 1, total, PROGRESS_PERFILE_START, PROGRESS_PERFILE_END);
         }
         return true;
     }
@@ -340,6 +435,7 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
             return t;
         });
         AtomicBoolean anyFailed = new AtomicBoolean(false);
+        AtomicInteger completed = new AtomicInteger(0);
         List<Future<?>> futures = new ArrayList<>();
 
         try {
@@ -360,6 +456,10 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
                             return;
                         }
                         perFileLastRound.put(rawFile, lastRound);
+                        int done = completed.incrementAndGet();
+                        cb.onMessage(TASK_NAME + ": [parallel] " + done + "/" + total + " complete (latest: "
+                                + rawName + ")");
+                        reportBandProgress(cb, done, total, PROGRESS_PERFILE_START, PROGRESS_PERFILE_END);
                         LOGGER.info("{}: [parallel] completed per-file workflow for {} (lastRound={})",
                                 TASK_NAME, rawName, lastRound);
                     } catch (Throwable t) {
@@ -391,6 +491,85 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
         return !anyFailed.get();
     }
 
+    private static boolean runInitialEvidenceSequential(String[] diaFiles,
+            LinkedHashMap<String, File> perFileDirs, LinkedHashMap<String, String> perFileNames,
+            File diannExe, MetaParameterDiaMarker params, MagDbItem magDb, File condaPrefix,
+            int perTaskThreads, ProgressCallback cb) {
+        int total = diaFiles.length;
+        for (int i = 0; i < total; i++) {
+            String raw = diaFiles[i];
+            File perFileDir = perFileDirs.get(raw);
+            String rawName = perFileNames.get(raw);
+            cb.onMessage(TASK_NAME + ": initial marker evidence (" + (i + 1) + "/" + total + "): " + rawName);
+            if (!prepareInitialEvidenceForOneFile(raw, perFileDir, diannExe, params, magDb,
+                    condaPrefix, perTaskThreads, cb)) {
+                LOGGER.error("{}: initial evidence failed for {}", TASK_NAME, raw);
+                return false;
+            }
+            reportBandProgress(cb, i + 1, total, PROGRESS_INITIAL_EVIDENCE_START, PROGRESS_INITIAL_EVIDENCE_END);
+        }
+        return true;
+    }
+
+    private static boolean runInitialEvidenceParallel(String[] diaFiles,
+            LinkedHashMap<String, File> perFileDirs, LinkedHashMap<String, String> perFileNames,
+            File diannExe, MetaParameterDiaMarker params, MagDbItem magDb, File condaPrefix,
+            int poolSize, int perTaskThreads, ProgressCallback cb) {
+        LOGGER.info("{}: running initial marker evidence for {} files in parallel (poolSize={}, perTaskThreads={})",
+                TASK_NAME, diaFiles.length, poolSize, perTaskThreads);
+        ExecutorService executor = Executors.newFixedThreadPool(poolSize, r -> {
+            Thread t = new Thread(r, "DeepPerFile-Initial");
+            t.setDaemon(true);
+            return t;
+        });
+        AtomicBoolean anyFailed = new AtomicBoolean(false);
+        AtomicInteger completed = new AtomicInteger(0);
+        int total = diaFiles.length;
+        List<Future<?>> futures = new ArrayList<>();
+        try {
+            for (String raw : diaFiles) {
+                final File perFileDir = perFileDirs.get(raw);
+                final String rawName = perFileNames.get(raw);
+                final String rawFile = raw;
+                futures.add(executor.submit(() -> {
+                    try {
+                        if (anyFailed.get()) return;
+                        cb.onMessage(TASK_NAME + ": initial marker evidence for " + rawName);
+                        if (!prepareInitialEvidenceForOneFile(rawFile, perFileDir, diannExe, params, magDb,
+                                condaPrefix, perTaskThreads, cb)) {
+                            anyFailed.set(true);
+                            return;
+                        }
+                        reportBandProgress(cb, completed.incrementAndGet(), total,
+                                PROGRESS_INITIAL_EVIDENCE_START, PROGRESS_INITIAL_EVIDENCE_END);
+                    } catch (Throwable t) {
+                        LOGGER.error("{}: initial evidence exception for {}", TASK_NAME, rawFile, t);
+                        anyFailed.set(true);
+                    }
+                }));
+            }
+            for (Future<?> f : futures) {
+                try {
+                    f.get();
+                } catch (Exception e) {
+                    LOGGER.error("{}: initial evidence worker future failed", TASK_NAME, e);
+                    anyFailed.set(true);
+                }
+            }
+        } finally {
+            executor.shutdown();
+            try {
+                if (!executor.awaitTermination(5, TimeUnit.MINUTES)) {
+                    executor.shutdownNow();
+                }
+            } catch (InterruptedException ignored) {
+                executor.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
+        }
+        return !anyFailed.get();
+    }
+
     /**
      * Run the iterative phase (marker search + iterative rounds) for a single raw file.
      * Returns lastRound (>0) on success, <=0 on failure.
@@ -399,13 +578,29 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
                                            MetaParameterDiaMarker params, MagDbItem magDb, File condaPrefix,
                                            int perTaskThreads, ProgressCallback cb) {
         try {
-            // 1) Marker no-quant search for this raw file only -> marker.parquet
+            if (!prepareInitialEvidenceForOneFile(raw, perFileDir, diannExe, params, magDb,
+                    condaPrefix, perTaskThreads, cb)) {
+                return -1;
+            }
+            return runRoundsForPreparedFile(raw, perFileDir, diannExe, params, magDb, condaPrefix,
+                    perTaskThreads, cb);
+        } catch (Throwable t) {
+            LOGGER.error("{}: runOnePerFileWorker exception for {}", TASK_NAME, raw, t);
+            return -1;
+        }
+    }
+
+    private static boolean prepareInitialEvidenceForOneFile(String raw, File perFileDir, File diannExe,
+                                                           MetaParameterDiaMarker params, MagDbItem magDb,
+                                                           File condaPrefix, int perTaskThreads,
+                                                           ProgressCallback cb) {
+        try {
             File markerParquet = new File(perFileDir, "marker.parquet");
             File markerLib = magDb.resolveMarker4LibraryFile();
             if (markerLib == null || !markerLib.exists()) {
                 LOGGER.error("{}: Marker4 library not found for per-file marker search: {}",
                         TASK_NAME, markerLib == null ? "null" : markerLib.getAbsolutePath());
-                return -1;
+                return false;
             }
             if (!markerParquet.exists()) {
                 cb.onMessage(TASK_NAME + ": marker no-quant search for " + perFileDir.getName());
@@ -414,10 +609,9 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
             }
             if (!markerParquet.exists()) {
                 LOGGER.error("{}: marker.parquet not produced for {}", TASK_NAME, perFileDir.getName());
-                return -1;
+                return false;
             }
 
-            // 2) Genome ranking + selection for this raw file only
             File evidenceTsv = new File(perFileDir, "genome_evidence.tsv");
             File rankedTsv = new File(perFileDir, "genome_ranked.tsv");
             File selectedTsv = new File(perFileDir, "genome_selected.tsv");
@@ -426,7 +620,7 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
                 DiaNNPrecursor[] precursors = DiaMarkerHeadlessRunner.readPrecursors(markerParquet, params);
                 if (precursors == null || precursors.length == 0) {
                     LOGGER.error("{}: no precursors in marker.parquet for {}", TASK_NAME, perFileDir.getName());
-                    return -1;
+                    return false;
                 }
                 File currentFile = magDb.getCurrentFile();
                 File markerFasta = new File(currentFile, "Marker4.fasta");
@@ -446,33 +640,234 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
             }
             if (!rankedTsv.exists()) {
                 LOGGER.error("{}: genome_ranked.tsv missing for {}", TASK_NAME, perFileDir.getName());
-                return -1;
+                return false;
             }
-
-            // 3) Iterative rounds
-            int genomesPerRound = params.getGenomesPerRound() > 0 ? params.getGenomesPerRound() : DEFAULT_GENOMES_PER_ROUND;
-            String cut = "KR";
-            String[] singleRawArr = new String[] { raw };
-            DeepIterativeCommonSupport.IterativeRoundLoopResult loop = DeepIterativeCommonSupport.runIterativeRoundLoop(
-                    rankedTsv, genomesPerRound, MAX_ITERATIVE_ROUNDS, "Round", cut,
-                    cb::onMessage,
-                    (round, genomes) -> runRoundAppendPreviousPeptides(round, perFileDir, genomes, singleRawArr,
-                            magDb, diannExe, params, condaPrefix, perTaskThreads, cb),
-                    DiaMarkerDeepPerFileHeadlessRunner::computeStopRule,
-                    LOGGER, TASK_NAME);
-
-            if (loop.lastRound <= 0) {
-                LOGGER.error("{}: no round completed for {}", TASK_NAME, perFileDir.getName());
-                return -1;
-            }
-            DeepIterativeCommonSupport.writeIterativeRoundsInfo(perFileDir, loop.roundsRecord, loop.peptidesInRoundRecord,
-                    loop.incrementsPerRound, loop.cumulativeRecord, loop.stopReason, loop.lastStopRuleResult,
-                    CONSECUTIVE_ROUNDS_FOR_PLATEAU, LOGGER, TASK_NAME);
-            return loop.lastRound;
+            return true;
         } catch (Throwable t) {
-            LOGGER.error("{}: runOnePerFileWorker exception for {}", TASK_NAME, raw, t);
+            LOGGER.error("{}: prepareInitialEvidenceForOneFile exception for {}", TASK_NAME, raw, t);
+            return false;
+        }
+    }
+
+    private static int runRoundsForPreparedFile(String raw, File perFileDir, File diannExe,
+                                                MetaParameterDiaMarker params, MagDbItem magDb, File condaPrefix,
+                                                int perTaskThreads, ProgressCallback cb) {
+        File rankedTsv = new File(perFileDir, "genome_ranked.tsv");
+        if (!rankedTsv.exists()) {
+            LOGGER.error("{}: genome_ranked.tsv missing for {}", TASK_NAME, perFileDir.getName());
             return -1;
         }
+        int genomesPerRound = params.getGenomesPerRound() > 0 ? params.getGenomesPerRound() : DEFAULT_GENOMES_PER_ROUND;
+        String cut = "KR";
+        String[] singleRawArr = new String[] { raw };
+        DeepIterativeCommonSupport.IterativeRoundLoopResult loop = DeepIterativeCommonSupport.runIterativeRoundLoop(
+                rankedTsv, genomesPerRound, MAX_ITERATIVE_ROUNDS, "Round", cut,
+                cb::onMessage,
+                (round, genomes) -> runRoundAppendPreviousPeptides(round, perFileDir, genomes, singleRawArr,
+                        magDb, diannExe, params, condaPrefix, perTaskThreads, cb),
+                DiaMarkerDeepPerFileHeadlessRunner::computeStopRule,
+                LOGGER, TASK_NAME);
+
+        if (loop.lastRound <= 0) {
+            LOGGER.error("{}: no round completed for {}", TASK_NAME, perFileDir.getName());
+            return -1;
+        }
+        DeepIterativeCommonSupport.writeIterativeRoundsInfo(perFileDir, loop.roundsRecord, loop.peptidesInRoundRecord,
+                loop.incrementsPerRound, loop.cumulativeRecord, loop.stopReason, loop.lastStopRuleResult,
+                CONSECUTIVE_ROUNDS_FOR_PLATEAU, LOGGER, TASK_NAME);
+        return loop.lastRound;
+    }
+
+    // ----------------------- representative clustering -----------------------
+
+    private static RepresentativePeptideClusterer.Result buildRepresentativeGrouping(String[] diaFiles,
+            LinkedHashMap<String, File> perFileDirs, LinkedHashMap<String, String> perFileNames,
+            MetaParameterDiaMarker params) {
+        List<RepresentativePeptideClusterer.Input> signatures = new ArrayList<>();
+        for (int i = 0; i < diaFiles.length; i++) {
+            String raw = diaFiles[i];
+            File dir = perFileDirs.get(raw);
+            String rawName = perFileNames.get(raw);
+            RepresentativePeptideClusterer.Input signature = readMarkerSignature(signatures.size(), raw, rawName,
+                    dir, params);
+            if (signature != null) {
+                signatures.add(signature);
+            }
+        }
+        int minPeptides = Math.max(0, params.getRepresentativeMinMarkerPeptides());
+        double minJaccard = params.getRepresentativePeptideJaccardThreshold();
+        double minContainment = params.getRepresentativePeptideContainmentThreshold();
+        RepresentativePeptideClusterer.Result result = RepresentativePeptideClusterer.cluster(signatures,
+                minPeptides, minJaccard, minContainment);
+        LOGGER.info("{}: representative peptide clustering algorithm={}, groups={}, representatives={}, files={}, comparedPairs={}",
+                TASK_NAME, result.algorithmMode, result.groups.size(), result.representativeFiles.size(),
+                result.assignments.size(), result.pairSimilarities.size());
+        return result;
+    }
+
+    private static RepresentativePeptideClusterer.Input readMarkerSignature(int index, String raw, String rawName,
+                                                                            File perFileDir,
+                                                                            MetaParameterDiaMarker params) {
+        if (perFileDir == null) {
+            return null;
+        }
+        LinkedHashSet<String> peptides = new LinkedHashSet<>();
+        File markerParquet = new File(perFileDir, "marker.parquet");
+        if (markerParquet.exists() && markerParquet.length() > 0) {
+            try {
+                DiaNNParquetReader reader = new DiaNNParquetReader(markerParquet.getAbsolutePath(), "KR");
+                DiaNNPrecursor[] precursors = reader.getDiaNNPrecursors(0.01);
+                if (precursors != null) {
+                    for (DiaNNPrecursor p : precursors) {
+                        if (p == null || p.getIsDecoy()) continue;
+                        String seq = p.getSeqString();
+                        if (seq != null && !seq.isEmpty()) {
+                            peptides.add(seq);
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                LOGGER.warn("{}: failed to read marker signature from {}", TASK_NAME, markerParquet.getAbsolutePath(), e);
+            }
+        }
+        List<String> topGenomes = readTopGenomes(new File(perFileDir, "genome_ranked.tsv"),
+                params.getRepresentativeGenomeTopN());
+        return new RepresentativePeptideClusterer.Input(index, raw, rawName, peptides, topGenomes);
+    }
+
+    private static List<String> readTopGenomes(File rankedTsv, int topN) {
+        if (rankedTsv == null || !rankedTsv.isFile() || topN <= 0) {
+            return Collections.emptyList();
+        }
+        ArrayList<String> genomes = new ArrayList<>();
+        try (BufferedReader reader = new BufferedReader(new FileReader(rankedTsv))) {
+            String line;
+            int genomeColumn = 0;
+            boolean headerChecked = false;
+            while ((line = reader.readLine()) != null && genomes.size() < topN) {
+                if (line.isBlank()) continue;
+                String[] cols = line.split("\t", -1);
+                if (!headerChecked) {
+                    headerChecked = true;
+                    for (int i = 0; i < cols.length; i++) {
+                        if ("Genome".equalsIgnoreCase(cols[i].trim())
+                                || "GenomeId".equalsIgnoreCase(cols[i].trim())
+                                || "Genome_ID".equalsIgnoreCase(cols[i].trim())) {
+                            genomeColumn = i;
+                            break;
+                        }
+                    }
+                    if (cols.length > 0 && (cols[0].equalsIgnoreCase("rank")
+                            || cols[0].equalsIgnoreCase("genome"))) {
+                        continue;
+                    }
+                }
+                if (genomeColumn >= cols.length) {
+                    continue;
+                }
+                String genome = cols[genomeColumn].trim();
+                if (genome.isEmpty() || genome.equalsIgnoreCase("genome") || genome.equalsIgnoreCase("genome_id")) {
+                    continue;
+                }
+                genomes.add(genome);
+            }
+        } catch (IOException e) {
+            LOGGER.warn("{}: failed to read top genomes from {}", TASK_NAME, rankedTsv.getAbsolutePath(), e);
+        }
+        return genomes;
+    }
+
+    private static void writeRepresentativeGroupsTsv(File out, RepresentativePeptideClusterer.Result grouping) {
+        if (out == null || grouping == null) return;
+        try (PrintWriter w = new PrintWriter(out)) {
+            w.println("RawFile\tRawName\tGroupId\tRepresentativeRawFile\tRepresentativeRawName\tRole\t"
+                    + "MarkerPeptides\tRepresentativeMarkerPeptides\tClusterSize\tPeptideJaccard\t"
+                    + "PeptideContainment\tPeptideDistance\tGenomeTopNOverlapDiagnostic\t"
+                    + "BestMatchRawFile\tBestMatchRawName\tBestPeptideJaccard\tBestPeptideContainment\t"
+                    + "BestGenomeTopNOverlapDiagnostic\tReason");
+            for (RepresentativePeptideClusterer.Assignment assignment : grouping.assignments) {
+                RepresentativePeptideClusterer.Input file = assignment.file;
+                RepresentativePeptideClusterer.Input rep = assignment.group.representative;
+                RepresentativePeptideClusterer.Input best = assignment.bestMatch;
+                String role = file.raw.equals(rep.raw) ? "representative" : "member";
+                w.println(file.raw + "\t" + file.rawName + "\t" + assignment.group.groupId + "\t"
+                        + rep.raw + "\t" + rep.rawName + "\t" + role + "\t"
+                        + file.peptides.size() + "\t" + rep.peptides.size() + "\t"
+                        + assignment.group.size() + "\t"
+                        + formatDouble(assignment.peptideJaccardToRepresentative) + "\t"
+                        + formatDouble(assignment.peptideContainmentToRepresentative) + "\t"
+                        + formatDouble(1.0 - assignment.peptideJaccardToRepresentative) + "\t"
+                        + formatDouble(assignment.genomeOverlapToRepresentative) + "\t"
+                        + (best == null ? "" : best.raw) + "\t"
+                        + (best == null ? "" : best.rawName) + "\t"
+                        + formatDouble(assignment.bestPeptideJaccard) + "\t"
+                        + formatDouble(assignment.bestPeptideContainment) + "\t"
+                        + formatDouble(assignment.bestGenomeOverlap) + "\t" + assignment.reason);
+            }
+        } catch (IOException e) {
+            LOGGER.warn("{}: failed to write representative groups TSV {}", TASK_NAME, out.getAbsolutePath(), e);
+        }
+    }
+
+    private static void writeRepresentativePairwiseTsv(File out, RepresentativePeptideClusterer.Result grouping,
+                                                       MetaParameterDiaMarker params) {
+        if (out == null || grouping == null) return;
+        try (PrintWriter w = new PrintWriter(out)) {
+            w.println("RawFileA\tRawNameA\tRawFileB\tRawNameB\tMarkerPeptidesA\tMarkerPeptidesB\t"
+                    + "IntersectionPeptides\tUnionPeptides\tSmallerPeptideSet\tLargerPeptideSet\t"
+                    + "PeptideJaccard\tPeptideContainment\tPeptideDistance\tGenomeTopNOverlapDiagnostic\t"
+                    + "PassesPeptideThresholds\tComparedFor");
+            for (RepresentativePeptideClusterer.PairSimilarity sim : grouping.pairSimilarities) {
+                boolean passes = sim.passes(params.getRepresentativePeptideJaccardThreshold(),
+                        params.getRepresentativePeptideContainmentThreshold());
+                w.println(sim.a.raw + "\t" + sim.a.rawName + "\t"
+                        + sim.b.raw + "\t" + sim.b.rawName + "\t"
+                        + sim.a.peptideCount() + "\t" + sim.b.peptideCount() + "\t"
+                        + sim.intersectionPeptides + "\t" + sim.unionPeptides + "\t"
+                        + sim.smallerPeptideSet + "\t" + sim.largerPeptideSet + "\t"
+                        + formatDouble(sim.jaccard) + "\t"
+                        + formatDouble(sim.containment) + "\t"
+                        + formatDouble(1.0 - sim.jaccard) + "\t"
+                        + formatDouble(sim.genomeTopNOverlap) + "\t"
+                        + passes + "\t" + sim.source);
+            }
+        } catch (IOException e) {
+            LOGGER.warn("{}: failed to write representative pairwise TSV {}", TASK_NAME, out.getAbsolutePath(), e);
+        }
+    }
+
+    private static void writeRepresentativeClusteringSummaryTsv(File out,
+            RepresentativePeptideClusterer.Result grouping, MetaParameterDiaMarker params) {
+        if (out == null || grouping == null) return;
+        try (PrintWriter w = new PrintWriter(out)) {
+            w.println("Metric\tValue");
+            w.println("Preset\t" + params.getRepresentativeClusteringPreset());
+            w.println("PeptideJaccardThreshold\t" + formatDouble(params.getRepresentativePeptideJaccardThreshold()));
+            w.println("PeptideContainmentThreshold\t"
+                    + formatDouble(params.getRepresentativePeptideContainmentThreshold()));
+            w.println("MinMarkerPeptides\t" + params.getRepresentativeMinMarkerPeptides());
+            w.println("GenomeTopNDiagnostic\t" + params.getRepresentativeGenomeTopN());
+            w.println("GenomeOverlapUsedForClustering\tfalse");
+            w.println("GroupingDryRun\t" + params.isRepresentativeClusteringDryRun());
+            w.println("AlgorithmMode\t" + grouping.algorithmMode);
+            w.println("ExactPairwiseLimit\t" + RepresentativePeptideClusterer.EXACT_PAIRWISE_LIMIT);
+            w.println("MinHashHashes\t" + RepresentativePeptideClusterer.MINHASH_HASHES);
+            w.println("MinHashBands\t" + RepresentativePeptideClusterer.MINHASH_BANDS);
+            w.println("MinHashRowsPerBand\t" + RepresentativePeptideClusterer.MINHASH_ROWS_PER_BAND);
+            w.println("TotalRawFiles\t" + grouping.inputs.size());
+            w.println("CandidatePairs\t" + grouping.candidatePairCount);
+            w.println("ComparedPairs\t" + grouping.pairSimilarities.size());
+            w.println("Clusters\t" + grouping.groups.size());
+            w.println("Representatives\t" + grouping.representativeFiles.size());
+            w.println("Singletons\t" + grouping.singletonCount);
+        } catch (IOException e) {
+            LOGGER.warn("{}: failed to write representative clustering summary TSV {}", TASK_NAME,
+                    out.getAbsolutePath(), e);
+        }
+    }
+
+    private static String formatDouble(double value) {
+        return String.format(java.util.Locale.ROOT, "%.4f", value);
     }
 
     // ----------------------- DIA-NN per-round and per-file searches -----------------------
@@ -527,7 +922,8 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
     private static boolean runGlobalCombinedFromPerFileRounds(String[] diaFiles,
             LinkedHashMap<String, File> perFileDirs, LinkedHashMap<String, Integer> perFileLastRound,
             File combinedDir, File combinedFasta, File combinedSpeclib, File combinedParquet,
-            File diannExe, MetaParameterDiaMarker params, File condaPrefix, ProgressCallback cb) {
+            File diannExe, MetaParameterDiaMarker params, File condaPrefix,
+            boolean includeInitialMarkerEvidence, ProgressCallback cb) {
 
         // 1) Aggregate peptide -> proteins across ALL per-file rounds.
         HashMap<String, HashSet<String>> pepProMap = new HashMap<>();
@@ -544,16 +940,29 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
             }
         }
 
+        if (includeInitialMarkerEvidence) {
+            int before = pepProMap.size();
+            for (Map.Entry<String, File> entry : perFileDirs.entrySet()) {
+                File perFileDir = entry.getValue();
+                if (perFileDir == null) continue;
+                mergePeptideProteinMapFromParquet(new File(perFileDir, "marker.parquet"), pepProMap);
+            }
+            LOGGER.info("{}: added initial marker evidence to global combined FASTA input ({} -> {} peptides)",
+                    TASK_NAME, before, pepProMap.size());
+        }
+
         if (pepProMap.isEmpty()) {
             LOGGER.error("{}: no peptides collected from per-file round parquets for global combined FASTA", TASK_NAME);
             return false;
         }
         LOGGER.info("{}: aggregated {} unique peptides across all per-file rounds", TASK_NAME, pepProMap.size());
+        reportProgress(cb, PROGRESS_COMBINED_START);
 
         // 2) Write combined.fasta
         if (!DeepIterativeCommonSupport.writeCombinedFastaFromPeptideProteinMap(combinedFasta, pepProMap, LOGGER, TASK_NAME)) {
             return false;
         }
+        reportProgress(cb, PROGRESS_COMBINED_FASTA);
 
         // 3) Build combined.speclib
         if (!DeepIterativeCommonSupport.ensureCombinedSpeclib(combinedDir, combinedSpeclib, () -> {
@@ -574,6 +983,7 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
         }, LOGGER, TASK_NAME)) {
             return false;
         }
+        reportProgress(cb, PROGRESS_COMBINED_SPECLIB);
 
         // 4) Final quantifying search across ALL DIA files
         boolean ok = DeepIterativeCommonSupport.ensureCombinedParquet(combinedParquet, () -> {
@@ -600,6 +1010,9 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
                 LOGGER.error("{}: combined quant failed", TASK_NAME, e);
             }
         });
+        if (ok) {
+            reportProgress(cb, PROGRESS_COMBINED_END);
+        }
         return ok;
     }
 
@@ -609,6 +1022,35 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
         return DiaDeepProteinMappingService.buildPeptideProteinMap(
                 DiaDeepProteinMappingService.Request.deepTogether(perFileDir, lastRound, null, "KR"),
                 LOGGER, TASK_NAME);
+    }
+
+    private static void mergePeptideProteinMapFromParquet(File parquet, HashMap<String, HashSet<String>> target) {
+        if (parquet == null || !parquet.isFile() || parquet.length() <= 0 || target == null) {
+            return;
+        }
+        try {
+            DiaNNParquetReader reader = new DiaNNParquetReader(parquet.getAbsolutePath(), "KR");
+            DiaNNPrecursor[] precursors = reader.getDiaNNPrecursors(0.01);
+            if (precursors == null) return;
+            for (DiaNNPrecursor p : precursors) {
+                if (p == null || p.getIsDecoy()) continue;
+                String seq = p.getSeqString();
+                if (seq == null || seq.isEmpty()) continue;
+                String[] proteins = p.getProGroups();
+                if (proteins == null || proteins.length == 0) continue;
+                HashSet<String> set = target.computeIfAbsent(seq, k -> new HashSet<>());
+                for (String protein : proteins) {
+                    if (protein == null || protein.isEmpty()) continue;
+                    if (protein.startsWith("REV_") || protein.startsWith("rev_")
+                            || protein.startsWith("DECOY_") || protein.startsWith("decoy_")) {
+                        continue;
+                    }
+                    set.add(protein);
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.warn("{}: failed to merge initial marker parquet {}", TASK_NAME, parquet.getAbsolutePath(), e);
+        }
     }
 
     // ----------------------- per-round FASTA helpers -----------------------

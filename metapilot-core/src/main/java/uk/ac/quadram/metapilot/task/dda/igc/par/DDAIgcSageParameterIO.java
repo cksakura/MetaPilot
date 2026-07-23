@@ -392,7 +392,7 @@ public class DDAIgcSageParameterIO extends BaseParameterIO {
     public JSONObject createJsonHeader(String description) {
         JSONObject json = new JSONObject();
         json.put("workflow", getWorkflowType());
-        json.put("version", "1.0.0");
+        json.put("version", "1.1.0");
         json.put("description", description);
         json.put("created", new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()));
         json.put("parameter_type", "DDAIgcSageParameters");

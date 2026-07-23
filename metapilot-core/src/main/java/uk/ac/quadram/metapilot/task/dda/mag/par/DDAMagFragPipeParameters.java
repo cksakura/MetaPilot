@@ -52,10 +52,13 @@ public class DDAMagFragPipeParameters extends MetaBaseParameter {
     
     // MAG-specific fields
     private String magDbCatalogueId = "";
+    /** Registry identifier (e.g. MGYG for MGnify, or a custom local-MAG identifier). */
+    private String magDbIdentifier = "MGYG";
     private String magDbVersion = "";
     private String fragpipeWorkflowPath = "";
     private String genomeSelectorMode = MagDbItem.MARKER2;
     private String genomeSelectionStrategy = "Focus";
+    private int fragpipeParallelTasks = 0;
     
     // Isotopic labeling
     private List<String> lightLabels = new ArrayList<>();
@@ -142,7 +145,22 @@ public class DDAMagFragPipeParameters extends MetaBaseParameter {
     
     // MagDbItem getters and setters
     public MagDbItem getMagDbItem() { return magDbItem; }
-    public void setMagDbItem(MagDbItem magDbItem) { this.magDbItem = magDbItem; }
+    public void setMagDbItem(MagDbItem magDbItem) {
+        this.magDbItem = magDbItem;
+        if (magDbItem != null) {
+            if (magDbItem.getCatalogueID() != null && !magDbItem.getCatalogueID().isBlank()) {
+                this.magDbCatalogueId = magDbItem.getCatalogueID();
+            }
+            if (magDbItem.getIdentifier() != null && !magDbItem.getIdentifier().isBlank()) {
+                this.magDbIdentifier = magDbItem.getIdentifier();
+            }
+            if (magDbItem.getUsedVersion() != null
+                    && magDbItem.getUsedVersion().getCatalogueVersion() != null
+                    && !magDbItem.getUsedVersion().getCatalogueVersion().isBlank()) {
+                this.magDbVersion = magDbItem.getUsedVersion().getCatalogueVersion();
+            }
+        }
+    }
     
     // Taxonomic analysis getters and setters
     public boolean isEukaryota() { return eukaryota; }
@@ -179,6 +197,13 @@ public class DDAMagFragPipeParameters extends MetaBaseParameter {
     // MAG-specific getters and setters
     public String getMagDbCatalogueId() { return magDbCatalogueId; }
     public void setMagDbCatalogueId(String magDbCatalogueId) { this.magDbCatalogueId = magDbCatalogueId; }
+
+    public String getMagDbIdentifier() {
+        return magDbIdentifier == null || magDbIdentifier.isBlank() ? "MGYG" : magDbIdentifier;
+    }
+    public void setMagDbIdentifier(String magDbIdentifier) {
+        this.magDbIdentifier = magDbIdentifier == null || magDbIdentifier.isBlank() ? "MGYG" : magDbIdentifier.trim();
+    }
     
     public String getMagDbVersion() { return magDbVersion; }
     public void setMagDbVersion(String magDbVersion) { this.magDbVersion = magDbVersion; }
@@ -199,6 +224,11 @@ public class DDAMagFragPipeParameters extends MetaBaseParameter {
         } else {
             this.genomeSelectionStrategy = genomeSelectionStrategy.trim();
         }
+    }
+
+    public int getFragpipeParallelTasks() { return fragpipeParallelTasks; }
+    public void setFragpipeParallelTasks(int fragpipeParallelTasks) {
+        this.fragpipeParallelTasks = Math.max(0, fragpipeParallelTasks);
     }
     
     // Isotopic labeling getters and setters

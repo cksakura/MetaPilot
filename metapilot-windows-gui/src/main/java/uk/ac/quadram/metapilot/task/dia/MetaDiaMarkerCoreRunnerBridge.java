@@ -40,12 +40,18 @@ final class MetaDiaMarkerCoreRunnerBridge {
 			@Override
 			public void onMessage(String message) {
 				if (message != null && !message.isBlank()) {
+					if (logger != null) {
+						logger.info(message);
+					}
 					messageAction.update(message);
 				}
 			}
 
 			@Override
 			public void onComplete(Object result) {
+				if (logger != null) {
+					logger.info(taskName + ": core runner completed");
+				}
 			}
 
 			@Override
@@ -77,6 +83,15 @@ final class MetaDiaMarkerCoreRunnerBridge {
 		copy.setKGG(original.isKGG());
 		copy.setUsePeptideBasedRound(original.isUsePeptideBasedRound());
 		copy.setPeptideDetectabilityThreshold(original.getPeptideDetectabilityThreshold());
+		copy.setRepresentativeClusteringPreset(original.getRepresentativeClusteringPreset());
+		if (uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaMarker.REPRESENTATIVE_CLUSTERING_CUSTOM
+				.equalsIgnoreCase(original.getRepresentativeClusteringPreset())) {
+			copy.setRepresentativePeptideJaccardThreshold(original.getRepresentativePeptideJaccardThreshold());
+			copy.setRepresentativePeptideContainmentThreshold(original.getRepresentativePeptideContainmentThreshold());
+		}
+		copy.setRepresentativeGenomeTopN(original.getRepresentativeGenomeTopN());
+		copy.setRepresentativeMinMarkerPeptides(original.getRepresentativeMinMarkerPeptides());
+		copy.setRepresentativeClusteringDryRun(original.isRepresentativeClusteringDryRun());
 		copy.setMetadata(cloneMetadataWithRawFiles(metadata, diaFiles));
 		copy.setDbSearchResultFile(original.getDbSearchResultFile());
 		copy.setReportDir(original.getReportDir());

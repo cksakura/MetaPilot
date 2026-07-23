@@ -340,59 +340,74 @@ class TaxonomySummaryGenerator(BaseReportGenerator):
             current_row += 1
 
             # 4. Composition bar chart
-            sample_compositions = {}
+            # A taxon earns its own color if it reaches RELATIVE_ABUNDANCE_THRESHOLD
+            # (%) in at least one sample - i.e. it's a real ecological player
+            # *somewhere* in the dataset, even if it's rare on average. Taxa that
+            # never cross the threshold in any sample are bucketed into "Others".
+            # The qualifying set is computed once globally (not per sample), so
+            # every sample's bar uses the same taxon -> color mapping - this also
+            # avoids the old bug where a taxon could be its own segment in one
+            # sample's bar but get folded into "Others" in another sample's bar.
+            # MAX_COLORED_TAXA is a readability safety valve: if a rank is so
+            # diverse that more than this many taxa cross the threshold, only the
+            # ones with the highest peak abundance keep their own color and the
+            # rest fall back into "Others" even though they technically qualified.
             taxon_list = rank_summary[rank].tolist()
-            for i, col in enumerate(intensity_cols):
+            RELATIVE_ABUNDANCE_THRESHOLD = 1.0  # percent, in at least one sample
+            MAX_COLORED_TAXA = 20
+
+            sample_totals = {}
+            sample_rel_abundance = {}  # col -> {taxon: pct_of_sample}
+            for col in intensity_cols:
                 sample_values = rank_summary[col]
                 total_sample = sample_values.sum()
+                sample_totals[col] = total_sample
                 if total_sample > 0:
-                    sample_taxa_abundance = {}
-                    for idx, taxon in enumerate(taxon_list):
-                        taxon_abundance = sample_values.iloc[idx]
-                        if taxon_abundance > 0:
-                            sample_taxa_abundance[taxon] = taxon_abundance
-                    
-                    top_sample_taxa = sorted(sample_taxa_abundance.items(), key=lambda x: x[1], reverse=True)[:9]
-                    
-                    rel_abundances = []
-                    taxon_names = []
-                    for taxon_name, abundance in top_sample_taxa:
-                        rel_abundances.append(abundance / total_sample * 100)
-                        taxon_names.append(taxon_name)
-                    
-                    top_total = sum(ab for _, ab in top_sample_taxa)
-                    others_abundance = (total_sample - top_total) / total_sample * 100
-                    if others_abundance > 0:
-                        rel_abundances.append(others_abundance)
-                        taxon_names.append("Others")
-                    
-                    file_id = simple_names[i] if i < len(simple_names) else f"File_{i+1}"
-                    sample_compositions[file_id] = {
-                        'taxa': taxon_names,
-                        'abundances': rel_abundances
+                    sample_rel_abundance[col] = {
+                        taxon_list[idx]: (sample_values.iloc[idx] / total_sample * 100)
+                        for idx in range(len(taxon_list))
+                        if sample_values.iloc[idx] > 0
                     }
+                else:
+                    sample_rel_abundance[col] = {}
+
+            # Peak relative abundance each taxon reaches in any single sample
+            peak_abundance = {}
+            for pct_map in sample_rel_abundance.values():
+                for taxon, pct in pct_map.items():
+                    if pct > peak_abundance.get(taxon, 0):
+                        peak_abundance[taxon] = pct
+
+            qualifying_taxa = [t for t, peak in peak_abundance.items() if peak >= RELATIVE_ABUNDANCE_THRESHOLD]
+            qualifying_taxa.sort(key=lambda t: peak_abundance[t], reverse=True)
+            colored_taxa = qualifying_taxa[:MAX_COLORED_TAXA]
+
+            sample_compositions = {}
+            for i, col in enumerate(intensity_cols):
+                if sample_totals[col] <= 0:
+                    continue
+                pct_map = sample_rel_abundance[col]
+                top_values = {t: pct_map.get(t, 0) for t in colored_taxa}
+                others_pct = max(0.0, 100 - sum(top_values.values()))
+                file_id = simple_names[i] if i < len(simple_names) else f"File_{i+1}"
+                sample_compositions[file_id] = {'values': top_values, 'others': others_pct}
 
             if sample_compositions:
                 sample_names_list = list(sample_compositions.keys())
-                all_taxa = set()
-                for comp in sample_compositions.values():
-                    all_taxa.update(comp['taxa'])
-                all_taxa = list(all_taxa)
 
+                # 20-color qualitative palette (D3/Tableau "tab20"), one fixed color
+                # per colored taxon - large enough to cover MAX_COLORED_TAXA without
+                # ever wrapping/reusing a color within a single chart.
                 color_palette = [
-                    '#B5BD00', '#8ED1FC', '#FF6B6B', '#4ECDC4', '#45B7D1',
-                    '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F'
+                    '#1f77b4', '#aec7e8', '#ff7f0e', '#ffbb78', '#2ca02c',
+                    '#98df8a', '#d62728', '#ff9896', '#9467bd', '#c5b0d5',
+                    '#8c564b', '#c49c94', '#e377c2', '#f7b6d2', '#7f7f7f',
+                    '#c7c7c7', '#bcbd22', '#dbdb8d', '#17becf', '#9edae5'
                 ]
+                others_color = '#B0B0B0'
 
-                for idx, taxon in enumerate(all_taxa):
-                    abundances = []
-                    for sample_name in sample_names_list:
-                        if taxon in sample_compositions[sample_name]['taxa']:
-                            taxon_idx = sample_compositions[sample_name]['taxa'].index(taxon)
-                            abundances.append(sample_compositions[sample_name]['abundances'][taxon_idx])
-                        else:
-                            abundances.append(0)
-                    
+                for idx, taxon in enumerate(colored_taxa):
+                    abundances = [sample_compositions[s]['values'][taxon] for s in sample_names_list]
                     fig.add_trace(
                         go.Bar(
                             x=sample_names_list,
@@ -405,7 +420,22 @@ class TaxonomySummaryGenerator(BaseReportGenerator):
                         row=current_row,
                         col=1
                     )
-                
+
+                others_abundances = [sample_compositions[s]['others'] for s in sample_names_list]
+                if any(v > 0 for v in others_abundances):
+                    fig.add_trace(
+                        go.Bar(
+                            x=sample_names_list,
+                            y=others_abundances,
+                            name='Others',
+                            marker_color=others_color,
+                            showlegend=False,
+                            hovertemplate='<b>Others</b><br>Sample: %{x}<br>Abundance: %{y:.1f}%<extra></extra>'
+                        ),
+                        row=current_row,
+                        col=1
+                    )
+
                 # Constrain y-axis to [0, 100] for percentage display
                 fig.update_yaxes(range=[0, 100], row=current_row, col=1)
             else:

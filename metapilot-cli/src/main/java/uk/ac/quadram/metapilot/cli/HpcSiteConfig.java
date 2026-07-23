@@ -88,8 +88,10 @@ final class HpcSiteConfig {
         out.put("SYSTEM", "linux");
         out.put("RESOURCE_AUTO_DETECTED", "true");
         out.put("BASE_PATH", "~/tools");
+        out.put("JAVA_MODE", "which");
         out.put("JAVA", "java");
-        out.put("PYTHON", "python");
+        out.put("PYTHON_MODE", "which");
+        out.put("PYTHON", "python3,python");
         out.put("DIANN_MODE", "path");
         out.put("DIANN", "~/tools/diann-2.5.0/diann-linux");
         out.put("FRAGPIPE_MODE", "path");

@@ -3,5 +3,5 @@ Created-By: MetaPilot Build System
 Build-Jdk-Spec: 17
 Main-Class: uk.ac.quadram.metapilot.MetaPilotApp
 Implementation-Title: MetaPilot
-Implementation-Version: 1.0.0
+Implementation-Version: 1.1.0
 

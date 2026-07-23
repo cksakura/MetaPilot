@@ -878,6 +878,10 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
             
             // Set MAG-specific fields
             analysisParams.setMagDbCatalogueId(microDb);
+            if (selectedMagDb != null && selectedMagDb.getIdentifier() != null
+                    && !selectedMagDb.getIdentifier().isBlank()) {
+                analysisParams.setMagDbIdentifier(selectedMagDb.getIdentifier());
+            }
             if (selectedVersion != null) {
                 analysisParams.setMagDbVersion(selectedVersion.getCatalogueVersion());
             } else if (selectedMagDb != null && selectedMagDb.getVersionList() != null && !selectedMagDb.getVersionList().isEmpty()) {

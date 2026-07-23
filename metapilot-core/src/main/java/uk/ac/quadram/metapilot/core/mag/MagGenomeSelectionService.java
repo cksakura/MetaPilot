@@ -75,7 +75,7 @@ public final class MagGenomeSelectionService {
 
         HashSet<String> genomeSet = new HashSet<>();
         boolean useMarker4 = MagDbItem.MARKER4.equalsIgnoreCase(request.genomeSelectorMode);
-        SelectionResources resources = resolveResources(request, useMarker4);
+        SelectionResources resources = resolveResources(request, useMarker4, cb);
         boolean enableAutoRep = useMarker4;
         if (!psmList.isEmpty()) {
             MarkerGenomeSelector selector = newSelector(request);
@@ -177,7 +177,7 @@ public final class MagGenomeSelectionService {
         return selector;
     }
 
-    private static SelectionResources resolveResources(Request request, boolean useMarker4) throws IOException {
+    private static SelectionResources resolveResources(Request request, boolean useMarker4, ProgressCallback cb) throws IOException {
         if (!useMarker4) {
             return new SelectionResources(null, request.genomesTaxaTsv);
         }
@@ -185,15 +185,31 @@ public final class MagGenomeSelectionService {
         if (current == null) {
             throw new IOException("Marker4 mode requires a resolved MAG DB current folder");
         }
+        File defaultMarkerFasta = new File(current, Marker4ResourcePreparer.MARKER4_FASTA_NAME);
+        File defaultGenomesTaxaTsv = new File(current, Marker4ResourcePreparer.GENOMES_TAXA_TSV_NAME);
         File markerFasta = request.disableMarkerFasta ? null
-                : request.markerFasta != null ? request.markerFasta : new File(current, "Marker4.fasta");
+                : request.markerFasta != null ? request.markerFasta : defaultMarkerFasta;
+        File genomesTaxaTsv = request.genomesTaxaTsv != null ? request.genomesTaxaTsv : defaultGenomesTaxaTsv;
+
+        boolean usesDefaultMarkerFasta = !request.disableMarkerFasta && samePath(markerFasta, defaultMarkerFasta);
+        boolean usesDefaultGenomesTaxa = samePath(genomesTaxaTsv, defaultGenomesTaxaTsv);
+        if (usesDefaultMarkerFasta && !hasContent(markerFasta)) {
+            Marker4ResourcePreparer.SelectionResources prepared =
+                    Marker4ResourcePreparer.ensureSelectionResources(request.magDb, cb);
+            markerFasta = prepared.marker4Fasta;
+            if (usesDefaultGenomesTaxa) {
+                genomesTaxaTsv = prepared.genomesTaxaTsv;
+            }
+        } else if (usesDefaultGenomesTaxa) {
+            genomesTaxaTsv = Marker4ResourcePreparer.ensureGenomesTaxaTsv(request.magDb, defaultGenomesTaxaTsv, cb);
+        }
+
         if (!request.disableMarkerFasta && !hasContent(markerFasta) && request.allowMarker4LibraryFallback) {
             File libraryMarkerFasta = request.magDb.getMarker4FastaForLibrary();
             if (hasContent(libraryMarkerFasta)) {
                 markerFasta = libraryMarkerFasta;
             }
         }
-        File genomesTaxaTsv = request.genomesTaxaTsv != null ? request.genomesTaxaTsv : new File(current, "genomes-taxa.tsv");
         if (!request.disableMarkerFasta && !hasContent(markerFasta)) {
             throw new IOException("Marker4 mode requires Marker4.fasta for " + current.getAbsolutePath());
         }
@@ -201,6 +217,13 @@ public final class MagGenomeSelectionService {
             throw new IOException("Marker4 mode requires genomes-taxa.tsv for " + current.getAbsolutePath());
         }
         return new SelectionResources(markerFasta, genomesTaxaTsv);
+    }
+
+    private static boolean samePath(File a, File b) {
+        if (a == null || b == null) {
+            return false;
+        }
+        return a.getAbsoluteFile().equals(b.getAbsoluteFile());
     }
 
     private static final class SelectionResources {

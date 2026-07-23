@@ -18,6 +18,7 @@ import javafx.scene.control.ProgressBar;
 
 import uk.ac.quadram.metapilot.core.dia.DiaDeepProteinMappingService;
 import uk.ac.quadram.metapilot.core.mag.MagGenomeSelectionService;
+import uk.ac.quadram.metapilot.core.mag.Marker4ResourcePreparer;
 import uk.ac.quadram.metapilot.core.runner.DiaMarkerDeepPerFileHeadlessRunner;
 import uk.ac.quadram.metapilot.core.runner.DiaNNNoQuantLibrarySearchService;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNParquetReader;
@@ -148,10 +149,12 @@ public class DiaMarkerDeepPerFileTask extends DiaMarkerCoreTask {
 	}
 
 	private Boolean callDeepPerFileViaCoreRunner() throws Exception {
+		logger.info(getTaskName() + ": starting DEEP_PER_FILE workflow");
 		updateMessage(getTaskName() + " (per raw file)");
 		updateProgress(0, 100);
 		updateSecondaryProgress(ProgressBar.INDETERMINATE_PROGRESS);
 
+		logger.info(getTaskName() + ": preparing report templates");
 		updateMessage(getTaskName() + ": preparing report templates...");
 		updateProgress(1, 100);
 		if (!copyReportTemplatesInBackground()) {
@@ -160,6 +163,7 @@ public class DiaMarkerDeepPerFileTask extends DiaMarkerCoreTask {
 			return false;
 		}
 
+		logger.info(getTaskName() + ": preparing DIA input files");
 		updateMessage(getTaskName() + ": preparing DIA input files...");
 		updateProgress(2, 100);
 		if (!spectraConvert()) {
@@ -181,6 +185,7 @@ public class DiaMarkerDeepPerFileTask extends DiaMarkerCoreTask {
 		File funcDbFile = resolveGuiToolFile(ToolType.FUNCDB);
 
 		try {
+			logger.info(getTaskName() + ": starting per-file Marker/Deep core runner");
 			DiaMarkerDeepPerFileHeadlessRunner.Result result = DiaMarkerDeepPerFileHeadlessRunner.runWithoutPostAnalysis(
 					runnerParams,
 					diannExe,
@@ -188,6 +193,7 @@ public class DiaMarkerDeepPerFileTask extends DiaMarkerCoreTask {
 					createGuiProgressCallback(),
 					condaPrefix,
 					funcDbFile);
+			logger.info(getTaskName() + ": per-file Marker/Deep core runner completed");
 
 			this.resultFolderFile = result.markerDeepDir;
 			this.metaPar.setDbSearchResultFile(result.markerDeepDir);
@@ -197,6 +203,15 @@ public class DiaMarkerDeepPerFileTask extends DiaMarkerCoreTask {
 			this.initialSearchSeparate = false;
 			this.goodDiaFiles = this.diaFiles;
 
+			if (runnerParams.isRepresentativeClusteringDryRun()) {
+				updateProgress(100, 100);
+				updateMessage(getTaskName() + ": grouping dry run completed; clustering reports are ready.");
+				logger.info(getTaskName() + ": grouping dry run completed; skipping combined report export");
+				updateSecondaryProgress(1.0);
+				return true;
+			}
+
+			logger.info(getTaskName() + ": generating combined report");
 			updateMessage(getTaskName() + ": generating combined report...");
 			updateProgress(97, 100);
 			if (!exportReport()) {
@@ -204,9 +219,11 @@ public class DiaMarkerDeepPerFileTask extends DiaMarkerCoreTask {
 				updateSecondaryProgress(0.0);
 				return false;
 			}
+			logger.info(getTaskName() + ": combined report completed");
 
 			updateProgress(100, 100);
 			updateMessage(getTaskName() + ": per-file rounds + global combined completed successfully!");
+			logger.info(getTaskName() + ": per-file rounds + global combined completed successfully");
 			updateSecondaryProgress(1.0);
 			return true;
 		} catch (Exception e) {
@@ -669,6 +686,12 @@ public class DiaMarkerDeepPerFileTask extends DiaMarkerCoreTask {
 		logger.info("Selecting genomes using MarkerGenomeSelector ({} mode)...", mode);
 
 		File currentFile = magDb.getCurrentFile();
+		try {
+			Marker4ResourcePreparer.ensureSelectionResources(magDb, createGuiProgressCallback());
+		} catch (IOException e) {
+			logger.error(getTaskName() + ": failed to prepare Marker4 resources", e);
+			return false;
+		}
 		File markerFasta = new File(currentFile, "Marker4.fasta");
 		File genomesTaxaTsv = new File(currentFile, "genomes-taxa.tsv");
 		if (!markerFasta.exists() || !genomesTaxaTsv.exists()) {

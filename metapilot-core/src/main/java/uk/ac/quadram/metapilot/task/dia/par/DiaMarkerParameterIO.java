@@ -203,6 +203,14 @@ public class DiaMarkerParameterIO extends BaseParameterIO {
 			diaSettings.put("genomes_per_round", params.getGenomesPerRound());
 			diaSettings.put("use_peptide_based_round", params.isUsePeptideBasedRound());
 			diaSettings.put("peptide_detectability_threshold", params.getPeptideDetectabilityThreshold());
+			diaSettings.put("representative_clustering_preset", params.getRepresentativeClusteringPreset());
+			diaSettings.put("representative_peptide_jaccard_threshold",
+					params.getRepresentativePeptideJaccardThreshold());
+			diaSettings.put("representative_peptide_containment_threshold",
+					params.getRepresentativePeptideContainmentThreshold());
+			diaSettings.put("representative_genome_top_n", params.getRepresentativeGenomeTopN());
+			diaSettings.put("representative_min_marker_peptides", params.getRepresentativeMinMarkerPeptides());
+			diaSettings.put("representative_grouping_dry_run", params.isRepresentativeClusteringDryRun());
 
 			// Modification settings
 			diaSettings.put("mExcision", params.isMExcision());
@@ -222,7 +230,13 @@ public class DiaMarkerParameterIO extends BaseParameterIO {
 				magDbSettings.put("identifier", magDbItem.getIdentifier());
 				if (magDbItem.getUsedVersion() != null) {
 					magDbSettings.put("catalogue_version", magDbItem.getUsedVersion().getCatalogueVersion());
+				} else if (params.getMagDbCatalogueVersion() != null && !params.getMagDbCatalogueVersion().isBlank()) {
+					magDbSettings.put("catalogue_version", params.getMagDbCatalogueVersion());
 				}
+			} else {
+				magDbSettings.put("catalogue_id", params.getMicroDb() != null ? params.getMicroDb() : "");
+				magDbSettings.put("identifier", params.getMagDbIdentifier());
+				magDbSettings.put("catalogue_version", params.getMagDbCatalogueVersion());
 			}
 			json.put("mag_database", magDbSettings);
 
@@ -360,15 +374,17 @@ public class DiaMarkerParameterIO extends BaseParameterIO {
 
 			// Load MAG database information and find the MagDbItem (aligned with DIA_SEED)
 			MagDbItem magDbItem = null;
+			String magDbIdentifier = "MGYG";
+			String magDbCatalogueVersion = "";
 			if (json.has("mag_database")) {
 				JSONObject magDbSettings = json.getJSONObject("mag_database");
 				String catalogueId = magDbSettings.optString("catalogue_id", "");
-				String identifier = magDbSettings.optString("identifier", "");
-				String catalogueVersion = magDbSettings.optString("catalogue_version", "");
+				magDbIdentifier = magDbSettings.optString("identifier", magDbIdentifier);
+				magDbCatalogueVersion = magDbSettings.optString("catalogue_version", "");
 				if (!catalogueId.isEmpty()) {
 					try {
 						magDbItem = uk.ac.quadram.metapilot.task.mag.MagDbItemResolver.resolve(
-								catalogueId, identifier, catalogueVersion, null);
+								catalogueId, magDbIdentifier, magDbCatalogueVersion, null);
 					} catch (Exception e) {
 						LOGGER.warn("Failed to load MAG database from config: " + e.getMessage());
 					}
@@ -392,6 +408,12 @@ public class DiaMarkerParameterIO extends BaseParameterIO {
 			boolean usePeptideBasedRound = false;
 			double peptideDetectabilityThreshold = 0.5;
 			int genomesPerRound = 5;
+			String representativeClusteringPreset = MetaParameterDiaMarker.REPRESENTATIVE_CLUSTERING_OFF;
+			double representativePeptideJaccardThreshold = 0.62;
+			double representativePeptideContainmentThreshold = 0.79;
+			int representativeGenomeTopN = 50;
+			int representativeMinMarkerPeptides = 100;
+			boolean representativeClusteringDryRun = false;
 
 			if (json.has("dia_settings")) {
 				JSONObject diaSettings = json.getJSONObject("dia_settings");
@@ -418,11 +440,26 @@ public class DiaMarkerParameterIO extends BaseParameterIO {
 				usePeptideBasedRound = diaSettings.optBoolean("use_peptide_based_round", usePeptideBasedRound);
 				peptideDetectabilityThreshold = diaSettings.optDouble("peptide_detectability_threshold",
 						peptideDetectabilityThreshold);
+				representativeClusteringPreset = diaSettings.optString("representative_clustering_preset",
+						representativeClusteringPreset);
+				representativePeptideJaccardThreshold = diaSettings.optDouble(
+						"representative_peptide_jaccard_threshold", representativePeptideJaccardThreshold);
+				representativePeptideContainmentThreshold = diaSettings.optDouble(
+						"representative_peptide_containment_threshold", representativePeptideContainmentThreshold);
+				representativeGenomeTopN = diaSettings.optInt("representative_genome_top_n", representativeGenomeTopN);
+				representativeMinMarkerPeptides = diaSettings.optInt("representative_min_marker_peptides",
+						representativeMinMarkerPeptides);
+				representativeClusteringDryRun = diaSettings.optBoolean("representative_grouping_dry_run",
+						diaSettings.optBoolean("representative_clustering_dry_run", representativeClusteringDryRun));
 			}
 
 			// Create MetaParameterDiaMarker (no self model / external models for now)
 			MetaParameterDiaMarker params = new MetaParameterDiaMarker(metaBasePar, magDbItem, librarySearch,
 					false, library, false, new String[0]);
+
+			// Preserve registry identity even when MagDbItem resolve failed (HPC site registry may differ)
+			params.setMagDbIdentifier(magDbIdentifier);
+			params.setMagDbCatalogueVersion(magDbCatalogueVersion);
 
 			// Apply marker-specific settings
 			params.setMarkerMode(markerMode);
@@ -437,6 +474,15 @@ public class DiaMarkerParameterIO extends BaseParameterIO {
 			params.setKGG(kGG);
 			params.setUsePeptideBasedRound(usePeptideBasedRound);
 			params.setPeptideDetectabilityThreshold(peptideDetectabilityThreshold);
+			params.setRepresentativeClusteringPreset(representativeClusteringPreset);
+			if (MetaParameterDiaMarker.REPRESENTATIVE_CLUSTERING_CUSTOM
+					.equalsIgnoreCase(params.getRepresentativeClusteringPreset())) {
+				params.setRepresentativePeptideJaccardThreshold(representativePeptideJaccardThreshold);
+				params.setRepresentativePeptideContainmentThreshold(representativePeptideContainmentThreshold);
+			}
+			params.setRepresentativeGenomeTopN(representativeGenomeTopN);
+			params.setRepresentativeMinMarkerPeptides(representativeMinMarkerPeptides);
+			params.setRepresentativeClusteringDryRun(representativeClusteringDryRun);
 
 			return params;
 

@@ -95,14 +95,17 @@ public final class DeepIterativeCommonSupport {
 	private DeepIterativeCommonSupport() {
 	}
 
+	/** Default per-task RAM budget for concurrent DIA-NN workers. */
+	public static final long DEFAULT_DIANN_RAM_PER_TASK_GB = 30L;
+
 	/**
-	 * Max concurrent DIA-NN tasks based on system RAM: totalRAM_GB / 16.
-	 * Each DIA-NN instance uses ~16 GB; this limits parallel tasks to avoid OOM.
+	 * Max concurrent DIA-NN tasks based on system RAM: totalRAM_GB / 30.
+	 * Each DIA-NN instance is budgeted at ~30 GB; this limits parallel tasks to avoid OOM.
 	 */
 	public static int computeMaxConcurrentTasks() {
 		long totalMemoryGB = ((OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean())
 				.getTotalMemorySize() / 1024 / 1024 / 1024;
-		int maxTasks = (int) (totalMemoryGB / 16);
+		int maxTasks = (int) (totalMemoryGB / DEFAULT_DIANN_RAM_PER_TASK_GB);
 		return Math.max(maxTasks, 1);
 	}
 
@@ -110,10 +113,10 @@ public final class DeepIterativeCommonSupport {
 	 * Pool size for DEEP_PER_FILE-style parallel per-raw-file processing.
 	 * <p>
 	 * A full per-file Deep Marker workflow (marker search + many iterative rounds)
-	 * uses substantially more peak memory than a single DIA-NN search. We budget
-	 * 32 GB per concurrent per-file task: pool = totalRAM_GB / 32.
+	 * runs DIA-NN workers with a 30 GB per-task budget:
+	 * pool = totalRAM_GB / 30.
 	 * <p>
-	 * If total RAM is below 32 GB, we fall back to sequential processing (pool = 1).
+	 * If total RAM is below 30 GB, we fall back to sequential processing (pool = 1).
 	 * The pool is also capped by the number of files to process.
 	 *
 	 * @param fileCount number of raw files in this run; pool size will not exceed this
@@ -128,10 +131,10 @@ public final class DeepIterativeCommonSupport {
 			return 1;
 		}
 		int n;
-		if (totalMemoryGB < 32L) {
+		if (totalMemoryGB < DEFAULT_DIANN_RAM_PER_TASK_GB) {
 			n = 1;
 		} else {
-			n = (int) (totalMemoryGB / 32L);
+			n = (int) (totalMemoryGB / DEFAULT_DIANN_RAM_PER_TASK_GB);
 		}
 		n = Math.max(1, n);
 		if (fileCount > 0) {
@@ -142,10 +145,8 @@ public final class DeepIterativeCommonSupport {
 
 	// ---------------------- HPC-aware pool sizing ----------------------
 
-	/** Default conservative per-task RAM budget on HPC. Higher than the GUI default (32 GB) because
-	 *  HPC OOM-kills the job if any worker exceeds the cgroup limit, and DEEP_PER_FILE peaks can
-	 *  exceed 32 GB on large MAG libraries. Override with METAPILOT_DEEP_PER_FILE_RAM_PER_TASK_GB. */
-	public static final long DEFAULT_HPC_RAM_PER_TASK_GB = 64L;
+	/** Default per-task RAM budget on HPC. Override with METAPILOT_DEEP_PER_FILE_RAM_PER_TASK_GB. */
+	public static final long DEFAULT_HPC_RAM_PER_TASK_GB = DEFAULT_DIANN_RAM_PER_TASK_GB;
 
 	/** Minimum DIA-NN threads per per-file worker. Pool is capped so each worker keeps at least this many. */
 	public static final int MIN_THREADS_PER_TASK = 4;
@@ -191,7 +192,7 @@ public final class DeepIterativeCommonSupport {
 	 * <ol>
 	 *   <li><b>Reads the actual job memory limit</b> (Slurm env, then cgroup v2/v1) instead of node RAM,
 	 *       so the result reflects what your scheduler will actually let you use.</li>
-	 *   <li><b>Uses a larger per-task RAM budget</b> ({@value #DEFAULT_HPC_RAM_PER_TASK_GB} GB by default,
+	 *   <li><b>Uses the DIA-NN per-task RAM budget</b> ({@value #DEFAULT_HPC_RAM_PER_TASK_GB} GB by default,
 	 *       configurable via {@code METAPILOT_DEEP_PER_FILE_RAM_PER_TASK_GB} or system property
 	 *       {@code metapilot.deep_per_file.ram_per_task_gb}) since HPC OOM-kills oversubscribed jobs.</li>
 	 *   <li><b>Caps by CPU as well as RAM</b> so each worker keeps at least

@@ -52,12 +52,12 @@ class IDSummaryGenerator(BaseReportGenerator):
             sample_names = raw_sample_names
             if metadata is not None and len(raw_sample_names) > 0:
                 try:
-                    # Create mapping from raw file names to experiment names
+                    # Create mapping from raw file names to experiment (source) names
                     raw_to_exp = {}
-                    if 'Raw' in metadata.columns and 'Experiment' in metadata.columns:
+                    if 'comment[data file]' in metadata.columns and 'source name' in metadata.columns:
                         for _, row in metadata.iterrows():
-                            raw_name = row['Raw']
-                            exp_name = row['Experiment']
+                            raw_name = row['comment[data file]']
+                            exp_name = row['source name']
                             raw_to_exp[raw_name] = exp_name
                     
                     # Map sample names to experiment names
@@ -176,15 +176,19 @@ class IDSummaryGenerator(BaseReportGenerator):
             group_colors = None
             if metadata is not None:
                 try:
-                    sample_col = 'Sample' if 'Sample' in metadata.columns else metadata.columns[0]
-                    group_col = 'Group' if 'Group' in metadata.columns else None
-                    
+                    sample_col = 'source name' if 'source name' in metadata.columns else metadata.columns[0]
+                    if 'factor value[condition]' in metadata.columns:
+                        group_col = 'factor value[condition]'
+                    elif 'characteristics[condition]' in metadata.columns:
+                        group_col = 'characteristics[condition]'
+                    else:
+                        group_col = None
+
                     if group_col:
                         sample_groups = dict(zip(metadata[sample_col], metadata[group_col]))
                         groups = [sample_groups.get(sample, 'Unknown') for sample in sample_names]
                         unique_groups = list(set(groups))
-                        group_colors = {group: self.group_colors[i % len(self.group_colors)] 
-                                      for i, group in enumerate(unique_groups)}
+                        group_colors = self._assign_group_colors(unique_groups)
                 except:
                     pass
             

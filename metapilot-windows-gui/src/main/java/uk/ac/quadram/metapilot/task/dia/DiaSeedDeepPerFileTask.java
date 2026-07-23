@@ -18,6 +18,7 @@ import javafx.scene.control.ProgressBar;
 import uk.ac.quadram.metapilot.core.dia.DiaDeepProteinMappingService;
 import uk.ac.quadram.metapilot.core.dia.MagPredictedPeptideProteinMapper;
 import uk.ac.quadram.metapilot.core.mag.MagGenomeSelectionService;
+import uk.ac.quadram.metapilot.core.mag.Marker4ResourcePreparer;
 import uk.ac.quadram.metapilot.core.runner.DiaNNNoQuantLibrarySearchService;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNParquetReader;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNPrecursor;
@@ -181,6 +182,12 @@ public class DiaSeedDeepPerFileTask extends DiaSeedCoreTask {
 			return false;
 		}
 
+		try {
+			Marker4ResourcePreparer.ensureSelectionResources(magDb, createGuiProgressCallback());
+		} catch (IOException e) {
+			logger.error(getTaskName() + ": failed to prepare Marker4 resources", e);
+			return false;
+		}
 		File markerFasta = new File(magDb.getCurrentFile(), "Marker4.fasta");
 		File genomesTaxaTsv = new File(magDb.getCurrentFile(), "genomes-taxa.tsv");
 		if (!markerFasta.exists() || !genomesTaxaTsv.exists()) {
