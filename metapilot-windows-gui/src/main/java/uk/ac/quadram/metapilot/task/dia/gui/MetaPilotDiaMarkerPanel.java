@@ -51,10 +51,23 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 	private static final String WORKFLOW_COMPREHENSIVE = DiaRefinementMode.COMPREHENSIVE.getDisplayLabel();
 	private static final String WORKFLOW_DEEP = DiaRefinementMode.DEEP_TOGETHER.getDisplayLabel();
 	private static final String WORKFLOW_DEEP_PER_FILE = DiaRefinementMode.DEEP_PER_FILE.getDisplayLabel();
+	private static final String REP_CLUSTER_OFF = "Off";
+	private static final String REP_CLUSTER_CONSERVATIVE = "Conservative";
+	private static final String REP_CLUSTER_BALANCED = "Balanced";
+	private static final String REP_CLUSTER_AGGRESSIVE = "Aggressive";
+	private static final String REP_CLUSTER_CUSTOM = "Custom";
+	// Experimental UI: keep false until representative clustering is ready for release.
+	private static final boolean SHOW_REPRESENTATIVE_CLUSTERING_UI = true;
 
 	// Parameter components
 	private ComboBox<String> workflowModeComboBox;
 	private ComboBox<Integer> threadsComboBox;
+	private ComboBox<String> representativeClusteringComboBox;
+	private TextField representativeJaccardField;
+	private TextField representativeContainmentField;
+	private CheckBox representativeDryRunCheckBox;
+	private VBox representativeClusteringBox;
+	private VBox representativeCustomThresholdBox;
 	private Label marker4StatusLabel;
 
 	// Modification checkboxes (from DiannParameter lines 28-33)
@@ -241,7 +254,10 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 		workflowModeComboBox.setMinWidth(160);
 		workflowModeComboBox.setPrefWidth(200);
 		workflowModeComboBox.setValue(WORKFLOW_FOCUS);
-		workflowModeComboBox.setOnAction(e -> updateParameterView());
+		workflowModeComboBox.setOnAction(e -> {
+			updateRepresentativeClusteringAvailability();
+			updateParameterView();
+		});
 		Tooltip workflowTooltip = new Tooltip(
 				"Core / Focus: knee-based genome selection with a compact set of genomes.\n"
 				+ "Comprehensive: more inclusive genome set using comprehensive knee mode.\n"
@@ -250,7 +266,54 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 		workflowModeComboBox.setTooltip(workflowTooltip);
 		VBox workflowBox = new VBox(5);
 		workflowBox.getChildren().addAll(workflowLabel, workflowModeComboBox);
-		section.getChildren().addAll(titleLabel, workflowBox);
+
+		Label representativeClusteringLabel = new Label("Deep per-file clustering:");
+		representativeClusteringLabel.setStyle("-fx-font-weight: bold;");
+		representativeClusteringComboBox = new ComboBox<>(FXCollections.observableArrayList(
+				REP_CLUSTER_OFF, REP_CLUSTER_CONSERVATIVE, REP_CLUSTER_BALANCED, REP_CLUSTER_AGGRESSIVE,
+				REP_CLUSTER_CUSTOM));
+		representativeClusteringComboBox.setMinWidth(160);
+		representativeClusteringComboBox.setPrefWidth(180);
+		representativeClusteringComboBox.setValue(REP_CLUSTER_OFF);
+		representativeClusteringComboBox.setOnAction(e -> {
+			updateRepresentativeClusteringAvailability();
+			updateParameterView();
+		});
+		representativeClusteringComboBox.setTooltip(new Tooltip(
+				"Optional speed-up for large Deep per file cohorts.\n"
+				+ "Similar raw files are clustered after Marker4 search; only representative files run iterative rounds.\n"
+				+ "Off keeps the original Deep per file strategy."));
+
+		representativeJaccardField = new TextField("0.60");
+		representativeJaccardField.setPrefWidth(70);
+		representativeJaccardField.setOnAction(e -> updateParameterView());
+		representativeJaccardField.focusedProperty().addListener((obs, oldValue, newValue) -> {
+			if (!newValue) updateParameterView();
+		});
+		representativeContainmentField = new TextField("0.78");
+		representativeContainmentField.setPrefWidth(70);
+		representativeContainmentField.setOnAction(e -> updateParameterView());
+		representativeContainmentField.focusedProperty().addListener((obs, oldValue, newValue) -> {
+			if (!newValue) updateParameterView();
+		});
+		HBox customThresholdRow = new HBox(8);
+		customThresholdRow.getChildren().addAll(
+				new Label("Jaccard:"), representativeJaccardField,
+				new Label("Containment:"), representativeContainmentField);
+		representativeCustomThresholdBox = new VBox(4);
+		representativeCustomThresholdBox.getChildren().add(customThresholdRow);
+
+		representativeDryRunCheckBox = new CheckBox("Grouping dry run");
+		representativeDryRunCheckBox.setTooltip(new Tooltip(
+				"Run initial Marker searches and write clustering reports, then stop before iterative search."));
+		representativeDryRunCheckBox.setOnAction(e -> updateParameterView());
+
+		representativeClusteringBox = new VBox(5);
+		representativeClusteringBox.getChildren().addAll(representativeClusteringLabel,
+				representativeClusteringComboBox, representativeCustomThresholdBox, representativeDryRunCheckBox);
+		updateRepresentativeClusteringAvailability();
+
+		section.getChildren().addAll(titleLabel, workflowBox, representativeClusteringBox);
 		return section;
 	}
 
@@ -430,11 +493,63 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 		metadataPanel.updateMetadataFromIOPanel(experiments);
 	}
 
+	private void updateRepresentativeClusteringAvailability() {
+		if (representativeClusteringComboBox == null) {
+			return;
+		}
+		if (representativeClusteringBox != null) {
+			representativeClusteringBox.setVisible(SHOW_REPRESENTATIVE_CLUSTERING_UI);
+			representativeClusteringBox.setManaged(SHOW_REPRESENTATIVE_CLUSTERING_UI);
+		}
+		if (!SHOW_REPRESENTATIVE_CLUSTERING_UI) {
+			representativeClusteringComboBox.setValue(REP_CLUSTER_OFF);
+			representativeClusteringComboBox.setDisable(true);
+			if (representativeCustomThresholdBox != null) {
+				representativeCustomThresholdBox.setVisible(false);
+				representativeCustomThresholdBox.setManaged(false);
+				representativeCustomThresholdBox.setDisable(true);
+			}
+			if (representativeDryRunCheckBox != null) {
+				representativeDryRunCheckBox.setSelected(false);
+				representativeDryRunCheckBox.setVisible(false);
+				representativeDryRunCheckBox.setManaged(false);
+				representativeDryRunCheckBox.setDisable(true);
+			}
+			return;
+		}
+		boolean deepPerFile = workflowModeComboBox != null
+				&& WORKFLOW_DEEP_PER_FILE.equals(workflowModeComboBox.getValue());
+		representativeClusteringComboBox.setDisable(!deepPerFile);
+		if (!deepPerFile) {
+			representativeClusteringComboBox.setValue(REP_CLUSTER_OFF);
+			if (representativeDryRunCheckBox != null) {
+				representativeDryRunCheckBox.setSelected(false);
+			}
+		}
+		String preset = representativeClusteringComboBox.getValue();
+		boolean clusteringEnabled = deepPerFile && preset != null && !REP_CLUSTER_OFF.equals(preset);
+		boolean customEnabled = clusteringEnabled && REP_CLUSTER_CUSTOM.equals(preset);
+		if (representativeCustomThresholdBox != null) {
+			representativeCustomThresholdBox.setVisible(customEnabled);
+			representativeCustomThresholdBox.setManaged(customEnabled);
+			representativeCustomThresholdBox.setDisable(!customEnabled);
+		}
+		if (representativeDryRunCheckBox != null) {
+			if (!clusteringEnabled) {
+				representativeDryRunCheckBox.setSelected(false);
+			}
+			representativeDryRunCheckBox.setVisible(clusteringEnabled);
+			representativeDryRunCheckBox.setManaged(clusteringEnabled);
+			representativeDryRunCheckBox.setDisable(!clusteringEnabled);
+		}
+	}
+
 	@Override
 	protected void updateParameterView() {
 		if (consolePanel == null) {
 			return;
 		}
+		updateRepresentativeClusteringAvailability();
 		StringBuilder sb = new StringBuilder();
 		sb.append("=== Analysis Parameters ===\n\n");
 
@@ -467,6 +582,21 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 		sb.append("Performance Settings:\n");
 		if (threadsComboBox != null) {
 			sb.append("  Threads: ").append(threadsComboBox.getValue()).append("\n");
+		}
+		if (SHOW_REPRESENTATIVE_CLUSTERING_UI && representativeClusteringComboBox != null) {
+			sb.append("  Deep per-file clustering: ")
+					.append(representativeClusteringComboBox.getValue()).append("\n");
+			if (REP_CLUSTER_CUSTOM.equals(representativeClusteringComboBox.getValue())) {
+				sb.append("  Clustering Jaccard threshold: ")
+						.append(representativeJaccardField != null ? representativeJaccardField.getText() : "")
+						.append("\n");
+				sb.append("  Clustering containment threshold: ")
+						.append(representativeContainmentField != null ? representativeContainmentField.getText() : "")
+						.append("\n");
+			}
+			if (representativeDryRunCheckBox != null && representativeDryRunCheckBox.isVisible()) {
+				sb.append("  Grouping dry run: ").append(representativeDryRunCheckBox.isSelected()).append("\n");
+			}
 		}
 		sb.append("\n");
 
@@ -600,6 +730,7 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 					? workflowModeComboBox.getValue()
 					: WORKFLOW_FOCUS;
 			params.setMarkerRefinementMode(DiaRefinementMode.fromDisplayLabel(workflow, DiaRefinementMode.CORE));
+			applyRepresentativeClusteringFromUI(params);
 
 			// Collect metadata
 			if (metadataPanel != null) {
@@ -717,6 +848,7 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 					? workflowModeComboBox.getValue()
 					: WORKFLOW_FOCUS;
 			params.setMarkerRefinementMode(DiaRefinementMode.fromDisplayLabel(workflow, DiaRefinementMode.CORE));
+			applyRepresentativeClusteringFromUI(params);
 
 			return params;
 		} catch (Exception e) {
@@ -748,6 +880,19 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 		if (selectedMagDb == null) {
 			showError("Validation Error", "Please select a MAG database");
 			return false;
+		}
+
+		if (SHOW_REPRESENTATIVE_CLUSTERING_UI
+				&& workflowModeComboBox != null && WORKFLOW_DEEP_PER_FILE.equals(workflowModeComboBox.getValue())
+				&& representativeClusteringComboBox != null
+				&& REP_CLUSTER_CUSTOM.equals(representativeClusteringComboBox.getValue())) {
+			try {
+				parseThreshold(representativeJaccardField, "representative peptide Jaccard threshold");
+				parseThreshold(representativeContainmentField, "representative peptide containment threshold");
+			} catch (IllegalArgumentException e) {
+				showError("Validation Error", e.getMessage());
+				return false;
+			}
 		}
 
 		// Marker4 files are generated automatically by the task when missing
@@ -864,6 +1009,92 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 				workflowModeComboBox.setValue(WORKFLOW_FOCUS);
 			}
 		}
+		if (representativeClusteringComboBox != null) {
+			representativeClusteringComboBox.setValue(representativeClusteringPresetToDisplay(
+					params.getRepresentativeClusteringPreset()));
+		}
+		if (representativeJaccardField != null) {
+			representativeJaccardField.setText(formatThreshold(params.getRepresentativePeptideJaccardThreshold()));
+		}
+		if (representativeContainmentField != null) {
+			representativeContainmentField.setText(formatThreshold(params.getRepresentativePeptideContainmentThreshold()));
+		}
+		if (representativeDryRunCheckBox != null) {
+			representativeDryRunCheckBox.setSelected(params.isRepresentativeClusteringDryRun());
+		}
+		updateRepresentativeClusteringAvailability();
+	}
+
+	private void applyRepresentativeClusteringFromUI(MetaParameterDiaMarker params) {
+		if (params == null) {
+			return;
+		}
+		boolean deepPerFile = workflowModeComboBox != null
+				&& WORKFLOW_DEEP_PER_FILE.equals(workflowModeComboBox.getValue());
+		if (!SHOW_REPRESENTATIVE_CLUSTERING_UI || !deepPerFile || representativeClusteringComboBox == null
+				|| representativeClusteringComboBox.getValue() == null) {
+			params.setRepresentativeClusteringPreset(MetaParameterDiaMarker.REPRESENTATIVE_CLUSTERING_OFF);
+			params.setRepresentativeClusteringDryRun(false);
+			return;
+		}
+		String preset = representativeClusteringDisplayToPreset(representativeClusteringComboBox.getValue());
+		params.setRepresentativeClusteringPreset(preset);
+		if (MetaParameterDiaMarker.REPRESENTATIVE_CLUSTERING_CUSTOM.equals(preset)) {
+			params.setRepresentativePeptideJaccardThreshold(parseThreshold(representativeJaccardField,
+					"representative peptide Jaccard threshold"));
+			params.setRepresentativePeptideContainmentThreshold(parseThreshold(representativeContainmentField,
+					"representative peptide containment threshold"));
+		}
+		params.setRepresentativeClusteringDryRun(representativeDryRunCheckBox != null
+				&& representativeDryRunCheckBox.isVisible()
+				&& representativeDryRunCheckBox.isSelected());
+	}
+
+	private String representativeClusteringDisplayToPreset(String value) {
+		if (REP_CLUSTER_CONSERVATIVE.equals(value)) {
+			return MetaParameterDiaMarker.REPRESENTATIVE_CLUSTERING_CONSERVATIVE;
+		}
+		if (REP_CLUSTER_BALANCED.equals(value)) {
+			return MetaParameterDiaMarker.REPRESENTATIVE_CLUSTERING_BALANCED;
+		}
+		if (REP_CLUSTER_AGGRESSIVE.equals(value)) {
+			return MetaParameterDiaMarker.REPRESENTATIVE_CLUSTERING_AGGRESSIVE;
+		}
+		if (REP_CLUSTER_CUSTOM.equals(value)) {
+			return MetaParameterDiaMarker.REPRESENTATIVE_CLUSTERING_CUSTOM;
+		}
+		return MetaParameterDiaMarker.REPRESENTATIVE_CLUSTERING_OFF;
+	}
+
+	private String representativeClusteringPresetToDisplay(String preset) {
+		if (MetaParameterDiaMarker.REPRESENTATIVE_CLUSTERING_CONSERVATIVE.equalsIgnoreCase(preset)) {
+			return REP_CLUSTER_CONSERVATIVE;
+		}
+		if (MetaParameterDiaMarker.REPRESENTATIVE_CLUSTERING_BALANCED.equalsIgnoreCase(preset)) {
+			return REP_CLUSTER_BALANCED;
+		}
+		if (MetaParameterDiaMarker.REPRESENTATIVE_CLUSTERING_AGGRESSIVE.equalsIgnoreCase(preset)) {
+			return REP_CLUSTER_AGGRESSIVE;
+		}
+		if (MetaParameterDiaMarker.REPRESENTATIVE_CLUSTERING_CUSTOM.equalsIgnoreCase(preset)) {
+			return REP_CLUSTER_CUSTOM;
+		}
+		return REP_CLUSTER_OFF;
+	}
+
+	private double parseThreshold(TextField field, String label) {
+		if (field == null || field.getText() == null || field.getText().trim().isEmpty()) {
+			throw new IllegalArgumentException("Missing " + label);
+		}
+		double value = Double.parseDouble(field.getText().trim());
+		if (value <= 0.0 || value > 1.0) {
+			throw new IllegalArgumentException(label + " must be > 0 and <= 1");
+		}
+		return value;
+	}
+
+	private String formatThreshold(double value) {
+		return String.format(java.util.Locale.ROOT, "%.2f", value);
 	}
 
 	@Override

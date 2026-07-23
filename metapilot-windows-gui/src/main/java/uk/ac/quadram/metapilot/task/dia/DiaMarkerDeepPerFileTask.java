@@ -18,6 +18,7 @@ import javafx.scene.control.ProgressBar;
 
 import uk.ac.quadram.metapilot.core.dia.DiaDeepProteinMappingService;
 import uk.ac.quadram.metapilot.core.mag.MagGenomeSelectionService;
+import uk.ac.quadram.metapilot.core.mag.Marker4ResourcePreparer;
 import uk.ac.quadram.metapilot.core.runner.DiaMarkerDeepPerFileHeadlessRunner;
 import uk.ac.quadram.metapilot.core.runner.DiaNNNoQuantLibrarySearchService;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNParquetReader;
@@ -201,6 +202,14 @@ public class DiaMarkerDeepPerFileTask extends DiaMarkerCoreTask {
 			this.quan_pro_file = result.pgMatrixTsv;
 			this.initialSearchSeparate = false;
 			this.goodDiaFiles = this.diaFiles;
+
+			if (runnerParams.isRepresentativeClusteringDryRun()) {
+				updateProgress(100, 100);
+				updateMessage(getTaskName() + ": grouping dry run completed; clustering reports are ready.");
+				logger.info(getTaskName() + ": grouping dry run completed; skipping combined report export");
+				updateSecondaryProgress(1.0);
+				return true;
+			}
 
 			logger.info(getTaskName() + ": generating combined report");
 			updateMessage(getTaskName() + ": generating combined report...");
@@ -677,6 +686,12 @@ public class DiaMarkerDeepPerFileTask extends DiaMarkerCoreTask {
 		logger.info("Selecting genomes using MarkerGenomeSelector ({} mode)...", mode);
 
 		File currentFile = magDb.getCurrentFile();
+		try {
+			Marker4ResourcePreparer.ensureSelectionResources(magDb, createGuiProgressCallback());
+		} catch (IOException e) {
+			logger.error(getTaskName() + ": failed to prepare Marker4 resources", e);
+			return false;
+		}
 		File markerFasta = new File(currentFile, "Marker4.fasta");
 		File genomesTaxaTsv = new File(currentFile, "genomes-taxa.tsv");
 		if (!markerFasta.exists() || !genomesTaxaTsv.exists()) {

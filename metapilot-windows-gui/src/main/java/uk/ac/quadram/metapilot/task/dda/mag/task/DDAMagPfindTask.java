@@ -38,6 +38,7 @@ import uk.ac.quadram.metapilot.quant.flashLFQ.FlashLfqPsm;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.task.dda.PFindSpectraConvertTask;
+import uk.ac.quadram.metapilot.core.mag.MagResultLayoutUtil;
 import uk.ac.quadram.metapilot.task.io.par.MetaOpenPar;
 import uk.ac.quadram.metapilot.task.mag.MetaPilotMagTask;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
@@ -69,6 +70,18 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 	private static final String taskName = "DDA MAG database search by pFind workflow";
 	private static final String MARKER_SEARCH_DIR = "marker";
 	private static final String SAMPLE_DB_SEARCH_DIR = "sample_db";
+
+	/**
+	 * pFind is the first DDA MAG engine to use the nested
+	 * {@code search_results/<sample>/} layout instead of writing sample
+	 * folders directly under the workflow result root. See
+	 * {@link MagResultLayoutUtil} for the rationale and the migration of
+	 * pre-existing flat-layout result folders.
+	 */
+	@Override
+	protected boolean useNestedSearchResultsLayout() {
+		return true;
+	}
 
 	public DDAMagPfindTask(DDAMagPfindParameters magPfindParams, MetaResourceParameters mrp, ProgressBar progressBar,
 			ProgressBar secondBar, Label statusLabel) {
@@ -657,23 +670,27 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 					}
 				}
 			}
+			// Registered BEFORE the blocking pFindTask.run() call below (not after -
+			// registering after run() blocks means every result file already exists
+			// by the time WatchService starts watching, so no ENTRY_CREATE events
+			// ever fire and the progress bar never moves during the search). Uses
+			// filesNeedingSearch, not pf2Files.length, as the total so the bar
+			// actually reaches barEnd on a resumed/partial run - matching the
+			// already-correct pattern in DDAMagSageTask's equivalent step.
+			FileFilter filter = new FileFilter() {
+				@Override
+				public boolean accept(File file) {
+					return file.getName().equals("pFind-Filtered.spectra");
+				}
+			};
+			logger.info("Starting WatchService monitoring for marker database search");
+			startWatchServiceLoop(separateResultFolders, MARKER_SEARCH_DIR, filter, filesNeedingSearch, 10, 38);
+
 			logger.info("Starting pFind execution with {} threads", threadPoolCount);
 			pFindTask.run(threadPoolCount, separateResultFolders.length * 12);
 		} else {
 			logger.info("No new searches required, all results already exist");
 		}
-
-		FileFilter filter = new FileFilter() {
-			@Override
-			public boolean accept(File file) {
-				return file.getName().equals("pFind-Filtered.spectra");
-			}
-		};
-
-		// Use the generic WatchServiceLoop from the superclass
-		logger.info("Starting WatchService monitoring for marker database search");
-		int taskCount = this.pf2Files.length; // Calculate taskCount for the WatchService
-		startWatchServiceLoop(separateResultFolders, MARKER_SEARCH_DIR, filter, taskCount, 10, 38);
 
 		logger.info("Verifying search results for {} folders", separateResultFolders.length);
 		for (int i = 0; i < this.separateResultFolders.length; i++) {
@@ -824,6 +841,18 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 			int threadPoolCount = maxTaskCount > taskCount ? taskCount : maxTaskCount;
 			int threadCount = totalThreadCount / threadPoolCount + 1;
 
+			// Registered right before whichever branch's blocking pFindTask.run()
+			// call below actually produces pFind-Filtered.spectra (not after, and
+			// not before dbReducerTask.run() in the DBReducer branch, which
+			// produces a different file and isn't what this watches) - see the
+			// same fix applied to separateSearchMarker() above.
+			FileFilter filter = new FileFilter() {
+				@Override
+				public boolean accept(File file) {
+					return file.getName().equals("pFind-Filtered.spectra");
+				}
+			};
+
 			if (this.useDBReducer) {
 				dbReducerTask = new DBReducerTask(dbReducerExe);
 				dbReducerTask.setTotalThread(threadCount);
@@ -908,6 +937,9 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 					}
 				}
 
+				logger.info("Starting WatchService monitoring for sample-specific database search");
+				startWatchServiceLoop(separateResultFolders, SAMPLE_DB_SEARCH_DIR, filter, taskCount, 40, 68);
+
 				pFindTask.run(threadPoolCount, this.separateResultFolders.length * 12);
 
 			} else {
@@ -948,20 +980,12 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 					}
 				}
 
+				logger.info("Starting WatchService monitoring for sample-specific database search");
+				startWatchServiceLoop(separateResultFolders, SAMPLE_DB_SEARCH_DIR, filter, taskCount, 40, 68);
+
 				pFindTask.run(threadPoolCount, this.separateResultFolders.length * 12);
 			}
 		}
-
-		FileFilter filter = new FileFilter() {
-			@Override
-			public boolean accept(File file) {
-				return file.getName().equals("pFind-Filtered.spectra");
-			}
-		};
-
-		// Use the generic WatchServiceLoop from the superclass
-		logger.info("Starting WatchService monitoring for sample-specific database search");
-		startWatchServiceLoop(separateResultFolders, SAMPLE_DB_SEARCH_DIR, filter, taskCount, 40, 68);
 
 		for (int i = 0; i < this.separateResultFolders.length; i++) {
 			File sampleSearchDir = new File(separateResultFolders[i], SAMPLE_DB_SEARCH_DIR);
@@ -1026,8 +1050,8 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 				magPfindParams.getVariableModifications().toArray(new String[0]), magPfindParams.getEnzyme(),
 				magPfindParams.getMissCleavages(), magPfindParams.getDigestMode(), magPfindParams.getIsobaricTag());
 
-		pFindTask.run(1, 12);
-
+		// Registered BEFORE the blocking pFindTask.run() call below - see the same
+		// fix applied to separateSearchMarker() and separateSearch() above.
 		FileFilter filter = new FileFilter() {
 			@Override
 			public boolean accept(File file) {
@@ -1037,6 +1061,8 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 
 		logger.info("Starting WatchService monitoring for host database search");
 		startWatchServiceLoop(new File[] { hostFolder }, "", filter, 1, 68, 75);
+
+		pFindTask.run(1, 12);
 
 		PFindTask.cleanPFindResultFolder(hostFolder, true);
 
@@ -1310,11 +1336,18 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 						+ ": error in reading the experimental design from " + expDesignFile);
 			}
 		} else {
-			File[] files = magPfindParams.getDbSearchResultFile().listFiles();
-			for (int i = 0; i < files.length; i++) {
-				if (files[i].isDirectory() && !files[i].getName().equals("combined") && (new File(new File(files[i], SAMPLE_DB_SEARCH_DIR), "pFind-Filtered.spectra")).exists()) {
-					fileIdMap.put(files[i].getName(), fileIdMap.size());
-					fileList.add(files[i].getName());
+			// pFind uses the nested search_results/<sample>/ layout (see
+			// MagResultLayoutUtil / useNestedSearchResultsLayout()); scan sample
+			// folders there rather than directly under the result root.
+			File searchResultsDir = new File(magPfindParams.getDbSearchResultFile(),
+					MagResultLayoutUtil.SEARCH_RESULTS_DIR_NAME);
+			File[] files = searchResultsDir.listFiles();
+			if (files != null) {
+				for (int i = 0; i < files.length; i++) {
+					if (files[i].isDirectory() && !files[i].getName().equals("combined") && (new File(new File(files[i], SAMPLE_DB_SEARCH_DIR), "pFind-Filtered.spectra")).exists()) {
+						fileIdMap.put(files[i].getName(), fileIdMap.size());
+						fileList.add(files[i].getName());
+					}
 				}
 			}
 		}
@@ -1370,6 +1403,17 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 		// Create and execute the post-analysis task directly
 		DDAMagPostAnalysisTask postAnalysisTask = new DDAMagPostAnalysisTask(metaPar, mrp, secondBar, quanPeps, psms,
 				fileIdMap, fileList, quanMode, intensityTitle, getTaskName(), PFindResultReader.REV, this);
+
+		// Forward the post-analysis task's own genuine progress (already bound to
+		// secondBar) into the main progress bar too, mapped into the 85-100 range
+		// this step covers - otherwise the main bar sits frozen at 85 for the
+		// entire, potentially long, post-analysis + report-generation duration.
+		postAnalysisTask.progressProperty().addListener((obs, oldVal, newVal) -> {
+			double p = newVal == null ? 0 : newVal.doubleValue();
+			if (p >= 0) {
+				updateProgress(85 + p * 15, 100);
+			}
+		});
 		
 		// Execute the task and wait for completion
 		Thread taskThread = new Thread(postAnalysisTask);

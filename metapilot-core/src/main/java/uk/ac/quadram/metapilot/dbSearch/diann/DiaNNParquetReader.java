@@ -35,6 +35,8 @@ import org.apache.parquet.schema.Type;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import uk.ac.quadram.metapilot.core.aminoacid.AminoAcidProperty;
+
 public class DiaNNParquetReader {
 
 	private static final Logger LOGGER = LogManager.getLogger(DiaNNParquetReader.class);
@@ -321,6 +323,11 @@ public class DiaNNParquetReader {
 					}
 					double precursorMz = group.getFloat("Precursor.Mz", 0);
 					int charge = (int) group.getLong("Precursor.Charge", 0);
+					// Precursor.Mz from DIA-NN is the charge-dependent m/z, not the neutral
+					// peptide mass. Convert to neutral monoisotopic mass: M = (m/z - proton) * z
+					// (same formula used in PixelList.java / PeakSegment.java elsewhere in this
+					// codebase). Without this conversion, the "Mass" field silently held m/z.
+					double mass = charge > 0 ? (precursorMz - AminoAcidProperty.PROTON_W) * charge : precursorMz;
 					double preNormal = group.getFloat("Precursor.Normalised", 0);
 					double preQuan = group.getFloat("Precursor.Quantity", 0);
 					double ms1Normal = group.getFloat("Ms1.Normalised", 0);
@@ -332,7 +339,7 @@ public class DiaNNParquetReader {
 					double globalPGQvalue = group.getFloat("Global.PG.Q.Value", 0);
 					boolean isDecoy = ((int) group.getLong("Decoy", 0)) == 1;
 					DiaNNPrecursor diaNNPrecursor = new DiaNNPrecursor(run, proteins, modSeq, sequence, charge,
-							missCleavage, precursorMz, ms1Normal, qvalue, PEP, globalQ, pgQvalue, globalPGQvalue,
+							missCleavage, mass, ms1Normal, qvalue, PEP, globalQ, pgQvalue, globalPGQvalue,
 							preNormal, preQuan, isDecoy);
 					if (hasMs1Area) {
 						diaNNPrecursor.setMs1Area(ms1Area);

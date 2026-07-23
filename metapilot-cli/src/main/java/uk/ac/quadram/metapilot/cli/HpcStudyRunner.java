@@ -193,15 +193,35 @@ final class HpcStudyRunner {
         }
         MagDbItem mag = params.getMagDbItem();
         if (mag == null && params.getMicroDb() != null && !params.getMicroDb().isBlank()) {
-            mag = MagDbItemResolver.resolve(params.getMicroDb(), "MGYG", null, magdbCfg);
+            mag = MagDbItemResolver.resolve(
+                    params.getMicroDb(),
+                    params.getMagDbIdentifier(),
+                    params.getMagDbCatalogueVersion(),
+                    magdbCfg);
+            if (mag != null) {
+                params.setMagDbItem(mag);
+            }
         }
         if (mag == null) {
             System.err.println("ERROR: MAG database entry could not be resolved from site registry: "
-                    + magdbCfg.getAbsolutePath() + " (micro_db=" + String.valueOf(params.getMicroDb()) + ")");
+                    + magdbCfg.getAbsolutePath()
+                    + " (micro_db=" + String.valueOf(params.getMicroDb())
+                    + ", identifier=" + params.getMagDbIdentifier()
+                    + ", version=" + params.getMagDbCatalogueVersion() + ")");
             return 2;
         }
         System.out.println("OK: DIA_MARKER study parameters validated. marker_mode="
                 + markerMode.getPersistedValue() + " (" + markerMode.getDisplayLabel() + ")");
+        if (markerMode == DiaRefinementMode.DEEP_PER_FILE && params.isRepresentativeClusteringEnabled()) {
+            System.out.println("OK: DEEP_PER_FILE representative clustering enabled. preset="
+                    + params.getRepresentativeClusteringPreset()
+                    + ", peptide_jaccard=" + params.getRepresentativePeptideJaccardThreshold()
+                    + ", peptide_containment=" + params.getRepresentativePeptideContainmentThreshold()
+                    + ", genome_top_n_diagnostic=" + params.getRepresentativeGenomeTopN()
+                    + ", genome_overlap_used_for_clustering=false"
+                    + ", min_marker_peptides=" + params.getRepresentativeMinMarkerPeptides()
+                    + ", grouping_dry_run=" + params.isRepresentativeClusteringDryRun());
+        }
         return 0;
     }
 
@@ -229,12 +249,22 @@ final class HpcStudyRunner {
                     + e.getMessage());
             return 2;
         }
-        MagDbItem mag = MagDbItemResolver.resolve(
-                params.getMagDbCatalogueId(), "MGYG", params.getMagDbVersion(), magdbCfg);
+        MagDbItem mag = params.getMagDbItem();
+        if (mag == null) {
+            mag = MagDbItemResolver.resolve(
+                    params.getMagDbCatalogueId(),
+                    params.getMagDbIdentifier(),
+                    params.getMagDbVersion(),
+                    magdbCfg);
+            if (mag != null) {
+                params.setMagDbItem(mag);
+            }
+        }
         if (mag == null) {
             System.err.println("ERROR: MAG database entry could not be resolved from site registry: "
                     + magdbCfg.getAbsolutePath()
                     + " (catalogue=" + String.valueOf(params.getMagDbCatalogueId())
+                    + ", identifier=" + params.getMagDbIdentifier()
                     + ", version=" + String.valueOf(params.getMagDbVersion()) + ")");
             return 2;
         }

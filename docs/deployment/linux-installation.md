@@ -1,6 +1,6 @@
 # MetaPilot Linux Installation
 
-This guide covers the current Linux/headless setup for MetaPilot `1.0.0`.
+This guide covers the current Linux/headless setup for MetaPilot `1.1.0`.
 
 The canonical Linux entry point is `metapilot-cli`. The Spring Boot `metapilot-web` module is a web/API wrapper that launches a JAR subprocess and should be deployed only when a browser/API front end is needed.
 
@@ -21,7 +21,7 @@ Example layout after extraction:
 
 ```text
 /opt/metapilot/
-  metapilot-cli-1.0.0-shaded.jar
+  metapilot-cli-1.1.0-shaded.jar
   metapilot
   config/
     meta_resources.params.template
@@ -33,13 +33,13 @@ Example layout after extraction:
 ## Initialize Site Configuration
 
 ```bash
-java -jar /opt/metapilot/metapilot-cli-1.0.0-shaded.jar init
+java -jar /opt/metapilot/metapilot-cli-1.1.0-shaded.jar init
 ```
 
 Then set tool paths:
 
 ```bash
-java -jar /opt/metapilot/metapilot-cli-1.0.0-shaded.jar resources-set \
+java -jar /opt/metapilot/metapilot-cli-1.1.0-shaded.jar resources-set \
   --set DIANN=/opt/tools/diann/diann-linux \
   --set FRAGPIPE=/opt/tools/fragpipe-24.0/bin/fragpipe \
   --set FRAGPIPE_TOOLS=/opt/tools/fragpipe-24.0/tools \
@@ -51,7 +51,7 @@ java -jar /opt/metapilot/metapilot-cli-1.0.0-shaded.jar resources-set \
 Validate:
 
 ```bash
-java -jar /opt/metapilot/metapilot-cli-1.0.0-shaded.jar resources-check
+java -jar /opt/metapilot/metapilot-cli-1.1.0-shaded.jar resources-check
 ```
 
 ## MAG Database Setup
@@ -59,13 +59,13 @@ java -jar /opt/metapilot/metapilot-cli-1.0.0-shaded.jar resources-check
 List registered databases:
 
 ```bash
-java -jar /opt/metapilot/metapilot-cli-1.0.0-shaded.jar mag-list
+java -jar /opt/metapilot/metapilot-cli-1.1.0-shaded.jar mag-list
 ```
 
 Download and prepare a supported MAG catalogue before registration:
 
 ```bash
-java -jar /opt/metapilot/metapilot-cli-1.0.0-shaded.jar mag-download \
+java -jar /opt/metapilot/metapilot-cli-1.1.0-shaded.jar mag-download \
   --catalogue human-gut \
   --version v2.0.2 \
   --out /data/metapilot/MAG \
@@ -75,7 +75,7 @@ java -jar /opt/metapilot/metapilot-cli-1.0.0-shaded.jar mag-download \
 Register the downloaded or otherwise prepared local database:
 
 ```bash
-java -jar /opt/metapilot/metapilot-cli-1.0.0-shaded.jar mag-register \
+java -jar /opt/metapilot/metapilot-cli-1.1.0-shaded.jar mag-register \
   --catalogue human-gut \
   --version v2.0.2 \
   --identifier MGYG \
@@ -96,14 +96,14 @@ Export a parameter JSON from the GUI or generate one through an existing workflo
 Validate:
 
 ```bash
-java -jar /opt/metapilot/metapilot-cli-1.0.0-shaded.jar params-validate \
+java -jar /opt/metapilot/metapilot-cli-1.1.0-shaded.jar params-validate \
   --params /data/studies/study_parameters.json
 ```
 
 Run:
 
 ```bash
-java -jar /opt/metapilot/metapilot-cli-1.0.0-shaded.jar run \
+java -jar /opt/metapilot/metapilot-cli-1.1.0-shaded.jar run \
   --params /data/studies/study_parameters.json
 ```
 

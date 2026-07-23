@@ -5,6 +5,7 @@ import org.apache.logging.log4j.Logger;
 import uk.ac.quadram.metapilot.core.dia.Marker4LibrarySupport;
 import uk.ac.quadram.metapilot.core.diann.DiaNNHeadlessRunner;
 import uk.ac.quadram.metapilot.core.mag.MagGenomeSelectionService;
+import uk.ac.quadram.metapilot.core.mag.Marker4ResourcePreparer;
 import uk.ac.quadram.metapilot.core.report.MetaPilotHtmlReportService;
 import uk.ac.quadram.metapilot.core.resources.MetaPilotResourceConfig;
 import uk.ac.quadram.metapilot.core.workflow.ProgressCallback;
@@ -14,7 +15,6 @@ import uk.ac.quadram.metapilot.dbSearch.diann.DiannParameter;
 import uk.ac.quadram.metapilot.task.dia.DiaLibSearchPar;
 import uk.ac.quadram.metapilot.task.dia.DiaRefinementMode;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaMarker;
-import uk.ac.quadram.metapilot.task.mag.MagDbConfigIO;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.core.MGYG.HapExtractor;
 
@@ -373,34 +373,16 @@ public final class DiaMarkerHeadlessRunner {
         if (fromParams != null && fromParams.getCurrentFile() != null && fromParams.getCurrentFile().exists()) {
             return fromParams;
         }
-        if (magDbConfigJson == null || !magDbConfigJson.exists()) {
-            return fromParams;
+        MagDbItem resolved = uk.ac.quadram.metapilot.task.mag.MagDbItemResolver.resolve(
+                params.getMicroDb(),
+                params.getMagDbIdentifier(),
+                params.getMagDbCatalogueVersion(),
+                magDbConfigJson);
+        if (resolved != null) {
+            params.setMagDbItem(resolved);
+            return resolved;
         }
-        MagDbItem[][] parsed = MagDbConfigIO.parse(magDbConfigJson);
-        if (parsed == null) return fromParams;
-        java.util.ArrayList<MagDbItem> items = new java.util.ArrayList<>();
-        for (MagDbItem[] group : parsed) {
-            if (group == null) continue;
-            for (MagDbItem it : group) {
-                if (it != null) items.add(it);
-            }
-        }
-        if (items.isEmpty()) return fromParams;
-
-        // Prefer matching by catalogue+identifier from params, otherwise fall back to first item.
-        String cat = fromParams != null ? fromParams.getCatalogueID() : null;
-        String id = fromParams != null ? fromParams.getIdentifier() : null;
-        if (cat != null && id != null) {
-            for (MagDbItem it : items) {
-                if (cat.equals(it.getCatalogueID()) && id.equals(it.getIdentifier())) {
-                    if (fromParams != null && fromParams.getUsedVersion() != null) {
-                        it.setUsedVersion(fromParams.getUsedVersion());
-                    }
-                    return it;
-                }
-            }
-        }
-        return items.get(0);
+        return fromParams;
     }
 
     static void ensureMarker4Library(MagDbItem magDb, File diannExe, MetaParameterDiaMarker params, ProgressCallback cb, File condaPrefix) throws Exception {
@@ -446,64 +428,7 @@ public final class DiaMarkerHeadlessRunner {
     }
 
     static void ensureMarker4Files(MagDbItem magDb, File diannExe, MetaParameterDiaMarker params, ProgressCallback cb) throws Exception {
-        if (magDb == null) throw new IOException("MAG DB is null");
-        File currentFile = magDb.getCurrentFile();
-        if (currentFile == null || !currentFile.exists()) throw new IOException("MAG DB current folder missing");
-
-        File marker4Fasta = new File(currentFile, "Marker4.fasta");
-        if (!marker4Fasta.exists()) {
-            cb.onMessage("Marker4.fasta missing; extracting Marker4 proteins from original DB");
-            File originalDbFolder = magDb.getOriginalDbFolder();
-            if (originalDbFolder == null || !originalDbFolder.exists()) {
-                throw new IOException("Original DB folder not available to extract Marker4.fasta");
-            }
-            HapExtractor extractor = new HapExtractor();
-            extractor.extractFourCategories(originalDbFolder, marker4Fasta);
-            if (!marker4Fasta.exists()) throw new IOException("Marker4.fasta was not created: " + marker4Fasta.getAbsolutePath());
-        }
-
-        // Ensure genomes-taxa.tsv exists (needed by MarkerGenomeSelector).
-        File genomeTaxa = new File(currentFile, "genomes-taxa.tsv");
-        if (!genomeTaxa.exists()) {
-            cb.onMessage("genomes-taxa.tsv missing; generating from MAG taxa file");
-            generateGenomesTaxaTsv(magDb, genomeTaxa);
-        }
-        if (!genomeTaxa.exists()) throw new IOException("genomes-taxa.tsv was not created: " + genomeTaxa.getAbsolutePath());
-    }
-
-    private static void generateGenomesTaxaTsv(MagDbItem magDb, File genomeTaxaFile) throws IOException {
-        File taxa = magDb.getOriginalTaxaFile();
-        if (taxa == null || !taxa.exists()) {
-            throw new IOException("Original taxa file not found for MAG DB; cannot generate genomes-taxa.tsv");
-        }
-        try (BufferedReader reader = new BufferedReader(new FileReader(taxa))) {
-            String header = reader.readLine();
-            if (header == null) throw new IOException("Empty taxa file: " + taxa.getAbsolutePath());
-            String[] heads = header.split("\t");
-            int repId = -1, lineageId = -1;
-            for (int i = 0; i < heads.length; i++) {
-                String h = heads[i];
-                if ("Rep_ID".equalsIgnoreCase(h) || "Rep".equalsIgnoreCase(h) || "Genome".equalsIgnoreCase(h)) repId = i;
-                if ("Lineage".equalsIgnoreCase(h) || "GTDB_lineage".equalsIgnoreCase(h)) lineageId = i;
-            }
-            if (repId < 0) repId = 0;
-            if (lineageId < 0) lineageId = Math.min(1, heads.length - 1);
-
-            HashMap<String, String> map = new HashMap<>();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                String[] cs = line.split("\t");
-                if (cs.length > Math.max(repId, lineageId) && !map.containsKey(cs[repId])) {
-                    map.put(cs[repId], cs[lineageId]);
-                }
-            }
-            try (PrintWriter writer = new PrintWriter(genomeTaxaFile)) {
-                writer.println("Genome\tLineage");
-                for (String key : map.keySet()) {
-                    writer.println(key + "\t" + map.get(key));
-                }
-            }
-        }
+        Marker4ResourcePreparer.ensureSelectionResources(magDb, cb);
     }
 
     private static void runMarkerNoQuantSearch(File diannExe, MetaParameterDiaMarker params, String[] diaFiles,

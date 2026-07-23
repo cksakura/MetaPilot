@@ -401,7 +401,7 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 				ioPanel,
 				createSectionTitle("Database Settings"),
 				magDatabasePanel,
-				createSectionTitle("MAG Library Status"),
+				createSectionTitle("MAG Predicted Peptide Status"),
 				magDbStatusPanel
 		);
 		return tabContent;
@@ -521,7 +521,10 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 		modeSelectionComboBox.setMinWidth(200);
 		modeSelectionComboBox.setPrefWidth(300);
 		modeSelectionComboBox.setMaxWidth(Double.MAX_VALUE);
-		modeSelectionComboBox.setOnAction(e -> updateParameterView());
+		modeSelectionComboBox.setOnAction(e -> {
+			updateParameterView();
+			updateMagDbStatus();
+		});
 
 		VBox modeBox = new VBox(5);
 		modeBox.getChildren().addAll(modeLabel, modeSelectionComboBox);
@@ -627,7 +630,7 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 		consolePanel.setPadding(new Insets(5));
 		consolePanel.setStyle("-fx-background-color: #f0f0f0; -fx-background-radius: 3; -fx-border-color: #cccccc; -fx-border-radius: 3; -fx-border-width: 1;");
 
-		Label consoleTitle = new Label("MAG Database Status Console");
+		Label consoleTitle = new Label("MAG Predicted Peptide Status Console");
 		consoleTitle.setStyle("-fx-font-weight: bold; -fx-font-size: 12px;");
 
 		predictionConsole = new TextArea();
@@ -1165,14 +1168,19 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 			return;
 		}
 
+		boolean predictedPeptidesRequired = isPredictedPeptideRequiredForSelectedMode();
 		predictionConsole.clear();
-		predictionConsole.appendText("=== MAG Database Status Check ===\n");
+		predictionConsole.appendText("=== MAG Predicted Peptide Status Check ===\n");
 		predictionConsole.appendText("Timestamp: " + LocalDateTime.now().toString() + "\n\n");
+		predictionConsole.appendText("Workflow mode: " + getSelectedSeedRefinementMode().getDisplayLabel() + "\n");
+		predictionConsole.appendText("Predicted peptides required: "
+				+ (predictedPeptidesRequired ? "Yes" : "No (Direct Seed search can run without MAG peptide mapping)")
+				+ "\n\n");
 
 		if (magDatabasePanel == null) {
 			predictionConsole.appendText("ERROR: Database panel not initialized\n");
 			predictionConsole.appendText("Please restart the application.\n");
-			updateButtonStates(false);
+			updateButtonStates(false, true);
 			return;
 		}
 
@@ -1181,7 +1189,7 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 			predictionConsole.appendText("INFO: No database selected\n");
 			predictionConsole.appendText("Please select a MAG database from the dropdown above.\n");
 			predictionConsole.appendText("If databases are available, they should appear in the dropdown.\n");
-			updateButtonStates(false);
+			updateButtonStates(false, true);
 			return;
 		}
 
@@ -1189,7 +1197,7 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 		if (usedVersion == null) {
 			predictionConsole.appendText("INFO: No version selected for database: " + magDbItem.getCatalogueID() + "\n");
 			predictionConsole.appendText("Please select a version from the version dropdown.\n");
-			updateButtonStates(false);
+			updateButtonStates(false, true);
 			return;
 		}
 
@@ -1205,42 +1213,74 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 		if (predictedPepFile == null || !predictedPepFile.exists()) {
 			predictionConsole.appendText("STATUS: Predicted peptides folder does not exist\n");
 			predictionConsole.appendText("Expected path: " + (predictedPepFile != null ? predictedPepFile.getAbsolutePath() : "null") + "\n");
-			predictionConsole.appendText("ACTION: Click 'Start Prediction' to generate predicted peptides\n");
-			updateButtonStates(false);
+			if (predictedPeptidesRequired) {
+				predictionConsole.appendText("ACTION: Click 'Start Prediction' to generate predicted peptides\n");
+			} else {
+				predictionConsole.appendText("ACTION: Optional for Direct Seed search; required only for MAG-aware refinement modes\n");
+			}
+			updateButtonStates(false, predictedPeptidesRequired);
 			return;
 		}
 
-		File[] files = predictedPepFile.listFiles();
-		if (files == null) {
+		File[] allFiles = predictedPepFile.listFiles();
+		File[] predictedFiles = listPredictedPeptideFiles(predictedPepFile);
+		if (allFiles == null || predictedFiles == null) {
 			predictionConsole.appendText("ERROR: Cannot read predicted peptides folder\n");
 			predictionConsole.appendText("Path: " + predictedPepFile.getAbsolutePath() + "\n");
 			predictionConsole.appendText("ACTION: Check folder permissions\n");
-			updateButtonStates(false);
+			updateButtonStates(false, predictedPeptidesRequired);
 			return;
 		}
 
-		int fileCount = files.length;
+		int fileCount = predictedFiles.length;
+		int ignoredFileCount = allFiles.length - fileCount;
+		double completion = speciesCount > 0 ? Math.min(100.0, fileCount * 100.0 / speciesCount) : 0.0;
 		predictionConsole.appendText("Predicted Peptides Status:\n");
-		predictionConsole.appendText("  Expected files: " + speciesCount + "\n");
-		predictionConsole.appendText("  Found files: " + fileCount + "\n");
-		predictionConsole.appendText("  Completion: " + String.format("%.1f%%", (fileCount * 100.0 / speciesCount)) + "\n\n");
+		predictionConsole.appendText("  Expected predicted TSV files: " + speciesCount + "\n");
+		predictionConsole.appendText("  Found predicted TSV files: " + fileCount + "\n");
+		if (ignoredFileCount > 0) {
+			predictionConsole.appendText("  Ignored non-prediction files/folders: " + ignoredFileCount + "\n");
+		}
+		predictionConsole.appendText("  Completion: " + String.format("%.1f%%", completion) + "\n\n");
 
-		if (fileCount == speciesCount) {
+		if (speciesCount > 0 && fileCount >= speciesCount) {
 			predictionConsole.appendText("STATUS: ✓ All predicted peptides are available\n");
+			if (fileCount > speciesCount) {
+				predictionConsole.appendText("NOTE: More predicted TSV files were found than expected; check for stale files if results look inconsistent\n");
+			}
 			predictionConsole.appendText("ACTION: Ready for analysis\n");
-			updateButtonStates(true);
+			updateButtonStates(true, predictedPeptidesRequired);
 		} else if (fileCount > 0) {
 			predictionConsole.appendText("STATUS: ⚠ Prediction incomplete (" + fileCount + "/" + speciesCount + " files)\n");
-			predictionConsole.appendText("ACTION: Click 'Start Prediction' to continue\n");
-			updateButtonStates(false);
+			if (predictedPeptidesRequired) {
+				predictionConsole.appendText("ACTION: Click 'Start Prediction' to continue\n");
+			} else {
+				predictionConsole.appendText("ACTION: Optional for Direct Seed search; complete before using refinement modes\n");
+			}
+			updateButtonStates(false, predictedPeptidesRequired);
 		} else {
 			predictionConsole.appendText("STATUS: ⚠ No predicted peptide files found\n");
-			predictionConsole.appendText("ACTION: Click 'Start Prediction' to start prediction\n");
-			updateButtonStates(false);
+			if (predictedPeptidesRequired) {
+				predictionConsole.appendText("ACTION: Click 'Start Prediction' to start prediction\n");
+			} else {
+				predictionConsole.appendText("ACTION: Optional for Direct Seed search; required only for MAG-aware refinement modes\n");
+			}
+			updateButtonStates(false, predictedPeptidesRequired);
 		}
 	}
 
-	private void updateButtonStates(boolean isComplete) {
+	private boolean isPredictedPeptideRequiredForSelectedMode() {
+		return getSelectedSeedRefinementMode() != DiaRefinementMode.DIRECT;
+	}
+
+	private File[] listPredictedPeptideFiles(File predictedPepFile) {
+		if (predictedPepFile == null || !predictedPepFile.isDirectory()) {
+			return null;
+		}
+		return predictedPepFile.listFiles(file -> file.isFile() && file.getName().endsWith(".predicted.tsv"));
+	}
+
+	private void updateButtonStates(boolean isComplete, boolean isRequired) {
 		if (predictionProgressBar == null || timeTextField == null || predictButton == null) {
 			return;
 		}
@@ -1248,6 +1288,10 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 			predictionProgressBar.setProgress(1.0);
 			timeTextField.setText("Complete");
 			predictButton.setDisable(true);
+		} else if (!isRequired) {
+			predictionProgressBar.setProgress(0);
+			timeTextField.setText("Optional");
+			predictButton.setDisable(false);
 		} else {
 			predictionProgressBar.setProgress(0);
 			timeTextField.setText("Not Ready");
@@ -1269,9 +1313,10 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 
 		File predictedPepFile = magDbItem.getPredictedPepFile();
 		if (predictedPepFile != null && predictedPepFile.exists()) {
-			File[] files = predictedPepFile.listFiles();
-			if (files != null && files.length == magDbItem.getUsedVersion().getSpeciesCount()) {
-				predictionConsole.appendText("INFO: Prediction already complete. All files exist.\n");
+			File[] files = listPredictedPeptideFiles(predictedPepFile);
+			if (files != null && magDbItem.getUsedVersion() != null
+					&& files.length >= magDbItem.getUsedVersion().getSpeciesCount()) {
+				predictionConsole.appendText("INFO: Prediction already complete. All predicted TSV files exist.\n");
 				return;
 			}
 		}
@@ -1307,13 +1352,12 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 			if (deepDetectTask.getValue()) {
 				predictionConsole.appendText("STATUS: ✓ All predictions completed successfully\n");
 				predictionConsole.appendText("ACTION: Ready for analysis\n");
-				updateButtonStates(true);
+				updateButtonStates(true, isPredictedPeptideRequiredForSelectedMode());
 			} else {
 				predictionConsole.appendText("STATUS: ⚠ Prediction completed with some issues\n");
 				predictionConsole.appendText("ACTION: Check individual files or restart prediction\n");
-				updateButtonStates(false);
+				updateButtonStates(false, isPredictedPeptideRequiredForSelectedMode());
 			}
-			predictButton.setDisable(false);
 		});
 
 		deepDetectTask.setOnFailed(e -> {
@@ -1321,7 +1365,7 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 			predictionConsole.appendText("Timestamp: " + LocalDateTime.now().toString() + "\n");
 			predictionConsole.appendText("ERROR: " + deepDetectTask.getException().getMessage() + "\n");
 			predictionConsole.appendText("ACTION: Check error details and try again\n");
-			updateButtonStates(false);
+			updateButtonStates(false, isPredictedPeptideRequiredForSelectedMode());
 			predictButton.setDisable(false);
 		});
 

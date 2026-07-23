@@ -48,6 +48,17 @@ public class DDAMagPfindParameterIO extends BaseParameterIO {
 		return "DDA_MAG_PFIND";
 	}
 
+	/**
+	 * Public convenience loader for CLI/headless usage, mirroring
+	 * {@code DiaMarkerParameterIO.loadParameters(File)} /
+	 * {@code DDAMagFragPipeParameterIO.loadParameters(File)}. Delegates to the
+	 * existing protected {@link #loadParametersFromFile(File)} implementation.
+	 */
+	public DDAMagPfindParameters loadParameters(File inputFile) {
+		Object o = loadParametersFromFile(inputFile);
+		return (o instanceof DDAMagPfindParameters) ? (DDAMagPfindParameters) o : null;
+	}
+
 	@Override
 	protected boolean saveParametersToFile(Object parameters, File outputFile, String description) {
 		if (!(parameters instanceof DDAMagPfindParameters)) {

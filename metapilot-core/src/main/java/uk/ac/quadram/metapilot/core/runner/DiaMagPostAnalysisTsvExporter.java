@@ -98,7 +98,11 @@ public final class DiaMagPostAnalysisTsvExporter {
 		resultDir.mkdirs();
 
 		cb.onMessage("DIA post-analysis: reading precursors from combined.parquet");
-		DiaNNParquetReader diannReader = new DiaNNParquetReader(combinedParquet.getAbsolutePath(), "KR");
+		// "K*,R*" matches DiannParameter's Trypsin/P cut pattern (comma-separated
+		// tokens). The parser only ever reads charAt(0)/charAt(2) of each token, so a
+		// bare "KR" was parsed as a single token and only registered 'K' as a cleavage
+		// site - 'R' (arginine) was silently never counted as a missed cleavage.
+		DiaNNParquetReader diannReader = new DiaNNParquetReader(combinedParquet.getAbsolutePath(), "K*,R*");
 		DiaNNPrecursor[] precursorsQ01 = diannReader.getDiaNNPrecursors();
 		if (precursorsQ01 == null)
 			precursorsQ01 = new DiaNNPrecursor[0];

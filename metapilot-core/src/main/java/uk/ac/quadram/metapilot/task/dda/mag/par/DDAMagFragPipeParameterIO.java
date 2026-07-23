@@ -86,6 +86,7 @@ public class DDAMagFragPipeParameterIO extends BaseParameterIO {
 			// Load Input/Output settings
 			String result = "";
 			String microDb = "";
+			String magDbIdentifier = "MGYG";
 			String magDbVersion = "";
 			boolean appendHostDb = false;
 			String hostDB = "";
@@ -93,6 +94,7 @@ public class DDAMagFragPipeParameterIO extends BaseParameterIO {
 				JSONObject ioSettings = json.getJSONObject("input_output");
 				result = ioSettings.optString("output_directory", "");
 				microDb = ioSettings.optString("mag_database", "");
+				magDbIdentifier = ioSettings.optString("mag_db_identifier", magDbIdentifier);
 				magDbVersion = ioSettings.optString("mag_db_version", "");
 				appendHostDb = ioSettings.optBoolean("append_host_db", false);
 				hostDB = ioSettings.optString("host_database", "");
@@ -100,6 +102,7 @@ public class DDAMagFragPipeParameterIO extends BaseParameterIO {
 			if (json.has("mag_database")) {
 				JSONObject magDbSettings = json.getJSONObject("mag_database");
 				microDb = magDbSettings.optString("catalogue_id", microDb);
+				magDbIdentifier = magDbSettings.optString("identifier", magDbIdentifier);
 				magDbVersion = magDbSettings.optString("catalogue_version", magDbVersion);
 			}
 
@@ -133,9 +136,22 @@ public class DDAMagFragPipeParameterIO extends BaseParameterIO {
 			params.setGenomeSelectorMode(genomeSelectorMode);
 			params.setGenomeSelectionStrategy(genomeSelectionStrategy);
 			params.setFragpipeParallelTasks(fragpipeParallelTasks);
-			// Keep MAG DB info in MAG-specific fields for UI restore
+			// Keep MAG DB info in MAG-specific fields for UI restore / HPC resolve
 			params.setMagDbCatalogueId(microDb);
+			params.setMagDbIdentifier(magDbIdentifier);
 			params.setMagDbVersion(magDbVersion);
+			if (microDb != null && !microDb.isBlank()) {
+				try {
+					uk.ac.quadram.metapilot.task.mag.MagDbItem magDbItem =
+							uk.ac.quadram.metapilot.task.mag.MagDbItemResolver.resolve(
+									microDb, magDbIdentifier, magDbVersion, null);
+					if (magDbItem != null) {
+						params.setMagDbItem(magDbItem);
+					}
+				} catch (Exception e) {
+					LOGGER.warn("Failed to resolve MAG database from config: {}", e.getMessage());
+				}
+			}
 
 			// Load enzyme settings
 			if (json.has("enzyme_settings")) {
@@ -227,11 +243,14 @@ public class DDAMagFragPipeParameterIO extends BaseParameterIO {
 			// Input/Output settings
 			JSONObject ioSettings = new JSONObject();
 			ioSettings.put("output_directory", params.getResult());
-			ioSettings.put("mag_database", params.getMicroDb());
+			ioSettings.put("mag_database", params.getMagDbCatalogueId() != null && !params.getMagDbCatalogueId().isBlank()
+					? params.getMagDbCatalogueId() : params.getMicroDb());
+			ioSettings.put("mag_db_identifier", params.getMagDbIdentifier());
 			ioSettings.put("mag_db_version", params.getMagDbVersion());
 			ioSettings.put("append_host_db", params.isAppendHostDb());
 			ioSettings.put("host_database", params.getHostDB());
-			LOGGER.info("Added I/O settings - output: {}, mag_db: {}", params.getResult(), params.getMicroDb());
+			LOGGER.info("Added I/O settings - output: {}, mag_db: {}, identifier: {}",
+					params.getResult(), params.getMagDbCatalogueId(), params.getMagDbIdentifier());
 
 			// Raw files and experiments
 			JSONArray experiments = new JSONArray();
@@ -251,6 +270,17 @@ public class DDAMagFragPipeParameterIO extends BaseParameterIO {
 			}
 			ioSettings.put("experiments", experiments);
 			json.put("input_output", ioSettings);
+
+			// Dedicated MAG database block (aligned with DIA Marker)
+			JSONObject magDbSettings = new JSONObject();
+			String catalogueId = params.getMagDbCatalogueId();
+			if ((catalogueId == null || catalogueId.isBlank()) && params.getMicroDb() != null) {
+				catalogueId = params.getMicroDb();
+			}
+			magDbSettings.put("catalogue_id", catalogueId != null ? catalogueId : "");
+			magDbSettings.put("identifier", params.getMagDbIdentifier());
+			magDbSettings.put("catalogue_version", params.getMagDbVersion() != null ? params.getMagDbVersion() : "");
+			json.put("mag_database", magDbSettings);
 
 			// Enzyme settings
 			JSONObject enzymeSettings = new JSONObject();

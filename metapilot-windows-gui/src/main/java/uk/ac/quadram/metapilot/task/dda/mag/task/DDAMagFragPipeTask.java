@@ -6,6 +6,7 @@ import java.io.IOException;
 import org.apache.logging.log4j.Logger;
 
 import uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner;
+import uk.ac.quadram.metapilot.core.mag.Marker4ResourcePreparer;
 import uk.ac.quadram.metapilot.core.workflow.ProgressCallback;
 import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragpipeWorkflow;
 import javafx.scene.control.ProgressBar;
@@ -35,6 +36,22 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 
 	protected static final String taskName = "DDA MAG database search by FragPipe workflow";
 
+	/**
+	 * Matches pFind's opt-in to the nested {@code search_results/<sample>/}
+	 * layout (see {@code MagResultLayoutUtil}). Note this only affects the
+	 * {@code separateResultFolders} field this GUI task's base class
+	 * pre-creates in its constructor - the actual FragPipe search/resume work
+	 * runs entirely inside {@code MagFragPipeHeadlessRunner} (metapilot-core),
+	 * which independently resolves and migrates the same
+	 * {@code search_results/} location. Flipping this flag just keeps this
+	 * pre-creation step consistent with that and avoids a pointless
+	 * create-flat-then-immediately-migrate step on every fresh run.
+	 */
+	@Override
+	protected boolean useNestedSearchResultsLayout() {
+		return true;
+	}
+
 	public DDAMagFragPipeTask(DDAMagFragPipeParameters magFragPipeParams, MetaResourceParameters mrp,
 			ProgressBar progressBar, ProgressBar secondBar, Label statusLabel, FragpipeWorkflow workflow) {
 		super(magFragPipeParams, mrp, progressBar, secondBar);
@@ -58,6 +75,14 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 			// Validate that the MAG database has the required files (use genome selector
 			// mode)
 			String genomeSelectorMode = magFragPipeParams.getGenomeSelectorMode();
+			if (MagDbItem.MARKER4.equalsIgnoreCase(genomeSelectorMode)) {
+				try {
+					Marker4ResourcePreparer.ensureSelectionResources(selectedMagDb, new ProgressCallback.NoOp());
+				} catch (IOException e) {
+					logger.error("Failed to prepare Marker4 resources for selected MAG database", e);
+					throw new IllegalArgumentException("MAG database Marker4 resources could not be prepared", e);
+				}
+			}
 			File hapFastaFile = selectedMagDb.getHapFastaFile(genomeSelectorMode);
 			if (hapFastaFile == null || !hapFastaFile.exists()) {
 				logger.error("MAG database HAP FASTA file is null or does not exist: {}",

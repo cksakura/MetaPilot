@@ -46,6 +46,13 @@ public class FragpipePepReader extends AbstractMetaPeptideReader {
 	private HashMap<String, ArrayList<Double>> pepProbMap;
 	private HashMap<String, double[]> pepProbListMap;
 
+	// Dedups repeated protein/mapped-protein ID strings so that highly
+	// redundant MAG databases don't allocate a fresh String object per
+	// occurrence across millions of peptides/PSMs. Pure memory optimization:
+	// values returned are equal (by content) to what was produced before,
+	// just backed by a shared instance.
+	private final HashMap<String, String> proteinStringPool = new HashMap<>();
+
 	private FragPipePSM[] psms;
 
 	private static final Pattern TITLE_PATTERN = Pattern.compile("^.+?\\.(\\d+)\\.(\\d+)\\.(\\d+)$");
@@ -634,19 +641,31 @@ public class FragpipePepReader extends AbstractMetaPeptideReader {
 		return parseProteinList(protein, mappedProteins);
 	}
 
-	private static String[] parseProteinList(String protein, String mappedProteins) {
+	private String[] parseProteinList(String protein, String mappedProteins) {
 		Set<String> proteinSet = new LinkedHashSet<>();
 		if (protein != null && !protein.trim().isEmpty()) {
-			proteinSet.add(protein.trim());
+			proteinSet.add(internProtein(protein.trim()));
 		}
 		if (mappedProteins != null && !mappedProteins.trim().isEmpty()) {
 			for (String mapped : mappedProteins.split(",")) {
 				String trimmed = mapped.trim();
 				if (!trimmed.isEmpty()) {
-					proteinSet.add(trimmed);
+					proteinSet.add(internProtein(trimmed));
 				}
 			}
 		}
 		return proteinSet.toArray(new String[0]);
+	}
+
+	/**
+	 * Returns a shared instance for content-equal protein ID strings seen
+	 * previously by this reader. Does not alter string content/equality,
+	 * only avoids duplicate allocations for repeated IDs (common with
+	 * redundant MAG protein databases where the same accession appears
+	 * across many peptides/PSMs).
+	 */
+	private String internProtein(String s) {
+		String existing = proteinStringPool.putIfAbsent(s, s);
+		return existing != null ? existing : s;
 	}
 }
