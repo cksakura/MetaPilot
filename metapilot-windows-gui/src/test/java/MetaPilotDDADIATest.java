@@ -1338,17 +1338,30 @@ public class MetaPilotDDADIATest {
  * @throws IOException
  */
     public static void main(String[] args) throws IOException {
+    	
+    	BufferedReader reader = new BufferedReader(new FileReader("Z:\\PRIDE_dataset\\MetaPep\\MetaPep_peptide_sequence_database.fasta"));
+    	PrintWriter writer = new PrintWriter("Z:\\PRIDE_dataset\\MetaPep\\MetaPep_peptide_sequence_database_for_deepdetect.fasta");
+    	String line = null;
+    	while((line=reader.readLine())!=null){
+    		if(line.startsWith(">")) {
+    			writer.println(line+" "+line.substring(1));
+    		}else {
+    			writer.println(line);
+    		}
+    	}
+    	reader.close();
+    	writer.close();
 
 //    	comparePeptideLevel3("Z:\\PRIDE_dataset\\PXD051104_metaExpertPro\\DIA_combined\\MetaPilot\\marker_deep\\final_peptides.tsv", 
 //        "Z:\\PRIDE_dataset\\PXD051104_metaExpertPro\\O480_60min_DIA_IGC_humanswiss.pr_matrix.tsv",
 //        "Z:\\PRIDE_dataset\\PXD051104_metaExpertPro"
 //    			+ "\\O480_60min_IGC_humanswiss_library.tsv");
     	
-    	comparePeptideLevel4Upset("Z:\\PRIDE_dataset\\PXD051104_metaExpertPro\\DIA_combined\\MetaPilot\\marker_deep\\final_peptides.tsv", 
-    	        "Z:\\PRIDE_dataset\\PXD051104_metaExpertPro\\O480_60min_DIA_IGC_humanswiss.pr_matrix.tsv",
-    	        "Z:\\PRIDE_dataset\\PXD051104_metaExpertPro"
-    	    			+ "\\O480_60min_IGC_humanswiss_library.tsv", 
-    	    			"Z:\\PRIDE_dataset\\PXD051104_metaExpertPro\\DIA_combined\\MGYG000002293\\MGYG000002293.pr_matrix.tsv");
+//    	comparePeptideLevel4Upset("Z:\\PRIDE_dataset\\PXD051104_metaExpertPro\\DIA_combined\\MetaPilot\\marker_deep\\final_peptides.tsv", 
+//    	        "Z:\\PRIDE_dataset\\PXD051104_metaExpertPro\\O480_60min_DIA_IGC_humanswiss.pr_matrix.tsv",
+//    	        "Z:\\PRIDE_dataset\\PXD051104_metaExpertPro"
+//    	    			+ "\\O480_60min_IGC_humanswiss_library.tsv", 
+//    	    			"Z:\\PRIDE_dataset\\PXD051104_metaExpertPro\\DIA_combined\\MGYG000002293\\MGYG000002293.pr_matrix.tsv");
     	
 //        getNoneZeroIntensityPeptides("Z:\\PRIDE_dataset\\PXD051104_metaExpertPro\\DIA_combined\\MetaPilot\\marker_deep\\host\\host.pr_matrix.tsv");
 //    	exportLegacyTaxaFromGenomeTsv(new File("Z:\\PRIDE_dataset\\PXD051104_metaExpertPro\\DIA_combined\\MetaPilot\\marker_deep\\taxonomy_analysis"

@@ -2,6 +2,7 @@ package uk.ac.quadram.metapilot.core.runner;
 
 import uk.ac.quadram.metapilot.core.function.v2.EnzymeCommission;
 import uk.ac.quadram.metapilot.core.function.v2.GoObo;
+import uk.ac.quadram.metapilot.core.tools.TypedParquetTableWriter;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProteinHtmlWriter;
 import uk.ac.quadram.metapilot.task.mag.MetaProteinAnnoMag;
@@ -9,10 +10,12 @@ import uk.ac.quadram.metapilot.task.mag.MetaProteinAnnoMag;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -60,6 +63,121 @@ public final class FunctionalAnnotationExporter {
 		result.annotatedProteinsTsv = annotatedProteins;
 		result.functionsHtml = html;
 		return result;
+	}
+
+	/**
+	 * Opt-in MetaAtlas export: writes function_abundance.parquet, but is never called by
+	 * {@link #write} - callers (CLI/headless runners only; not GUI tasks) must invoke this
+	 * explicitly and separately, gated by their own opt-in flag (e.g.
+	 * {@code --export-metaatlas}).
+	 *
+	 * One row per function per sample, unified across GO/EC/KEGG_KO/BRITE/COG/eggNOG with a
+	 * function_database discriminator column and a real DOUBLE abundance column - shaped to
+	 * match the MetaAtlas Parquet Export Upgrade Guide's function_abundance view (section
+	 * 9.9), instead of the guide's per-database function.parquet reference table, which is
+	 * not built here.
+	 *
+	 * Known deviations from the guide:
+	 * - function_accession values are exactly what the annotation pipeline already stores
+	 *   (GO id, EC id, KEGG KO id, BRITE code, COG/eggNOG accession) - no database_release
+	 *   is tracked anywhere upstream, so that guide field is omitted rather than guessed.
+	 * - function_category is a denormalized extra (COG/eggNOG single-letter category),
+	 *   included so callers don't need the separate COG/NOG "category report" mirrors to
+	 *   group by category; it is null for GO/EC/KEGG_KO/BRITE rows.
+	 * - sample_id is the raw experiment/run name (see
+	 *   TypedParquetTableWriter#sampleIdsFromIntensityTitles), not a resolved SDRF-backed
+	 *   sample_accession.
+	 * - abundance_type is always "raw" (summed, un-normalized protein intensity split
+	 *   evenly across a protein's annotated ids) - matches the guide's controlled value.
+	 */
+	public static File exportMetaAtlasFunctionAbundance(File funcDir, FunctionalAnnotationResult annotation,
+			String[] intensityTitles) throws IOException {
+		if (funcDir == null)
+			throw new IOException("funcDir is null");
+		if (annotation == null)
+			annotation = new FunctionalAnnotationResult();
+		if (annotation.annotatedProteins == null)
+			annotation.annotatedProteins = new MetaProteinAnnoMag[0];
+		if (intensityTitles == null)
+			intensityTitles = new String[0];
+		funcDir.mkdirs();
+
+		File out = new File(funcDir, "function_abundance.parquet");
+		writeFunctionAbundanceParquet(out, annotation, intensityTitles);
+		return out;
+	}
+
+	private static void writeFunctionAbundanceParquet(File out, FunctionalAnnotationResult annotation,
+			String[] intensityTitles) throws IOException {
+		String[] sampleIds = TypedParquetTableWriter.sampleIdsFromIntensityTitles(intensityTitles);
+
+		List<TypedParquetTableWriter.Column> columns = Arrays.asList(
+				new TypedParquetTableWriter.Column("function_database", TypedParquetTableWriter.ColumnType.STRING),
+				new TypedParquetTableWriter.Column("function_accession", TypedParquetTableWriter.ColumnType.STRING),
+				new TypedParquetTableWriter.Column("function_name", TypedParquetTableWriter.ColumnType.STRING),
+				new TypedParquetTableWriter.Column("function_category", TypedParquetTableWriter.ColumnType.STRING),
+				new TypedParquetTableWriter.Column("sample_id", TypedParquetTableWriter.ColumnType.STRING),
+				new TypedParquetTableWriter.Column("abundance", TypedParquetTableWriter.ColumnType.DOUBLE),
+				new TypedParquetTableWriter.Column("abundance_type", TypedParquetTableWriter.ColumnType.STRING));
+
+		List<Object[]> rows = new ArrayList<>();
+
+		HashMap<String, double[]> go = aggregate(annotation.annotatedProteins, intensityTitles.length,
+				p -> p.getGene_Ontology());
+		for (String id : go.keySet()) {
+			GoObo obj = annotation.usedGoMap.get(id);
+			appendAbundanceRows(rows, sampleIds, go.get(id), "GO", id, obj != null ? obj.getName() : null, null);
+		}
+
+		HashMap<String, double[]> ec = aggregate(annotation.annotatedProteins, intensityTitles.length,
+				p -> p.getEC());
+		for (String id : ec.keySet()) {
+			EnzymeCommission obj = annotation.usedEcMap.get(id);
+			appendAbundanceRows(rows, sampleIds, ec.get(id), "EC", id, obj != null ? obj.getDe() : null, null);
+		}
+
+		HashMap<String, double[]> kegg = aggregate(annotation.annotatedProteins, intensityTitles.length,
+				p -> p.getKEGG_ko());
+		for (String id : kegg.keySet()) {
+			appendAbundanceRows(rows, sampleIds, kegg.get(id), "KEGG_KO", id, annotation.usedKeggMap.get(id), null);
+		}
+
+		HashMap<String, double[]> brite = aggregate(annotation.annotatedProteins, intensityTitles.length,
+				p -> p.getBRITE());
+		for (String id : brite.keySet()) {
+			appendAbundanceRows(rows, sampleIds, brite.get(id), "BRITE", id, null, null);
+		}
+
+		HashMap<String, double[]> cog = aggregate(annotation.annotatedProteins, intensityTitles.length,
+				p -> p.getCog());
+		for (String id : cog.keySet()) {
+			String[] def = annotation.usedCogMap.get(id);
+			String category = (def != null && def.length > 0) ? def[0] : null;
+			String name = (def != null && def.length > 1) ? def[1] : null;
+			appendAbundanceRows(rows, sampleIds, cog.get(id), "COG", id, name, category);
+		}
+
+		HashMap<String, double[]> nog = aggregate(annotation.annotatedProteins, intensityTitles.length,
+				p -> p.getNog());
+		for (String id : nog.keySet()) {
+			String lookupId = id.contains("|") ? id.substring(0, id.indexOf("|")) : id;
+			String[] def = annotation.usedNogMap.get(lookupId);
+			String category = (def != null && def.length > 0) ? def[0] : null;
+			String name = (def != null && def.length > 1) ? def[1] : null;
+			appendAbundanceRows(rows, sampleIds, nog.get(id), "eggNOG", id, name, category);
+		}
+
+		TypedParquetTableWriter.write(out, columns, rows);
+	}
+
+	private static void appendAbundanceRows(List<Object[]> rows, String[] sampleIds, double[] intensities,
+			String database, String accession, String name, String category) {
+		if (intensities == null) {
+			return;
+		}
+		for (int i = 0; i < sampleIds.length && i < intensities.length; i++) {
+			rows.add(new Object[] { database, accession, name, category, sampleIds[i], intensities[i], "raw" });
+		}
 	}
 
 	private static void writeAnnotatedProteins(File out, FunctionalAnnotationResult annotation,

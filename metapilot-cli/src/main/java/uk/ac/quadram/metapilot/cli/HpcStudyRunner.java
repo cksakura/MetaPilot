@@ -137,7 +137,8 @@ final class HpcStudyRunner {
                         funcDb,
                         reportGenerationEnabled(rc),
                         null,
-                        rc);
+                        rc,
+                        exportMetaAtlasEnabled(rc));
                 logLine(log, "INFO ", "MetaPilot HPC run finished  workflow=" + workflow);
                 return 0;
             }
@@ -150,7 +151,7 @@ final class HpcStudyRunner {
                 File fragpipeExe = rc.resolveToolPath(ToolKey.FRAGPIPE, null).map(Path::toFile).orElse(null);
                 File funcDb = rc.resolveToolPath(ToolKey.FUNCDB, null).map(Path::toFile).orElse(null);
                 MagFragPipeHeadlessRunner.runWithInstalledDefaults(params, fragpipeExe, magdbCfg.toFile(),
-                        funcDb, cb, reportGenerationEnabled(rc), null, rc);
+                        funcDb, cb, reportGenerationEnabled(rc), null, rc, exportMetaAtlasEnabled(rc));
                 logLine(log, "INFO ", "MetaPilot HPC run finished  workflow=" + workflow);
                 return 0;
             }
@@ -401,6 +402,25 @@ final class HpcStudyRunner {
                     return !(t.equals("false") || t.equals("0") || t.equals("no") || t.equals("n"));
                 })
                 .orElse(true);
+    }
+
+    /**
+     * Opt-in MetaAtlas Parquet export (taxon_abundance.parquet / function_abundance.parquet),
+     * controlled by an {@code EXPORT_METAATLAS} key in the resources config - mirrors
+     * {@link #reportGenerationEnabled} but defaults to false (off), since this is a new,
+     * separate export layer that must be explicitly requested rather than one enabled by
+     * default. Not exposed in the Windows GUI.
+     */
+    private static boolean exportMetaAtlasEnabled(MetaPilotResourceConfig rc) {
+        if (rc == null) {
+            return false;
+        }
+        return rc.getRaw("EXPORT_METAATLAS")
+                .map(v -> {
+                    String t = v.trim().toLowerCase(java.util.Locale.ROOT);
+                    return t.equals("true") || t.equals("1") || t.equals("yes") || t.equals("y");
+                })
+                .orElse(false);
     }
 
     private static String describeFile(File file) {

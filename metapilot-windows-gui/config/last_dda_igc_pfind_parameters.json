@@ -80,7 +80,7 @@
     "missed_cleavages": 2,
     "digestion_mode": "Fully-Specific"
   },
-  "generated_at": "2026-04-17 09:07:00",
+  "generated_at": "2026-05-25 12:24:44",
   "additional_parameters": {
     "generate_sample_specific_db": true,
     "ms2_scan_mode": "HCD-FTMS",

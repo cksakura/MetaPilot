@@ -30,7 +30,7 @@
       }
     ]
   },
-  "generated_at": "2026-05-16 13:07:31",
+  "generated_at": "2026-06-10 14:52:26",
   "description": "Last used parameters",
   "basic_parameters": {
     "ms2_scan_mode": "DIA",
@@ -40,7 +40,7 @@
   },
   "dia_settings": {
     "acetyProN": true,
-    "library_search": true,
+    "library_search": false,
     "phosphoSTY": false,
     "mExcision": true,
     "libraries": ["Elo_12mix"],
@@ -48,7 +48,7 @@
     "kGG": false,
     "peptide_detectability_threshold": 0.5,
     "oxidationM": true,
-    "seed_mode": "DIRECT",
+    "seed_mode": "DEEP",
     "use_peptide_based_round": false
   },
   "version": "1.0"

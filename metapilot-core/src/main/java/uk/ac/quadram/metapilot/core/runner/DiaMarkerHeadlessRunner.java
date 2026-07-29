@@ -129,8 +129,30 @@ public final class DiaMarkerHeadlessRunner {
             String reportPythonHint,
             MetaPilotResourceConfig reportResourceConfig
     ) throws Exception {
+        return run(params, diannExe, magDbConfigJson, cb, condaPrefix, funcDbFile, generateHtmlReport,
+                reportPythonHint, reportResourceConfig, false);
+    }
+
+    /**
+     * Same as the 9-argument {@link #run}, with an additional opt-in
+     * {@code exportMetaAtlasParquet} flag (see {@code --export-metaatlas} in the CLI). This
+     * is a brand new overload, not a change to any existing signature, so it cannot affect
+     * any existing caller.
+     */
+    public static Result run(
+            MetaParameterDiaMarker params,
+            File diannExe,
+            File magDbConfigJson,
+            ProgressCallback cb,
+            File condaPrefix,
+            File funcDbFile,
+            boolean generateHtmlReport,
+            String reportPythonHint,
+            MetaPilotResourceConfig reportResourceConfig,
+            boolean exportMetaAtlasParquet
+    ) throws Exception {
         return runInternal(params, diannExe, magDbConfigJson, cb, condaPrefix, funcDbFile, true,
-                generateHtmlReport, reportPythonHint, reportResourceConfig);
+                generateHtmlReport, reportPythonHint, reportResourceConfig, exportMetaAtlasParquet);
     }
 
     public static Result runWithoutPostAnalysis(
@@ -142,7 +164,7 @@ public final class DiaMarkerHeadlessRunner {
             File funcDbFile
     ) throws Exception {
         return runInternal(params, diannExe, magDbConfigJson, cb, condaPrefix, funcDbFile, false,
-                false, null, null);
+                false, null, null, false);
     }
 
     private static Result runInternal(
@@ -155,7 +177,8 @@ public final class DiaMarkerHeadlessRunner {
             boolean exportPostAnalysis,
             boolean generateHtmlReport,
             String reportPythonHint,
-            MetaPilotResourceConfig reportResourceConfig
+            MetaPilotResourceConfig reportResourceConfig,
+            boolean exportMetaAtlasParquet
     ) throws Exception {
         if (cb == null) cb = new ProgressCallback.NoOp();
         if (params == null) throw new IllegalArgumentException("params is null");
@@ -172,7 +195,8 @@ public final class DiaMarkerHeadlessRunner {
             cb.onMessage("DIA Marker: dispatching to DEEP_TOGETHER headless runner");
             DiaMarkerDeepTogetherHeadlessRunner.Result deepTogetherResult = exportPostAnalysis
                     ? DiaMarkerDeepTogetherHeadlessRunner.run(params, diannExe, magDbConfigJson, cb, condaPrefix,
-                            funcDbFile, generateHtmlReport, reportPythonHint, reportResourceConfig)
+                            funcDbFile, generateHtmlReport, reportPythonHint, reportResourceConfig,
+                            exportMetaAtlasParquet)
                     : DiaMarkerDeepTogetherHeadlessRunner.runWithoutPostAnalysis(params, diannExe, magDbConfigJson, cb,
                             condaPrefix, funcDbFile);
             return new Result(
@@ -193,7 +217,8 @@ public final class DiaMarkerHeadlessRunner {
             cb.onMessage("DIA Marker: dispatching to DEEP_PER_FILE headless runner");
             DiaMarkerDeepPerFileHeadlessRunner.Result perFileResult = exportPostAnalysis
                     ? DiaMarkerDeepPerFileHeadlessRunner.run(params, diannExe, magDbConfigJson, cb, condaPrefix,
-                            funcDbFile, generateHtmlReport, reportPythonHint, reportResourceConfig)
+                            funcDbFile, generateHtmlReport, reportPythonHint, reportResourceConfig,
+                            exportMetaAtlasParquet)
                     : DiaMarkerDeepPerFileHeadlessRunner.runWithoutPostAnalysis(params, diannExe, magDbConfigJson, cb,
                             condaPrefix, funcDbFile);
             return new Result(
@@ -353,7 +378,9 @@ public final class DiaMarkerHeadlessRunner {
                         funcDbFile,
                         params.getMicroDb(),
                         params.getQuantitativeMode(),
-                        cb
+                        cb,
+                        null,
+                        exportMetaAtlasParquet
                 );
                 runHtmlReportIfRequested(resultDir, params, generateHtmlReport, reportPythonHint,
                         reportResourceConfig, cb);

@@ -66,6 +66,21 @@ public final class PfindMagHeadlessRunner {
 	public static Result run(DDAMagPfindParameters params, File magdbConfigJson, File quantifiedPeptidesTsv,
 			File psmsTsv, File funcDbFile, ProgressCallback cb, boolean generateHtmlReport, String reportPythonHint,
 			MetaPilotResourceConfig reportResourceConfig) throws Exception {
+		return run(params, magdbConfigJson, quantifiedPeptidesTsv, psmsTsv, funcDbFile, cb, generateHtmlReport,
+				reportPythonHint, reportResourceConfig, false);
+	}
+
+	/**
+	 * Same as the 9-argument {@link #run}, with an additional opt-in
+	 * {@code exportMetaAtlasParquet} flag (see {@code --export-metaatlas} in the CLI). This
+	 * is a brand new overload, not a change to any existing signature, so it cannot affect
+	 * any existing caller. Only CLI headless callers that explicitly opt in by calling this
+	 * overload will produce the guide-aligned taxon_abundance.parquet /
+	 * function_abundance.parquet exports.
+	 */
+	public static Result run(DDAMagPfindParameters params, File magdbConfigJson, File quantifiedPeptidesTsv,
+			File psmsTsv, File funcDbFile, ProgressCallback cb, boolean generateHtmlReport, String reportPythonHint,
+			MetaPilotResourceConfig reportResourceConfig, boolean exportMetaAtlasParquet) throws Exception {
 		if (cb == null)
 			cb = new ProgressCallback.NoOp();
 		if (params == null)
@@ -95,7 +110,7 @@ public final class PfindMagHeadlessRunner {
 				quanPepFile, psmsFile, resultRoot, params.getMetadata(), "DDA MAG pFind", cb);
 
 		cb.onMessage("Step 2: taxonomy report export ...");
-		exportTaxonomyTsvs(mag, resultRoot, post, cb);
+		exportTaxonomyTsvs(mag, resultRoot, post, cb, exportMetaAtlasParquet);
 
 		if (funcDbFile != null && funcDbFile.isFile()) {
 			cb.onMessage("Step 3: functional annotation report export ...");
@@ -108,6 +123,7 @@ public final class PfindMagHeadlessRunner {
 			request.quantitativeMode = MetaConstants.labelFree;
 			request.intensityTitles = post.intensityTitles;
 			request.metaProteins = post.metaProteins;
+			request.exportMetaAtlasParquet = exportMetaAtlasParquet;
 			MagFunctionalAnnotationService.run(request);
 		} else {
 			cb.onMessage("pFind functional annotation: skipped (func_def.db not configured)");
@@ -121,7 +137,7 @@ public final class PfindMagHeadlessRunner {
 	}
 
 	private static void exportTaxonomyTsvs(MagDbItem mag, File resultRoot, PfindMagPostAnalysisTsvExporter.Result post,
-			ProgressCallback cb) throws IOException {
+			ProgressCallback cb, boolean exportMetaAtlasParquet) throws IOException {
 		File taxDir = new File(resultRoot, "taxonomy_analysis");
 		taxDir.mkdirs();
 
@@ -141,6 +157,7 @@ public final class PfindMagHeadlessRunner {
 		request.uniquePepWithILMap = post.uniquePepWithILMap;
 		request.intensityTitles = post.intensityTitles;
 		request.progressCallback = cb;
+		request.exportMetaAtlasParquet = exportMetaAtlasParquet;
 		MagTaxonomyAnalysisService.run(request);
 	}
 

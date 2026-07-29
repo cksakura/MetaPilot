@@ -54,6 +54,14 @@ public final class MagTaxonomyAnalysisService {
 		public HashMap<String, HashSet<String>> uniquePepWithILMap;
 		public String[] intensityTitles;
 		public ProgressCallback progressCallback;
+		/**
+		 * Opt-in: also write the MetaAtlas-aligned taxon_abundance.parquet (see
+		 * {@link MagTaxonomyTsvExporter#exportMetaAtlasTaxonAbundance}). Defaults to false,
+		 * so existing callers (in particular GUI tasks) get no behavior change unless they
+		 * explicitly opt in. Intended to be set from a CLI flag (e.g. --export-metaatlas),
+		 * not from GUI code.
+		 */
+		public boolean exportMetaAtlasParquet;
 	}
 
 	public static final class Result {
@@ -102,6 +110,16 @@ public final class MagTaxonomyAnalysisService {
 				rankedSelection.genomeSelectionLabel, request.totalPepCountMap, request.razorPepCountMap,
 				request.uniquePepCountMap, request.totalPepWithILMap, request.razorPepWithILMap,
 				request.uniquePepWithILMap, request.intensityTitles, request.genomeScoreRuninfo, cb);
+
+		if (request.exportMetaAtlasParquet) {
+			try {
+				MagTaxonomyTsvExporter.exportMetaAtlasTaxonAbundance(request.taxonomyAnalysisDir,
+						request.magDb.getOriginalTaxaFile(), request.genomeIntensityMap, request.genomeStats,
+						request.genomeScoreMap, request.intensityTitles, cb);
+			} catch (Exception e) {
+				cb.onMessage("Skipping MetaAtlas taxon_abundance.parquet: " + e.getMessage());
+			}
+		}
 
 		Result result = new Result();
 		result.taxonomyAnalysisDir = request.taxonomyAnalysisDir;

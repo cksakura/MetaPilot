@@ -85,6 +85,16 @@ public final class MetaPilotCliApp {
             System.arraycopy(args, 1, subArgs, 0, subArgs.length);
             return runPfindMagReport(subArgs);
         }
+        if (args != null && args.length > 0 && "diann-mag-report".equalsIgnoreCase(args[0])) {
+            String[] subArgs = new String[args.length - 1];
+            System.arraycopy(args, 1, subArgs, 0, subArgs.length);
+            return runDiaMagReport(subArgs);
+        }
+        if (args != null && args.length > 0 && "diann-mag-peptide-map".equalsIgnoreCase(args[0])) {
+            String[] subArgs = new String[args.length - 1];
+            System.arraycopy(args, 1, subArgs, 0, subArgs.length);
+            return runDiaMagPeptideMap(subArgs);
+        }
         if (args != null && args.length > 0 && "resources-check".equalsIgnoreCase(args[0])) {
             String[] subArgs = new String[args.length - 1];
             System.arraycopy(args, 1, subArgs, 0, subArgs.length);
@@ -257,7 +267,8 @@ public final class MetaPilotCliApp {
                     funcDb,
                     reportGenerationEnabled(rc, cmd.hasOption("no-report")),
                     null,
-                    rc
+                    rc,
+                    cmd.hasOption("export-metaatlas")
             );
             return 0;
         } catch (Exception e) {
@@ -501,6 +512,7 @@ public final class MetaPilotCliApp {
                 p.setFragpipeParallelTasks(fragpipeParallelTasks);
             }
             boolean identificationOnly = cmd.hasOption("identification-only");
+            boolean exportMetaAtlas = cmd.hasOption("export-metaatlas");
 
             java.io.File workflow = null;
             if (workflowFile != null && !workflowFile.isBlank()) {
@@ -555,7 +567,8 @@ public final class MetaPilotCliApp {
                         cb,
                         reportGenerationEnabled(rc, cmd.hasOption("no-report")),
                         null,
-                        rc
+                        rc,
+                        exportMetaAtlas
                 );
             } else {
                 uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.runWithInstalledDefaults(
@@ -566,7 +579,8 @@ public final class MetaPilotCliApp {
                         cb,
                         reportGenerationEnabled(rc, cmd.hasOption("no-report")),
                         null,
-                        rc
+                        rc,
+                        exportMetaAtlas
                 );
             }
             return 0;
@@ -656,11 +670,171 @@ public final class MetaPilotCliApp {
                     cb,
                     reportGenerationEnabled(rc, cmd.hasOption("no-report")),
                     null,
-                    rc
+                    rc,
+                    cmd.hasOption("export-metaatlas")
             );
             return 0;
         } catch (Exception e) {
             System.err.println("ERROR: pfind-mag-report failed for params=" + new java.io.File(paramsFile).getAbsolutePath());
+            e.printStackTrace(System.err);
+            return 1;
+        }
+    }
+
+    private static int runDiaMagReport(String[] args) {
+        Options options = buildDiaMagReportOptions();
+        CommandLineParser parser = new DefaultParser();
+
+        CommandLine cmd;
+        try {
+            cmd = parser.parse(options, args);
+        } catch (ParseException e) {
+            System.err.println("ERROR: " + e.getMessage());
+            printDiaMagReportHelp(options);
+            return 2;
+        }
+
+        if (cmd.hasOption("help")) {
+            printDiaMagReportHelp(options);
+            return 0;
+        }
+
+        String paramsFile = cmd.getOptionValue("params");
+        if (paramsFile == null) {
+            System.err.println("ERROR: --params is required.");
+            printDiaMagReportHelp(options);
+            return 2;
+        }
+
+        java.nio.file.Path resourcesCfg = resolveResourcesConfigPath(cmd.getOptionValue("resources"));
+        java.nio.file.Path magdbCfg = resolveMagDbConfigPath(cmd.getOptionValue("magdb"));
+
+        try {
+            uk.ac.quadram.metapilot.core.resources.MetaPilotResourceConfig rc =
+                    uk.ac.quadram.metapilot.core.resources.MetaPilotResourceConfig.load(resourcesCfg);
+
+            java.io.File funcDb = rc.resolveToolPath(uk.ac.quadram.metapilot.core.resources.ToolKey.FUNCDB, null)
+                    .map(java.nio.file.Path::toFile)
+                    .orElse(null);
+
+            uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaMarker p =
+                    new uk.ac.quadram.metapilot.task.dia.par.DiaMarkerParameterIO()
+                            .loadParameters(new java.io.File(paramsFile));
+            if (p == null) {
+                System.err.println("ERROR: failed to load DIA Marker params from: " + new java.io.File(paramsFile).getAbsolutePath());
+                return 2;
+            }
+
+            java.io.File resultDirOverride = null;
+            String outOpt = cmd.getOptionValue("out");
+            if (outOpt != null && !outOpt.isBlank()) {
+                resultDirOverride = new java.io.File(outOpt);
+            }
+            java.io.File combinedParquet = null;
+            String combinedParquetOpt = cmd.getOptionValue("combined-parquet");
+            if (combinedParquetOpt != null && !combinedParquetOpt.isBlank()) {
+                combinedParquet = new java.io.File(combinedParquetOpt);
+            }
+            java.io.File prMatrix = null;
+            String prMatrixOpt = cmd.getOptionValue("pr-matrix");
+            if (prMatrixOpt != null && !prMatrixOpt.isBlank()) {
+                prMatrix = new java.io.File(prMatrixOpt);
+            }
+            java.io.File roundRoot = null;
+            String roundRootOpt = cmd.getOptionValue("round-root");
+            if (roundRootOpt != null && !roundRootOpt.isBlank()) {
+                roundRoot = new java.io.File(roundRootOpt);
+            }
+            java.io.File peptideProteinMap = null;
+            String peptideProteinMapOpt = cmd.getOptionValue("peptide-protein-map");
+            if (peptideProteinMapOpt != null && !peptideProteinMapOpt.isBlank()) {
+                peptideProteinMap = new java.io.File(peptideProteinMapOpt);
+            }
+
+            uk.ac.quadram.metapilot.core.workflow.ProgressCallback cb = new uk.ac.quadram.metapilot.core.workflow.ProgressCallback() {
+                @Override public void onProgress(double workDone, double max) { }
+                @Override public void onMessage(String message) { if (message != null && !message.isBlank()) System.out.println(message); }
+                @Override public void onComplete(Object result) { System.out.println("Done: " + result); }
+                @Override public void onError(Exception error) { reportCallbackError("diann-mag-report", error); }
+            };
+
+            uk.ac.quadram.metapilot.core.runner.DiaMagReportHeadlessRunner.run(
+                    p,
+                    magdbCfg.toFile(),
+                    resultDirOverride,
+                    combinedParquet,
+                    prMatrix,
+                    peptideProteinMap,
+                    roundRoot,
+                    funcDb,
+                    cb,
+                    reportGenerationEnabled(rc, cmd.hasOption("no-report")),
+                    null,
+                    rc,
+                    cmd.hasOption("export-metaatlas"),
+                    cmd.hasOption("allow-incomplete-deep-protein-mapping")
+            );
+            return 0;
+        } catch (Exception e) {
+            System.err.println("ERROR: diann-mag-report failed for params=" + new java.io.File(paramsFile).getAbsolutePath());
+            e.printStackTrace(System.err);
+            return 1;
+        }
+    }
+
+    private static int runDiaMagPeptideMap(String[] args) {
+        Options options = buildDiaMagPeptideMapOptions();
+        CommandLineParser parser = new DefaultParser();
+
+        CommandLine cmd;
+        try {
+            cmd = parser.parse(options, args);
+        } catch (ParseException e) {
+            System.err.println("ERROR: " + e.getMessage());
+            printDiaMagPeptideMapHelp(options);
+            return 2;
+        }
+
+        if (cmd.hasOption("help")) {
+            printDiaMagPeptideMapHelp(options);
+            return 0;
+        }
+
+        String paramsFile = cmd.getOptionValue("params");
+        String outOpt = cmd.getOptionValue("out");
+        if (paramsFile == null || outOpt == null) {
+            System.err.println("ERROR: --params and --out are required.");
+            printDiaMagPeptideMapHelp(options);
+            return 2;
+        }
+
+        try {
+            uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaMarker p =
+                    new uk.ac.quadram.metapilot.task.dia.par.DiaMarkerParameterIO()
+                            .loadParameters(new java.io.File(paramsFile));
+            if (p == null) {
+                System.err.println("ERROR: failed to load DIA Marker params from: " + new java.io.File(paramsFile).getAbsolutePath());
+                return 2;
+            }
+
+            java.io.File markerRootOverride = null;
+            String markerRootOpt = cmd.getOptionValue("marker-root");
+            if (markerRootOpt != null && !markerRootOpt.isBlank()) {
+                markerRootOverride = new java.io.File(markerRootOpt);
+            }
+            java.io.File outTsv = new java.io.File(outOpt);
+
+            uk.ac.quadram.metapilot.core.workflow.ProgressCallback cb = new uk.ac.quadram.metapilot.core.workflow.ProgressCallback() {
+                @Override public void onProgress(double workDone, double max) { }
+                @Override public void onMessage(String message) { if (message != null && !message.isBlank()) System.out.println(message); }
+                @Override public void onComplete(Object result) { System.out.println("Done: " + result); }
+                @Override public void onError(Exception error) { reportCallbackError("diann-mag-peptide-map", error); }
+            };
+
+            uk.ac.quadram.metapilot.core.runner.DiaMagPeptideProteinMapExportRunner.run(p, markerRootOverride, outTsv, cb);
+            return 0;
+        } catch (Exception e) {
+            System.err.println("ERROR: diann-mag-peptide-map failed for params=" + new java.io.File(paramsFile).getAbsolutePath());
             e.printStackTrace(System.err);
             return 1;
         }
@@ -1080,6 +1254,12 @@ public final class MetaPilotCliApp {
                 .argName("N")
                 .desc("Alias for --fragpipe-parallel-tasks")
                 .build());
+        opts.addOption(Option.builder()
+                .longOpt("export-metaatlas")
+                .desc("Opt-in: also write MetaAtlas-aligned taxon_abundance.parquet / function_abundance.parquet "
+                        + "alongside the standard taxonomy/functional annotation reports. Off by default; not "
+                        + "available in the Windows GUI.")
+                .build());
         return opts;
     }
 
@@ -1128,6 +1308,141 @@ public final class MetaPilotCliApp {
                 .longOpt("no-report")
                 .desc("Disable final HTML report generation")
                 .build());
+        opts.addOption(Option.builder()
+                .longOpt("export-metaatlas")
+                .desc("Opt-in: also write MetaAtlas-aligned taxon_abundance.parquet / function_abundance.parquet "
+                        + "alongside the standard taxonomy/functional annotation reports. Off by default; not "
+                        + "available in the Windows GUI.")
+                .build());
+        return opts;
+    }
+
+    private static Options buildDiaMagReportOptions() {
+        Options opts = new Options();
+        opts.addOption(Option.builder("h")
+                .longOpt("help")
+                .desc("Show help")
+                .build());
+        opts.addOption(Option.builder()
+                .longOpt("params")
+                .hasArg()
+                .argName("FILE")
+                .desc("DIA Marker parameters JSON (e.g. last_used_dia_marker_parameters.json). Only used for the "
+                        + "MAG DB catalogue/version, marker mode, and output directory - DIA-NN search itself is "
+                        + "not re-run and no raw DIA files are read.")
+                .build());
+        opts.addOption(Option.builder()
+                .longOpt("resources")
+                .hasArg()
+                .argName("FILE")
+                .desc("Resource configuration file (default resolution same as resources-check)")
+                .build());
+        opts.addOption(Option.builder()
+                .longOpt("magdb")
+                .hasArg()
+                .argName("FILE")
+                .desc("MAG DB config JSON (MAGDB_1_0.json). Default: <install>/config/MAGDB_1_0.json. This must be "
+                        + "a registry that resolves on THIS machine (e.g. produced by 'mag-register --repository "
+                        + "<hpc-path-to-mag-db>') - not the Windows GUI's registry file.")
+                .build());
+        opts.addOption(Option.builder()
+                .longOpt("out")
+                .hasArg()
+                .argName("DIR")
+                .desc("Output directory. Strongly recommended: the 'result' path inside --params is exported by "
+                        + "the Windows GUI and points at a local path on that machine, which this command never "
+                        + "otherwise needs. When --out is set, params.result is ignored entirely and results are "
+                        + "written directly to this directory (no marker_focus/marker_comprehensive/marker_deep "
+                        + "subfolder is appended).")
+                .build());
+        opts.addOption(Option.builder()
+                .longOpt("combined-parquet")
+                .hasArg()
+                .argName("FILE")
+                .desc("Override path to combined.parquet. Default: <output_directory>/combined/combined.parquet, "
+                        + "where <output_directory> is --out if set, else derived from --params (Windows GUI / "
+                        + "dia-marker layout: marker_focus, marker_comprehensive, or marker_deep for both Deep "
+                        + "Together and Deep Per File)")
+                .build());
+        opts.addOption(Option.builder()
+                .longOpt("pr-matrix")
+                .hasArg()
+                .argName("FILE")
+                .desc("Override path to combined.pr_matrix.tsv. Default: same folder as combined.parquet")
+                .build());
+        opts.addOption(Option.builder()
+                .longOpt("peptide-protein-map")
+                .hasArg()
+                .argName("FILE")
+                .desc("Deep Together / Deep Per File marker modes only, and the RECOMMENDED input for them: a "
+                        + "compact peptide-to-proteins TSV produced once, locally, by the diann-mag-peptide-map "
+                        + "command (run where the round parquets already exist). Required for those two modes "
+                        + "unless --round-root resolves or --allow-incomplete-deep-protein-mapping is set - see "
+                        + "diann-mag-report --help description for why. Takes priority over --round-root when both "
+                        + "are given. Ignored for Core/Focus/Comprehensive.")
+                .build());
+        opts.addOption(Option.builder()
+                .longOpt("round-root")
+                .hasArg()
+                .argName("DIR")
+                .desc("Deep Together / Deep Per File marker modes only: fallback path to the actual 'marker' "
+                        + "round-parquet folder (round1.parquet, round2.parquet, ... or, for Deep Per File, "
+                        + "marker/<rawname>/round*/...), for when you'd rather copy that whole folder to this "
+                        + "machine instead of using --peptide-protein-map. Only used if --peptide-protein-map is "
+                        + "not given. Ignored for Core/Focus/Comprehensive.")
+                .build());
+        opts.addOption(Option.builder()
+                .longOpt("allow-incomplete-deep-protein-mapping")
+                .desc("Deep Together / Deep Per File marker modes only: proceed even when neither "
+                        + "--peptide-protein-map nor a round-parquet folder is available, scoring directly off "
+                        + "combined.parquet's own protein groups. This silently collapses every peptide to a "
+                        + "single arbitrary protein and will misclassify peptides shared across genomes - only use "
+                        + "this if you understand and accept that limitation. Without this flag, diann-mag-report "
+                        + "fails with an explanatory error instead of producing a quietly-wrong result. Ignored for "
+                        + "Core/Focus/Comprehensive.")
+                .build());
+        opts.addOption(Option.builder()
+                .longOpt("no-report")
+                .desc("Disable final HTML report generation")
+                .build());
+        opts.addOption(Option.builder()
+                .longOpt("export-metaatlas")
+                .desc("Opt-in: also write MetaAtlas-aligned taxon_abundance.parquet / function_abundance.parquet "
+                        + "alongside the standard taxonomy/functional annotation reports. Off by default; not "
+                        + "available in the Windows GUI.")
+                .build());
+        return opts;
+    }
+
+    private static Options buildDiaMagPeptideMapOptions() {
+        Options opts = new Options();
+        opts.addOption(Option.builder("h")
+                .longOpt("help")
+                .desc("Show help")
+                .build());
+        opts.addOption(Option.builder()
+                .longOpt("params")
+                .hasArg()
+                .argName("FILE")
+                .desc("DIA Marker parameters JSON for a completed Deep Together or Deep Per File local run (same "
+                        + "file the GUI/dia-marker used). Must be run on the machine where that run's round "
+                        + "parquets still exist - only used for marker mode and the output directory "
+                        + "(<result>/marker_deep), nothing is re-run.")
+                .build());
+        opts.addOption(Option.builder()
+                .longOpt("marker-root")
+                .hasArg()
+                .argName("DIR")
+                .desc("Override for the marker_deep folder (the one containing 'marker/' and 'combined/'). "
+                        + "Default: <params result>/marker_deep.")
+                .build());
+        opts.addOption(Option.builder()
+                .longOpt("out")
+                .hasArg()
+                .argName("FILE")
+                .desc("Where to write the compact peptide-protein map TSV. This is the one file you then transfer "
+                        + "to HPC and pass to 'diann-mag-report --peptide-protein-map'.")
+                .build());
         return opts;
     }
 
@@ -1158,6 +1473,12 @@ public final class MetaPilotCliApp {
         opts.addOption(Option.builder()
                 .longOpt("no-report")
                 .desc("Disable final HTML report generation")
+                .build());
+        opts.addOption(Option.builder()
+                .longOpt("export-metaatlas")
+                .desc("Opt-in: also write MetaAtlas-aligned taxon_abundance.parquet / function_abundance.parquet "
+                        + "alongside the standard taxonomy/functional annotation reports. Off by default; not "
+                        + "available in the Windows GUI.")
                 .build());
         return opts;
     }
@@ -1404,7 +1725,14 @@ public final class MetaPilotCliApp {
                         + "    --params /path/last_used_mag_fragpipe_parameters.json \\\n"
                         + "    --resources ~/tools/metapilot/config/meta_resources.params \\\n"
                         + "    --magdb ~/tools/metapilot/config/MAGDB_1_0.json \\\n"
-                        + "    --identification-only\n",
+                        + "    --identification-only\n"
+                        + "\n"
+                        + "Also emit MetaAtlas long-format taxon_abundance.parquet / function_abundance.parquet:\n"
+                        + "  java -jar metapilot-cli-1.1.0-shaded.jar mag-fragpipe \\\n"
+                        + "    --params /path/last_used_mag_fragpipe_parameters.json \\\n"
+                        + "    --resources ~/tools/metapilot/config/meta_resources.params \\\n"
+                        + "    --magdb ~/tools/metapilot/config/MAGDB_1_0.json \\\n"
+                        + "    --export-metaatlas\n",
                 true
         );
     }
@@ -1430,7 +1758,90 @@ public final class MetaPilotCliApp {
                         + "  java -jar metapilot-cli-1.1.0-shaded.jar pfind-mag-report \\\n"
                         + "    --params /path/last_used_mag_pfind_parameters.json \\\n"
                         + "    --quantified-peptides /data/transfer/combined/QuantifiedPeptides.tsv \\\n"
-                        + "    --psms /data/transfer/combined/psms.tsv\n",
+                        + "    --psms /data/transfer/combined/psms.tsv\n"
+                        + "\n"
+                        + "Also emit MetaAtlas long-format taxon_abundance.parquet / function_abundance.parquet:\n"
+                        + "  java -jar metapilot-cli-1.1.0-shaded.jar pfind-mag-report \\\n"
+                        + "    --params /path/last_used_mag_pfind_parameters.json \\\n"
+                        + "    --resources ~/tools/metapilot/config/meta_resources.params \\\n"
+                        + "    --magdb ~/tools/metapilot/config/MAGDB_1_0.json \\\n"
+                        + "    --export-metaatlas\n",
+                true
+        );
+    }
+
+    private static void printDiaMagReportHelp(Options options) {
+        HelpFormatter hf = new HelpFormatter();
+        hf.setWidth(110);
+        hf.printHelp(
+                "java -jar metapilot-cli-<version>-shaded.jar diann-mag-report [options]",
+                "\nResume a DIA MAG (DIA Marker) workflow headlessly from an already-produced DIA-NN search result "
+                        + "(combined.parquet + combined.pr_matrix.tsv), and run only the memory-heavy protein/genome "
+                        + "inference, taxonomy, functional annotation, and the final HTML report. The DIA-NN search "
+                        + "itself still requires the Windows GUI or dia-marker on a machine with DIA-NN installed; "
+                        + "no DIA-NN executable and no raw DIA spectra files are needed here. Supports Core/Focus, "
+                        + "Comprehensive, Deep Together, and Deep Per File marker modes. For the two Deep modes, "
+                        + "combined.parquet + combined.pr_matrix.tsv are NOT enough on their own for correct "
+                        + "protein/genome inference - you also need --peptide-protein-map (recommended: a small "
+                        + "file produced locally by diann-mag-peptide-map) or --round-root (the full 'marker' "
+                        + "folder); this command fails with an explanatory error for Deep modes if neither is given, "
+                        + "rather than silently producing wrong genome/protein assignments.",
+                options,
+                "\nCore/Focus/Comprehensive - HPC-local site config + explicit --out, so nothing depends on any "
+                        + "path that only exists on your local computer:\n"
+                        + "  java -jar metapilot-cli-1.1.0-shaded.jar diann-mag-report \\\n"
+                        + "    --params /data/transfer/last_used_dia_marker_parameters.json \\\n"
+                        + "    --resources ~/tools/metapilot/config/meta_resources.params \\\n"
+                        + "    --magdb ~/tools/metapilot/config/MAGDB_1_0.json \\\n"
+                        + "    --out /data/metapilot/studies/study1 \\\n"
+                        + "    --combined-parquet /data/transfer/combined.parquet \\\n"
+                        + "    --pr-matrix /data/transfer/combined.pr_matrix.tsv\n"
+                        + "\n"
+                        + "Deep Together / Deep Per File - also pass the compact map from diann-mag-peptide-map:\n"
+                        + "  java -jar metapilot-cli-1.1.0-shaded.jar diann-mag-report \\\n"
+                        + "    --params /data/transfer/last_used_dia_marker_parameters.json \\\n"
+                        + "    --resources ~/tools/metapilot/config/meta_resources.params \\\n"
+                        + "    --magdb ~/tools/metapilot/config/MAGDB_1_0.json \\\n"
+                        + "    --out /data/metapilot/studies/study1 \\\n"
+                        + "    --combined-parquet /data/transfer/combined.parquet \\\n"
+                        + "    --pr-matrix /data/transfer/combined.pr_matrix.tsv \\\n"
+                        + "    --peptide-protein-map /data/transfer/peptide_protein_map.tsv\n"
+                        + "\n"
+                        + "(--resources/--magdb must already resolve on this machine - e.g. --magdb from "
+                        + "'mag-register --repository <hpc-path-to-mag-db>' - not the Windows GUI's copies. Without "
+                        + "--out, the output directory falls back to a path derived from --params' 'result' field, "
+                        + "which is only safe to omit when --params was exported/edited to already point at an "
+                        + "HPC path.)\n"
+                        + "\n"
+                        + "Also emit MetaAtlas long-format taxon_abundance.parquet / function_abundance.parquet:\n"
+                        + "  java -jar metapilot-cli-1.1.0-shaded.jar diann-mag-report \\\n"
+                        + "    --params /data/transfer/last_used_dia_marker_parameters.json \\\n"
+                        + "    --resources ~/tools/metapilot/config/meta_resources.params \\\n"
+                        + "    --magdb ~/tools/metapilot/config/MAGDB_1_0.json \\\n"
+                        + "    --out /data/metapilot/studies/study1 \\\n"
+                        + "    --combined-parquet /data/transfer/combined.parquet \\\n"
+                        + "    --pr-matrix /data/transfer/combined.pr_matrix.tsv \\\n"
+                        + "    --export-metaatlas\n",
+                true
+        );
+    }
+
+    private static void printDiaMagPeptideMapHelp(Options options) {
+        HelpFormatter hf = new HelpFormatter();
+        hf.setWidth(110);
+        hf.printHelp(
+                "java -jar metapilot-cli-<version>-shaded.jar diann-mag-peptide-map [options]",
+                "\nRun this LOCALLY, on the machine that still has the round-parquet folder from a completed Deep "
+                        + "Together or Deep Per File DIA Marker run (Core/Focus/Comprehensive don't need this - "
+                        + "their combined.parquet is already complete). Reads round1.parquet, round2.parquet, ... "
+                        + "and writes one compact peptide-to-proteins TSV. Transfer only that one small file to "
+                        + "HPC and pass it to 'diann-mag-report --peptide-protein-map' - no need to copy the whole "
+                        + "'marker' folder.",
+                options,
+                "\nExample (same params file the local Deep run used):\n"
+                        + "  java -jar metapilot-cli-1.1.0-shaded.jar diann-mag-peptide-map \\\n"
+                        + "    --params /path/last_used_dia_marker_parameters.json \\\n"
+                        + "    --out /path/peptide_protein_map.tsv\n",
                 true
         );
     }
@@ -1446,7 +1857,14 @@ public final class MetaPilotCliApp {
                         + "  java -jar metapilot-cli-1.1.0-shaded.jar dia-marker \\\n"
                         + "    --params /path/last_used_dia_marker_parameters.json \\\n"
                         + "    --resources ~/tools/metapilot/config/meta_resources.params \\\n"
-                        + "    --magdb ~/tools/metapilot/config/MAGDB_1_0.json\n",
+                        + "    --magdb ~/tools/metapilot/config/MAGDB_1_0.json\n"
+                        + "\n"
+                        + "Also emit MetaAtlas long-format taxon_abundance.parquet / function_abundance.parquet:\n"
+                        + "  java -jar metapilot-cli-1.1.0-shaded.jar dia-marker \\\n"
+                        + "    --params /path/last_used_dia_marker_parameters.json \\\n"
+                        + "    --resources ~/tools/metapilot/config/meta_resources.params \\\n"
+                        + "    --magdb ~/tools/metapilot/config/MAGDB_1_0.json \\\n"
+                        + "    --export-metaatlas\n",
                 true
         );
     }

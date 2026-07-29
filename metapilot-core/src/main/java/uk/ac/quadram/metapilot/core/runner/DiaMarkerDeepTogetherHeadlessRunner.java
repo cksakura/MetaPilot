@@ -95,20 +95,36 @@ public final class DiaMarkerDeepTogetherHeadlessRunner {
                              ProgressCallback cb, File condaPrefix, File funcDbFile,
                              boolean generateHtmlReport, String reportPythonHint,
                              MetaPilotResourceConfig reportResourceConfig) throws Exception {
+        return run(params, diannExe, magDbConfigJson, cb, condaPrefix, funcDbFile, generateHtmlReport,
+                reportPythonHint, reportResourceConfig, false);
+    }
+
+    /**
+     * Same as the 9-argument {@link #run}, with an additional opt-in
+     * {@code exportMetaAtlasParquet} flag (see {@code --export-metaatlas} in the CLI). This
+     * is a brand new overload, not a change to any existing signature, so it cannot affect
+     * any existing caller.
+     */
+    public static Result run(MetaParameterDiaMarker params, File diannExe, File magDbConfigJson,
+                             ProgressCallback cb, File condaPrefix, File funcDbFile,
+                             boolean generateHtmlReport, String reportPythonHint,
+                             MetaPilotResourceConfig reportResourceConfig, boolean exportMetaAtlasParquet)
+            throws Exception {
         return runInternal(params, diannExe, magDbConfigJson, cb, condaPrefix, funcDbFile, true,
-                generateHtmlReport, reportPythonHint, reportResourceConfig);
+                generateHtmlReport, reportPythonHint, reportResourceConfig, exportMetaAtlasParquet);
     }
 
     public static Result runWithoutPostAnalysis(MetaParameterDiaMarker params, File diannExe, File magDbConfigJson,
                                                 ProgressCallback cb, File condaPrefix, File funcDbFile) throws Exception {
         return runInternal(params, diannExe, magDbConfigJson, cb, condaPrefix, funcDbFile, false,
-                false, null, null);
+                false, null, null, false);
     }
 
     private static Result runInternal(MetaParameterDiaMarker params, File diannExe, File magDbConfigJson,
                                       ProgressCallback cb, File condaPrefix, File funcDbFile,
                                       boolean exportPostAnalysis, boolean generateHtmlReport,
-                                      String reportPythonHint, MetaPilotResourceConfig reportResourceConfig)
+                                      String reportPythonHint, MetaPilotResourceConfig reportResourceConfig,
+                                      boolean exportMetaAtlasParquet)
             throws Exception {
         final ProgressCallback callback = cb == null ? new ProgressCallback.NoOp() : cb;
         if (params == null) throw new IllegalArgumentException("params is null");
@@ -228,7 +244,8 @@ public final class DiaMarkerDeepTogetherHeadlessRunner {
                         params.getMicroDb(),
                         params.getQuantitativeMode(),
                         callback,
-                        DiaDeepProteinMappingService.Request.deepTogether(markerDir, loop.lastRound, diaFiles, "KR")
+                        DiaDeepProteinMappingService.Request.deepTogether(markerDir, loop.lastRound, diaFiles, "KR"),
+                        exportMetaAtlasParquet
                 );
                 runHtmlReportIfRequested(markerDeepDir, params, generateHtmlReport, reportPythonHint,
                         reportResourceConfig, callback);

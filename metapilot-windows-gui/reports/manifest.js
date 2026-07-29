@@ -2,7 +2,7 @@ window.METAPILOT_MANIFEST = {
   "reports": [{
     "summary": "Taxonomic analysis and genome-level insights from MAG workflow.",
     "file": "reports/Genome.html",
-    "created_at": "2026-05-16T16:49:32.614881700Z",
+    "created_at": "2026-07-21T08:51:55.208568600Z",
     "source": "Genome.html",
     "title": "Genome Analysis Report",
     "tags": [
@@ -11,5 +11,5 @@ window.METAPILOT_MANIFEST = {
       "MAG"
     ]
   }],
-  "generated_at": "2026-05-16T16:49:32.615884Z"
+  "generated_at": "2026-07-21T08:51:55.208568600Z"
 };

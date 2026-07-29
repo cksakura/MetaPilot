@@ -26,6 +26,27 @@ public final class DiaMagFunctionalAnnotationExporter {
             String[] intensityTitles,
             ProgressCallback cb
     ) throws Exception {
+        export(resultDir, magDb, funcDbFile, microDbCatalogueId, quantitativeMode, proteins, intensityTitles, cb,
+                false);
+    }
+
+    /**
+     * Same as the 8-argument {@link #export}, with an additional opt-in
+     * {@code exportMetaAtlasParquet} flag (see {@code --export-metaatlas} in the CLI). This
+     * is a brand new overload, not a change to any existing signature, so it cannot affect
+     * any existing caller.
+     */
+    public static void export(
+            File resultDir,
+            MagDbItem magDb,
+            File funcDbFile,
+            String microDbCatalogueId,
+            String quantitativeMode,
+            MetaProtein[] proteins,
+            String[] intensityTitles,
+            ProgressCallback cb,
+            boolean exportMetaAtlasParquet
+    ) throws Exception {
         if (cb == null) cb = new ProgressCallback.NoOp();
         if (resultDir == null) throw new IOException("resultDir is null");
         if (magDb == null) throw new IOException("magDb is null");
@@ -51,6 +72,7 @@ public final class DiaMagFunctionalAnnotationExporter {
         request.quantitativeMode = quantitativeMode;
         request.metaProteins = proteins;
         request.intensityTitles = intensityTitles;
+        request.exportMetaAtlasParquet = exportMetaAtlasParquet;
         MagFunctionalAnnotationService.Result result = MagFunctionalAnnotationService.run(request);
         cb.onMessage("DIA functional annotation: wrote " + result.annotatedProteinsTsv.getName());
     }

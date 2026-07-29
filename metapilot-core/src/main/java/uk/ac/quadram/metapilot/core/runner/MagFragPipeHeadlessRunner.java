@@ -125,8 +125,25 @@ public final class MagFragPipeHeadlessRunner {
 	public static Result run(DDAMagFragPipeParameters params, File resourcesFragpipe, File workflowTemplate,
 			File magdbConfigJson, File funcDbFile, ProgressCallback cb, boolean generateHtmlReport,
 			String reportPythonHint, MetaPilotResourceConfig reportResourceConfig) throws Exception {
+		return run(params, resourcesFragpipe, workflowTemplate, magdbConfigJson, funcDbFile, cb, generateHtmlReport,
+				reportPythonHint, reportResourceConfig, false);
+	}
+
+	/**
+	 * Same as the 9-argument {@link #run}, with an additional opt-in
+	 * {@code exportMetaAtlasParquet} flag (see {@code --export-metaatlas} in the CLI). This
+	 * is a brand new overload, not a change to any existing signature, so it cannot affect
+	 * any existing caller - in particular the Windows GUI task, which only ever calls the
+	 * pre-existing {@link #run} / {@link #runWithInstalledDefaults} overloads, is unaffected.
+	 * Only CLI headless callers that explicitly opt in by calling this overload will produce
+	 * the guide-aligned taxon_abundance.parquet / function_abundance.parquet exports.
+	 */
+	public static Result run(DDAMagFragPipeParameters params, File resourcesFragpipe, File workflowTemplate,
+			File magdbConfigJson, File funcDbFile, ProgressCallback cb, boolean generateHtmlReport,
+			String reportPythonHint, MetaPilotResourceConfig reportResourceConfig, boolean exportMetaAtlasParquet)
+			throws Exception {
 		return runInternal(params, resourcesFragpipe, workflowTemplate, magdbConfigJson, funcDbFile, cb, true,
-				generateHtmlReport, reportPythonHint, reportResourceConfig, false);
+				generateHtmlReport, reportPythonHint, reportResourceConfig, false, exportMetaAtlasParquet);
 	}
 
 	public static Result runWithInstalledDefaults(DDAMagFragPipeParameters params, File resourcesFragpipe,
@@ -149,14 +166,24 @@ public final class MagFragPipeHeadlessRunner {
 	public static Result runWithInstalledDefaults(DDAMagFragPipeParameters params, File resourcesFragpipe,
 			File magdbConfigJson, File funcDbFile, ProgressCallback cb, boolean generateHtmlReport,
 			String reportPythonHint, MetaPilotResourceConfig reportResourceConfig) throws Exception {
-		return runInternal(params, resourcesFragpipe, null, magdbConfigJson, funcDbFile, cb, true,
+		return runWithInstalledDefaults(params, resourcesFragpipe, magdbConfigJson, funcDbFile, cb,
 				generateHtmlReport, reportPythonHint, reportResourceConfig, false);
+	}
+
+	/** Same as the 7-argument {@link #runWithInstalledDefaults}, with an additional opt-in
+	 * {@code exportMetaAtlasParquet} flag - see {@link #run(DDAMagFragPipeParameters, File, File, File, File, ProgressCallback, boolean, String, MetaPilotResourceConfig, boolean)}. */
+	public static Result runWithInstalledDefaults(DDAMagFragPipeParameters params, File resourcesFragpipe,
+			File magdbConfigJson, File funcDbFile, ProgressCallback cb, boolean generateHtmlReport,
+			String reportPythonHint, MetaPilotResourceConfig reportResourceConfig, boolean exportMetaAtlasParquet)
+			throws Exception {
+		return runInternal(params, resourcesFragpipe, null, magdbConfigJson, funcDbFile, cb, true,
+				generateHtmlReport, reportPythonHint, reportResourceConfig, false, exportMetaAtlasParquet);
 	}
 
 	public static Result runWithoutPostAnalysis(DDAMagFragPipeParameters params, File resourcesFragpipe,
 			File workflowTemplate, File magdbConfigJson, ProgressCallback cb) throws Exception {
 		return runInternal(params, resourcesFragpipe, workflowTemplate, magdbConfigJson, null, cb, false,
-				false, null, null, false);
+				false, null, null, false, false);
 	}
 
 	/**
@@ -179,20 +206,20 @@ public final class MagFragPipeHeadlessRunner {
 	public static Result runIdentificationOnly(DDAMagFragPipeParameters params, File resourcesFragpipe,
 			File workflowTemplate, File magdbConfigJson, ProgressCallback cb) throws Exception {
 		return runInternal(params, resourcesFragpipe, workflowTemplate, magdbConfigJson, null, cb, false,
-				false, null, null, true);
+				false, null, null, true, false);
 	}
 
 	/** Identification-only mode using the FragPipe installation's own installed workflow templates. */
 	public static Result runIdentificationOnlyWithInstalledDefaults(DDAMagFragPipeParameters params,
 			File resourcesFragpipe, File magdbConfigJson, ProgressCallback cb) throws Exception {
 		return runInternal(params, resourcesFragpipe, null, magdbConfigJson, null, cb, false, false, null,
-				null, true);
+				null, true, false);
 	}
 
 	private static Result runInternal(DDAMagFragPipeParameters params, File resourcesFragpipe, File workflowTemplate,
 			File magdbConfigJson, File funcDbFile, ProgressCallback cb, boolean exportPostAnalysis,
 			boolean generateHtmlReport, String reportPythonHint, MetaPilotResourceConfig reportResourceConfig,
-			boolean identificationOnly)
+			boolean identificationOnly, boolean exportMetaAtlasParquet)
 			throws Exception {
 		if (cb == null)
 			cb = new ProgressCallback.NoOp();
@@ -441,7 +468,7 @@ public final class MagFragPipeHeadlessRunner {
 			cb.onProgress(STEP_GHI_START_PERCENT + (STEP_GHI_END_PERCENT - STEP_GHI_START_PERCENT) / 3, 100);
 
 			cb.onMessage("Step H: taxonomy report export ...");
-			exportTaxonomyTsvs(params, quanPep, mag, resultRoot, post, cb);
+			exportTaxonomyTsvs(params, quanPep, mag, resultRoot, post, cb, exportMetaAtlasParquet);
 			cb.onProgress(STEP_GHI_START_PERCENT + (STEP_GHI_END_PERCENT - STEP_GHI_START_PERCENT) * 2 / 3, 100);
 
 			if (funcDbFile != null && funcDbFile.isFile()) {
@@ -455,6 +482,7 @@ public final class MagFragPipeHeadlessRunner {
 				request.quantitativeMode = params.getQuantitativeMode();
 				request.intensityTitles = post.intensityTitles;
 				request.metaProteins = post.metaProteins;
+				request.exportMetaAtlasParquet = exportMetaAtlasParquet;
 				MagFunctionalAnnotationService.run(request);
 			} else {
 				cb.onMessage("FragPipe functional annotation: skipped (func_def.db not configured)");
@@ -1268,7 +1296,8 @@ public final class MagFragPipeHeadlessRunner {
 	}
 
 	private static void exportTaxonomyTsvs(DDAMagFragPipeParameters params, File combinedModifiedPeptideTsv,
-			MagDbItem mag, File resultRoot, FragpipePostAnalysisTsvExporter.Result post, ProgressCallback cb)
+			MagDbItem mag, File resultRoot, FragpipePostAnalysisTsvExporter.Result post, ProgressCallback cb,
+			boolean exportMetaAtlasParquet)
 			throws Exception {
 		if (cb == null)
 			cb = new ProgressCallback.NoOp();
@@ -1301,6 +1330,7 @@ public final class MagFragPipeHeadlessRunner {
 		request.uniquePepWithILMap = post.uniquePepWithILMap;
 		request.intensityTitles = post.intensityTitles;
 		request.progressCallback = cb;
+		request.exportMetaAtlasParquet = exportMetaAtlasParquet;
 		MagTaxonomyAnalysisService.run(request);
 	}
 

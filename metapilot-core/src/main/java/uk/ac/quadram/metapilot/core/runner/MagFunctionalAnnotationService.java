@@ -38,6 +38,14 @@ public final class MagFunctionalAnnotationService {
 		public HashMap<String, double[]> proteinIntensityMap;
 		public HashMap<String, HashSet<String>> razorPepCountMap;
 		public HashMap<String, Integer> razorPsmCountMap;
+		/**
+		 * Opt-in: also write the MetaAtlas-aligned function_abundance.parquet (see
+		 * {@link FunctionalAnnotationExporter#exportMetaAtlasFunctionAbundance}). Defaults to
+		 * false, so existing callers (in particular GUI tasks) get no behavior change unless
+		 * they explicitly opt in. Intended to be set from a CLI flag (e.g.
+		 * --export-metaatlas), not from GUI code.
+		 */
+		public boolean exportMetaAtlasParquet;
 	}
 
 	public static final class Result {
@@ -65,6 +73,14 @@ public final class MagFunctionalAnnotationService {
 		FunctionalAnnotationResult annotation = annotateProteins(request.magDb, request.functionDefinitionDb,
 				request.microDbCatalogueId, metaProteins);
 		FunctionalAnnotationExporter.Result export = FunctionalAnnotationExporter.write(funcDir, annotation, intensityTitles);
+
+		if (request.exportMetaAtlasParquet) {
+			try {
+				FunctionalAnnotationExporter.exportMetaAtlasFunctionAbundance(funcDir, annotation, intensityTitles);
+			} catch (Exception e) {
+				// Never let the new, guide-aligned export break the existing report generation.
+			}
+		}
 
 		Result result = new Result();
 		result.functionalAnnotationDir = funcDir;

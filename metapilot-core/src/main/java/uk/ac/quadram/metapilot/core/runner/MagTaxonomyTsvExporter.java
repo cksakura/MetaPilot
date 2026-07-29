@@ -4,6 +4,7 @@ import uk.ac.quadram.metapilot.core.mag.DdaMagGenomeScoringService;
 import uk.ac.quadram.metapilot.core.taxonomy.TaxonomyRanks;
 import uk.ac.quadram.metapilot.core.tools.FormatTool;
 import uk.ac.quadram.metapilot.core.tools.ResourceLoader;
+import uk.ac.quadram.metapilot.core.tools.TypedParquetTableWriter;
 import uk.ac.quadram.metapilot.core.workflow.ProgressCallback;
 
 import java.io.BufferedReader;
@@ -18,6 +19,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -140,6 +142,40 @@ public final class MagTaxonomyTsvExporter {
             cb.onMessage("Writing taxonomy: " + taxaReportTsv.getName());
             writeTaxaReport(taxaReportTsv, genomeIntensityMap, lineageMap, intensityTitles);
         }
+    }
+
+    /**
+     * Opt-in MetaAtlas export: writes taxon_abundance.parquet (see
+     * {@link #writeTaxonAbundanceParquet}) alongside the standard TSV/HTML reports written
+     * by {@link #exportGenomeAndTaxaReports}, but is never called by that method - callers
+     * (CLI/headless runners only; not GUI tasks) must invoke this explicitly and separately,
+     * gated by their own opt-in flag (e.g. {@code --export-metaatlas}).
+     */
+    public static void exportMetaAtlasTaxonAbundance(File taxonomyAnalysisDir,
+                                                     File originalTaxaTsv,
+                                                     Map<String, double[]> genomeIntensityMap,
+                                                     Map<String, double[]> genomeDiaStats,
+                                                     Map<String, Double> genomeScoreMap,
+                                                     String[] intensityTitles,
+                                                     ProgressCallback cb) throws IOException {
+        if (cb == null) cb = new ProgressCallback.NoOp();
+        if (taxonomyAnalysisDir == null) throw new IOException("taxonomyAnalysisDir is null");
+        taxonomyAnalysisDir.mkdirs();
+
+        if (originalTaxaTsv == null || !originalTaxaTsv.exists()) {
+            throw new IOException(
+                    "MAG taxa TSV not found: " + (originalTaxaTsv == null ? "null" : originalTaxaTsv.getAbsolutePath()));
+        }
+        if (genomeIntensityMap == null || genomeIntensityMap.isEmpty()) {
+            throw new IOException("genomeIntensityMap is empty (no genomes to export)");
+        }
+        if (intensityTitles == null) intensityTitles = new String[0];
+
+        HashMap<String, Lineage> lineageMap = loadLineageByGenome(originalTaxaTsv);
+        File out = new File(taxonomyAnalysisDir, "taxon_abundance.parquet");
+        cb.onMessage("Writing MetaAtlas export: " + out.getName());
+        writeTaxonAbundanceParquet(out, genomeIntensityMap, genomeDiaStats, genomeScoreMap, lineageMap,
+                intensityTitles);
     }
 
     private static HashMap<String, Lineage> loadLineageByGenome(File taxaTsv) throws IOException {
@@ -332,6 +368,98 @@ public final class MagTaxonomyTsvExporter {
                 pw.println(sb);
             }
         }
+    }
+
+    /**
+     * Writes taxon_abundance.parquet: one row per taxon (at each main rank) per sample,
+     * with real types (abundance as DOUBLE) instead of a TSV-mirrored string table -
+     * shaped to match the MetaAtlas Parquet Export Upgrade Guide's taxon_abundance view
+     * (section 9.8) so it can be queried/joined by sample in DuckDB.
+     *
+     * Known deviations from the guide, since this pivots existing per-genome maps rather
+     * than adding a new taxonomy-ID resolution layer:
+     * - There is no numeric/accession taxon_id anywhere in this codebase's taxonomy path
+     *   (only free-text names derived from GTDB lineage strings), so taxon_name is used as
+     *   part of the natural key instead of a stable taxon_id. The guide explicitly warns
+     *   against using display names as primary keys (section 4.3) - flagging this rather
+     *   than pretending otherwise.
+     * - taxonomy_source is always "GTDB" here because the aggregation upstream (see
+     *   writeDiaStyleTaxaTables/writeTaxaReport) only aggregates against the GTDB-derived
+     *   Lineage, not the mapped NCBI lineage.
+     * - sample_id is the raw experiment/run name from the intensity titles, not a resolved
+     *   SDRF-backed stable sample_accession (guide section 12) - no sample metadata layer
+     *   exists yet to do that resolution.
+     * - supporting_peptide_count / unique_peptide_count / minimum_evidence_passed (guide
+     *   fields) are omitted: peptide counts are only aggregated per-genome upstream, not
+     *   per-taxon, so there's nothing correct to put there yet.
+     */
+    private static void writeTaxonAbundanceParquet(File out,
+                                                   Map<String, double[]> genomeIntensityMap,
+                                                   Map<String, double[]> genomeDiaStats,
+                                                   Map<String, Double> genomeScoreMap,
+                                                   Map<String, Lineage> lineageMap,
+                                                   String[] intensityTitles) throws IOException {
+        TaxonomyRanks[] mainRanks = TaxonomyRanks.getMainRanks();
+        String[] sampleIds = TypedParquetTableWriter.sampleIdsFromIntensityTitles(intensityTitles);
+        boolean useDia = genomeDiaStats != null && !genomeDiaStats.isEmpty();
+
+        // key = rank + "\t" + taxon name
+        LinkedHashMap<String, double[]> taxonIntensity = new LinkedHashMap<>();
+        LinkedHashMap<String, Double> taxonScore = new LinkedHashMap<>();
+        LinkedHashMap<String, String> taxonRankOf = new LinkedHashMap<>();
+        LinkedHashMap<String, String> taxonNameOf = new LinkedHashMap<>();
+
+        for (String genome : genomeIntensityMap.keySet()) {
+            double[] gi = genomeIntensityMap.get(genome);
+            if (gi == null) continue;
+            Lineage lin = lineageMap.get(genome);
+            if (lin == null) continue;
+
+            for (TaxonomyRanks r : mainRanks) {
+                String name = lin.byRank.get(r.getName());
+                if (name == null || name.isBlank()) continue;
+                String key = r.getName() + "\t" + name;
+
+                double[] acc = taxonIntensity.computeIfAbsent(key, k -> new double[gi.length]);
+                for (int i = 0; i < Math.min(acc.length, gi.length); i++) {
+                    acc[i] += gi[i];
+                }
+                taxonRankOf.put(key, r.getName());
+                taxonNameOf.put(key, name);
+
+                double contribution;
+                if (useDia) {
+                    double[] st = genomeDiaStats.get(genome);
+                    contribution = (st != null && st.length > 0) ? st[0] : 0.0;
+                } else {
+                    double score = (genomeScoreMap != null) ? genomeScoreMap.getOrDefault(genome, 1.0) : 1.0;
+                    contribution = score > 0 ? -Math.log10(score) : 0.0;
+                }
+                taxonScore.merge(key, contribution, Double::sum);
+            }
+        }
+
+        List<TypedParquetTableWriter.Column> columns = Arrays.asList(
+                new TypedParquetTableWriter.Column("taxon_name", TypedParquetTableWriter.ColumnType.STRING),
+                new TypedParquetTableWriter.Column("taxon_rank", TypedParquetTableWriter.ColumnType.STRING),
+                new TypedParquetTableWriter.Column("taxonomy_source", TypedParquetTableWriter.ColumnType.STRING),
+                new TypedParquetTableWriter.Column("sample_id", TypedParquetTableWriter.ColumnType.STRING),
+                new TypedParquetTableWriter.Column("abundance", TypedParquetTableWriter.ColumnType.DOUBLE),
+                new TypedParquetTableWriter.Column("abundance_type", TypedParquetTableWriter.ColumnType.STRING),
+                new TypedParquetTableWriter.Column("evidence_score", TypedParquetTableWriter.ColumnType.DOUBLE));
+
+        List<Object[]> rows = new ArrayList<>();
+        for (String key : taxonIntensity.keySet()) {
+            double[] inten = taxonIntensity.get(key);
+            String rank = taxonRankOf.get(key);
+            String name = taxonNameOf.get(key);
+            Double score = taxonScore.get(key);
+            for (int i = 0; i < sampleIds.length && i < inten.length; i++) {
+                rows.add(new Object[] { name, rank, "GTDB", sampleIds[i], inten[i], "raw", score });
+            }
+        }
+
+        TypedParquetTableWriter.write(out, columns, rows);
     }
 
     private static void writeDiaStyleTaxaTables(File taxaTsv,

@@ -1,37 +1,72 @@
 {
+  "mag_database": {
+    "catalogue_version": "v2.0.2",
+    "identifier": "MGYG",
+    "catalogue_id": "human-gut"
+  },
   "workflow": "DDA_MAG_FRAGPIPE",
   "input_output": {
     "mag_db_version": "v2.0.2",
-    "host_database": "C:\\Users\\daz25hak\\MetaProAI\\database\\uniprotkb_Human_AND_reviewed_true_AND_m_2025_09_01.fasta",
+    "host_database": "Z:\\database\\uniprotkb_Human_AND_reviewed_true_AND_m_2026_07_27.fasta",
     "mag_database": "human-gut",
-    "output_directory": "Z:\\PRIDE_dataset\\PXD050781_haonan\\MetaPilot_jumpstart\\MetaPilot",
+    "output_directory": "Z:\\PRIDE_dataset\\PXD001573\\MetaPilot",
     "append_host_db": true,
     "experiments": [
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781_haonan\\MetaPilot_jumpstart\\20221208_Ailing_Jumpstart_C.raw",
-        "experiment_name": "20221208_Ailing_Jumpstart_C"
+        "file_path": "Z:\\PRIDE_dataset\\PXD001573\\DC_repl1.mzML",
+        "experiment_name": "DC_repl1"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781_haonan\\MetaPilot_jumpstart\\20221208_Ailing_Jumpstart_D.raw",
-        "experiment_name": "20221208_Ailing_Jumpstart_D"
+        "file_path": "Z:\\PRIDE_dataset\\PXD001573\\DC_repl2.mzML",
+        "experiment_name": "DC_repl2"
       },
       {
-        "file_path": "Z:\\PRIDE_dataset\\PXD050781_haonan\\MetaPilot_jumpstart\\20221208_Ailing_Jumpstart_E.raw",
-        "experiment_name": "20221208_Ailing_Jumpstart_E"
+        "file_path": "Z:\\PRIDE_dataset\\PXD001573\\DC_repl3.mzML",
+        "experiment_name": "DC_repl3"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD001573\\DC_repl4.mzML",
+        "experiment_name": "DC_repl4"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD001573\\DC_repl5.mzML",
+        "experiment_name": "DC_repl5"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD001573\\NC_repl1.mzML",
+        "experiment_name": "NC_repl1"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD001573\\NC_repl2.mzML",
+        "experiment_name": "NC_repl2"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD001573\\NC_repl3.mzML",
+        "experiment_name": "NC_repl3"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD001573\\NC_repl4.mzML",
+        "experiment_name": "NC_repl4"
+      },
+      {
+        "file_path": "Z:\\PRIDE_dataset\\PXD001573\\NC_repl5.mzML",
+        "experiment_name": "NC_repl5"
       }
-    ]
+    ],
+    "mag_db_identifier": "MGYG"
   },
   "enzyme_settings": {
     "enzyme": "Trypsin",
     "missed_cleavages": 2,
     "digestion_mode": "Specific"
   },
-  "generated_at": "2026-05-16 12:21:18",
+  "generated_at": "2026-07-28 11:53:42",
   "fragpipe_workflow_configured": true,
   "additional_parameters": {
     "generate_sample_specific_db": true,
     "ms2_scan_mode": "Regular MS",
     "spectra_clustering": false,
+    "fragpipe_parallel_tasks": 0,
     "threads": 20,
     "genome_selector_mode": "Marker4",
     "genome_selection_strategy": "Comprehensive"

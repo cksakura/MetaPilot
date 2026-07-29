@@ -82,6 +82,21 @@ public final class DiaMagPostAnalysisTsvExporter {
 			File optionalGtdbNcbiMappingTsv, String markerMode, File funcDbFile, String microDbCatalogueId,
 			String quantitativeMode, ProgressCallback cb,
 			DiaDeepProteinMappingService.Request deepProteinMappingRequest) throws Exception {
+		return export(resultDir, magDb, combinedParquet, combinedPrMatrix, optionalGtdbNcbiMappingTsv, markerMode,
+				funcDbFile, microDbCatalogueId, quantitativeMode, cb, deepProteinMappingRequest, false);
+	}
+
+	/**
+	 * Same as the 11-argument {@link #export}, with an additional opt-in
+	 * {@code exportMetaAtlasParquet} flag (see {@code --export-metaatlas} in the CLI). This
+	 * is a brand new overload, not a change to any existing signature, so it cannot affect
+	 * any existing caller.
+	 */
+	public static Result export(File resultDir, MagDbItem magDb, File combinedParquet, File combinedPrMatrix,
+			File optionalGtdbNcbiMappingTsv, String markerMode, File funcDbFile, String microDbCatalogueId,
+			String quantitativeMode, ProgressCallback cb,
+			DiaDeepProteinMappingService.Request deepProteinMappingRequest, boolean exportMetaAtlasParquet)
+			throws Exception {
 		if (cb == null)
 			cb = new ProgressCallback.NoOp();
 		if (resultDir == null)
@@ -398,11 +413,12 @@ public final class DiaMagPostAnalysisTsvExporter {
 		taxonomyRequest.uniquePepWithILMap = uniquePepWithILMap;
 		taxonomyRequest.intensityTitles = expNames;
 		taxonomyRequest.progressCallback = cb;
+		taxonomyRequest.exportMetaAtlasParquet = exportMetaAtlasParquet;
 		MagTaxonomyAnalysisService.run(taxonomyRequest);
 
 		if (funcDbFile != null && funcDbFile.isFile()) {
 			DiaMagFunctionalAnnotationExporter.export(resultDir, magDb, funcDbFile, microDbCatalogueId,
-					quantitativeMode, metaProteins, expNames, cb);
+					quantitativeMode, metaProteins, expNames, cb, exportMetaAtlasParquet);
 		} else {
 			cb.onMessage("DIA functional annotation: skipped (func_def.db not configured)");
 		}
