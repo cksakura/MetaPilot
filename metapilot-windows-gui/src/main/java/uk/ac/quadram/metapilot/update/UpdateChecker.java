@@ -29,7 +29,7 @@ import javafx.scene.layout.VBox;
  * Works with: https://github.com/cksakura/MetaPilot-Releases/releases
  */
 public class UpdateChecker {
-    public static final String CURRENT_VERSION = "1.1.0";
+    public static final String CURRENT_VERSION = "1.1.1";
 
     private static final Logger LOGGER = Logger.getLogger(UpdateChecker.class.getName());
 

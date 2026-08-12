@@ -243,8 +243,22 @@ final class HpcStudyRunner {
             return 2;
         }
         try {
-            MagFragPipeHeadlessRunner.requireInstalledWorkflow(fragpipeExe, MagFragPipeHeadlessRunner.BASIC_SEARCH_WORKFLOW);
-            MagFragPipeHeadlessRunner.requireInstalledWorkflow(fragpipeExe, MagFragPipeHeadlessRunner.LFQ_MBR_WORKFLOW);
+            // Search mode (Closed/Open, custom template overrides) is read entirely from
+            // the loaded study parameters (search_mode / open_search_marker_stage /
+            // custom_basic_workflow_path / custom_combined_workflow_path) - only
+            // pre-validate whichever bundled templates those settings will actually need.
+            if (params.getCustomBasicWorkflowPath() == null || params.getCustomBasicWorkflowPath().isBlank()) {
+                String basicTemplate = params.isOpenSearchAtMarkerStage()
+                        ? MagFragPipeHeadlessRunner.OPEN_SEARCH_WORKFLOW
+                        : MagFragPipeHeadlessRunner.BASIC_SEARCH_WORKFLOW;
+                MagFragPipeHeadlessRunner.requireInstalledWorkflow(fragpipeExe, basicTemplate);
+            }
+            if (params.getCustomCombinedWorkflowPath() == null || params.getCustomCombinedWorkflowPath().isBlank()) {
+                MagFragPipeHeadlessRunner.requireInstalledWorkflow(fragpipeExe, MagFragPipeHeadlessRunner.LFQ_MBR_WORKFLOW);
+                if (params.isOpenSearch()) {
+                    MagFragPipeHeadlessRunner.requireInstalledWorkflow(fragpipeExe, MagFragPipeHeadlessRunner.OPEN_SEARCH_WORKFLOW);
+                }
+            }
         } catch (IOException e) {
             System.err.println("ERROR: required FragPipe workflow is not available in the installed FragPipe folder: "
                     + e.getMessage());

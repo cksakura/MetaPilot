@@ -468,7 +468,6 @@ public final class MetaPilotCliApp {
         }
 
         String paramsFile = cmd.getOptionValue("params");
-        String workflowFile = cmd.getOptionValue("workflow");
         if (paramsFile == null) {
             System.err.println("ERROR: --params is required.");
             printMagFragpipeHelp(options);
@@ -514,32 +513,37 @@ public final class MetaPilotCliApp {
             boolean identificationOnly = cmd.hasOption("identification-only");
             boolean exportMetaAtlas = cmd.hasOption("export-metaatlas");
 
-            java.io.File workflow = null;
-            if (workflowFile != null && !workflowFile.isBlank()) {
-                workflow = new java.io.File(workflowFile);
-                if (!workflow.exists()) {
-                    System.err.println("ERROR: --workflow does not exist: " + workflow.getAbsolutePath());
-                    return 2;
+            // Workflow template selection is entirely parameter-file driven (search_mode,
+            // open_search_marker_stage, custom_basic_workflow_path,
+            // custom_combined_workflow_path) - there is no --workflow CLI flag, so the
+            // parameter file is the single source of truth for both GUI and CLI/HPC runs.
+            // Pre-flight-validate whichever bundled templates the loaded params will
+            // actually need, so a missing FragPipe workflow fails fast with a clear message
+            // instead of partway through Step A.
+            try {
+                if (p.getCustomBasicWorkflowPath() == null || p.getCustomBasicWorkflowPath().isBlank()) {
+                    String basicTemplate = p.isOpenSearchAtMarkerStage()
+                            ? uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.OPEN_SEARCH_WORKFLOW
+                            : uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.BASIC_SEARCH_WORKFLOW;
+                    uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.requireInstalledWorkflow(fragpipeExe, basicTemplate);
                 }
-                if (!workflow.isFile()) {
-                    System.err.println("ERROR: --workflow is not a file: " + workflow.getAbsolutePath());
-                    return 2;
-                }
-            } else {
-                try {
+                // Identification-only runs never reach the combined/quant search, so the
+                // combined-stage template doesn't need to be installed for this mode.
+                if (!identificationOnly
+                        && (p.getCustomCombinedWorkflowPath() == null || p.getCustomCombinedWorkflowPath().isBlank())) {
                     uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.requireInstalledWorkflow(
-                            fragpipeExe, uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.BASIC_SEARCH_WORKFLOW);
-                    // Identification-only runs never reach the combined/quant search, so the
-                    // LFQ-MBR workflow doesn't need to be installed for this mode.
-                    if (!identificationOnly) {
+                            fragpipeExe, uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.LFQ_MBR_WORKFLOW);
+                    if (p.isOpenSearch()) {
+                        // Open mode's combined stage is a synthesized hybrid of Open.workflow +
+                        // LFQ-MBR.workflow, so both need to be installed.
                         uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.requireInstalledWorkflow(
-                                fragpipeExe, uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.LFQ_MBR_WORKFLOW);
+                                fragpipeExe, uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.OPEN_SEARCH_WORKFLOW);
                     }
-                } catch (java.io.IOException e) {
-                    System.err.println("ERROR: required FragPipe workflows are not available in the installed FragPipe folder: "
-                            + e.getMessage());
-                    return 2;
                 }
+            } catch (java.io.IOException e) {
+                System.err.println("ERROR: required FragPipe workflows are not available in the installed FragPipe folder: "
+                        + e.getMessage());
+                return 2;
             }
 
             uk.ac.quadram.metapilot.core.workflow.ProgressCallback cb = new uk.ac.quadram.metapilot.core.workflow.ProgressCallback() {
@@ -550,26 +554,8 @@ public final class MetaPilotCliApp {
             };
 
             if (identificationOnly) {
-                if (workflow != null) {
-                    uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.runIdentificationOnly(
-                            p, fragpipeExe, workflow, magdbCfg.toFile(), cb);
-                } else {
-                    uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.runIdentificationOnlyWithInstalledDefaults(
-                            p, fragpipeExe, magdbCfg.toFile(), cb);
-                }
-            } else if (workflow != null) {
-                uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.run(
-                        p,
-                        fragpipeExe,
-                        workflow,
-                        magdbCfg.toFile(),
-                        funcDb,
-                        cb,
-                        reportGenerationEnabled(rc, cmd.hasOption("no-report")),
-                        null,
-                        rc,
-                        exportMetaAtlas
-                );
+                uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.runIdentificationOnlyWithInstalledDefaults(
+                        p, fragpipeExe, magdbCfg.toFile(), cb);
             } else {
                 uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.runWithInstalledDefaults(
                         p,
@@ -585,8 +571,7 @@ public final class MetaPilotCliApp {
             }
             return 0;
         } catch (Exception e) {
-            System.err.println("ERROR: mag-fragpipe failed for params=" + new java.io.File(paramsFile).getAbsolutePath()
-                    + " workflow=" + (workflowFile == null ? "<installed defaults>" : new java.io.File(workflowFile).getAbsolutePath()));
+            System.err.println("ERROR: mag-fragpipe failed for params=" + new java.io.File(paramsFile).getAbsolutePath());
             e.printStackTrace(System.err);
             return 1;
         }
@@ -1127,7 +1112,7 @@ public final class MetaPilotCliApp {
                 "\n" + (validateOnly ? "Validate" : "Run") + " a headless study from a parameter JSON file.",
                 options,
                 "\nExample:\n"
-                        + "  java -jar metapilot-cli-1.1.0-shaded.jar " + command
+                        + "  java -jar metapilot-cli-1.1.1-shaded.jar " + command
                         + " --params /path/study_params.json\n",
                 true
         );
@@ -1212,12 +1197,6 @@ public final class MetaPilotCliApp {
                 .hasArg()
                 .argName("FILE")
                 .desc("MAG FragPipe parameters JSON (e.g. last_used_mag_fragpipe_parameters.json)")
-                .build());
-        opts.addOption(Option.builder()
-                .longOpt("workflow")
-                .hasArg()
-                .argName("FILE")
-                .desc("Optional FragPipe workflow template override (.workflow). Default behavior uses installed Basic-Search.workflow for HAP/sample search and LFQ-MBR.workflow for combined search.")
                 .build());
         opts.addOption(Option.builder()
                 .longOpt("resources")
@@ -1628,11 +1607,11 @@ public final class MetaPilotCliApp {
                         + "  deepdetect-predict  Run DeepDetect PyTorch prediction (python main.py)\n"
                         + "  deepdetect-magdb    Predict peptides for all genomes in a MAG DB\n"
                         + "\nExamples:\n"
-                        + "  java -jar metapilot-cli-1.1.0-shaded.jar init\n"
-                        + "  java -jar metapilot-cli-1.1.0-shaded.jar run --params /path/study_params.json\n"
-                        + "  java -jar metapilot-cli-1.1.0-shaded.jar params-validate --params /path/study_params.json\n"
-                        + "  java -jar metapilot-cli-1.1.0-shaded.jar resources-check\n"
-                        + "  java -jar metapilot-cli-1.1.0-shaded.jar mag-download --help\n",
+                        + "  java -jar metapilot-cli-1.1.1-shaded.jar init\n"
+                        + "  java -jar metapilot-cli-1.1.1-shaded.jar run --params /path/study_params.json\n"
+                        + "  java -jar metapilot-cli-1.1.1-shaded.jar params-validate --params /path/study_params.json\n"
+                        + "  java -jar metapilot-cli-1.1.1-shaded.jar resources-check\n"
+                        + "  java -jar metapilot-cli-1.1.1-shaded.jar mag-download --help\n",
                 true
         );
     }
@@ -1645,7 +1624,7 @@ public final class MetaPilotCliApp {
                 "\nRun DeepDetect prediction using the Python entrypoint (main.py).",
                 options,
                 "\nExample:\n"
-                        + "  java -jar metapilot-cli-1.1.0-shaded.jar deepdetect-predict \\\n"
+                        + "  java -jar metapilot-cli-1.1.1-shaded.jar deepdetect-predict \\\n"
                         + "    --input /path/genome.faa --output /path/genome.predicted.tsv\n",
                 true
         );
@@ -1661,7 +1640,7 @@ public final class MetaPilotCliApp {
                         + "Outputs: <out>/<catalogue>/<version>/predicted/*.predicted.tsv",
                 options,
                 "\nExample:\n"
-                        + "  java -jar metapilot-cli-1.1.0-shaded.jar deepdetect-magdb \\\n"
+                        + "  java -jar metapilot-cli-1.1.1-shaded.jar deepdetect-magdb \\\n"
                         + "    --catalogue human-gut --version v2.0.2 --threads 4\n",
                 true
         );
@@ -1675,7 +1654,7 @@ public final class MetaPilotCliApp {
                 "\nValidate a MetaPilot resource configuration for Linux/HPC CLI execution.",
                 options,
                 "\nExample:\n"
-                        + "  java -jar metapilot-cli-1.1.0-shaded.jar resources-check --file ~/tools/metapilot/config/meta_resources.params\n",
+                        + "  java -jar metapilot-cli-1.1.1-shaded.jar resources-check --file ~/tools/metapilot/config/meta_resources.params\n",
                 true
         );
     }
@@ -1689,15 +1668,15 @@ public final class MetaPilotCliApp {
                 options,
                 "\nExamples:\n"
                         + "  # Create a starter template (first time)\n"
-                        + "  java -jar metapilot-cli-1.1.0-shaded.jar resources-set --template --print\n"
+                        + "  java -jar metapilot-cli-1.1.1-shaded.jar resources-set --template --print\n"
                         + "\n"
-                        + "  java -jar metapilot-cli-1.1.0-shaded.jar resources-set \\\n"
+                        + "  java -jar metapilot-cli-1.1.1-shaded.jar resources-set \\\n"
                         + "    --set SYSTEM=linux --set RESOURCE_AUTO_DETECTED=true\n"
                         + "\n"
-                        + "  java -jar metapilot-cli-1.1.0-shaded.jar resources-set \\\n"
+                        + "  java -jar metapilot-cli-1.1.1-shaded.jar resources-set \\\n"
                         + "    --set DIANN=/opt/diann/diann-linux --set FRAGPIPE=/opt/fragpipe/bin/fragpipe --print\n"
                         + "\n"
-                        + "  java -jar metapilot-cli-1.1.0-shaded.jar resources-set --unset BASE_PATH --dry-run --print\n",
+                        + "  java -jar metapilot-cli-1.1.1-shaded.jar resources-set --unset BASE_PATH --dry-run --print\n",
                 true
         );
     }
@@ -1710,25 +1689,25 @@ public final class MetaPilotCliApp {
                 "\nRun the MAG+FragPipe workflow in headless mode (HAP search -> genome selection -> sample-specific search).",
                 options,
                 "\nExample:\n"
-                        + "  java -jar metapilot-cli-1.1.0-shaded.jar mag-fragpipe \\\n"
+                        + "  java -jar metapilot-cli-1.1.1-shaded.jar mag-fragpipe \\\n"
                         + "    --params /path/last_used_mag_fragpipe_parameters.json \\\n"
                         + "    --resources ~/tools/metapilot/config/meta_resources.params \\\n"
                         + "    --magdb ~/tools/metapilot/config/MAGDB_1_0.json\n"
                         + "\n"
-                        + "Optional override:\n"
-                        + "  java -jar metapilot-cli-1.1.0-shaded.jar mag-fragpipe \\\n"
-                        + "    --params /path/last_used_mag_fragpipe_parameters.json \\\n"
-                        + "    --workflow /path/Basic-Search.workflow\n"
+                        + "Search mode (Closed/Open, custom workflow overrides, etc.) is read entirely from\n"
+                        + "the --params JSON file (search_mode / open_search_marker_stage /\n"
+                        + "custom_basic_workflow_path / custom_combined_workflow_path) - there is no\n"
+                        + "separate CLI flag for it.\n"
                         + "\n"
                         + "Identification only (stop after ID, skip combined quantification search and all post-analysis export):\n"
-                        + "  java -jar metapilot-cli-1.1.0-shaded.jar mag-fragpipe \\\n"
+                        + "  java -jar metapilot-cli-1.1.1-shaded.jar mag-fragpipe \\\n"
                         + "    --params /path/last_used_mag_fragpipe_parameters.json \\\n"
                         + "    --resources ~/tools/metapilot/config/meta_resources.params \\\n"
                         + "    --magdb ~/tools/metapilot/config/MAGDB_1_0.json \\\n"
                         + "    --identification-only\n"
                         + "\n"
                         + "Also emit MetaAtlas long-format taxon_abundance.parquet / function_abundance.parquet:\n"
-                        + "  java -jar metapilot-cli-1.1.0-shaded.jar mag-fragpipe \\\n"
+                        + "  java -jar metapilot-cli-1.1.1-shaded.jar mag-fragpipe \\\n"
                         + "    --params /path/last_used_mag_fragpipe_parameters.json \\\n"
                         + "    --resources ~/tools/metapilot/config/meta_resources.params \\\n"
                         + "    --magdb ~/tools/metapilot/config/MAGDB_1_0.json \\\n"
@@ -1749,19 +1728,19 @@ public final class MetaPilotCliApp {
                         + "here, no other intermediate result files are checked.",
                 options,
                 "\nExample (files at the same location the Windows GUI wrote them to):\n"
-                        + "  java -jar metapilot-cli-1.1.0-shaded.jar pfind-mag-report \\\n"
+                        + "  java -jar metapilot-cli-1.1.1-shaded.jar pfind-mag-report \\\n"
                         + "    --params /path/last_used_mag_pfind_parameters.json \\\n"
                         + "    --resources ~/tools/metapilot/config/meta_resources.params \\\n"
                         + "    --magdb ~/tools/metapilot/config/MAGDB_1_0.json\n"
                         + "\n"
                         + "Explicit override (files copied elsewhere on the HPC machine):\n"
-                        + "  java -jar metapilot-cli-1.1.0-shaded.jar pfind-mag-report \\\n"
+                        + "  java -jar metapilot-cli-1.1.1-shaded.jar pfind-mag-report \\\n"
                         + "    --params /path/last_used_mag_pfind_parameters.json \\\n"
                         + "    --quantified-peptides /data/transfer/combined/QuantifiedPeptides.tsv \\\n"
                         + "    --psms /data/transfer/combined/psms.tsv\n"
                         + "\n"
                         + "Also emit MetaAtlas long-format taxon_abundance.parquet / function_abundance.parquet:\n"
-                        + "  java -jar metapilot-cli-1.1.0-shaded.jar pfind-mag-report \\\n"
+                        + "  java -jar metapilot-cli-1.1.1-shaded.jar pfind-mag-report \\\n"
                         + "    --params /path/last_used_mag_pfind_parameters.json \\\n"
                         + "    --resources ~/tools/metapilot/config/meta_resources.params \\\n"
                         + "    --magdb ~/tools/metapilot/config/MAGDB_1_0.json \\\n"
@@ -1789,7 +1768,7 @@ public final class MetaPilotCliApp {
                 options,
                 "\nCore/Focus/Comprehensive - HPC-local site config + explicit --out, so nothing depends on any "
                         + "path that only exists on your local computer:\n"
-                        + "  java -jar metapilot-cli-1.1.0-shaded.jar diann-mag-report \\\n"
+                        + "  java -jar metapilot-cli-1.1.1-shaded.jar diann-mag-report \\\n"
                         + "    --params /data/transfer/last_used_dia_marker_parameters.json \\\n"
                         + "    --resources ~/tools/metapilot/config/meta_resources.params \\\n"
                         + "    --magdb ~/tools/metapilot/config/MAGDB_1_0.json \\\n"
@@ -1798,7 +1777,7 @@ public final class MetaPilotCliApp {
                         + "    --pr-matrix /data/transfer/combined.pr_matrix.tsv\n"
                         + "\n"
                         + "Deep Together / Deep Per File - also pass the compact map from diann-mag-peptide-map:\n"
-                        + "  java -jar metapilot-cli-1.1.0-shaded.jar diann-mag-report \\\n"
+                        + "  java -jar metapilot-cli-1.1.1-shaded.jar diann-mag-report \\\n"
                         + "    --params /data/transfer/last_used_dia_marker_parameters.json \\\n"
                         + "    --resources ~/tools/metapilot/config/meta_resources.params \\\n"
                         + "    --magdb ~/tools/metapilot/config/MAGDB_1_0.json \\\n"
@@ -1814,7 +1793,7 @@ public final class MetaPilotCliApp {
                         + "HPC path.)\n"
                         + "\n"
                         + "Also emit MetaAtlas long-format taxon_abundance.parquet / function_abundance.parquet:\n"
-                        + "  java -jar metapilot-cli-1.1.0-shaded.jar diann-mag-report \\\n"
+                        + "  java -jar metapilot-cli-1.1.1-shaded.jar diann-mag-report \\\n"
                         + "    --params /data/transfer/last_used_dia_marker_parameters.json \\\n"
                         + "    --resources ~/tools/metapilot/config/meta_resources.params \\\n"
                         + "    --magdb ~/tools/metapilot/config/MAGDB_1_0.json \\\n"
@@ -1839,7 +1818,7 @@ public final class MetaPilotCliApp {
                         + "'marker' folder.",
                 options,
                 "\nExample (same params file the local Deep run used):\n"
-                        + "  java -jar metapilot-cli-1.1.0-shaded.jar diann-mag-peptide-map \\\n"
+                        + "  java -jar metapilot-cli-1.1.1-shaded.jar diann-mag-peptide-map \\\n"
                         + "    --params /path/last_used_dia_marker_parameters.json \\\n"
                         + "    --out /path/peptide_protein_map.tsv\n",
                 true
@@ -1854,13 +1833,13 @@ public final class MetaPilotCliApp {
                 "\nRun DIA Marker in headless mode from a GUI-exported parameter file. Supported marker modes: Core/Focus, Comprehensive, Deep Together, and Deep Per File. DIA Seed modes are not supported by this command.",
                 options,
                 "\nExample:\n"
-                        + "  java -jar metapilot-cli-1.1.0-shaded.jar dia-marker \\\n"
+                        + "  java -jar metapilot-cli-1.1.1-shaded.jar dia-marker \\\n"
                         + "    --params /path/last_used_dia_marker_parameters.json \\\n"
                         + "    --resources ~/tools/metapilot/config/meta_resources.params \\\n"
                         + "    --magdb ~/tools/metapilot/config/MAGDB_1_0.json\n"
                         + "\n"
                         + "Also emit MetaAtlas long-format taxon_abundance.parquet / function_abundance.parquet:\n"
-                        + "  java -jar metapilot-cli-1.1.0-shaded.jar dia-marker \\\n"
+                        + "  java -jar metapilot-cli-1.1.1-shaded.jar dia-marker \\\n"
                         + "    --params /path/last_used_dia_marker_parameters.json \\\n"
                         + "    --resources ~/tools/metapilot/config/meta_resources.params \\\n"
                         + "    --magdb ~/tools/metapilot/config/MAGDB_1_0.json \\\n"
@@ -2008,11 +1987,11 @@ public final class MetaPilotCliApp {
                 "\nDownload one MGYG MAG catalogue+version and generate Marker FASTA files.",
                 options,
                 "\nExample:\n"
-                        + "  java -jar metapilot-cli-1.1.0-shaded.jar mag-download \\\n"
+                        + "  java -jar metapilot-cli-1.1.1-shaded.jar mag-download \\\n"
                         + "    --catalogue human-gut --version v2.0.2 --out /data/magdb --resume\n"
                         + "\n"
                         + "  # Default output (next to jar): <jar-folder>/magdb/<catalogue>/<version>/...\n"
-                        + "  java -jar metapilot-cli-1.1.0-shaded.jar mag-download \\\n"
+                        + "  java -jar metapilot-cli-1.1.1-shaded.jar mag-download \\\n"
                         + "    --catalogue human-gut --version v2.0.2 --resume\n",
                 true
         );

@@ -63,7 +63,7 @@ Install Java 17 or newer and confirm it is available:
 java -version
 ```
 
-The current formal release version is `1.1.0`.
+The current formal release version is `1.1.1`.
 
 See [CHANGELOG.md](CHANGELOG.md) for release highlights and upgrade notes.
 
@@ -88,13 +88,13 @@ Use the CLI JAR for supported headless workflows, especially on servers and clus
 Initialize configuration:
 
 ```bash
-java -jar metapilot-cli-1.1.0-shaded.jar init
+java -jar metapilot-cli-1.1.1-shaded.jar init
 ```
 
 Set tool paths:
 
 ```bash
-java -jar metapilot-cli-1.1.0-shaded.jar resources-set \
+java -jar metapilot-cli-1.1.1-shaded.jar resources-set \
   --set DIANN=/opt/tools/diann/diann-linux \
   --set FRAGPIPE=/opt/tools/fragpipe-24.0/bin/fragpipe \
   --set FRAGPIPE_TOOLS=/opt/tools/fragpipe-24.0/tools \
@@ -106,19 +106,19 @@ java -jar metapilot-cli-1.1.0-shaded.jar resources-set \
 Validate the setup:
 
 ```bash
-java -jar metapilot-cli-1.1.0-shaded.jar resources-check
+java -jar metapilot-cli-1.1.1-shaded.jar resources-check
 ```
 
 List registered MAG databases:
 
 ```bash
-java -jar metapilot-cli-1.1.0-shaded.jar mag-list
+java -jar metapilot-cli-1.1.1-shaded.jar mag-list
 ```
 
 Download and prepare a supported MAG catalogue before registration:
 
 ```bash
-java -jar metapilot-cli-1.1.0-shaded.jar mag-download \
+java -jar metapilot-cli-1.1.1-shaded.jar mag-download \
   --catalogue human-gut \
   --version v2.0.2 \
   --out /data/metapilot/MAG \
@@ -128,7 +128,7 @@ java -jar metapilot-cli-1.1.0-shaded.jar mag-download \
 Register the downloaded or otherwise prepared local MAG database:
 
 ```bash
-java -jar metapilot-cli-1.1.0-shaded.jar mag-register \
+java -jar metapilot-cli-1.1.1-shaded.jar mag-register \
   --catalogue human-gut \
   --version v2.0.2 \
   --identifier MGYG \
@@ -138,10 +138,10 @@ java -jar metapilot-cli-1.1.0-shaded.jar mag-register \
 Validate and run a parameter file:
 
 ```bash
-java -jar metapilot-cli-1.1.0-shaded.jar params-validate \
+java -jar metapilot-cli-1.1.1-shaded.jar params-validate \
   --params /data/studies/study_parameters.json
 
-java -jar metapilot-cli-1.1.0-shaded.jar run \
+java -jar metapilot-cli-1.1.1-shaded.jar run \
   --params /data/studies/study_parameters.json
 ```
 

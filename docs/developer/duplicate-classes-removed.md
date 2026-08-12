@@ -4,7 +4,7 @@
 
 `metapilot-windows-gui` depends on `metapilot-core` but contained duplicate copies of some classes with the same package and class name. Those duplicates were removed so the GUI uses the single definition from core.
 
-Current version target: `1.1.0`.
+Current version target: `1.1.1`.
 
 ## Removed from metapilot-windows-gui (use metapilot-core instead)
 

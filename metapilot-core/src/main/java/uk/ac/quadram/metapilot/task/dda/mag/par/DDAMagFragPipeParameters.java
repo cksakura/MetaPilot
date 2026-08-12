@@ -55,10 +55,21 @@ public class DDAMagFragPipeParameters extends MetaBaseParameter {
     /** Registry identifier (e.g. MGYG for MGnify, or a custom local-MAG identifier). */
     private String magDbIdentifier = "MGYG";
     private String magDbVersion = "";
-    private String fragpipeWorkflowPath = "";
     private String genomeSelectorMode = MagDbItem.MARKER2;
     private String genomeSelectionStrategy = "Focus";
     private int fragpipeParallelTasks = 0;
+
+    // Search-mode configuration (Closed vs Open search). Closed is the default and
+    // reproduces the historical MSFragger closed-search behavior exactly. Open search
+    // is a "must" for the combined/quant stage when selected, but is independently
+    // optional at the marker/genome-selection stage (see openSearchAtMarkerStage).
+    private String searchMode = "Closed";
+    /** Only meaningful when searchMode == "Open"; off by default. */
+    private boolean openSearchAtMarkerStage = false;
+    /** Power-user escape hatch: explicit .workflow file for the marker/sample-specific stage. */
+    private String customBasicWorkflowPath = "";
+    /** Power-user escape hatch: explicit .workflow file for the combined/quant stage. */
+    private String customCombinedWorkflowPath = "";
     
     // Isotopic labeling
     private List<String> lightLabels = new ArrayList<>();
@@ -208,8 +219,26 @@ public class DDAMagFragPipeParameters extends MetaBaseParameter {
     public String getMagDbVersion() { return magDbVersion; }
     public void setMagDbVersion(String magDbVersion) { this.magDbVersion = magDbVersion; }
 
-    public String getFragpipeWorkflowPath() { return fragpipeWorkflowPath; }
-    public void setFragpipeWorkflowPath(String fragpipeWorkflowPath) { this.fragpipeWorkflowPath = fragpipeWorkflowPath; }
+    public String getSearchMode() { return searchMode; }
+    public void setSearchMode(String searchMode) {
+        this.searchMode = "Open".equalsIgnoreCase(searchMode) ? "Open" : "Closed";
+    }
+    public boolean isOpenSearch() { return "Open".equals(searchMode); }
+
+    public boolean isOpenSearchAtMarkerStage() { return openSearchAtMarkerStage; }
+    public void setOpenSearchAtMarkerStage(boolean openSearchAtMarkerStage) {
+        this.openSearchAtMarkerStage = openSearchAtMarkerStage;
+    }
+
+    public String getCustomBasicWorkflowPath() { return customBasicWorkflowPath; }
+    public void setCustomBasicWorkflowPath(String customBasicWorkflowPath) {
+        this.customBasicWorkflowPath = customBasicWorkflowPath == null ? "" : customBasicWorkflowPath.trim();
+    }
+
+    public String getCustomCombinedWorkflowPath() { return customCombinedWorkflowPath; }
+    public void setCustomCombinedWorkflowPath(String customCombinedWorkflowPath) {
+        this.customCombinedWorkflowPath = customCombinedWorkflowPath == null ? "" : customCombinedWorkflowPath.trim();
+    }
 
     public String getGenomeSelectorMode() { return genomeSelectorMode; }
     public void setGenomeSelectorMode(String genomeSelectorMode) {

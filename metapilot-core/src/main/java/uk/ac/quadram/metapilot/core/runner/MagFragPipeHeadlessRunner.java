@@ -65,6 +65,7 @@ public final class MagFragPipeHeadlessRunner {
 
 	public static final String BASIC_SEARCH_WORKFLOW = "Basic-Search.workflow";
 	public static final String LFQ_MBR_WORKFLOW = "LFQ-MBR.workflow";
+	public static final String OPEN_SEARCH_WORKFLOW = "Open.workflow";
 	private static final String MARKER_SEARCH_DIR = "marker";
 	private static final String SAMPLE_DB_SEARCH_DIR = "sample_db";
 	private static final long BYTES_PER_GB = 1024L * 1024L * 1024L;
@@ -298,11 +299,11 @@ public final class MagFragPipeHeadlessRunner {
 				+ (requestedParallelTasks > 0 ? requestedParallelTasks : "auto") + ", detectedMemoryGb="
 				+ parallelPlan.detectedMemoryGb + ", memorySource=" + parallelPlan.memorySource);
 
-		File basicWorkflowTemplate = resolveBasicWorkflowTemplate(resourcesFragpipe, workflowTemplate);
+		File basicWorkflowTemplate = resolveBasicWorkflowTemplate(resourcesFragpipe, workflowTemplate, params);
 		// Identification-only runs never reach the combined/quant search, so don't
 		// require the LFQ-MBR workflow template to be resolvable/installed for them.
 		File combinedWorkflowTemplate = identificationOnly ? null
-				: resolveCombinedWorkflowTemplate(resourcesFragpipe, workflowTemplate);
+				: resolveCombinedWorkflowTemplate(resourcesFragpipe, workflowTemplate, params);
 
 		// Step A: per-sample marker searches
 		cb.onMessage("Step A: running marker searches (per sample) ...");
@@ -438,9 +439,12 @@ public final class MagFragPipeHeadlessRunner {
 		params.getMetadata().exportFragpipeManifest(combinedManifest);
 
 		File combinedWorkflow = new File(combinedDir, "combined.workflow");
+		// percolator/peptide-prophet validation strategy is intentionally left to
+		// combinedWorkflowTemplate's own values (Closed: LFQ-MBR has percolator=true,
+		// peptide-prophet=false baked in; Open: the Open+LFQ hybrid has the reverse) -
+		// not forced here, so Open search combined-stage results aren't discarded.
 		configureWorkflowFromParams(FragpipeWorkflowFile.parse(combinedWorkflowTemplate.toPath()), params)
-				.set("database.decoy-tag", "rev_").set("percolator.run-percolator", "true")
-				.set("peptide-prophet.run-peptide-prophet", "false").set("protein-prophet.run-protein-prophet", "true")
+				.set("database.decoy-tag", "rev_").set("protein-prophet.run-protein-prophet", "true")
 				.setDatabase(combinedFasta.getAbsolutePath()).write(combinedWorkflow.toPath());
 
 		File quanPep = new File(combinedDir, "combined_modified_peptide.tsv");
@@ -580,9 +584,10 @@ public final class MagFragPipeHeadlessRunner {
 			ensureTargetDecoyFasta(hapFasta, hapTdFasta, cb);
 
 			File wfOut = new File(markerDir, "marker.workflow");
+			// percolator/peptide-prophet left to basicWorkflowTemplate's own values -
+			// see the combined-stage comment above for why this isn't forced here.
 			configureWorkflowFromParams(FragpipeWorkflowFile.parse(basicWorkflowTemplate.toPath()), params)
-					.set("database.decoy-tag", "rev_").set("percolator.run-percolator", "true")
-					.set("peptide-prophet.run-peptide-prophet", "false")
+					.set("database.decoy-tag", "rev_")
 					.set("protein-prophet.run-protein-prophet", "true").setDatabase(hapTdFasta.getAbsolutePath())
 					.write(wfOut.toPath());
 
@@ -731,9 +736,10 @@ public final class MagFragPipeHeadlessRunner {
 			writeManifest(manifest, rawFile, safeExpName(expNames, sampleIndex));
 
 			File wfOut = new File(sampleSearchDir, "sample_db.workflow");
+			// percolator/peptide-prophet left to basicWorkflowTemplate's own values -
+			// see the combined-stage comment above for why this isn't forced here.
 			configureWorkflowFromParams(FragpipeWorkflowFile.parse(basicWorkflowTemplate.toPath()), params)
-					.set("database.decoy-tag", "rev_").set("percolator.run-percolator", "true")
-					.set("peptide-prophet.run-peptide-prophet", "false")
+					.set("database.decoy-tag", "rev_")
 					.set("protein-prophet.run-protein-prophet", "true").setDatabase(sampleFasta.getAbsolutePath())
 					.write(wfOut.toPath());
 
@@ -1017,14 +1023,16 @@ public final class MagFragPipeHeadlessRunner {
 
 		String[] enzyme = getEnzymeInfo(params.getEnzyme());
 		int missedCleavages = Math.max(0, params.getMissCleavages());
+		// Structural overlay only: enzyme/missed-cleavages come from the UI/CLI params
+		// regardless of search mode. Precursor/fragment tolerance, localize_delta_mass,
+		// crystalc, percolator/peptide-prophet, and ptmshepherd are intentionally left
+		// untouched here - those are search-mode-specific and must come from whichever
+		// template got resolved (Basic-Search/LFQ-MBR for Closed, Open/hybrid for Open,
+        // or the user's own file for Custom), not be forced by MetaPilot.
 		workflow.set("msfragger.misc.fragger.enzyme-dropdown-1", enzyme[0])
 				.set("msfragger.search_enzyme_name_1", enzyme[0]).set("msfragger.search_enzyme_cut_1", enzyme[1])
 				.set("msfragger.search_enzyme_nocut_1", enzyme[2]).set("msfragger.num_enzyme_termini", "2")
-				.set("msfragger.allowed_missed_cleavage_1", String.valueOf(missedCleavages))
-				.set("msfragger.precursor_mass_lower", "-20.0").set("msfragger.precursor_mass_upper", "20.0")
-				.set("msfragger.precursor_true_tolerance", "20.0").set("msfragger.precursor_mass_units", "1")
-				.set("msfragger.precursor_true_units", "1").set("msfragger.fragment_mass_tolerance", "0.5")
-				.set("msfragger.fragment_mass_units", "0");
+				.set("msfragger.allowed_missed_cleavage_1", String.valueOf(missedCleavages));
 
 		boolean ionMobility = params.getMs2ScanMode() != null
 				&& params.getMs2ScanMode().toUpperCase().contains("IM-MS");
@@ -1137,20 +1145,92 @@ public final class MagFragPipeHeadlessRunner {
 		return "KR";
 	}
 
-	private static File resolveBasicWorkflowTemplate(File resourcesFragpipe, File explicitWorkflowTemplate)
-			throws IOException {
+	/**
+	 * Resolves the marker/sample-specific search template (Step A/C). Priority:
+	 * an explicit Java-API override (legacy - no longer reachable from the CLI's
+	 * removed {@code --workflow} flag, kept only so any other existing caller
+	 * isn't broken), then the parameter file's {@code customBasicWorkflowPath}
+	 * escape hatch, then {@link #OPEN_SEARCH_WORKFLOW} if the marker stage is
+	 * independently opted into open search, else the historical default
+	 * {@link #BASIC_SEARCH_WORKFLOW}.
+	 */
+	private static File resolveBasicWorkflowTemplate(File resourcesFragpipe, File explicitWorkflowTemplate,
+			DDAMagFragPipeParameters params) throws IOException {
 		if (explicitWorkflowTemplate != null) {
 			return explicitWorkflowTemplate;
+		}
+		File customPath = resolveCustomTemplatePath(params == null ? null : params.getCustomBasicWorkflowPath());
+		if (customPath != null) {
+			return customPath;
+		}
+		if (params != null && params.isOpenSearchAtMarkerStage()) {
+			return requireInstalledWorkflow(resourcesFragpipe, OPEN_SEARCH_WORKFLOW);
 		}
 		return requireInstalledWorkflow(resourcesFragpipe, BASIC_SEARCH_WORKFLOW);
 	}
 
-	private static File resolveCombinedWorkflowTemplate(File resourcesFragpipe, File explicitWorkflowTemplate)
-			throws IOException {
+	/**
+	 * Resolves the combined/quant search template (Step D/E/F). Priority: the
+	 * legacy explicit Java-API override, then {@code customCombinedWorkflowPath},
+	 * then - if the analysis is running in Open search mode - a synthesized
+	 * hybrid of {@link #OPEN_SEARCH_WORKFLOW} (identification/PTM-discovery
+	 * settings) and {@link #LFQ_MBR_WORKFLOW} (cross-experiment MBR
+	 * quantification settings), since FragPipe ships no combined-search template
+	 * that does both. Otherwise the historical default {@link #LFQ_MBR_WORKFLOW}.
+	 */
+	private static File resolveCombinedWorkflowTemplate(File resourcesFragpipe, File explicitWorkflowTemplate,
+			DDAMagFragPipeParameters params) throws IOException {
 		if (explicitWorkflowTemplate != null) {
 			return explicitWorkflowTemplate;
 		}
+		File customPath = resolveCustomTemplatePath(params == null ? null : params.getCustomCombinedWorkflowPath());
+		if (customPath != null) {
+			return customPath;
+		}
+		if (params != null && params.isOpenSearch()) {
+			return buildOpenLfqHybridTemplate(resourcesFragpipe);
+		}
 		return requireInstalledWorkflow(resourcesFragpipe, LFQ_MBR_WORKFLOW);
+	}
+
+	private static File resolveCustomTemplatePath(String path) throws IOException {
+		if (path == null || path.isBlank()) {
+			return null;
+		}
+		File file = new File(path.trim());
+		if (!file.exists() || !file.isFile()) {
+			throw new IOException("Custom FragPipe workflow template not found: " + file.getAbsolutePath());
+		}
+		return file;
+	}
+
+	/**
+	 * Builds the combined-stage Open-search template by starting from
+	 * {@link #OPEN_SEARCH_WORKFLOW}'s identification/PTM-discovery settings
+	 * (wide precursor window, localize_delta_mass, crystalc, PeptideProphet
+	 * instead of Percolator, PTMShepherd) and overlaying just the
+	 * quantification/combination cluster from {@link #LFQ_MBR_WORKFLOW}
+	 * (label-free quant + IonQuant with match-between-runs), since neither
+	 * bundled FragPipe template covers both on its own. Written to a temp file
+	 * so downstream code can keep treating the result as an ordinary resolved
+	 * template path.
+	 */
+	static File buildOpenLfqHybridTemplate(File resourcesFragpipe) throws IOException {
+		File openTemplate = requireInstalledWorkflow(resourcesFragpipe, OPEN_SEARCH_WORKFLOW);
+		File lfqTemplate = requireInstalledWorkflow(resourcesFragpipe, LFQ_MBR_WORKFLOW);
+
+		FragpipeWorkflowFile hybrid = FragpipeWorkflowFile.parse(openTemplate.toPath());
+		FragpipeWorkflowFile lfq = FragpipeWorkflowFile.parse(lfqTemplate.toPath());
+
+		hybrid.set("quantitation.run-label-free-quant", lfq.get("quantitation.run-label-free-quant"))
+				.set("ionquant.run-ionquant", lfq.get("ionquant.run-ionquant"))
+				.set("ionquant.mbr", lfq.get("ionquant.mbr"))
+				.set("freequant.run-freequant", lfq.get("freequant.run-freequant"));
+
+		File out = File.createTempFile("metapilot-open-lfq-mbr-", ".workflow");
+		out.deleteOnExit();
+		hybrid.write(out.toPath());
+		return out;
 	}
 
 	public static File requireInstalledWorkflow(File resourcesFragpipe, String workflowName) throws IOException {

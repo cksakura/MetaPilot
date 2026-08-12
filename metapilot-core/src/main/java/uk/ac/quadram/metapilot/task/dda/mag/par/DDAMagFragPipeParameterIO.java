@@ -112,6 +112,10 @@ public class DDAMagFragPipeParameterIO extends BaseParameterIO {
 			int fragpipeParallelTasks = 0;
 			String genomeSelectorMode = uk.ac.quadram.metapilot.task.mag.MagDbItem.MARKER2;
 			String genomeSelectionStrategy = "Focus";
+			String searchMode = "Closed";
+			boolean openSearchAtMarkerStage = false;
+			String customBasicWorkflowPath = "";
+			String customCombinedWorkflowPath = "";
 			if (json.has("additional_parameters")) {
 				JSONObject additionalParams = json.getJSONObject("additional_parameters");
 				ms2ScanMode = additionalParams.optString("ms2_scan_mode", "HCD-FTMS");
@@ -119,6 +123,12 @@ public class DDAMagFragPipeParameterIO extends BaseParameterIO {
 				fragpipeParallelTasks = additionalParams.optInt("fragpipe_parallel_tasks", 0);
 				genomeSelectorMode = additionalParams.optString("genome_selector_mode", genomeSelectorMode);
 				genomeSelectionStrategy = additionalParams.optString("genome_selection_strategy", genomeSelectionStrategy);
+				// Missing in older parameter files -> defaults reproduce the historical
+				// closed-search-only behavior exactly (no migration needed).
+				searchMode = additionalParams.optString("search_mode", "Closed");
+				openSearchAtMarkerStage = additionalParams.optBoolean("open_search_marker_stage", false);
+				customBasicWorkflowPath = additionalParams.optString("custom_basic_workflow_path", "");
+				customCombinedWorkflowPath = additionalParams.optString("custom_combined_workflow_path", "");
 			}
 
 			// Create DDAMagFragPipeParameters
@@ -136,6 +146,10 @@ public class DDAMagFragPipeParameterIO extends BaseParameterIO {
 			params.setGenomeSelectorMode(genomeSelectorMode);
 			params.setGenomeSelectionStrategy(genomeSelectionStrategy);
 			params.setFragpipeParallelTasks(fragpipeParallelTasks);
+			params.setSearchMode(searchMode);
+			params.setOpenSearchAtMarkerStage(openSearchAtMarkerStage);
+			params.setCustomBasicWorkflowPath(customBasicWorkflowPath);
+			params.setCustomCombinedWorkflowPath(customCombinedWorkflowPath);
 			// Keep MAG DB info in MAG-specific fields for UI restore / HPC resolve
 			params.setMagDbCatalogueId(microDb);
 			params.setMagDbIdentifier(magDbIdentifier);
@@ -192,15 +206,6 @@ public class DDAMagFragPipeParameterIO extends BaseParameterIO {
 				params.setVariableModifications(variableModifications);
 				LOGGER.info("Loaded {} variable modifications", variableModifications.size());
 			}
-
-			String fragpipeWorkflow = "";
-			if (json.has("dda_settings")) {
-				fragpipeWorkflow = json.getJSONObject("dda_settings").optString("fragpipe_workflow", "");
-			}
-			if (fragpipeWorkflow.isEmpty()) {
-				fragpipeWorkflow = json.optString("fragpipe_workflow", "");
-			}
-			params.setFragpipeWorkflowPath(fragpipeWorkflow);
 
 			LOGGER.info("Successfully loaded parameters from: {}", inputFile.getAbsolutePath());
 			return params;
@@ -299,6 +304,10 @@ public class DDAMagFragPipeParameterIO extends BaseParameterIO {
 			additionalParams.put("genome_selector_mode", params.getGenomeSelectorMode());
 			additionalParams.put("genome_selection_strategy", params.getGenomeSelectionStrategy());
 			additionalParams.put("fragpipe_parallel_tasks", params.getFragpipeParallelTasks());
+			additionalParams.put("search_mode", params.getSearchMode());
+			additionalParams.put("open_search_marker_stage", params.isOpenSearchAtMarkerStage());
+			additionalParams.put("custom_basic_workflow_path", params.getCustomBasicWorkflowPath());
+			additionalParams.put("custom_combined_workflow_path", params.getCustomCombinedWorkflowPath());
 			json.put("additional_parameters", additionalParams);
 			LOGGER.info("Added additional parameters - threads: {}, ms2_scan_mode: {}", params.getThreadCount(), params.getMs2ScanMode());
 
@@ -323,11 +332,6 @@ public class DDAMagFragPipeParameterIO extends BaseParameterIO {
 				LOGGER.info("Added {} variable modifications", variableModifications.size());
 			}
 			json.put("variable_modifications", variableMods);
-
-			// Note: FragPipe workflow is now configured by UI and passed directly to task
-			// Just save a flag to indicate workflow should be configured
-			json.put("fragpipe_workflow_configured", true);
-			LOGGER.info("Workflow configuration flag saved");
 
 			// Write formatted JSON
 			LOGGER.info("Writing JSON to file...");

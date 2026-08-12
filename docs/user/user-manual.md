@@ -2,7 +2,7 @@
 
 MetaPilot is a metaproteomics workflow platform for DDA and DIA datasets. It combines established search engines with MAG-aware genome selection, refined search-space construction, taxonomy export and functional annotation.
 
-This page reflects the formal release package for `1.1.0`.
+This page reflects the formal release package for `1.1.1`.
 
 ## Applications
 
@@ -20,8 +20,8 @@ Install MetaPilot from the release ZIP package. Public releases are distributed 
 Typical release contents:
 
 ```text
-MetaPilot-1.1.0/
-  metapilot-cli-1.1.0-shaded.jar
+MetaPilot-1.1.1/
+  metapilot-cli-1.1.1-shaded.jar
   metapilot
   config/
     meta_resources.params.template
@@ -170,9 +170,9 @@ GUI workflows may also generate HTML reports.
 Use the CLI for currently supported headless workflows:
 
 ```bash
-java -jar metapilot-cli-1.1.0-shaded.jar init
-java -jar metapilot-cli-1.1.0-shaded.jar params-validate --params study.json
-java -jar metapilot-cli-1.1.0-shaded.jar run --params study.json
+java -jar metapilot-cli-1.1.1-shaded.jar init
+java -jar metapilot-cli-1.1.1-shaded.jar params-validate --params study.json
+java -jar metapilot-cli-1.1.1-shaded.jar run --params study.json
 ```
 
 See [CLI Reference](cli-reference.md) for command details and current support limits.

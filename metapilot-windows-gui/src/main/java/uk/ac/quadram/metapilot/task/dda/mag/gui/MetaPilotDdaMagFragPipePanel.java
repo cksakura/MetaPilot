@@ -38,6 +38,7 @@ import java.util.regex.Pattern;
 import java.util.List;
 import java.util.ArrayList;
 import java.io.File;
+import javafx.stage.FileChooser;
 
 public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFragPipeParameters> {
     // UI Components - Database specific for MAG
@@ -57,14 +58,22 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
 
     // Additional parameters
     private ComboBox<Integer> threadsComboBox;
-    private ComboBox<String> workflowComboBox;
+    // Closed (default) vs Open search. Closed reproduces the historical behavior
+    // exactly; Open is a "must" for the combined/quant stage and independently
+    // optional for the marker/genome-selection stage (see openSearchMarkerCheckBox).
+    private ComboBox<String> searchModeComboBox;
+    private CheckBox openSearchMarkerCheckBox;
+    // Power-user escape hatch: explicit .workflow file overrides, blank by default.
+    private TextField customBasicWorkflowField;
+    private Button browseCustomBasicWorkflowButton;
+    private TextField customCombinedWorkflowField;
+    private Button browseCustomCombinedWorkflowButton;
     private ComboBox<String> msDataTypeComboBox;
     private ComboBox<String> genomeSelectorComboBox;
     private ComboBox<String> genomeSelectionStrategyComboBox;
 
     // Data
     private ObservableList<String> enzymes = FXCollections.observableArrayList();
-    private ObservableList<String> workflows = FXCollections.observableArrayList();
 
     private MetaResourceParameters resourceParams;
     
@@ -85,7 +94,6 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
 		this.resourceParams = resourceParams;
 		
 		loadEnzymesFromIni();
-		loadWorkflowsFromFragPipe();
 		initializeSpecificUI();
 		// Set MAG databases after UI is initialized
 		setAvailableMagDatabases(magDbItems);
@@ -295,53 +303,6 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
         }
     }
 
-	private void loadWorkflowsFromFragPipe() {
-		try {
-			String fragpipePath = resourceParams.getToolPath(MetaResourceParameters.ToolType.FRAGPIPE);
-
-			if (fragpipePath != null && !fragpipePath.trim().isEmpty()) {
-				File fragpipeFile = new File(fragpipePath);
-				if (fragpipeFile.exists()) {
-					// Get parent directory (bin)
-					File binDir = fragpipeFile.getParentFile();
-					if (binDir != null) {
-						// Get workflows directory (same level as bin)
-						File workflowsDir = new File(binDir.getParentFile(), "workflows");
-						if (workflowsDir.exists() && workflowsDir.isDirectory()) {
-							// List all .workflow files
-							File[] workflowFiles = workflowsDir
-									.listFiles((dir, name) -> name.toLowerCase().endsWith(".workflow"));
-							if (workflowFiles != null) {
-								for (File workflowFile : workflowFiles) {
-									String fileName = workflowFile.getName();
-									// Remove .workflow extension
-									String workflowName = fileName.substring(0, fileName.lastIndexOf('.'));
-									workflows.add(workflowName);
-								}
-								LOGGER.info("Loaded {} workflows from FragPipe: {}", workflows.size(),
-										workflowsDir.getAbsolutePath());
-							}
-						} else {
-							LOGGER.warn("FragPipe workflows directory not found: {}", workflowsDir.getAbsolutePath());
-						}
-					}
-				} else {
-					LOGGER.warn("FragPipe executable not found: {}", fragpipePath);
-				}
-			} else {
-				LOGGER.warn("FragPipe path not configured in MetaResourceParameters");
-			}
-		} catch (Exception e) {
-			LOGGER.error("Failed to load workflows from FragPipe: " + e.getMessage(), e);
-		}
-
-		// Add default workflow if none found
-		if (workflows.isEmpty()) {
-			workflows.add("Standard");
-			LOGGER.warn("No workflows found, using default: Standard");
-		}
-	}
-
     private Label createSectionTitle(String title) {
         Label label = new Label(title);
         label.setFont(Font.font("System", FontWeight.BOLD, 14));
@@ -448,26 +409,77 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
         VBox threadsBox = new VBox(5);
         threadsBox.getChildren().addAll(threadsLabel, threadsComboBox);
         
-        Label workflowLabel = new Label("Workflow:");
-        workflowLabel.setStyle("-fx-font-weight: bold;");
-        workflowComboBox = new ComboBox<>(workflows);
-        workflowComboBox.setMinWidth(100);
-        workflowComboBox.setPrefWidth(120);
-        workflowComboBox.setMaxWidth(Double.MAX_VALUE);
-		if (workflows.size() > 0) {
-			if (workflows.contains("LFQ-MBR")) {
-				workflowComboBox.setValue("LFQ-MBR");
-				LOGGER.info("Set default workflow to: LFQ-MBR");
-			} else if (!workflows.isEmpty()) {
-				workflowComboBox.setValue(workflows.get(0));
-				LOGGER.info("Set default workflow to: {}", workflows.get(0));
-			}
-		}
-        workflowComboBox.setOnAction(e -> updateParameterView());
-        
+        Label searchModeLabel = new Label("Search mode:");
+        searchModeLabel.setStyle("-fx-font-weight: bold;");
+        searchModeComboBox = new ComboBox<>(FXCollections.observableArrayList("Closed", "Open"));
+        searchModeComboBox.setValue("Closed");
+        searchModeComboBox.setMinWidth(100);
+        searchModeComboBox.setPrefWidth(120);
+        searchModeComboBox.setMaxWidth(Double.MAX_VALUE);
+
         VBox workflowBox = new VBox(5);
-        workflowBox.getChildren().addAll(workflowLabel, workflowComboBox);
-        
+        workflowBox.getChildren().addAll(searchModeLabel, searchModeComboBox);
+
+        openSearchMarkerCheckBox = new CheckBox("Also use open search for marker/genome-selection stage");
+        openSearchMarkerCheckBox.setSelected(false);
+        openSearchMarkerCheckBox.setDisable(true);
+        searchModeComboBox.setOnAction(e -> {
+            boolean open = "Open".equals(searchModeComboBox.getValue());
+            openSearchMarkerCheckBox.setDisable(!open);
+            if (!open) {
+                openSearchMarkerCheckBox.setSelected(false);
+            }
+            updateParameterView();
+        });
+        openSearchMarkerCheckBox.setOnAction(e -> updateParameterView());
+
+        Label advancedLabel = new Label("Advanced: custom workflow template overrides (optional, .workflow files)");
+        advancedLabel.setStyle("-fx-font-style: italic;");
+
+        FileChooser.ExtensionFilter workflowFilter =
+                new FileChooser.ExtensionFilter("FragPipe workflow files", "*.workflow");
+        FileChooser.ExtensionFilter allFilesFilter = new FileChooser.ExtensionFilter("All Files", "*.*");
+
+        customBasicWorkflowField = new TextField();
+        customBasicWorkflowField.setPromptText("Select custom marker/sample-search .workflow file");
+        customBasicWorkflowField.setPrefWidth(400);
+        browseCustomBasicWorkflowButton = new Button("Browse");
+        browseCustomBasicWorkflowButton.setOnAction(e -> {
+            FileChooser chooser = new FileChooser();
+            chooser.setTitle("Select Custom Marker/Sample-Search Workflow File");
+            chooser.getExtensionFilters().addAll(workflowFilter, allFilesFilter);
+            File file = chooser.showOpenDialog(getScene().getWindow());
+            if (file != null) {
+                customBasicWorkflowField.setText(file.getAbsolutePath());
+                updateParameterView();
+            }
+        });
+        HBox customBasicRow = new HBox(5, new Label("Marker/sample-search:"), customBasicWorkflowField,
+                browseCustomBasicWorkflowButton);
+        customBasicRow.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(customBasicWorkflowField, Priority.ALWAYS);
+
+        customCombinedWorkflowField = new TextField();
+        customCombinedWorkflowField.setPromptText("Select custom combined/quant search .workflow file");
+        customCombinedWorkflowField.setPrefWidth(400);
+        browseCustomCombinedWorkflowButton = new Button("Browse");
+        browseCustomCombinedWorkflowButton.setOnAction(e -> {
+            FileChooser chooser = new FileChooser();
+            chooser.setTitle("Select Custom Combined/Quant Search Workflow File");
+            chooser.getExtensionFilters().addAll(workflowFilter, allFilesFilter);
+            File file = chooser.showOpenDialog(getScene().getWindow());
+            if (file != null) {
+                customCombinedWorkflowField.setText(file.getAbsolutePath());
+                updateParameterView();
+            }
+        });
+        HBox customCombinedRow = new HBox(5, new Label("Combined/quant search:"), customCombinedWorkflowField,
+                browseCustomCombinedWorkflowButton);
+        customCombinedRow.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(customCombinedWorkflowField, Priority.ALWAYS);
+
+        VBox advancedBox = new VBox(3, advancedLabel, customBasicRow, customCombinedRow);
+
         // Add MS data type option
         Label msDataTypeLabel = new Label("MS data type:");
         msDataTypeLabel.setStyle("-fx-font-weight: bold;");
@@ -505,9 +517,11 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
         
         paramGrid.add(threadsBox, 0, 0);
         paramGrid.add(workflowBox, 1, 0);
-        paramGrid.add(msDataTypeBox, 0, 1, 2, 1); // Span both columns
-        paramGrid.add(genomeSelectorBox, 0, 2);
-        paramGrid.add(genomeStrategyBox, 1, 2);
+        paramGrid.add(openSearchMarkerCheckBox, 0, 1, 2, 1); // Span both columns
+        paramGrid.add(msDataTypeBox, 0, 2, 2, 1); // Span both columns
+        paramGrid.add(genomeSelectorBox, 0, 3);
+        paramGrid.add(genomeStrategyBox, 1, 3);
+        paramGrid.add(advancedBox, 0, 4, 2, 1); // Span both columns
 
         section.getChildren().addAll(titleLabel, paramGrid);
         return section;
@@ -592,8 +606,11 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
         if (threadsComboBox != null) {
             sb.append("  Threads: ").append(threadsComboBox.getValue()).append("\n");
         }
-        if (workflowComboBox != null) {
-            sb.append("  Workflow: ").append(workflowComboBox.getValue()).append("\n");
+        if (searchModeComboBox != null) {
+            sb.append("  Search mode: ").append(searchModeComboBox.getValue()).append("\n");
+            if (openSearchMarkerCheckBox != null && openSearchMarkerCheckBox.isSelected()) {
+                sb.append("  Open search at marker stage: true\n");
+            }
         }
         if (msDataTypeComboBox != null) {
             sb.append("  MS data type: ").append(msDataTypeComboBox.getValue()).append("\n");
@@ -861,7 +878,21 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
             int missCleavages = missedCleavagesSpinner.getValue() != null ? missedCleavagesSpinner.getValue() : 2;
             String digestMode = digestionModeComboBox.getValue() != null ? digestionModeComboBox.getValue() : "Specific";
             int threadCount = threadsComboBox.getValue() != null ? threadsComboBox.getValue() : 4;
-            String workflow = workflowComboBox.getValue() != null ? workflowComboBox.getValue() : "Standard";
+            String searchMode = searchModeComboBox.getValue() != null ? searchModeComboBox.getValue() : "Closed";
+            boolean openSearchAtMarkerStage = "Open".equals(searchMode)
+                    && openSearchMarkerCheckBox != null && openSearchMarkerCheckBox.isSelected();
+            String customBasicPath = customBasicWorkflowField != null ? customBasicWorkflowField.getText() : null;
+            String customCombinedPath = customCombinedWorkflowField != null ? customCombinedWorkflowField.getText() : null;
+            // Base template to build the GUI-configured (enzyme/mods/ion-mobility) temp
+            // file from, when no explicit custom override is supplied. Closed mode keeps
+            // the historical "LFQ-MBR" default (correct for both stages since the marker
+            // stage's quant flags are unused); Open mode uses "Open" only if the marker
+            // stage is independently opted into open search too, else "Basic-Search"
+            // (marker stage stays closed by default even in an overall Open analysis).
+            String workflow = (customBasicPath != null && !customBasicPath.isBlank()) ? null
+                    : openSearchAtMarkerStage ? "Open"
+                    : "Open".equals(searchMode) ? "Basic-Search"
+                    : "LFQ-MBR";
             String msDataType = msDataTypeComboBox.getValue() != null ? msDataTypeComboBox.getValue() : "Regular MS";
             
             // Create DDAMagFragPipeParameters with required constructor parameters
@@ -903,7 +934,16 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
             String genomeSelectionStrategy = genomeSelectionStrategyComboBox != null && genomeSelectionStrategyComboBox.getValue() != null
                     ? genomeSelectionStrategyComboBox.getValue() : MarkerGenomeSelector.KNEE_MODE_FOCUS;
             analysisParams.setGenomeSelectionStrategy(genomeSelectionStrategy);
-            
+
+            analysisParams.setSearchMode(searchMode);
+            analysisParams.setOpenSearchAtMarkerStage(openSearchAtMarkerStage);
+            if (customBasicPath != null && !customBasicPath.isBlank()) {
+                analysisParams.setCustomBasicWorkflowPath(customBasicPath.trim());
+            }
+            if (customCombinedPath != null && !customCombinedPath.isBlank()) {
+                analysisParams.setCustomCombinedWorkflowPath(customCombinedPath.trim());
+            }
+
             // Set quantitative mode based on workflow (default to label-free)
             analysisParams.setQuantitativeMode("Label-Free");
             
@@ -926,12 +966,17 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
                 analysisParams.setMetadataTableData(metadataArrays);
             }
             
-            // Create and configure FragPipe workflow
+            // Create and configure FragPipe workflow (skipped entirely when the user
+            // supplied an explicit custom basic-workflow override above - that file is
+            // trusted as-is, per the Custom-mode escape hatch).
             try {
                 // Get FragPipe path from MetaResourceParameters
 				String fragpipePath = resourceParams.getToolPath(MetaResourceParameters.ToolType.FRAGPIPE);
-                
-                if (fragpipePath != null && !fragpipePath.trim().isEmpty()) {
+
+                if (workflow == null) {
+                    LOGGER.info("Custom basic workflow template supplied ({}); skipping GUI-side workflow build.",
+                            customBasicPath);
+                } else if (fragpipePath != null && !fragpipePath.trim().isEmpty()) {
                     File fragpipeFile = new File(fragpipePath);
                     if (fragpipeFile.exists()) {
                         File binDir = fragpipeFile.getParentFile();
@@ -948,11 +993,12 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
                                     // Set enzyme configuration
                                     String[] enzymeInfo = getEnzymeInfo(enzyme);
                                     fragpipeWorkflow.setEnzyme(enzymeInfo[0], enzymeInfo[1], enzymeInfo[2], 2, missCleavages);
-                                    
-                                    // Set mass tolerances
-                                    fragpipeWorkflow.setPrecursorMassTol(20.0, 1, 20.0, 1); // 20 ppm
-                                    fragpipeWorkflow.setFragmentMassTol(0.5, 0); // 0.5 Da
-                                    
+
+                                    // Precursor/fragment tolerance intentionally left untouched here -
+                                    // it comes from whichever base template (LFQ-MBR/Basic-Search/Open)
+                                    // was parsed above, per search mode. Forcing a fixed ppm window here
+                                    // would silently discard Open search's wide Da window.
+
                                     // Set ion mobility based on MS data type
                                     boolean isIonMobility = msDataType.contains("IM-MS");
                                     fragpipeWorkflow.setIonMobility(isIonMobility);

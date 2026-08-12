@@ -10,7 +10,7 @@ This cleanup focuses on the maintained product line:
 
 The `uk.ac.ebi.pride` source tree is treated as external vendored code and should not be refactored as part of MetaPilot cleanup.
 
-Current version target: `1.1.0`.
+Current version target: `1.1.1`.
 
 ## Design Targets
 

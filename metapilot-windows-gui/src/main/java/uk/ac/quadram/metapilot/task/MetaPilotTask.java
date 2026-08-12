@@ -82,7 +82,7 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 	protected File reportHtmlDir;
 
 	private static final String taskName = "MetaPilot task";
-	public static final String version = "1.1.0";
+	public static final String version = "1.1.1";
 	public static final String versionFile = "_1_0_0.json";
 
 	private String taskLoggerName;

@@ -196,13 +196,37 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 			return false;
 		}
 
-		File workflowFile = exportWorkflowTemplateForCore();
+		// Search mode / custom template overrides live entirely on magFragPipeParams
+		// (search_mode, open_search_marker_stage, custom_basic_workflow_path,
+		// custom_combined_workflow_path) - the same fields the CLI/HPC path reads from
+		// the parameter JSON. If the panel already supplied an explicit custom-path
+		// override, honor it as-is and skip the GUI-built temp file entirely; otherwise
+		// export the GUI-configured (enzyme/mods/ion-mobility) workflow and route it
+		// through those same fields rather than passing an explicit workflowTemplate
+		// argument, so both stages resolve identically to a CLI/HPC run with the same
+		// parameter file.
+		File workflowFile = null;
+		boolean hasCustomBasicPath = magFragPipeParams.getCustomBasicWorkflowPath() != null
+				&& !magFragPipeParams.getCustomBasicWorkflowPath().isBlank();
+		if (!hasCustomBasicPath && workflow != null) {
+			workflowFile = exportWorkflowTemplateForCore();
+			magFragPipeParams.setCustomBasicWorkflowPath(workflowFile.getAbsolutePath());
+			boolean hasCustomCombinedPath = magFragPipeParams.getCustomCombinedWorkflowPath() != null
+					&& !magFragPipeParams.getCustomCombinedWorkflowPath().isBlank();
+			if (!hasCustomCombinedPath && !magFragPipeParams.isOpenSearch()) {
+				// Closed mode: reuse the same GUI-built file for the combined stage too,
+				// matching the historical single-shared-template behavior exactly. Open
+				// mode leaves this unset so the combined stage resolves the Open+LFQ-MBR
+				// hybrid instead (the GUI-built file has no LFQ-MBR quant settings baked in).
+				magFragPipeParams.setCustomCombinedWorkflowPath(workflowFile.getAbsolutePath());
+			}
+		}
 		File funcDbFile = resolveGuiToolFile(ToolType.FUNCDB);
 		try {
 			MagFragPipeHeadlessRunner.Result result = MagFragPipeHeadlessRunner.run(
 					magFragPipeParams,
 					fragpipeExe,
-					workflowFile,
+					null,
 					MagDbItemResolver.resolveConfigFile(null),
 					funcDbFile,
 					createGuiProgressCallback());
