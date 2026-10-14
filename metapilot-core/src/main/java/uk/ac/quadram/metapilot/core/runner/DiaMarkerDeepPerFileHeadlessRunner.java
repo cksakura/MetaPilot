@@ -54,6 +54,14 @@ import uk.ac.quadram.metapilot.task.mag.MagDbItem;
  *   <li>stop on the same trend-based plateau / knee+plateau rule as the GUI workflow.</li>
  * </ol>
  *
+ * <p>Marker/genome-selection is completed for <b>all</b> raw files before iterative rounds.
+ * A file is treated as having no marker result when any of
+ * {@code genome_evidence.tsv}, {@code genome_ranked.tsv}, or {@code genome_selected.tsv}
+ * is absent. With representative clustering, that gate is applied only to the
+ * representative files. When some files fail the gate, an optional
+ * {@link PartialMarkerResultHandler} (GUI) may allow continuing with the successful
+ * files; without a handler the run stops and reports the missing files.
+ *
  * <p>After all per-file workers finish, the runner builds a single global combined
  * library from the peptides identified across <i>all</i> per-file rounds (for low
  * missingness) and runs one final quantifying DIA-NN search across all DIA files.
@@ -103,6 +111,27 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
 
     private DiaMarkerDeepPerFileHeadlessRunner() {
     }
+
+    /**
+     * Optional GUI/interactive decision when some files lack genome-selection outputs
+     * after the marker phase. Return {@code true} to continue iterative rounds + combined
+     * search using only the successful files; {@code false} to abort so the user can
+     * replace the failing files.
+     */
+    @FunctionalInterface
+    public interface PartialMarkerResultHandler {
+        /**
+         * @param missingRawNames display names of files missing genome selection outputs
+         * @param successfulFileCount number of candidate files that have complete genome selection
+         * @return {@code true} to continue with successful files; {@code false} to stop
+         */
+        boolean continueWithSuccessfulFiles(List<String> missingRawNames, int successfulFileCount)
+                throws InterruptedException;
+    }
+
+    private static final String GENOME_EVIDENCE_TSV = "genome_evidence.tsv";
+    private static final String GENOME_RANKED_TSV = "genome_ranked.tsv";
+    private static final String GENOME_SELECTED_TSV = "genome_selected.tsv";
 
     /** Report progress as a 0-100 percentage (matches the surrounding GUI updateProgress(x,100) calls). */
     private static void reportProgress(ProgressCallback cb, double pct) {
@@ -187,20 +216,32 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
                              MetaPilotResourceConfig reportResourceConfig, boolean exportMetaAtlasParquet)
             throws Exception {
         return runInternal(params, diannExe, magDbConfigJson, cb, condaPrefix, funcDbFile, true,
-                generateHtmlReport, reportPythonHint, reportResourceConfig, exportMetaAtlasParquet);
+                generateHtmlReport, reportPythonHint, reportResourceConfig, exportMetaAtlasParquet, null);
     }
 
     public static Result runWithoutPostAnalysis(MetaParameterDiaMarker params, File diannExe, File magDbConfigJson,
                                                 ProgressCallback cb, File condaPrefix, File funcDbFile) throws Exception {
+        return runWithoutPostAnalysis(params, diannExe, magDbConfigJson, cb, condaPrefix, funcDbFile, null);
+    }
+
+    /**
+     * Same as {@link #runWithoutPostAnalysis(MetaParameterDiaMarker, File, File, ProgressCallback, File, File)}
+     * with an optional {@link PartialMarkerResultHandler} used by the GUI when some files lack
+     * genome-selection outputs after the marker phase.
+     */
+    public static Result runWithoutPostAnalysis(MetaParameterDiaMarker params, File diannExe, File magDbConfigJson,
+                                                ProgressCallback cb, File condaPrefix, File funcDbFile,
+                                                PartialMarkerResultHandler partialMarkerHandler) throws Exception {
         return runInternal(params, diannExe, magDbConfigJson, cb, condaPrefix, funcDbFile, false,
-                false, null, null, false);
+                false, null, null, false, partialMarkerHandler);
     }
 
     private static Result runInternal(MetaParameterDiaMarker params, File diannExe, File magDbConfigJson,
                                       ProgressCallback cb, File condaPrefix, File funcDbFile,
                                       boolean exportPostAnalysis, boolean generateHtmlReport,
                                       String reportPythonHint, MetaPilotResourceConfig reportResourceConfig,
-                                      boolean exportMetaAtlasParquet)
+                                      boolean exportMetaAtlasParquet,
+                                      PartialMarkerResultHandler partialMarkerHandler)
             throws Exception {
         if (cb == null) cb = new ProgressCallback.NoOp();
         if (params == null) throw new IllegalArgumentException("params is null");
@@ -264,56 +305,49 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
 
         ConcurrentHashMap<String, Integer> perFileLastRound = new ConcurrentHashMap<>();
 
+        // Always finish marker/genome selection for every raw file before rounds / gating.
+        cb.onMessage(TASK_NAME + ": running marker search + genome selection for all raw files");
+        if (poolSize <= 1) {
+            runInitialEvidenceSequential(diaFiles, perFileDirs, perFileNames,
+                    diannExe, params, magDb, condaPrefix, perTaskThreads, cb);
+        } else {
+            runInitialEvidenceParallel(diaFiles, perFileDirs, perFileNames,
+                    diannExe, params, magDb, condaPrefix, poolSize, perTaskThreads, cb);
+        }
+
         boolean representativeClustering = params.isRepresentativeClusteringEnabled();
         String[] filesForIterativeRounds = diaFiles;
         if (representativeClustering) {
             cb.onMessage(TASK_NAME + ": representative clustering enabled (preset="
                     + params.getRepresentativeClusteringPreset() + ")");
-            boolean initialOk;
-            if (poolSize <= 1) {
-                initialOk = runInitialEvidenceSequential(diaFiles, perFileDirs, perFileNames,
-                        diannExe, params, magDb, condaPrefix, perTaskThreads, cb);
-            } else {
-                initialOk = runInitialEvidenceParallel(diaFiles, perFileDirs, perFileNames,
-                        diannExe, params, magDb, condaPrefix, poolSize, perTaskThreads, cb);
+            RepresentativePeptideClusterer.Result grouping = buildRepresentativeGrouping(diaFiles, perFileDirs,
+                    perFileNames, params);
+            writeRepresentativeGroupsTsv(new File(markerDeepDir, "representative_groups.tsv"), grouping);
+            writeRepresentativePairwiseTsv(new File(markerDeepDir, "representative_pairwise_similarity.tsv"),
+                    grouping, params);
+            writeRepresentativeClusteringSummaryTsv(new File(markerDeepDir,
+                    "representative_clustering_summary.tsv"), grouping, params);
+            if (params.isRepresentativeClusteringDryRun()) {
+                cb.onMessage(TASK_NAME + ": grouping dry run completed; reports written under "
+                        + markerDeepDir.getAbsolutePath());
+                return new Result(resultDir, markerDeepDir, new File(markerDeepDir, "combined"),
+                        null, null, null, null, null);
             }
-            if (!initialOk) {
-                if (params.isRepresentativeClusteringDryRun()) {
-                    LOGGER.warn("{}: representative clustering initial evidence failed during grouping dry run",
-                            TASK_NAME);
-                    throw new IOException(TASK_NAME + ": grouping dry run failed before clustering reports could be written");
-                }
-                LOGGER.warn("{}: representative clustering initial evidence failed; falling back to full per-file mode",
+            if (grouping.representativeFiles.isEmpty()) {
+                LOGGER.warn("{}: representative clustering produced no representatives; falling back to full per-file mode",
                         TASK_NAME);
-                cb.onMessage("WARNING: representative clustering failed before grouping; falling back to full per-file mode");
+                cb.onMessage("WARNING: representative clustering produced no representatives; falling back to full per-file mode");
                 representativeClustering = false;
             } else {
-                RepresentativePeptideClusterer.Result grouping = buildRepresentativeGrouping(diaFiles, perFileDirs,
-                        perFileNames, params);
-                writeRepresentativeGroupsTsv(new File(markerDeepDir, "representative_groups.tsv"), grouping);
-                writeRepresentativePairwiseTsv(new File(markerDeepDir, "representative_pairwise_similarity.tsv"),
-                        grouping, params);
-                writeRepresentativeClusteringSummaryTsv(new File(markerDeepDir,
-                        "representative_clustering_summary.tsv"), grouping, params);
-                if (params.isRepresentativeClusteringDryRun()) {
-                    cb.onMessage(TASK_NAME + ": grouping dry run completed; reports written under "
-                            + markerDeepDir.getAbsolutePath());
-                    return new Result(resultDir, markerDeepDir, new File(markerDeepDir, "combined"),
-                            null, null, null, null, null);
-                }
-                if (grouping.representativeFiles.isEmpty()) {
-                    LOGGER.warn("{}: representative clustering produced no representatives; falling back to full per-file mode",
-                            TASK_NAME);
-                    cb.onMessage("WARNING: representative clustering produced no representatives; falling back to full per-file mode");
-                    representativeClustering = false;
-                } else {
-                    filesForIterativeRounds = grouping.representativeFiles.toArray(new String[0]);
-                    cb.onMessage(TASK_NAME + ": representative clustering selected "
-                            + filesForIterativeRounds.length + " representatives from " + diaFiles.length
-                            + " raw files");
-                }
+                filesForIterativeRounds = grouping.representativeFiles.toArray(new String[0]);
+                cb.onMessage(TASK_NAME + ": representative clustering selected "
+                        + filesForIterativeRounds.length + " representatives from " + diaFiles.length
+                        + " raw files");
             }
         }
+
+        filesForIterativeRounds = applyMarkerResultGate(filesForIterativeRounds, perFileDirs, perFileNames,
+                partialMarkerHandler, cb);
 
         boolean ok;
         if (poolSize <= 1 || filesForIterativeRounds.length <= 1) {
@@ -508,7 +542,7 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
         return !anyFailed.get();
     }
 
-    private static boolean runInitialEvidenceSequential(String[] diaFiles,
+    private static void runInitialEvidenceSequential(String[] diaFiles,
             LinkedHashMap<String, File> perFileDirs, LinkedHashMap<String, String> perFileNames,
             File diannExe, MetaParameterDiaMarker params, MagDbItem magDb, File condaPrefix,
             int perTaskThreads, ProgressCallback cb) {
@@ -520,15 +554,16 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
             cb.onMessage(TASK_NAME + ": initial marker evidence (" + (i + 1) + "/" + total + "): " + rawName);
             if (!prepareInitialEvidenceForOneFile(raw, perFileDir, diannExe, params, magDb,
                     condaPrefix, perTaskThreads, cb)) {
-                LOGGER.error("{}: initial evidence failed for {}", TASK_NAME, raw);
-                return false;
+                LOGGER.warn("{}: initial evidence incomplete for {} (will be reported after all marker searches)",
+                        TASK_NAME, rawName);
+                cb.onMessage(TASK_NAME + ": WARNING: no genome selection result yet for " + rawName
+                        + " (continuing remaining marker searches)");
             }
             reportBandProgress(cb, i + 1, total, PROGRESS_INITIAL_EVIDENCE_START, PROGRESS_INITIAL_EVIDENCE_END);
         }
-        return true;
     }
 
-    private static boolean runInitialEvidenceParallel(String[] diaFiles,
+    private static void runInitialEvidenceParallel(String[] diaFiles,
             LinkedHashMap<String, File> perFileDirs, LinkedHashMap<String, String> perFileNames,
             File diannExe, MetaParameterDiaMarker params, MagDbItem magDb, File condaPrefix,
             int poolSize, int perTaskThreads, ProgressCallback cb) {
@@ -539,7 +574,6 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
             t.setDaemon(true);
             return t;
         });
-        AtomicBoolean anyFailed = new AtomicBoolean(false);
         AtomicInteger completed = new AtomicInteger(0);
         int total = diaFiles.length;
         List<Future<?>> futures = new ArrayList<>();
@@ -550,18 +584,20 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
                 final String rawFile = raw;
                 futures.add(executor.submit(() -> {
                     try {
-                        if (anyFailed.get()) return;
                         cb.onMessage(TASK_NAME + ": initial marker evidence for " + rawName);
                         if (!prepareInitialEvidenceForOneFile(rawFile, perFileDir, diannExe, params, magDb,
                                 condaPrefix, perTaskThreads, cb)) {
-                            anyFailed.set(true);
-                            return;
+                            LOGGER.warn("{}: initial evidence incomplete for {} (will be reported after all marker searches)",
+                                    TASK_NAME, rawName);
+                            cb.onMessage(TASK_NAME + ": WARNING: no genome selection result yet for " + rawName
+                                    + " (continuing remaining marker searches)");
                         }
                         reportBandProgress(cb, completed.incrementAndGet(), total,
                                 PROGRESS_INITIAL_EVIDENCE_START, PROGRESS_INITIAL_EVIDENCE_END);
                     } catch (Throwable t) {
                         LOGGER.error("{}: initial evidence exception for {}", TASK_NAME, rawFile, t);
-                        anyFailed.set(true);
+                        reportBandProgress(cb, completed.incrementAndGet(), total,
+                                PROGRESS_INITIAL_EVIDENCE_START, PROGRESS_INITIAL_EVIDENCE_END);
                     }
                 }));
             }
@@ -570,7 +606,6 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
                     f.get();
                 } catch (Exception e) {
                     LOGGER.error("{}: initial evidence worker future failed", TASK_NAME, e);
-                    anyFailed.set(true);
                 }
             }
         } finally {
@@ -584,7 +619,6 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
                 Thread.currentThread().interrupt();
             }
         }
-        return !anyFailed.get();
     }
 
     /**
@@ -629,10 +663,10 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
                 return false;
             }
 
-            File evidenceTsv = new File(perFileDir, "genome_evidence.tsv");
-            File rankedTsv = new File(perFileDir, "genome_ranked.tsv");
-            File selectedTsv = new File(perFileDir, "genome_selected.tsv");
-            if (!rankedTsv.exists() || !selectedTsv.exists()) {
+            File evidenceTsv = new File(perFileDir, GENOME_EVIDENCE_TSV);
+            File rankedTsv = new File(perFileDir, GENOME_RANKED_TSV);
+            File selectedTsv = new File(perFileDir, GENOME_SELECTED_TSV);
+            if (!hasGenomeSelectionResults(perFileDir)) {
                 cb.onMessage(TASK_NAME + ": genome selection for " + perFileDir.getName());
                 DiaNNPrecursor[] precursors = DiaMarkerHeadlessRunner.readPrecursors(markerParquet, params);
                 if (precursors == null || precursors.length == 0) {
@@ -655,8 +689,9 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
                 selectionRequest.maximumSelected = 300;
                 MagGenomeSelectionService.selectGenomes(selectionRequest, cb);
             }
-            if (!rankedTsv.exists()) {
-                LOGGER.error("{}: genome_ranked.tsv missing for {}", TASK_NAME, perFileDir.getName());
+            if (!hasGenomeSelectionResults(perFileDir)) {
+                LOGGER.error("{}: genome selection outputs missing for {} (need {}, {}, {})",
+                        TASK_NAME, perFileDir.getName(), GENOME_EVIDENCE_TSV, GENOME_RANKED_TSV, GENOME_SELECTED_TSV);
                 return false;
             }
             return true;
@@ -669,7 +704,7 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
     private static int runRoundsForPreparedFile(String raw, File perFileDir, File diannExe,
                                                 MetaParameterDiaMarker params, MagDbItem magDb, File condaPrefix,
                                                 int perTaskThreads, ProgressCallback cb) {
-        File rankedTsv = new File(perFileDir, "genome_ranked.tsv");
+        File rankedTsv = new File(perFileDir, GENOME_RANKED_TSV);
         if (!rankedTsv.exists()) {
             LOGGER.error("{}: genome_ranked.tsv missing for {}", TASK_NAME, perFileDir.getName());
             return -1;
@@ -747,9 +782,73 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
                 LOGGER.warn("{}: failed to read marker signature from {}", TASK_NAME, markerParquet.getAbsolutePath(), e);
             }
         }
-        List<String> topGenomes = readTopGenomes(new File(perFileDir, "genome_ranked.tsv"),
+        List<String> topGenomes = readTopGenomes(new File(perFileDir, GENOME_RANKED_TSV),
                 params.getRepresentativeGenomeTopN());
         return new RepresentativePeptideClusterer.Input(index, raw, rawName, peptides, topGenomes);
+    }
+
+    /**
+     * After marker/genome selection for all files (and optional representative clustering),
+     * require genome selection outputs for each file that will enter iterative rounds.
+     * With clustering this is the representative set only.
+     */
+    private static String[] applyMarkerResultGate(String[] candidateFiles,
+            LinkedHashMap<String, File> perFileDirs, LinkedHashMap<String, String> perFileNames,
+            PartialMarkerResultHandler partialMarkerHandler, ProgressCallback cb) throws Exception {
+        if (candidateFiles == null || candidateFiles.length == 0) {
+            throw new IOException(TASK_NAME + ": no files available for iterative rounds after marker phase");
+        }
+        List<String> successful = new ArrayList<>();
+        List<String> missingNames = new ArrayList<>();
+        for (String raw : candidateFiles) {
+            String rawName = perFileNames.getOrDefault(raw, DeepComprehensivePaths.runIdFromRawFilePath(raw));
+            if (hasGenomeSelectionResults(perFileDirs.get(raw))) {
+                successful.add(raw);
+            } else {
+                missingNames.add(rawName);
+            }
+        }
+        if (missingNames.isEmpty()) {
+            return candidateFiles;
+        }
+
+        String missingList = String.join(", ", missingNames);
+        String detail = "Missing genome selection outputs (" + GENOME_EVIDENCE_TSV + ", "
+                + GENOME_RANKED_TSV + ", " + GENOME_SELECTED_TSV + ") for: " + missingList;
+        LOGGER.warn("{}: {}", TASK_NAME, detail);
+        cb.onMessage(TASK_NAME + ": " + detail);
+
+        if (successful.isEmpty()) {
+            throw new IOException(TASK_NAME + ": no files have genome selection results after marker search. "
+                    + detail + ". Replace these files and re-run.");
+        }
+
+        if (partialMarkerHandler != null) {
+            cb.onMessage(TASK_NAME + ": waiting for user decision on incomplete marker results ("
+                    + missingNames.size() + " missing, " + successful.size() + " successful)");
+            boolean continueRun = partialMarkerHandler.continueWithSuccessfulFiles(missingNames, successful.size());
+            if (!continueRun) {
+                throw new IOException(TASK_NAME + ": stopped after incomplete marker results. " + detail
+                        + ". Replace these files and re-run, or choose continue to use the "
+                        + successful.size() + " successful file(s).");
+            }
+            cb.onMessage(TASK_NAME + ": continuing with " + successful.size()
+                    + " file(s) that have genome selection results; skipping: " + missingList);
+            return successful.toArray(new String[0]);
+        }
+
+        throw new IOException(TASK_NAME + ": incomplete marker/genome selection results. " + detail
+                + ". Successful files: " + successful.size()
+                + ". Replace the missing files and re-run (GUI can offer continue-with-successful).");
+    }
+
+    static boolean hasGenomeSelectionResults(File perFileDir) {
+        if (perFileDir == null || !perFileDir.isDirectory()) {
+            return false;
+        }
+        return new File(perFileDir, GENOME_EVIDENCE_TSV).isFile()
+                && new File(perFileDir, GENOME_RANKED_TSV).isFile()
+                && new File(perFileDir, GENOME_SELECTED_TSV).isFile();
     }
 
     private static List<String> readTopGenomes(File rankedTsv, int topN) {

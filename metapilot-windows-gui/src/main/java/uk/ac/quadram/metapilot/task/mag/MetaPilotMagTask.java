@@ -37,6 +37,7 @@ import uk.ac.quadram.metapilot.core.math.MathTool;
 import uk.ac.quadram.metapilot.core.prodb.FastaManager;
 import uk.ac.quadram.metapilot.core.runner.DdaMagReportExportService;
 import uk.ac.quadram.metapilot.core.runner.MagFunctionalAnnotationService;
+import uk.ac.quadram.metapilot.core.runner.MagResultCheckpoints;
 import uk.ac.quadram.metapilot.core.runner.MagTaxonomyAnalysisService;
 import uk.ac.quadram.metapilot.core.taxonomy.TaxonomyRanks;
 import uk.ac.quadram.metapilot.core.tools.FormatTool;
@@ -50,6 +51,7 @@ import uk.ac.quadram.metapilot.task.io.MetaTreeHandler;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPSM;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
+import uk.ac.quadram.metapilot.task.io.qpx.QpxPsmExport;
 import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.par.MetaData;
@@ -126,6 +128,16 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 		return false;
 	}
 
+	/** Parent of the per-sample result folders {@link #createSeparateFolders()} makes. */
+	protected File sampleFoldersRoot() {
+		if (useNestedSearchResultsLayout()) {
+			File root = MagResultLayoutUtil.resolveSearchResultsRoot(metaPar.getDbSearchResultFile());
+			logger.info("Using nested search_results layout, sample folders root: {}", root.getAbsolutePath());
+			return root;
+		}
+		return metaPar.getDbSearchResultFile();
+	}
+
 	protected void createSeparateFolders() {
 		MetaData metaData = metaPar.getMetadata();
 		if (metaData == null) {
@@ -152,14 +164,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			this.combinedFile.mkdir();
 		}
 
-		File sampleFoldersRoot;
-		if (useNestedSearchResultsLayout()) {
-			sampleFoldersRoot = MagResultLayoutUtil.resolveSearchResultsRoot(metaPar.getDbSearchResultFile());
-			logger.info("Using nested search_results layout, sample folders root: {}",
-					sampleFoldersRoot.getAbsolutePath());
-		} else {
-			sampleFoldersRoot = metaPar.getDbSearchResultFile();
-		}
+		File sampleFoldersRoot = sampleFoldersRoot();
 
 		this.rawFileNames = new String[rawFiles.length];
 		this.separateResultFolders = new File[rawFiles.length];
@@ -978,6 +983,18 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 	}
 
 	/**
+	 * Writes the PSM layer as QPX {@code metapilot.psm.parquet} beside
+	 * {@code final_peptides.tsv}. Never fails the workflow.
+	 */
+	protected void writeQpxPsms(MetaPSM[] psms, String taskName) {
+		QpxPsmExport.writeQuietly(metaPar.getDbSearchResultFile(), psms == null ? null : Arrays.asList(psms),
+				msg -> {
+					logger.info(taskName + ": " + msg);
+					System.out.println(format.format(new Date()) + "\t" + taskName + ": " + msg);
+				});
+	}
+
+	/**
 	 * Perform functional annotation.
 	 */
 	private boolean performFunctionalAnnotation(String[] proteins, HashMap<String, double[]> proteinIntensityMap,
@@ -1249,6 +1266,43 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 		double p95 = arr[Math.min((int) Math.round(0.95 * p), arr.length - 1)];
 		double p99 = arr[Math.min((int) Math.round(0.99 * p), arr.length - 1)];
 		return new double[] { min, max, mean, p1, p5, p25, p50, p75, p95, p99 };
+	}
+
+	/**
+	 * Runs {@link #generateFinalReports(String)} unless every HTML report it
+	 * writes already exists and is no older than the table it shows and the
+	 * sample metadata. The metadata is compared by content because
+	 * generateFinalReports rewrites metainfo.tsv on every run.
+	 */
+	protected boolean generateFinalReportsIfStale(String taskName) {
+		File resultRoot = metaPar.getDbSearchResultFile();
+		File metainfo = new File(resultRoot, MagResultCheckpoints.METADATA);
+		File stale = metadataUnchanged(metainfo) ? MagResultCheckpoints.staleReport(resultRoot, metainfo) : metainfo;
+		if (stale == null) {
+			logger.info("{}: HTML reports already exist and are newer than the tables and metadata they show, "
+					+ "skipping report generation", taskName);
+			return true;
+		}
+		logger.info("{}: {} is missing or out of date; generating HTML reports", taskName, stale.getName());
+		return generateFinalReports(taskName);
+	}
+
+	private boolean metadataUnchanged(File metainfo) {
+		if (!metainfo.isFile() || metaPar.getMetadata() == null) {
+			return false;
+		}
+		File current = null;
+		try {
+			current = File.createTempFile("metainfo", ".tsv");
+			metaPar.getMetadata().exportMetadata(current);
+			return MagResultCheckpoints.sameContent(current, metainfo);
+		} catch (IOException e) {
+			return false;
+		} finally {
+			if (current != null) {
+				current.delete();
+			}
+		}
 	}
 
 	/**
@@ -1587,6 +1641,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 					peptideList, allProteinScoreMap)) {
 				return false;
 			}
+			parentTask.writeQpxPsms(psms, taskName);
 
 			// Functional annotation (use razor peptide/PSM counts for functions.tsv)
 			updateMessage("Performing functional annotation...");

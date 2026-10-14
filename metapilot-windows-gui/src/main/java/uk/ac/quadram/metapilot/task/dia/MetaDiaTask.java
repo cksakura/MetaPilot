@@ -66,6 +66,13 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 	protected DiaLibSearchPar diaLibSearchPar;
 	protected DiannParameter diannPar;
 	protected DiaNNPrecursor[] diaPp;
+	/**
+	 * Per-run identification counts captured from {@link #diaPp} before a
+	 * low-memory export path is allowed to release the precursor array. Populated
+	 * by {@link #captureSummaryStats()} and consumed by
+	 * {@link #exportSummary(MetaPythonReportTask)}.
+	 */
+	protected SummaryStats summaryStats;
 	protected MetaData metadata;
 	protected String[] expNames;
 	protected int[] fractions;
@@ -2531,7 +2538,59 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 		return false;
 	}
 
+	/**
+	 * Per-run identification counts needed to write {@code final_summary.tsv}.
+	 * Holds only run names and peptide sequences, so it stays small enough to be
+	 * retained after the full {@link #diaPp} precursor array has been released.
+	 */
+	protected static final class SummaryStats {
+		final HashMap<String, Integer> totalms2Map = new HashMap<String, Integer>();
+		final HashMap<String, HashSet<String>> totalUnipepMap = new HashMap<String, HashSet<String>>();
+		final HashSet<String> totalPepSet = new HashSet<String>();
+	}
+
+	/**
+	 * Collect the summary counts from {@link #diaPp} and keep them in
+	 * {@link #summaryStats}. Must be called while {@code diaPp} is still populated;
+	 * export paths are then free to release the precursor array to save memory
+	 * without breaking {@link #exportSummary(MetaPythonReportTask)}.
+	 *
+	 * @return the collected counts, or the previously captured counts when the
+	 *         precursor array has already been released
+	 */
+	protected SummaryStats captureSummaryStats() {
+		if (this.diaPp == null) {
+			return this.summaryStats;
+		}
+		SummaryStats stats = new SummaryStats();
+		for (int i = 0; i < this.diaPp.length; i++) {
+			String run = this.diaPp[i].getRunString();
+			String sequence = this.diaPp[i].getSeqString();
+			if (stats.totalms2Map.containsKey(run)) {
+				stats.totalms2Map.put(run, stats.totalms2Map.get(run) + 1);
+				stats.totalUnipepMap.get(run).add(sequence);
+			} else {
+				stats.totalms2Map.put(run, 1);
+				HashSet<String> set = new HashSet<String>();
+				set.add(sequence);
+				stats.totalUnipepMap.put(run, set);
+			}
+			stats.totalPepSet.add(sequence);
+		}
+		this.summaryStats = stats;
+		return stats;
+	}
+
 	protected boolean exportSummary(MetaPythonReportTask task) {
+
+		SummaryStats stats = (this.diaPp != null) ? captureSummaryStats() : this.summaryStats;
+		if (stats == null) {
+			logger.error(getTaskName() + ": cannot write final_summary.tsv, per-run summary counts are"
+					+ " unavailable (captureSummaryStats() must run before the precursor array is released)");
+			System.err.println(format.format(new Date()) + "\t" + getTaskName()
+					+ ": cannot write final_summary.tsv, per-run summary counts are unavailable");
+			return false;
+		}
 
 		this.final_summary_txt = new File(resultFolderFile, "final_summary.tsv");
 		try {
@@ -2549,23 +2608,9 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 
 			int totalms2count = 0;
 
-			HashMap<String, Integer> totalms2Map = new HashMap<String, Integer>();
-			HashMap<String, HashSet<String>> totalUnipepMap = new HashMap<String, HashSet<String>>();
-			HashSet<String> totalPepSet = new HashSet<String>();
-			for (int i = 0; i < this.diaPp.length; i++) {
-				String run = this.diaPp[i].getRunString();
-				String sequence = this.diaPp[i].getSeqString();
-				if (totalms2Map.containsKey(run)) {
-					totalms2Map.put(run, totalms2Map.get(run) + 1);
-					totalUnipepMap.get(run).add(sequence);
-				} else {
-					totalms2Map.put(run, 1);
-					HashSet<String> set = new HashSet<String>();
-					set.add(sequence);
-					totalUnipepMap.put(run, set);
-				}
-				totalPepSet.add(sequence);
-			}
+			HashMap<String, Integer> totalms2Map = stats.totalms2Map;
+			HashMap<String, HashSet<String>> totalUnipepMap = stats.totalUnipepMap;
+			HashSet<String> totalPepSet = stats.totalPepSet;
 
 			for (String file : totalUnipepMap.keySet()) {
 				StringBuilder sb = new StringBuilder();
@@ -4467,6 +4512,9 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 			precursorsQ01 = new DiaNNPrecursor[0];
 		MagPostAnalysisScoringService.DiaResult scoring = MagPostAnalysisScoringService.scoreDia(precursorsQ01);
 		this.diaPp = scoring.filteredPrecursors;
+		logger.info(getTaskName() + ": " + (this.diaPp == null ? 0 : this.diaPp.length)
+				+ " precursors retained after genome/protein scoring (from " + precursorsQ01.length
+				+ " parquet precursors)");
 		// Delegate the rest of report generation (peptide report, HTML, etc.) to the
 		// existing export flow in subclasses if they override it; otherwise run the
 		// same downstream as Marker.

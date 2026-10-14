@@ -13,6 +13,8 @@ import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -221,7 +223,7 @@ public class PFindIsobaricTask {
 
 	private void calcuIsobaricPeptide(HashMap<String, HashMap<Integer, double[]>> totalMs2IntenMap) throws IOException {
 
-		if (tmt_quan_pep_file.exists() && tmt_quan_pep_file.length() > 0) {
+		if (isReusableOutput(tmt_quan_pep_file, this.lf_quan_pep_file)) {
 			LOGGER.info(taskName + ": peptide quantification result has been found in " + tmt_quan_pep_file
 					+ ", go to next step");
 			System.out.println(format.format(new Date()) + "\t" + taskName
@@ -398,7 +400,11 @@ public class PFindIsobaricTask {
 		
 		if (combineLabel) {
 
-			String[] expLabelNames = this.metaData.getExpNames();
+			// One name per raw file x channel (file-major), the same order as the
+			// intensity arrays; channels sharing a name are summed into one column.
+			// (Previously getExpNames(), which has one entry per raw file, so most
+			// channels were mapped to column 0 and the values were never combined.)
+			String[] expLabelNames = combineSourceNames(this.metaData, this.rawFileNames);
 			for (int i = 0; i < expLabelNames.length; i++) {
 				if (!idMap.containsKey(expLabelNames[i])) {
 					idMap.put(expLabelNames[i], idMap.size());
@@ -454,7 +460,7 @@ public class PFindIsobaricTask {
 				sb.append(cs[1]).append("\t");
 				sb.append(cs[2]);
 
-				double[] intensity = normalPepIntenMap.get(cs[0]);
+				double[] intensity = combineValues(normalPepIntenMap.get(cs[0]), combineIds, combinedNames);
 				for (int i = 0; i < intensity.length; i++) {
 					sb.append("\t").append(intensity[i]);
 				}
@@ -478,7 +484,7 @@ public class PFindIsobaricTask {
 	private void calcuIsobaricProtein(HashMap<String, HashMap<Integer, double[]>> totalMs2IntenMap) throws IOException {
 
 
-		if (tmt_quan_pro_file.exists() && tmt_quan_pro_file.length() > 0) {
+		if (isReusableOutput(tmt_quan_pro_file, this.lf_quan_pro_file)) {
 			LOGGER.info(taskName + ": protein quantification result has been found in " + tmt_quan_pro_file
 					+ ", go to next step");
 			System.out.println(format.format(new Date()) + "\t" + taskName
@@ -635,7 +641,11 @@ public class PFindIsobaricTask {
 
 		if (combineLabel) {
 
-			String[] expLabelNames = this.metaData.getExpNames();
+			// One name per raw file x channel (file-major), the same order as the
+			// intensity arrays; channels sharing a name are summed into one column.
+			// (Previously getExpNames(), which has one entry per raw file, so most
+			// channels were mapped to column 0 and the values were never combined.)
+			String[] expLabelNames = combineSourceNames(this.metaData, this.rawFileNames);
 			for (int i = 0; i < expLabelNames.length; i++) {
 				if (!idMap.containsKey(expLabelNames[i])) {
 					idMap.put(expLabelNames[i], idMap.size());
@@ -686,7 +696,7 @@ public class PFindIsobaricTask {
 				sb.append(cs[0]).append("\t");
 				sb.append("\t");
 				
-				double[] intensity = normalProIntenMap.get(cs[0]);
+				double[] intensity = combineValues(normalProIntenMap.get(cs[0]), combineIds, combinedNames);
 				for (int i = 0; i < intensity.length; i++) {
 					sb.append("\t").append(intensity[i]);
 				}
@@ -700,7 +710,7 @@ public class PFindIsobaricTask {
 	private void calcuIsobaricProtein(HashMap<String, HashMap<Integer, double[]>> totalMs2IntenMap,
 			HashMap<String, String> pepProMap, File output) throws IOException {
 
-		if (output.exists() && output.length() > 0) {
+		if (isReusableOutput(output, this.lf_quan_pro_file)) {
 			LOGGER.info(taskName + ": protein quantification result has been found in " + output + ", go to next step");
 			System.out.println(format.format(new Date()) + "\t" + taskName
 					+ ": protein quantification result has been found in " + output + ", go to next step");
@@ -853,7 +863,11 @@ public class PFindIsobaricTask {
 
 		if (combineLabel) {
 
-			String[] expLabelNames = this.metaData.getExpNames();
+			// One name per raw file x channel (file-major), the same order as the
+			// intensity arrays; channels sharing a name are summed into one column.
+			// (Previously getExpNames(), which has one entry per raw file, so most
+			// channels were mapped to column 0 and the values were never combined.)
+			String[] expLabelNames = combineSourceNames(this.metaData, this.rawFileNames);
 			for (int i = 0; i < expLabelNames.length; i++) {
 				if (!idMap.containsKey(expLabelNames[i])) {
 					idMap.put(expLabelNames[i], idMap.size());
@@ -904,7 +918,7 @@ public class PFindIsobaricTask {
 				sb.append(cs[0]).append("\t");
 				sb.append("\t");
 				
-				double[] intensity = normalProIntenMap.get(cs[0]);
+				double[] intensity = combineValues(normalProIntenMap.get(cs[0]), combineIds, combinedNames);
 				for (int i = 0; i < intensity.length; i++) {
 					sb.append("\t").append(intensity[i]);
 				}
@@ -913,6 +927,125 @@ public class PFindIsobaricTask {
 		}
 		lfqReader.close();
 		proWriter.close();
+	}
+
+	/**
+	 * Per raw file x channel sample names (file-major, matching the intensity array
+	 * layout file * labelCount + channel) used to merge channels when combineLabel is
+	 * set. Taken from MetaData.getLabelExpNames(); a missing or blank name falls back
+	 * to {@code <raw>_<label>}, so that channel stays its own column.
+	 */
+	static String[] combineSourceNames(MetaData metaData, String[] rawFileNames) {
+		String[] labels = metaData.getLabelTitle();
+		String[] labelExpNames = metaData.getLabelExpNames();
+		String[] names = new String[rawFileNames.length * labels.length];
+		for (int i = 0; i < rawFileNames.length; i++) {
+			for (int j = 0; j < labels.length; j++) {
+				int id = i * labels.length + j;
+				String name = labelExpNames != null && id < labelExpNames.length ? labelExpNames[id] : null;
+				names[id] = name != null && !name.isBlank() ? name.trim() : rawFileNames[i] + "_" + labels[j];
+			}
+		}
+		return names;
+	}
+
+	/** Raw file base names in MetaData order, as used for this task's column names. */
+	static String[] rawFileBaseNames(MetaData metaData) {
+		String[] raws = metaData.getRawFiles();
+		String[] names = new String[raws.length];
+		for (int i = 0; i < raws.length; i++) {
+			String raw = raws[i].replace('/', '\\');
+			int start = raw.lastIndexOf('\\') + 1;
+			int end = raw.lastIndexOf('.');
+			names[i] = end > start ? raw.substring(start, end) : raw.substring(start);
+		}
+		return names;
+	}
+
+	/**
+	 * Suffixes of the {@code Intensity_<suffix>} columns this task writes to
+	 * IsobaricQuantifiedPeptides.tsv / IsobaricQuantifiedProteins*.tsv, in column
+	 * order. Readers of those files should request exactly these columns.
+	 *
+	 * @param rawFileOrder raw file base names in the order wanted for the
+	 *                     uncombined layout ({@code <raw>_<label>}, file-major);
+	 *                     null uses MetaData order. Ignored when combineLabel is
+	 *                     set (combined columns follow first appearance in
+	 *                     MetaData order, as written).
+	 */
+	public static String[] intensityColumnSuffixes(MetaData metaData, List<String> rawFileOrder,
+			boolean combineLabel) {
+		String[] metaRaw = rawFileBaseNames(metaData);
+		if (combineLabel) {
+			LinkedHashSet<String> unique = new LinkedHashSet<String>();
+			for (String name : combineSourceNames(metaData, metaRaw)) {
+				unique.add(name);
+			}
+			return unique.toArray(new String[0]);
+		}
+		List<String> raws = rawFileOrder != null ? rawFileOrder : Arrays.asList(metaRaw);
+		String[] labels = metaData.getLabelTitle();
+		String[] suffixes = new String[raws.size() * labels.length];
+		for (int i = 0; i < raws.size(); i++) {
+			for (int j = 0; j < labels.length; j++) {
+				suffixes[i * labels.length + j] = raws.get(i) + "_" + labels[j];
+			}
+		}
+		return suffixes;
+	}
+
+	/** Sums file x channel values into combined sample columns; returns the input when not combining. */
+	private static double[] combineValues(double[] intensity, int[] combineIds, String[] combinedNames) {
+		if (combinedNames == null) {
+			return intensity;
+		}
+		double[] combined = new double[combinedNames.length];
+		for (int i = 0; i < intensity.length && i < combineIds.length; i++) {
+			combined[combineIds[i]] += intensity[i];
+		}
+		return combined;
+	}
+
+	/**
+	 * An existing output is reused only if it is non-empty, not older than the
+	 * label-free input and ms2_intensity.tsv it was computed from, and its header
+	 * has every intensity column the current settings would write (catches a
+	 * changed raw file set, label set or combineLabel setting). Otherwise it is
+	 * recomputed. Previously any non-empty file was reused.
+	 */
+	private boolean isReusableOutput(File output, File lfInput) {
+		if (output == null || !output.exists() || output.length() == 0) {
+			return false;
+		}
+		long time = output.lastModified();
+		if (lfInput != null && lfInput.exists() && lfInput.lastModified() > time) {
+			LOGGER.info(taskName + ": " + output.getName() + " is older than " + lfInput.getName() + ", recomputing");
+			return false;
+		}
+		if (ms2_intensity != null && ms2_intensity.exists() && ms2_intensity.lastModified() > time) {
+			LOGGER.info(taskName + ": " + output.getName() + " is older than " + ms2_intensity.getName()
+					+ ", recomputing");
+			return false;
+		}
+		try (BufferedReader reader = new BufferedReader(new FileReader(output))) {
+			String header = reader.readLine();
+			if (header == null) {
+				return false;
+			}
+			HashSet<String> columns = new HashSet<String>(Arrays.asList(header.split("\t")));
+			for (String suffix : intensityColumnSuffixes(this.metaData, Arrays.asList(this.rawFileNames),
+					this.combineLabel)) {
+				if (!columns.contains("Intensity_" + suffix)) {
+					LOGGER.info(taskName + ": " + output.getName() + " has no column Intensity_" + suffix
+							+ " for the current settings, recomputing");
+					return false;
+				}
+			}
+		} catch (IOException e) {
+			LOGGER.warn(taskName + ": cannot read header of " + output + ", recomputing", e);
+			return false;
+		}
+		return true;
 	}
 
 	public Boolean run() {

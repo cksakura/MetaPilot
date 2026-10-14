@@ -243,8 +243,8 @@ public class ResultFolderCleaner {
 			"functional_annotation", "report", "reports");
 	private static final Set<String> WORKFLOW_RESULT_DIRECTORIES = Set.of("maxquant_search", "pfind_igc_search",
 			"fragpipe_igc_search", "sage_igc_search", "pfind_mag_search", "fragpipe_mag_search", "sage_mag_search",
-			"marker_focus", "marker_comprehensive", "marker_deep", "seed_direct", "seed_focus",
-			"seed_comprehensive", "seed_deep");
+			"opensearch_mag_search", "marker_focus", "marker_comprehensive", "marker_deep", "seed_direct",
+			"seed_focus", "seed_comprehensive", "seed_deep");
 	private static final Set<String> ROOT_FINAL_FILES = Set.of("final_peptides.tsv", "final_proteins.tsv",
 			"razor_proteins.tsv", "all_proteins.tsv", "final_summary.tsv", "summary.tsv", "proteingroups.txt",
 			"peptides.txt", "summary.txt");
@@ -562,7 +562,33 @@ public class ResultFolderCleaner {
 					"FragPipe per-sample search result retained (used to build combined results / rerun; kept even in deep clean)");
 		}
 
+		// Open-search workflow: without this the DEEP fallback below
+		// (KeepDecision.delete()) would destroy its resume sentinels and the
+		// validation intermediates, which no generic rule recognises.
+		if (workflowType == WorkflowType.DDA_MAG_OPENSEARCH
+				&& uk.ac.quadram.metapilot.core.opensearch.OpenSearchLayout.deepCleanKeepFileNames().contains(name)) {
+			return KeepDecision.keep("Open-search resume gate / validation output retained even in deep clean "
+					+ "(the runner skips a step when its sentinel exists, so deleting one of these would leave the "
+					+ "step skipped and its output never regenerated)");
+		}
+		if (workflowType == WorkflowType.DDA_MAG_OPENSEARCH && name.endsWith(".pepXML")) {
+			return KeepDecision.keep("Open-search per-sample pepXML retained (stage-1/stage-2 search resume gates)");
+		}
+		// Crystal-C's own artifacts, kept for the same provenance reason
+		// fragger_open.params is: the refined _c.pepXML beside them is a resume
+		// sentinel, so deleting the report and parameters leaves a refinement that
+		// will be skipped on the next run with no record of what it did.
+		if (workflowType == WorkflowType.DDA_MAG_OPENSEARCH
+				&& (name.endsWith(uk.ac.quadram.metapilot.core.crystalc.CrystalCHeadlessRunner.REPORT_SUFFIX)
+						|| (name.startsWith("crystalc-") && name.endsWith(".params")))) {
+			return KeepDecision.keep("Crystal-C precursor-refinement report / parameters retained even in deep "
+					+ "clean (provenance for the _c.pepXML the validation reads)");
+		}
+
 		if (mode == CleanMode.BASIC) {
+			if (isOpenSearchMagGenomeSelectionAudit(workflowType, relative, name)) {
+				return KeepDecision.keep("Open-search genome-selection audit artifact retained for basic clean");
+			}
 			if (isPfindMagGenomeSelectionAudit(workflowType, relative, name)) {
 				return KeepDecision.keep("pFind genome-selection audit artifact retained for basic clean");
 			}
@@ -579,7 +605,9 @@ public class ResultFolderCleaner {
 	}
 
 	private static boolean isFinalDeliverableFile(WorkflowType workflowType, Path relative, String name) {
-		if (!ROOT_FINAL_FILES.contains(name) && !name.startsWith("final_")) {
+		// QPX exports ({PREFIX}.psm.parquet, written beside final_peptides.tsv) are final
+		// deliverables too.
+		if (!ROOT_FINAL_FILES.contains(name) && !name.startsWith("final_") && !name.endsWith(".psm.parquet")) {
 			return false;
 		}
 		if (relative.getNameCount() == 1) {
@@ -588,7 +616,9 @@ public class ResultFolderCleaner {
 		if (relative.getNameCount() == 2) {
 			String parent = relative.getName(0).toString().toLowerCase(Locale.ROOT);
 			return WORKFLOW_RESULT_DIRECTORIES.contains(parent)
-					|| (workflowType == WorkflowType.DIA_REALTIME && parent.equals("combined"));
+					|| (workflowType == WorkflowType.DIA_REALTIME && parent.equals("combined"))
+					|| (workflowType == WorkflowType.DDA_MAG_OPENSEARCH && uk.ac.quadram.metapilot.core.opensearch.OpenSearchLayout
+							.modeFolderNames().contains(parent));
 		}
 		return false;
 	}
@@ -805,6 +835,24 @@ public class ResultFolderCleaner {
 	 * deep clean discards them - only
 	 * {@link #isFragpipeMagPerSampleDeepDeliverable} files survive deep clean.
 	 */
+	/**
+	 * Genome-selection audit artifacts for the open-search workflow, using the
+	 * same {@code *_evidence/_ranked/_selected.tsv} convention as the other MAG
+	 * workflows so the shape of this rule carries over.
+	 */
+	private static boolean isOpenSearchMagGenomeSelectionAudit(WorkflowType workflowType, Path relative, String name) {
+		if (workflowType != WorkflowType.DDA_MAG_OPENSEARCH) {
+			return false;
+		}
+		for (String suffix : uk.ac.quadram.metapilot.core.opensearch.OpenSearchLayout
+				.genomeSelectionAuditSuffixes()) {
+			if (name.endsWith(suffix)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	private static boolean isFragpipeMagGenomeSelectionAudit(WorkflowType workflowType, Path relative, String name) {
 		if (workflowType != WorkflowType.DDA_MAG_FRAGPIPE) {
 			return false;
@@ -959,6 +1007,8 @@ public class ResultFolderCleaner {
 			return Set.of("fragpipe_mag_search");
 		case DDA_MAG_SAGE:
 			return Set.of("sage_mag_search");
+		case DDA_MAG_OPENSEARCH:
+			return Set.of(uk.ac.quadram.metapilot.core.opensearch.OpenSearchLayout.ENGINE_SEARCH_DIR_KEY);
 		case DIA_MARKER:
 			return allowedDiaMarkerRoots(refinementMode);
 		case DIA_SEED:
@@ -1142,6 +1192,8 @@ public class ResultFolderCleaner {
 		map.put("mag_pfind_parameters.json", WorkflowType.DDA_MAG_PFIND);
 		map.put("mag_fragpipe_analysis_parameters.json", WorkflowType.DDA_MAG_FRAGPIPE);
 		map.put("mag_sage_analysis_parameters.json", WorkflowType.DDA_MAG_SAGE);
+		map.put(uk.ac.quadram.metapilot.core.opensearch.OpenSearchLayout.PARAMETER_FILE,
+				WorkflowType.DDA_MAG_OPENSEARCH);
 		map.put("dia_marker_analysis_parameters.json", WorkflowType.DIA_MARKER);
 		map.put("dia_seed_analysis_parameters.json", WorkflowType.DIA_SEED);
 		map.put("dia_analysis_parameters.json", WorkflowType.DIA_SEED);

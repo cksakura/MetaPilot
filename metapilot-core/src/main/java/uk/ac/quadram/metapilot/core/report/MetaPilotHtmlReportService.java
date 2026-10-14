@@ -332,7 +332,7 @@ public final class MetaPilotHtmlReportService {
         List<Future<TaskResult>> futures = new ArrayList<>();
         try {
             for (ReportTaskSpec task : request.tasks) {
-                futures.add(executor.submit(new ReportCallable(task, request, scriptsDir)));
+                futures.add(executor.submit(new ReportCallable(task, request, scriptsDir, cb)));
             }
             for (Future<TaskResult> future : futures) {
                 TaskResult taskResult = future.get();
@@ -470,11 +470,11 @@ public final class MetaPilotHtmlReportService {
                         "create_id_summary", "ID Summary Report");
                 break;
             case PEPTIDE:
-                appendTableReport(pythonScript, inputPath, outputPath,
+                appendLeanTableReport(pythonScript, inputPath, outputPath,
                         "create_peptides_summary", "Peptides Summary Report");
                 break;
             case PROTEIN:
-                appendTableReport(pythonScript, inputPath, outputPath,
+                appendLeanTableReport(pythonScript, inputPath, outputPath,
                         "create_proteins_summary", "Proteins Summary Report");
                 break;
             case TAXONOMY:
@@ -513,15 +513,30 @@ public final class MetaPilotHtmlReportService {
                 .append(outputPath).append("')\n");
     }
 
+    /**
+     * Peptide/protein tables can be several GB with thousands of per-sample columns
+     * (isobaric runs: raw files x channels). rg.load_table skips per-file text columns
+     * the reports do not use and reads per-sample numbers as float32.
+     */
+    private static void appendLeanTableReport(StringBuilder pythonScript, String inputPath, String outputPath,
+                                              String methodName, String title) {
+        pythonScript.append("df = rg.load_table('").append(inputPath).append("')\n");
+        pythonScript.append("fig = rg.").append(methodName).append("(df, metadata)\n");
+        pythonScript.append("rg.generate_html_report(fig, '").append(title).append("', '")
+                .append(outputPath).append("')\n");
+    }
+
     private static final class ReportCallable implements Callable<TaskResult> {
         private final ReportTaskSpec task;
         private final Request request;
         private final File scriptsDir;
+        private final ProgressCallback cb;
 
-        ReportCallable(ReportTaskSpec task, Request request, File scriptsDir) {
+        ReportCallable(ReportTaskSpec task, Request request, File scriptsDir, ProgressCallback cb) {
             this.task = task;
             this.request = request;
             this.scriptsDir = scriptsDir;
+            this.cb = cb != null ? cb : new ProgressCallback.NoOp();
         }
 
         @Override
@@ -531,6 +546,9 @@ public final class MetaPilotHtmlReportService {
                     throw new IOException("Resolved Python command is empty");
                 }
                 List<String> command = buildPythonCommand(task, request, scriptsDir);
+                cb.onMessage("HTML report " + manifestType(task.reportType) + ": started ("
+                        + task.inputFile.getName() + ", " + (task.inputFile.length() / (1024 * 1024)) + " MB)");
+                long startMs = System.currentTimeMillis();
                 ProcessBuilder pb = new ProcessBuilder(command);
                 pb.redirectErrorStream(true);
                 Process process = pb.start();
@@ -540,9 +558,17 @@ public final class MetaPilotHtmlReportService {
                     while ((line = reader.readLine()) != null) {
                         output.add(line);
                         LOGGER.debug("Python report output: {}", line);
+                        // Progress and warnings from the report scripts go to the task log;
+                        // previously all output stayed at DEBUG, so a long report showed nothing.
+                        if (line.startsWith("INFO:") || line.startsWith("Warning") || line.startsWith("WARNING")
+                                || line.startsWith("Error") || line.startsWith("Traceback")) {
+                            cb.onMessage("HTML report " + manifestType(task.reportType) + ": " + line);
+                        }
                     }
                 }
                 int exit = process.waitFor();
+                cb.onMessage("HTML report " + manifestType(task.reportType) + ": finished in "
+                        + ((System.currentTimeMillis() - startMs) / 1000) + " s (exit=" + exit + ")");
                 if (exit != 0) {
                     return TaskResult.fail(task.reportType, task.outputFile,
                             "Python report failed for " + task.reportType + " (exit=" + exit

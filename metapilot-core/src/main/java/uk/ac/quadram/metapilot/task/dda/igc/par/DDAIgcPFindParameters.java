@@ -3,8 +3,10 @@ package uk.ac.quadram.metapilot.task.dda.igc.par;
 import java.util.ArrayList;
 import java.util.List;
 
+import uk.ac.quadram.metapilot.core.mod.IsobaricTag;
 import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantModification;
 import uk.ac.quadram.metapilot.task.io.par.MetaOpenPar;
+import uk.ac.quadram.metapilot.task.par.IsobaricLabelSettings;
 import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.par.MetaData;
@@ -142,8 +144,16 @@ public class DDAIgcPFindParameters extends MetaBaseParameter {
         this.ptp = ptp;
     }
     
+    /**
+     * Per-channel reporter labels for the resolved tag; an explicitly set array
+     * is used only when it matches the tag channel for channel.
+     */
     public MaxquantModification[] getIsobaric() {
-        return isobaric;
+        IsobaricTag tag = getIsobaricTag();
+        if (tag == null || IsobaricLabelSettings.reporterLabelsFit(tag, isobaric)) {
+            return isobaric;
+        }
+        return IsobaricLabelSettings.buildReporterLabels(tag);
     }
     
     public void setIsobaric(MaxquantModification[] isobaric) {
@@ -158,8 +168,32 @@ public class DDAIgcPFindParameters extends MetaBaseParameter {
         this.combineLabel = combineLabel;
     }
     
+    /**
+     * Isotope correction factors (nPlex x 4); an explicitly set array is used
+     * when its shape fits the tag, otherwise values come from the isobaric table.
+     */
     public double[][] getIsoCorFactor() {
-        return isoCorFactor;
+        IsobaricTag tag = getIsobaricTag();
+        if (tag == null || IsobaricLabelSettings.correctionFactorsFit(tag, isoCorFactor)) {
+            return isoCorFactor;
+        }
+        return IsobaricLabelSettings.buildCorrectionFactors(tag, isobaricTableData);
+    }
+
+    /**
+     * The isobaric tag, or null when the mode is not isobaric. The GUI never sets
+     * the tag, so it is resolved from the selected type / label table / metadata.
+     */
+    @Override
+    public IsobaricTag getIsobaricTag() {
+        return IsobaricLabelSettings.resolveTag(getQuantitativeMode(), super.getIsobaricTag(), isobaricType,
+                isobaricTableData, getMetadata(), metadataTableData);
+    }
+
+    /** Maps the GUI radio text ("Isobaric", ...) onto the MetaConstants values the task compares against. */
+    @Override
+    public void setQuantitativeMode(String quantitativeMode) {
+        super.setQuantitativeMode(IsobaricLabelSettings.normalizeQuantitativeMode(quantitativeMode));
     }
     
     public void setIsoCorFactor(double[][] isoCorFactor) {

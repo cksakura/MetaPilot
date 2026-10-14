@@ -3,8 +3,10 @@ package uk.ac.quadram.metapilot.task.dda.mag.par;
 import java.util.ArrayList;
 import java.util.List;
 
+import uk.ac.quadram.metapilot.core.mod.IsobaricTag;
 import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantModification;
 import uk.ac.quadram.metapilot.task.io.par.MetaOpenPar;
+import uk.ac.quadram.metapilot.task.par.IsobaricLabelSettings;
 import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.par.MetaData;
@@ -57,6 +59,17 @@ public class DDAMagPfindParameters extends MetaBaseParameter {
 	private List<String> lightLabels = new ArrayList<>();
 	private List<String> mediumLabels = new ArrayList<>();
 	private List<String> heavyLabels = new ArrayList<>();
+
+	/** Pangenome variant check (UHGP-100); runs only for open search. */
+	private final uk.ac.quadram.metapilot.core.variant.PangenomeVariantSettings pangenomeVariantSettings =
+			new uk.ac.quadram.metapilot.core.variant.PangenomeVariantSettings();
+	/**
+	 * A pFind substitution within this many Da of a modification on the same
+	 * residue is reported as MS2-undecidable. pFind's own isobaric aliases are
+	 * undecidable regardless.
+	 */
+	private double undecidableToleranceDa = DEFAULT_UNDECIDABLE_TOLERANCE_DA;
+	public static final double DEFAULT_UNDECIDABLE_TOLERANCE_DA = 0.005;
 
 	// Default constructor with sensible defaults for MAG pFind
 	public DDAMagPfindParameters() {
@@ -136,8 +149,20 @@ public class DDAMagPfindParameters extends MetaBaseParameter {
 		this.isobaricTableData = isobaricTableData;
 	}
 
+	/**
+	 * Per-channel reporter labels for the resolved tag. An explicitly set array
+	 * is used only when it matches the tag channel for channel; otherwise the
+	 * labels are built from the tag.
+	 */
 	public MaxquantModification[] getIsobaric() {
-		return isobaric;
+		IsobaricTag tag = getIsobaricTag();
+		if (tag == null) {
+			return isobaric;
+		}
+		if (IsobaricLabelSettings.reporterLabelsFit(tag, isobaric)) {
+			return isobaric;
+		}
+		return IsobaricLabelSettings.buildReporterLabels(tag);
 	}
 
 	public void setIsobaric(MaxquantModification[] isobaric) {
@@ -152,8 +177,20 @@ public class DDAMagPfindParameters extends MetaBaseParameter {
 		this.combineLabel = combineLabel;
 	}
 
+	/**
+	 * Isotope correction factors (nPlex x 4). An explicitly set array is used
+	 * when its shape fits the tag; otherwise the values come from the isobaric
+	 * table, with 0 (no correction) for channels that have no row.
+	 */
 	public double[][] getIsoCorFactor() {
-		return isoCorFactor;
+		IsobaricTag tag = getIsobaricTag();
+		if (tag == null) {
+			return isoCorFactor;
+		}
+		if (IsobaricLabelSettings.correctionFactorsFit(tag, isoCorFactor)) {
+			return isoCorFactor;
+		}
+		return IsobaricLabelSettings.buildCorrectionFactors(tag, isobaricTableData);
 	}
 
 	public void setIsoCorFactor(double[][] isoCorFactor) {
@@ -268,10 +305,39 @@ public class DDAMagPfindParameters extends MetaBaseParameter {
 		return osp != null && osp.isOpenSearch();
 	}
 
-	// Isobaric tag getter
-	public uk.ac.quadram.metapilot.core.mod.IsobaricTag getIsobaricTag() {
-		// Return null for now - this needs to be implemented based on the isobaric data
-		return null;
+	public uk.ac.quadram.metapilot.core.variant.PangenomeVariantSettings getPangenomeVariantSettings() {
+		return pangenomeVariantSettings;
+	}
+
+	public double getUndecidableToleranceDa() {
+		return undecidableToleranceDa;
+	}
+
+	public void setUndecidableToleranceDa(double undecidableToleranceDa) {
+		this.undecidableToleranceDa = undecidableToleranceDa;
+	}
+
+	/**
+	 * The isobaric tag of this run, or null when the quantification mode is not
+	 * isobaric. The GUI never sets the tag directly, so when none was set it is
+	 * resolved from the selected type, the isobaric table, the MetaData label
+	 * titles or the metadata table (see {@link IsobaricLabelSettings}).
+	 */
+	@Override
+	public IsobaricTag getIsobaricTag() {
+		return IsobaricLabelSettings.resolveTag(getQuantitativeMode(), super.getIsobaricTag(), isobaricType,
+				isobaricTableData, getMetadata(), metadataTableData);
+	}
+
+	/**
+	 * Maps the GUI radio text ("Isobaric", "Label-free", ...) onto the
+	 * MetaConstants values DDAMagPfindTask compares against; with the raw text
+	 * "Isobaric" neither the label-free nor the isobaric quantification branch
+	 * ran.
+	 */
+	@Override
+	public void setQuantitativeMode(String quantitativeMode) {
+		super.setQuantitativeMode(IsobaricLabelSettings.normalizeQuantitativeMode(quantitativeMode));
 	}
 
 }

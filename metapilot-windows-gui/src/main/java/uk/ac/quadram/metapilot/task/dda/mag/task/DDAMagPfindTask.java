@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.concurrent.ExecutionException;
 
 import org.apache.logging.log4j.Logger;
@@ -19,6 +20,11 @@ import com.sun.management.OperatingSystemMXBean;
 
 import uk.ac.quadram.metapilot.core.mag.MagGenomeSelectionService;
 import uk.ac.quadram.metapilot.core.mod.IsobaricTag;
+import uk.ac.quadram.metapilot.core.runner.MagResultCheckpoints;
+import uk.ac.quadram.metapilot.core.variant.PFindVariantCandidateSource;
+import uk.ac.quadram.metapilot.core.variant.PangenomeVariantCheck;
+import uk.ac.quadram.metapilot.core.variant.PangenomeVariantSettings;
+import uk.ac.quadram.metapilot.core.variant.VariantCandidate;
 import uk.ac.quadram.metapilot.core.workflow.ProgressCallback;
 import uk.ac.quadram.metapilot.dbSearch.dbReducer.DBReducerTask;
 import uk.ac.quadram.metapilot.dbSearch.open.io.OpenPsmTsvWriter;
@@ -536,7 +542,31 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 
 		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": report generation started");
 
-		boolean report = this.exportReport();
+		File resultRoot = metaPar.getDbSearchResultFile();
+		File stalePostAnalysis = MagResultCheckpoints.stalePostAnalysisOutput(resultRoot, true,
+				new File(combinedFile, "psms.tsv"), this.quan_pep_file);
+		boolean report;
+		if (stalePostAnalysis == null && this.quan_pep_file != null) {
+			logger.info(getTaskName() + ": final tables, taxonomy and functional annotation already exist and are "
+					+ "newer than psms.tsv and " + this.quan_pep_file.getName() + ", skipping post-analysis");
+			this.final_pep_txt = new File(resultRoot, MagResultCheckpoints.FINAL_PEPTIDES);
+			this.final_pro_txt = new File(resultRoot, MagResultCheckpoints.RAZOR_PROTEINS);
+			File psmsTsv = new File(combinedFile, "psms.tsv");
+			if (!MagResultCheckpoints.qpxPsmsCurrent(resultRoot, psmsTsv)) {
+				try {
+					writeQpxPsms(new FlashLfqPsmReader(psmsTsv).getPSMs(), getTaskName());
+				} catch (IOException e) {
+					logger.warn(getTaskName() + ": QPX PSM export skipped, could not read " + psmsTsv, e);
+				}
+			}
+			report = generateFinalReportsIfStale(getTaskName());
+		} else {
+			if (stalePostAnalysis != null) {
+				logger.info(getTaskName() + ": " + stalePostAnalysis.getName()
+						+ " is missing or older than its inputs; running post-analysis");
+			}
+			report = this.exportReport();
+		}
 
 		if (report) {
 			logger.info("Step 7: Report generation completed successfully");
@@ -548,6 +578,12 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 			return false;
 		}
 
+		if (magPfindParams.isOpenSearch()) {
+			runPangenomeVariantCheck();
+		} else {
+			variantInfo("Pangenome variant check: runs only for open search; not run for this closed search");
+		}
+
 		// Update progress for completion
 		updateProgress(100, 100);
 		updateMessage(getTaskName() + ": Completed successfully!");
@@ -557,6 +593,102 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 		logger.info(getTaskName() + ": finished - all workflow steps completed successfully");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName()
 				+ ": finished - all workflow steps completed successfully");
+		return true;
+	}
+
+	/**
+	 * Pangenome variant check (UHGP-100) on pFind's own substitution calls, after
+	 * the report so the DETECTED species scope can use
+	 * {@code taxonomy_analysis/genome_final_selected.tsv}. Report-only: writes the
+	 * {@code variant_*.tsv} files into {@code combined/} and nothing else. Skipped when its outputs are
+	 * newer than every pFind result and the genome selection; a failure is
+	 * logged and never fails the workflow.
+	 */
+	private void runPangenomeVariantCheck() {
+		try {
+			PangenomeVariantSettings settings = magPfindParams.getPangenomeVariantSettings();
+			File magVersionDir = magDb == null ? null : magDb.getCurrentFile();
+			if (!PangenomeVariantCheck.wouldRun(settings, magVersionDir)) {
+				// Run anyway so the reason (off / resource absent) is logged once.
+				PangenomeVariantCheck.Request quiet = new PangenomeVariantCheck.Request();
+				quiet.settings = settings;
+				quiet.magVersionDir = magVersionDir;
+				quiet.info = this::variantInfo;
+				quiet.warn = this::variantWarn;
+				PangenomeVariantCheck.run(quiet);
+				return;
+			}
+			File resultRoot = metaPar.getDbSearchResultFile();
+			File taxonomyDir = new File(resultRoot, "taxonomy_analysis");
+			List<File> spectraFiles = new ArrayList<>();
+			if (separateResultFolders != null) {
+				for (File sample : separateResultFolders) {
+					spectraFiles.add(new File(new File(sample, SAMPLE_DB_SEARCH_DIR), "pFind-Filtered.spectra"));
+				}
+			}
+			File candidatesFile = new File(combinedFile, PangenomeVariantCheck.CANDIDATES_FILE);
+			File sitesFile = new File(combinedFile, PangenomeVariantCheck.SITES_FILE);
+			File summaryFile = new File(combinedFile, PangenomeVariantCheck.SUMMARY_FILE);
+			File speciesFile = new File(combinedFile, PangenomeVariantCheck.SPECIES_FILE);
+			List<File> inputs = new ArrayList<>(spectraFiles);
+			inputs.add(new File(taxonomyDir, "genome_final_selected.tsv"));
+			inputs.add(candidatesFile);
+			if (isNewerThanAll(candidatesFile, spectraFiles) && isNewerThanAll(sitesFile, inputs)
+					&& isNewerThanAll(summaryFile, inputs) && isNewerThanAll(speciesFile, inputs)) {
+				variantInfo("Pangenome variant check: outputs already exist and are current, skipped: "
+						+ summaryFile.getAbsolutePath());
+				return;
+			}
+
+			updateMessage(getTaskName() + ": pangenome variant check...");
+			double tolerance = magPfindParams.getUndecidableToleranceDa();
+			PFindVariantCandidateSource.Result source = PFindVariantCandidateSource.read(spectraFiles,
+					magDb == null ? "" : magDb.getIdentifier(), tolerance, this::variantInfo);
+			variantInfo("Pangenome variant check: pFind front end - " + source.describe());
+
+			PangenomeVariantCheck.Request request = new PangenomeVariantCheck.Request();
+			request.engine = VariantCandidate.Engine.PFIND;
+			request.candidates = source.candidates;
+			request.identifiedBasePeptides = source.basePeptides;
+			request.searchedFastas = PFindVariantCandidateSource.searchedDatabases(separateResultFolders,
+					SAMPLE_DB_SEARCH_DIR, MARKER_SEARCH_DIR);
+			request.decoyPrefix = "REV_";
+			request.settings = settings;
+			request.magVersionDir = magVersionDir;
+			request.taxonomyDir = taxonomyDir;
+			request.eggnogDir = magDb == null ? null : magDb.getOriginalFuncFolder();
+			request.outputDir = combinedFile;
+			request.undecidableToleranceDa = tolerance;
+			request.fixedCysteineModDa = PFindVariantCandidateSource.FIXED_CYSTEINE_MOD_DA;
+			request.info = this::variantInfo;
+			request.warn = this::variantWarn;
+			PangenomeVariantCheck.run(request);
+		} catch (RuntimeException e) {
+			logger.warn(getTaskName() + ": pangenome variant check failed; workflow results are unaffected", e);
+			System.out.println(format.format(new Date()) + "\t" + getTaskName()
+					+ ": WARNING: pangenome variant check failed; workflow results are unaffected: " + e);
+		}
+	}
+
+	private void variantInfo(String msg) {
+		logger.info(msg);
+		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": " + msg);
+	}
+
+	private void variantWarn(String msg) {
+		logger.warn(msg);
+		System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": WARNING: " + msg);
+	}
+
+	private static boolean isNewerThanAll(File output, List<File> inputs) {
+		if (!output.isFile() || output.length() == 0) {
+			return false;
+		}
+		for (File input : inputs) {
+			if (input.exists() && input.lastModified() > output.lastModified()) {
+				return false;
+			}
+		}
 		return true;
 	}
 
@@ -1141,31 +1273,46 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 				magPfindParams.getIsobaricTag(), magPfindParams.getIsobaric(), magPfindParams.getIsoCorFactor(),
 				magPfindParams.isCombineLabel(), magPfindParams.getMetadata());
 
+		// A failed isobaric step must stop here: previously its result (and any
+		// exception) was ignored and an existing, possibly stale, isobaric file was
+		// then accepted just because it existed.
+		boolean isobaricOk;
 		try {
-			pfindIsobaricTask.runOnlyPeptide();
+			Boolean result = pfindIsobaricTask.runOnlyPeptide();
+			isobaricOk = result != null && result;
 		} catch (Exception e) {
-			// TODO Auto-generated catch block
 			logger.error(getTaskName() + ": error in quantifying PSMs", e);
 			System.out.println(format.format(new Date()) + "\t" + getTaskName() + ": error in quantifying PSMs");
+			isobaricOk = false;
 		}
-
-		File quan_pep_file = pfindIsobaricTask.getQuanPepFile();
-
-		if (quan_pep_file.exists()) {
-			logger.info(getTaskName() + ": quantification results have been fount in "
-					+ magPfindParams.getDbSearchResultFile());
-			System.out.println(format.format(new Date()) + "\t" + getTaskName()
-					+ ": quantification results have been fount in " + magPfindParams.getDbSearchResultFile());
-			return true;
-		}
-
-		if (!quan_pep_file.exists()) {
+		if (!isobaricOk) {
+			logger.error(getTaskName() + ": isobaric peptide quantification failed");
+			System.err.println(format.format(new Date()) + "\t" + getTaskName()
+					+ ": isobaric peptide quantification failed");
 			return false;
 		}
 
-		logger.info(getTaskName() + ": peptide and protein isobaric quantification finished");
+		// Post-analysis (exportReport) reads this.quan_pep_file. lfQuant() set it to the
+		// FlashLFQ label-free QuantifiedPeptides.tsv; it must now point at the isobaric
+		// table. (A local variable here used to shadow the field, so the isobaric reader
+		// was given the label-free file, matched 0 Intensity_<raw>_<label> columns and
+		// produced all-zero peptide/protein/genome intensities.)
+		this.quan_pep_file = pfindIsobaricTask.getQuanPepFile();
+
+		if (this.quan_pep_file == null || !this.quan_pep_file.exists() || this.quan_pep_file.length() == 0) {
+			logger.error(getTaskName() + ": isobaric peptide quantification file was not produced: "
+					+ this.quan_pep_file);
+			System.err.println(format.format(new Date()) + "\t" + getTaskName()
+					+ ": isobaric peptide quantification file was not produced: " + this.quan_pep_file);
+			return false;
+		}
+
+		logger.info(getTaskName() + ": peptide isobaric quantification finished; post-analysis will read "
+				+ this.quan_pep_file.getAbsolutePath() + " (last modified " + new Date(this.quan_pep_file.lastModified())
+				+ ")");
 		System.out.println(format.format(new Date()) + "\t" + getTaskName()
-				+ ": peptide and protein isobaric quantification finished");
+				+ ": peptide isobaric quantification finished; post-analysis will read "
+				+ this.quan_pep_file.getAbsolutePath());
 
 		return true;
 	}
@@ -1367,32 +1514,68 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 		// Read quantified peptides
 		FlashLfqQuanPepReader quanPepReader;
 		String quanMode = magPfindParams.getQuantitativeMode();
+		// Isobaric: request exactly the intensity columns PFindIsobaricTask wrote
+		// (<raw>_<label> per raw file in fileList order, or the combined sample names
+		// when combineLabel is set). These names are also the report intensity titles.
+		String[] isobaricColumns = null;
 		if (quanMode.equals(MetaConstants.labelFree)) {
 			quanPepReader = new FlashLfqQuanPepReader(this.quan_pep_file, fileList);
 		} else if (quanMode.equals(MetaConstants.isobaricLabel)) {
-			IsobaricTag isoTag = magPfindParams.getIsobaricTag();
-			quanPepReader = new FlashLfqQuanPepReader(this.quan_pep_file, fileList, isoTag.getReportTitle());
+			isobaricColumns = PFindIsobaricTask.intensityColumnSuffixes(magPfindParams.getMetadata(), fileList,
+					magPfindParams.isCombineLabel());
+			logger.info(getTaskName() + ": isobaric intensity columns expected: " + isobaricColumns.length
+					+ (magPfindParams.isCombineLabel() ? " (labels combined by sample name)"
+							: " (" + fileList.size() + " raw files x " + magPfindParams.getMetadata().getLabelCount()
+									+ " channels)"));
+			quanPepReader = FlashLfqQuanPepReader.withIntensityColumns(this.quan_pep_file, fileList, isobaricColumns);
 		} else {
 			logger.error(getTaskName() + ": unknown quantitative type");
 			System.err.println(format.format(new Date()) + "\t" + getTaskName() + ": unknown quantitative type");
 			return false;
 		}
 
+		// Column-match check, reported through the task logger (the reader's own class
+		// logger does not reach the task log). With no matched intensity column every
+		// peptide gets an all-zero intensity array and the run only fails much later, in
+		// taxonomy analysis, with "Final genome intensity total is zero".
+		logger.info(getTaskName() + ": post-analysis peptide input (" + quanMode + "): "
+				+ quanPepReader.getIntensityMatchSummary());
+		if (quanPepReader.getMatchedIntensityCount() == 0) {
+			String msg = getTaskName() + ": none of the " + quanPepReader.getExpectedIntensityCount()
+					+ " expected intensity columns were found in " + this.quan_pep_file
+					+ "; peptide quantification cannot be transferred. " + quanPepReader.getIntensityMatchSummary();
+			logger.error(msg);
+			System.err.println(format.format(new Date()) + "\t" + msg);
+			return false;
+		}
+		if (quanPepReader.getMatchedIntensityCount() < quanPepReader.getExpectedIntensityCount()) {
+			logger.warn(getTaskName() + ": only " + quanPepReader.getMatchedIntensityCount() + "/"
+					+ quanPepReader.getExpectedIntensityCount()
+					+ " expected intensity columns were found; unmatched columns will be zero. First missing: "
+					+ quanPepReader.getUnmatchedIntensityTitles().subList(0,
+							Math.min(5, quanPepReader.getUnmatchedIntensityTitles().size())));
+		}
+
 		FlashLfqQuanPeptide[] quanPeps = quanPepReader.getMetaPeptides();
+
+		logger.info(getTaskName() + ": read " + quanPeps.length + " quantified peptides from "
+				+ this.quan_pep_file.getName() + ", " + quanPepReader.getPeptidesWithIntensity()
+				+ " with intensity > 0");
+		if (quanPeps.length > 0 && quanPepReader.getPeptidesWithIntensity() == 0) {
+			String msg = getTaskName() + ": all " + quanPeps.length + " peptides read from " + this.quan_pep_file
+					+ " have zero intensity; stopping before post-analysis. "
+					+ quanPepReader.getIntensityMatchSummary();
+			logger.error(msg);
+			System.err.println(format.format(new Date()) + "\t" + msg);
+			return false;
+		}
 
 		// Build intensity title array
 		String[] intensityTitle;
 		if (quanMode.equals(MetaConstants.labelFree)) {
 			intensityTitle = fileList.toArray(String[]::new);
 		} else if (quanMode.equals(MetaConstants.isobaricLabel)) {
-			IsobaricTag isoTag = magPfindParams.getIsobaricTag();
-			String[] repoTitle = isoTag.getReportTitle();
-			intensityTitle = new String[fileList.size() * repoTitle.length];
-			for (int i = 0; i < fileList.size(); i++) {
-				for (int j = 0; j < repoTitle.length; j++) {
-					intensityTitle[i * repoTitle.length + j] = fileList.get(i) + "_" + repoTitle[j];
-				}
-			}
+			intensityTitle = isobaricColumns;
 		} else {
 			logger.error(getTaskName() + ": unknown quantitative type");
 			return false;

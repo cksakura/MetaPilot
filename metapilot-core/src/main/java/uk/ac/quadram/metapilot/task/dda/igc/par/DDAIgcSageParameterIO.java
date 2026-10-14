@@ -396,6 +396,7 @@ public class DDAIgcSageParameterIO extends BaseParameterIO {
         json.put("description", description);
         json.put("created", new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()));
         json.put("parameter_type", "DDAIgcSageParameters");
+        appendSoftwareVersion(json, description);
         return json;
     }
 }

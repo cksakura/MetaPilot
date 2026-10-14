@@ -5,6 +5,9 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.prefs.Preferences;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 /**
  * Centralized Resource and Tool Path Management System for MetaPilot
  * 
@@ -164,6 +167,8 @@ import java.util.prefs.Preferences;
  */
 public class MetaResourceParameters {
 
+	private static final Logger LOGGER = LogManager.getLogger(MetaResourceParameters.class);
+
 	// Tool types
 	public enum ToolType {
 		// General tools
@@ -172,6 +177,12 @@ public class MetaResourceParameters {
 		PFIND("pFind", "https://github.com/pFindStudio/pFind3"),
 		MAXQUANT("MaxQuant", "https://www.maxquant.org/maxquant/"), DBREDUCER("DBReducer", ""),
 		FRAGPIPE("FragPipe", "https://fragpipe.nesvilab.org/"), SAGE("Sage", "https://github.com/lazear/sage"),
+		/**
+		 * Virtual dependency used by workflow preflight. It is not shown as a
+		 * separately configurable resource: {@link #resolveMsfraggerJar()} locates
+		 * the MSFragger jar bundled with the configured FragPipe installation.
+		 */
+		MSFRAGGER("MSFragger", ""),
 		FLASHLFQ("FlashLFQ", ""), MSCONVERT("msconvert", "https://proteowizard.sourceforge.io/download.html"),
 		// DIA tools
 		DIANN("DiaNN", "https://github.com/vdemichev/DiaNN/releases"), DEEPDETECT("DeepDetect", "");
@@ -380,8 +391,380 @@ public class MetaResourceParameters {
 	 * Check if a specific tool is available
 	 */
 	public boolean isToolAvailable(ToolType toolType) {
+		if (toolType == ToolType.MSFRAGGER) {
+			// MSFragger is a derived dependency: FragPipe ships the jar that the
+			// standalone workflow invokes directly.
+			return resolveMsfraggerJar() != null;
+		}
 		ToolStatus status = getToolStatus(toolType);
 		return status.isAvailable();
+	}
+
+	/** Matches a bundled tool folder or jar such as {@code MSFragger-4.4.1}. */
+	private static final java.util.regex.Pattern MSFRAGGER_VERSIONED = java.util.regex.Pattern
+			.compile("(?i)^msfragger[-_]?([0-9]+(?:\\.[0-9]+)*)$");
+
+	/**
+	 * {@code MSBooster-<version>.jar}, a jar directly inside FragPipe's
+	 * {@code tools} folder rather than in a versioned subfolder as MSFragger is.
+	 */
+	private static final java.util.regex.Pattern MSBOOSTER_VERSIONED = java.util.regex.Pattern
+			.compile("(?i)MSBooster[-_]?v?(\\d+(?:\\.\\d+)*)");
+
+	/**
+	 * {@code original-crystalc-<version>.jar}, beside MSBooster in FragPipe's
+	 * {@code tools} folder. FragPipe's own {@code CmdCrystalc} names the file
+	 * literally; matching on a prefix instead lets an upgraded installation keep
+	 * working.
+	 */
+	private static final java.util.regex.Pattern CRYSTALC_VERSIONED = java.util.regex.Pattern
+			.compile("(?i)(?:original-)?crystalc[-_]?v?(\\d+(?:\\.\\d+)*)");
+
+	/**
+	 * Locates MSFragger.jar for the standalone open-search workflow.
+	 * <p>
+	 * MSFragger is inferred from the configured FragPipe path. FragPipe bundles
+	 * MSFragger, and the Resources entry points at the launcher inside
+	 * {@code bin/}, so the jar sits at:
+	 *
+	 * <pre>
+	 * &lt;FragPipe root&gt;/
+	 *   bin/    &lt;- ToolType.FRAGPIPE points here (fragpipe.bat / fragpipe)
+	 *   tools/
+	 *     MSFragger-4.4.1/
+	 *       MSFragger-4.4.1.jar
+	 * </pre>
+	 *
+	 * When several {@code MSFragger-*} folders are present — upgrades leave the
+	 * old ones behind — the highest version wins, so an upgrade is picked up
+	 * without reconfiguration rather than silently pinning an old build.
+	 *
+	 * @return the bundled jar, or null when it cannot be resolved from FragPipe
+	 */
+	public File resolveMsfraggerJar() {
+		return findMsfraggerUnderFragpipe();
+	}
+
+	/**
+	 * Plausible FragPipe install roots, from the configured launcher.
+	 * <p>
+	 * The Resources entry is normally {@code <root>/bin/fragpipe.bat}, but
+	 * tolerating {@code bin/} itself and the root covers how people actually
+	 * configure it, and one extra level up covers nesting such as
+	 * {@code FragPipe-23.0/fragpipe/bin}. Shared by every tool that lives under
+	 * {@code tools/} so they cannot disagree about where the installation is.
+	 */
+	private java.util.List<File> fragpipeInstallRoots() {
+		java.util.List<File> roots = new java.util.ArrayList<>();
+		String fragpipe = getToolPath(ToolType.FRAGPIPE);
+		if (fragpipe == null || fragpipe.isBlank()) {
+			return roots;
+		}
+		File configured = new File(fragpipe);
+		if (!configured.exists()) {
+			return roots;
+		}
+		File binDir = configured.isDirectory() ? configured : configured.getParentFile();
+		if (binDir == null) {
+			return roots;
+		}
+		if (binDir.getParentFile() != null) {
+			roots.add(binDir.getParentFile());
+		}
+		roots.add(binDir);
+		if (binDir.getParentFile() != null && binDir.getParentFile().getParentFile() != null) {
+			roots.add(binDir.getParentFile().getParentFile());
+		}
+		return roots;
+	}
+
+	/** FragPipe's {@code tools} folder, or null when it cannot be located. */
+	public File resolveFragpipeToolsDir() {
+		for (File root : fragpipeInstallRoots()) {
+			File tools = new File(root, "tools");
+			if (tools.isDirectory()) {
+				return tools;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * The highest-versioned {@code MSBooster-*.jar} in FragPipe's {@code tools}
+	 * folder, or null.
+	 * <p>
+	 * Located rather than separately configured, exactly as
+	 * {@link #resolveMsfraggerJar()} is: one Resources entry for FragPipe, and
+	 * everything bundled with it is found from there. Version-matched rather than
+	 * hard-coded so an upgraded installation keeps working.
+	 */
+	public File resolveMsboosterJar() {
+		File tools = resolveFragpipeToolsDir();
+		if (tools == null) {
+			return null;
+		}
+		File[] jars = tools.listFiles(f -> f.isFile()
+				&& f.getName().toLowerCase(java.util.Locale.ROOT).startsWith("msbooster")
+				&& f.getName().toLowerCase(java.util.Locale.ROOT).endsWith(".jar"));
+		if (jars == null || jars.length == 0) {
+			return null;
+		}
+		File best = null;
+		int[] bestVersion = null;
+		for (File jar : jars) {
+			String stem = jar.getName().substring(0, jar.getName().length() - 4);
+			java.util.regex.Matcher matcher = MSBOOSTER_VERSIONED.matcher(stem);
+			int[] version = matcher.matches() ? parseVersion(matcher.group(1)) : new int[] { 0 };
+			if (bestVersion == null || compareVersions(version, bestVersion) > 0) {
+				bestVersion = version;
+				best = jar;
+			}
+		}
+		return best;
+	}
+
+	/**
+	 * The highest-versioned Crystal-C jar in FragPipe's {@code tools} folder, or
+	 * null.
+	 * <p>
+	 * Located rather than separately configured, exactly as
+	 * {@link #resolveMsboosterJar()} is. Crystal-C also needs
+	 * {@code batmass-io} and {@code grppr} from the same folder; those are
+	 * resolved by {@code CrystalCHeadlessRunner.buildClasspath} from beside this
+	 * jar, so one Resources entry for FragPipe covers all three.
+	 */
+	public File resolveCrystalcJar() {
+		File tools = resolveFragpipeToolsDir();
+		if (tools == null) {
+			return null;
+		}
+		File[] jars = tools.listFiles(f -> f.isFile()
+				&& f.getName().toLowerCase(java.util.Locale.ROOT).contains("crystalc")
+				&& f.getName().toLowerCase(java.util.Locale.ROOT).endsWith(".jar"));
+		if (jars == null || jars.length == 0) {
+			return null;
+		}
+		File best = null;
+		int[] bestVersion = null;
+		for (File jar : jars) {
+			String stem = jar.getName().substring(0, jar.getName().length() - 4);
+			java.util.regex.Matcher matcher = CRYSTALC_VERSIONED.matcher(stem);
+			int[] version = matcher.matches() ? parseVersion(matcher.group(1)) : new int[] { 0 };
+			if (bestVersion == null || compareVersions(version, bestVersion) > 0) {
+				bestVersion = version;
+				best = jar;
+			}
+		}
+		return best;
+	}
+
+	/**
+	 * The DIA-NN that FragPipe bundles for MSBooster, under
+	 * {@code tools/diann/<version>/<os>/}, or null.
+	 * <p>
+	 * MSBooster drives DIA-NN through the 1.8.x prediction command line, and
+	 * FragPipe pins a specific build for it - 1.8.2_beta_8 at the time of
+	 * writing. DIA-NN 2.x changed that interface, so the standalone DIA-NN
+	 * configured under Resources for the DIA workflows is the wrong binary for
+	 * this job even though it is a perfectly good DIA-NN. Pointing MSBooster at a
+	 * 2.x build is what made every MSBooster step fail in the 2026-09-10 12mix
+	 * run. Prefer the bundled one; fall back to the configured one only so a
+	 * FragPipe install without it can still be tried.
+	 */
+	public File resolveMsboosterDiann() {
+		File tools = resolveFragpipeToolsDir();
+		if (tools == null) {
+			return null;
+		}
+		File diannRoot = new File(tools, "diann");
+		if (!diannRoot.isDirectory()) {
+			return null;
+		}
+		File best = null;
+		int[] bestVersion = null;
+		File anyBest = null;
+		int[] anyBestVersion = null;
+		File[] versions = diannRoot.listFiles(File::isDirectory);
+		if (versions == null) {
+			return null;
+		}
+		for (File versionDir : versions) {
+			File executable = findDiannExecutable(versionDir);
+			if (executable == null) {
+				continue;
+			}
+			// Version folders carry suffixes such as "1.8.2_beta_8"; compare on the
+			// numeric prefix and let the suffix break nothing.
+			java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("(\\d+(?:\\.\\d+)*)")
+					.matcher(versionDir.getName());
+			int[] version = matcher.find() ? parseVersion(matcher.group(1)) : new int[] { 0 };
+			if (anyBestVersion == null || compareVersions(version, anyBestVersion) > 0) {
+				anyBestVersion = version;
+				anyBest = executable;
+			}
+			// "Highest version" is the wrong rule here: MSBooster drives DIA-NN
+			// through the 1.8.x prediction interface, so a 2.x build newly bundled
+			// by a FragPipe upgrade would be picked and would fail - the exact
+			// failure the 2026-09-10 run hit with a standalone 2.5.1. Prefer the
+			// highest below 2.0 and keep the overall highest only as a fallback,
+			// so this neither breaks on an upgrade nor blocks a future MSBooster
+			// that wants 2.x.
+			if (version.length > 0 && version[0] >= 2) {
+				continue;
+			}
+			if (bestVersion == null || compareVersions(version, bestVersion) > 0) {
+				bestVersion = version;
+				best = executable;
+			}
+		}
+		if (best == null && anyBest != null) {
+			// Not returned. MSBooster drives DIA-NN through the 1.8.x prediction
+			// interface; a 2.x build starts, does nothing useful and leaves no
+			// predictions, which is indistinguishable from MSBooster not having
+			// run. Better to report no usable DIA-NN than to hand back one that
+			// will waste a whole run.
+			LOGGER.warn("FragPipe bundles only DIA-NN {} under tools/diann/, which is 2.x. MSBooster needs the "
+					+ "1.8.x prediction interface, so this is reported as no usable DIA-NN.",
+					anyBest.getParentFile());
+		}
+		return best;
+	}
+
+	/** Any DIA-NN executable at most two levels below {@code versionDir}. */
+	private static File findDiannExecutable(File versionDir) {
+		java.util.List<File> candidates = new java.util.ArrayList<>();
+		candidates.add(versionDir);
+		File[] osDirs = versionDir.listFiles(File::isDirectory);
+		if (osDirs != null) {
+			candidates.addAll(java.util.Arrays.asList(osDirs));
+		}
+		for (File dir : candidates) {
+			File[] files = dir.listFiles(f -> {
+				String n = f.getName().toLowerCase(java.util.Locale.ROOT);
+				return f.isFile() && (n.equals("diann.exe") || n.equals("diann") || n.startsWith("diann-linux"));
+			});
+			if (files != null && files.length > 0) {
+				return files[0];
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * {@code unimod.obo} from FragPipe's {@code tools} folder. MSBooster reads it
+	 * to interpret modification masses; without it, it falls back to its own
+	 * defaults silently.
+	 */
+	public File resolveUnimodObo() {
+		File tools = resolveFragpipeToolsDir();
+		if (tools == null) {
+			return null;
+		}
+		File obo = new File(tools, "unimod.obo");
+		return obo.isFile() ? obo : null;
+	}
+
+	/**
+	 * Walks the documented FragPipe layout: from the configured launcher up to
+	 * the install root, then into {@code tools/MSFragger-*}.
+	 */
+	private File findMsfraggerUnderFragpipe() {
+		for (File root : fragpipeInstallRoots()) {
+			File toolsDir = new File(root, "tools");
+			if (!toolsDir.isDirectory()) {
+				continue;
+			}
+			File jar = highestVersionMsfraggerJar(toolsDir);
+			if (jar != null) {
+				return jar;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Among {@code tools/MSFragger-*} folders, returns the jar from the
+	 * highest-versioned one.
+	 */
+	private static File highestVersionMsfraggerJar(File toolsDir) {
+		File[] entries = toolsDir.listFiles(File::isDirectory);
+		if (entries == null) {
+			return null;
+		}
+		File bestDir = null;
+		int[] bestVersion = null;
+		for (File entry : entries) {
+			java.util.regex.Matcher matcher = MSFRAGGER_VERSIONED.matcher(entry.getName());
+			if (!matcher.matches()) {
+				continue;
+			}
+			int[] version = parseVersion(matcher.group(1));
+			if (bestVersion == null || compareVersions(version, bestVersion) > 0) {
+				bestVersion = version;
+				bestDir = entry;
+			}
+		}
+		if (bestDir == null) {
+			// Folder present but unversioned (e.g. plain "MSFragger"): still usable.
+			for (File entry : entries) {
+				if (entry.getName().toLowerCase(java.util.Locale.ROOT).startsWith("msfragger")) {
+					File jar = highestVersionJarIn(entry);
+					if (jar != null) {
+						return jar;
+					}
+				}
+			}
+			return null;
+		}
+		return highestVersionJarIn(bestDir);
+	}
+
+	/** The highest-versioned {@code MSFragger*.jar} directly inside a folder. */
+	private static File highestVersionJarIn(File directory) {
+		File[] jars = directory.listFiles(f -> f.isFile()
+				&& f.getName().toLowerCase(java.util.Locale.ROOT).startsWith("msfragger")
+				&& f.getName().toLowerCase(java.util.Locale.ROOT).endsWith(".jar"));
+		if (jars == null || jars.length == 0) {
+			return null;
+		}
+		File best = null;
+		int[] bestVersion = null;
+		for (File jar : jars) {
+			String stem = jar.getName().substring(0, jar.getName().length() - 4);
+			java.util.regex.Matcher matcher = MSFRAGGER_VERSIONED.matcher(stem);
+			int[] version = matcher.matches() ? parseVersion(matcher.group(1)) : new int[] { 0 };
+			if (bestVersion == null || compareVersions(version, bestVersion) > 0) {
+				bestVersion = version;
+				best = jar;
+			}
+		}
+		return best;
+	}
+
+	private static int[] parseVersion(String version) {
+		String[] parts = version.split("\\.");
+		int[] out = new int[parts.length];
+		for (int i = 0; i < parts.length; i++) {
+			try {
+				out[i] = Integer.parseInt(parts[i]);
+			} catch (NumberFormatException e) {
+				out[i] = 0;
+			}
+		}
+		return out;
+	}
+
+	/** Numeric component-wise comparison, so 4.10.0 sorts above 4.9.0. */
+	private static int compareVersions(int[] a, int[] b) {
+		int n = Math.max(a.length, b.length);
+		for (int i = 0; i < n; i++) {
+			int left = i < a.length ? a[i] : 0;
+			int right = i < b.length ? b[i] : 0;
+			if (left != right) {
+				return Integer.compare(left, right);
+			}
+		}
+		return 0;
 	}
 
 	/**

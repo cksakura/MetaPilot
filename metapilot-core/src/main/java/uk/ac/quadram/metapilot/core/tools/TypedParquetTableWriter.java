@@ -1,7 +1,6 @@
 package uk.ac.quadram.metapilot.core.tools;
 
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.Path;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.parquet.example.data.Group;
@@ -148,8 +147,7 @@ public final class TypedParquetTableWriter {
             out.delete();
         }
 
-        Path path = new Path(out.getAbsolutePath());
-        try (ParquetWriter<Group> writer = ExampleParquetWriter.builder(path)
+        try (ParquetWriter<Group> writer = ExampleParquetWriter.builder(new LocalParquetOutputFile(out))
                 .withConf(conf)
                 .withType(schema)
                 .withCompressionCodec(CompressionCodecName.GZIP)

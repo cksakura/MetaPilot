@@ -32,6 +32,7 @@ import uk.ac.quadram.metapilot.core.prodb.DecoyShuffler;
 import uk.ac.quadram.metapilot.dbSearch.sage.SagePeptide;
 import uk.ac.quadram.metapilot.dbSearch.sage.SagePSM;
 import uk.ac.quadram.metapilot.dbSearch.sage.SageResultReader;
+import uk.ac.quadram.metapilot.dbSearch.sage.SageDecoyTags;
 import uk.ac.quadram.metapilot.task.MetaPythonReportTask;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import javafx.scene.control.ProgressBar;
@@ -67,6 +68,14 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 	// Logger is inherited from MetaPilotMagTask -> MetaPilotTask as an instance field
 	private static final String taskName = "DDA MAG database search by Sage workflow";
 	private static final String MARKER_SEARCH_DIR = "marker";
+	/**
+	 * Prefix on the shuffled entries this task writes into the combined database.
+	 * They are ordinary entries to Sage - see {@code SageDecoyTags} - and exist so
+	 * that genome-level FDR has a decoy population after quantification, which
+	 * strips the engine's own decoys. Kept in step with
+	 * {@code AbstractMetaPeptideReader.SHUF}, which the post-analysis matches on.
+	 */
+	private static final String DECOY_TAG = SageDecoyTags.SHUFFLED_TAG;
 	private static final String SAMPLE_DB_SEARCH_DIR = "sample_db";
 
 	/**
@@ -1051,7 +1060,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 							if (line.startsWith(">")) {
 
 								if (sb.length() > 0) {
-									String shuffleProName = ">shuf_" + proName;
+									String shuffleProName = ">" + DECOY_TAG + proName;
 									String shuffle = DecoyShuffler.generateShuffledDecoy(sb.toString(),
 											this.sageTask.getEnzymeCleavageSites(this.magSageParams.getEnzyme()), 42);
 									writer.println(shuffleProName);
@@ -1077,7 +1086,7 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 						}
 
 						if (sb.length() > 0) {
-							String shuffleProName = ">shuf_" + proName;
+							String shuffleProName = ">" + DECOY_TAG + proName;
 							String shuffle = DecoyShuffler.generateShuffledDecoy(sb.toString(),
 									this.sageTask.getEnzymeCleavageSites(this.magSageParams.getEnzyme()), 42);
 							writer.println(shuffleProName);
@@ -1117,6 +1126,13 @@ public class DDAMagSageTask extends MetaPilotMagTask {
 		File quanResultFile = new File(combinedFile, "lfq.tsv");
 
 		if (!pepResultFile.exists() && !quanResultFile.exists()) {
+			// Sage still generates its own decoys here, on top of the shuf_ entries
+			// written above. That is deliberate, not double-counting: the shuf_
+			// sequences are ordinary entries as far as Sage is concerned, which is
+			// the only way they survive into lfq.tsv (Sage quantifies targets only,
+			// peptide_q <= 0.01 && label == 1) and can carry genome-level FDR after
+			// quantification. Sage's own tagged decoys are what its PSM-level
+			// q-values are estimated against. See SageDecoyTags.
 			// Run Sage search against combined database
 			try {
 				sageTask.searchMzML(mzMLFiles, combinedFile.getAbsolutePath(), combinedFastaFile.getAbsolutePath(),

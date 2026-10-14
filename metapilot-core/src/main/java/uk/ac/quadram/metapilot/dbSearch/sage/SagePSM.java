@@ -1,6 +1,12 @@
 package uk.ac.quadram.metapilot.dbSearch.sage;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import uk.ac.quadram.metapilot.task.io.pep.MetaPSM;
+import uk.ac.quadram.metapilot.task.io.qpx.EngineModificationParser;
+import uk.ac.quadram.metapilot.task.io.qpx.QpxModification;
+import uk.ac.quadram.metapilot.task.io.qpx.QpxScore;
 
 public class SagePSM extends MetaPSM {
 
@@ -17,6 +23,11 @@ public class SagePSM extends MetaPSM {
 	private double peptideQ;
 	private double proteinQ;
 	private double ms2Intensity;
+	// Optional results.sage.tsv columns (defaults when absent)
+	private int rank = 1;
+	/** Sage writes posterior_error as log10(PEP) - linear_discriminant.rs: kde.posterior_error(..).log10(). */
+	private double posteriorErrorLog10 = Double.NaN;
+	private double ionMobility = Double.NaN;
 
 	public SagePSM(String fileName, int scan, String sequence, String modSeq, double expMass, double calMass,
 			double massPPM, double fragPPM, int charge, int miss, int specificity, double rt, double qValue,
@@ -134,9 +145,14 @@ public class SagePSM extends MetaPSM {
 		this.rt = rt;
 	}
 
+	/**
+	 * Precursor mass difference in Da (expmass - calcmass), the unit every other
+	 * engine's getMassDiff() uses. Previously returned precursor_ppm; no caller read
+	 * it for Sage PSMs. The ppm value is {@link #getMassPPM()}.
+	 */
 	@Override
 	public double getMassDiff() {
-		return massPPM; // Sage uses massPPM as mass difference
+		return expMass - calMass;
 	}
 
 	public boolean isTarget() {
@@ -169,6 +185,93 @@ public class SagePSM extends MetaPSM {
 
 	public void setMs2Intensity(double ms2Intensity) {
 		this.ms2Intensity = ms2Intensity;
+	}
+
+	public int getRank() {
+		return rank;
+	}
+
+	public void setRank(int rank) {
+		this.rank = rank;
+	}
+
+	public double getPosteriorErrorLog10() {
+		return posteriorErrorLog10;
+	}
+
+	public void setPosteriorErrorLog10(double posteriorErrorLog10) {
+		this.posteriorErrorLog10 = posteriorErrorLog10;
+	}
+
+	public void setIonMobility(double ionMobility) {
+		this.ionMobility = ionMobility;
+	}
+
+	// ------------------------------------------------------------------
+	// Normalised accessors (see MetaPSM). results.sage.tsv semantics: rt is in
+	// minutes (measured: FragPipe "Retention" / Sage rt = 60.0 over 63,544 shared
+	// scans of 12mix YS-194-1-1); expmass/calcmass are neutral masses with every
+	// modification in the peptide string; spectrum_q is the PSM q-value.
+	// ------------------------------------------------------------------
+
+	@Override
+	public String getSearchEngine() {
+		return "Sage";
+	}
+
+	@Override
+	public boolean isDecoy() {
+		return !isTarget;
+	}
+
+	@Override
+	public double getRtSeconds() {
+		return rt * 60.0;
+	}
+
+	@Override
+	public double getIonMobility() {
+		return ionMobility > 0 ? ionMobility : Double.NaN;
+	}
+
+	@Override
+	public double getObservedNeutralMass() {
+		return expMass;
+	}
+
+	@Override
+	public double getTheoreticalNeutralMass() {
+		return calMass;
+	}
+
+	@Override
+	public double getPosteriorErrorProbability() {
+		if (Double.isNaN(posteriorErrorLog10)) {
+			return Double.NaN;
+		}
+		return Math.min(1.0, Math.pow(10.0, posteriorErrorLog10));
+	}
+
+	@Override
+	public double getPsmQValue() {
+		return getqValue();
+	}
+
+	@Override
+	public List<QpxModification> getQpxModifications() {
+		return EngineModificationParser.fromMassBrackets(getFullSequence()).modifications;
+	}
+
+	@Override
+	public List<QpxScore> getAdditionalScores() {
+		List<QpxScore> scores = new ArrayList<>(6);
+		QpxScore.addIfFinite(scores, "sage_hyperscore", hyperscore, Boolean.TRUE);
+		QpxScore.addIfFinite(scores, "sage_discriminant_score", disScore, Boolean.TRUE);
+		QpxScore.addIfFinite(scores, "q_value", getqValue(), Boolean.FALSE);
+		QpxScore.addIfFinite(scores, "sage_peptide_q", peptideQ, Boolean.FALSE);
+		QpxScore.addIfFinite(scores, "sage_protein_q", proteinQ, Boolean.FALSE);
+		QpxScore.addIfFinite(scores, "rank", rank, Boolean.FALSE);
+		return scores;
 	}
 
 }

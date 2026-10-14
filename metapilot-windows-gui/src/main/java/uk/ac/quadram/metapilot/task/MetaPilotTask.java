@@ -101,7 +101,7 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 		this.secondBar = secondBar;
 		
 		// Configure logging for this task's result folder and get the task-specific logger name
-		String taskLoggerName = this.configLog(new File(metaPar.getResult()));
+		String taskLoggerName = this.configLog(taskLogDir());
 		this.taskLoggerName = taskLoggerName;
 		
 		// Initialize logger with the task-specific logger name (not the class name)
@@ -135,6 +135,15 @@ public abstract class MetaPilotTask extends MetaAbstractTask {
 	}
 
 	public abstract void forceStop();
+
+	/**
+	 * Folder for this task's {@code logging.log} and {@code system_output.log}.
+	 * Called from the constructor, before any subclass field is set, so an
+	 * override may only read {@code metaPar}.
+	 */
+	protected File taskLogDir() {
+		return new File(metaPar.getResult());
+	}
 
 	protected abstract String getVersion();
 

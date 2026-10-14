@@ -48,7 +48,18 @@ public final class MagPostAnalysisScoringService {
 
 	public static DdaResult scoreDda(MetaPeptide[] peptides, MetaPSM[] psms, String decoySymbol,
 			String magIdentifier) {
-		DdaMagGenomeScoringService.Result genomeScoring = scoreDdaGenomes(peptides, psms, decoySymbol, magIdentifier);
+		return scoreDda(peptides, psms, peptides, psms, decoySymbol, magIdentifier);
+	}
+
+	/**
+	 * @param genomeScoringPeptides {@code peptides} plus any decoy peptides that
+	 *                              only the genome null should see
+	 * @param genomeScoringPsms     {@code psms} plus the matching decoy PSMs
+	 */
+	public static DdaResult scoreDda(MetaPeptide[] peptides, MetaPSM[] psms, MetaPeptide[] genomeScoringPeptides,
+			MetaPSM[] genomeScoringPsms, String decoySymbol, String magIdentifier) {
+		DdaMagGenomeScoringService.Result genomeScoring = scoreDdaGenomes(genomeScoringPeptides, genomeScoringPsms,
+				decoySymbol, magIdentifier);
 		HashMap<String, Double> confidentGenomeScoreMap = filterConfidentGenomeScores(genomeScoring.genomeScoreMap,
 				genomeScoring.diaStyleGenomeStats);
 		DdaMagProteinInferenceService.Result proteinInference = inferDdaProteins(peptides, confidentGenomeScoreMap,
@@ -56,6 +67,22 @@ public final class MagPostAnalysisScoringService {
 		HashMap<String, double[]> proteinScoreMap = DdaMagGenomeScoringService.computeProteinScoreMap(peptides, psms,
 				decoySymbol);
 		return new DdaResult(genomeScoring, confidentGenomeScoreMap, proteinInference, proteinScoreMap);
+	}
+
+	/**
+	 * Razor assignment and protein statistics from a {@link GenomeEvidenceTest}
+	 * result: its genome stats keep the {@code {score, p, q}} layout, so the
+	 * confident genomes are those it accepted.
+	 */
+	public static DdaResult scoreDda(MetaPeptide[] peptides, GenomeEvidenceTest.Result evidence, String decoySymbol,
+			String magIdentifier) {
+		DdaMagGenomeScoringService.Result genomeScoring = DdaMagGenomeScoringService.Result
+				.fromGenomeEvidence(evidence.genomeScoreMap, evidence.genomeStats);
+		HashMap<String, Double> confidentGenomeScoreMap = filterConfidentGenomeScores(evidence.genomeScoreMap,
+				evidence.genomeStats);
+		DdaMagProteinInferenceService.Result proteinInference = inferDdaProteins(peptides, confidentGenomeScoreMap,
+				evidence.genomeStats, magIdentifier, decoySymbol);
+		return new DdaResult(genomeScoring, confidentGenomeScoreMap, proteinInference, evidence.proteinStats);
 	}
 
 	public static DdaMagGenomeScoringService.Result scoreDdaGenomes(MetaPeptide[] peptides, MetaPSM[] psms,

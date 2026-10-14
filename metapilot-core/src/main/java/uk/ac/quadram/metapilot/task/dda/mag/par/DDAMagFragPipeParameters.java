@@ -1,5 +1,6 @@
 package uk.ac.quadram.metapilot.task.dda.mag.par;
 
+import uk.ac.quadram.metapilot.core.msfragger.MSFraggerHeadlessRunner;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -82,7 +83,7 @@ public class DDAMagFragPipeParameters extends MetaBaseParameter {
 				Runtime.getRuntime().availableProcessors(), Runtime.getRuntime().availableProcessors(), true);
 
 		// Initialize FragPipe-specific defaults
-		setEnzyme("Trypsin");
+		setEnzyme(MSFraggerHeadlessRunner.DEFAULT_ENZYME);
 		setMissCleavages(2);
 		setDigestMode("Specific");
 		setMs2ScanMode(MetaConstants.HCD_FTMS);
@@ -103,7 +104,7 @@ public class DDAMagFragPipeParameters extends MetaBaseParameter {
 				true);
 
 		// Set FragPipe-specific defaults
-		setEnzyme("Trypsin");
+		setEnzyme(MSFraggerHeadlessRunner.DEFAULT_ENZYME);
 		setMissCleavages(2);
 		setDigestMode("Specific");
 		setQuantitativeMode(MetaConstants.labelFree);

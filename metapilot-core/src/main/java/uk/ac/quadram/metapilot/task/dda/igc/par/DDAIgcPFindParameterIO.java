@@ -13,6 +13,8 @@ import org.apache.logging.log4j.Logger;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import uk.ac.quadram.metapilot.core.mod.IsobaricTag;
+import uk.ac.quadram.metapilot.task.par.IsobaricLabelSettings;
 import uk.ac.quadram.metapilot.task.par.BaseParameterIO;
 
 /**
@@ -123,8 +125,9 @@ public class DDAIgcPFindParameterIO extends BaseParameterIO {
             JSONObject quantMode = new JSONObject();
             quantMode.put("mode", params.getQuantitativeMode());
             
-            if ("Isobaric".equals(params.getQuantitativeMode())) {
-                quantMode.put("isobaric_type", params.getIsobaricType());
+            if (IsobaricLabelSettings.isIsobaricMode(params.getQuantitativeMode())) {
+                IsobaricTag tag = params.getIsobaricTag();
+                quantMode.put("isobaric_type", tag != null ? tag.getName() : params.getIsobaricType());
                 
                 JSONArray isobaricLabels = new JSONArray();
                 for (String[] row : params.getIsobaricTableData()) {

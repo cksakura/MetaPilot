@@ -7,6 +7,7 @@ import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragpipePepReader;
 import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragpipePeptide;
 import uk.ac.quadram.metapilot.task.io.pep.AbstractMetaPeptideReader;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPSM;
+import uk.ac.quadram.metapilot.task.io.qpx.QpxPsmExport;
 import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
@@ -120,12 +121,14 @@ public final class FragpipePostAnalysisTsvExporter {
         cb.onMessage(taskName + ": writing " + proOut.getName());
         DdaMagReportExportService.writeProteinReport(proOut, proteins, proteinIntensityMap, proteinTotalIntenMap,
                 totalPepCountMap, razorPepCountMap, psmCountMap, MetaConstants.labelFree, intensityTitles,
-                analysis.peptideList, analysis.allProteinScoreMap);
+                analysis.peptideList, analysis.allProteinScoreMap, bestPsmByModSeq);
         cb.onMessage(taskName + ": writing " + allProOut.getName());
         DdaMagReportExportService.writeAllProteinReport(allProOut, analysis.allProteins,
                 analysis.allProteinIntensityMap, analysis.allProteinTotalIntenMap, analysis.allProteinPepCountMap,
                 razorPepCountMap, analysis.allProteinPsmCountMap, MetaConstants.labelFree, intensityTitles,
-                analysis.peptideList, analysis.allProteinScoreMap);
+                analysis.peptideList, analysis.allProteinScoreMap, bestPsmByModSeq);
+        // The PSM layer as QPX psm.parquet, beside final_peptides.tsv (never fails the export).
+        QpxPsmExport.writeQuietly(outDir, psms, cb);
         Result res = new Result();
         res.idTsv = idOut;
         res.finalSummaryTsv = summaryOut;

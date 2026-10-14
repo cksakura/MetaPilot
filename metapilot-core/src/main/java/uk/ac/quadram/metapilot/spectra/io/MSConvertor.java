@@ -6,9 +6,13 @@ package uk.ac.quadram.metapilot.spectra.io;
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * @author Kai Cheng
@@ -358,6 +362,76 @@ public class MSConvertor {
 		String name = file.getName();
 		name = name.substring(0, name.lastIndexOf(".")) + ".mzML";
 		return parent + "\\" + name;
+	}
+
+	/**
+	 * The conversion {@link #raw2mzML(String, String)} runs, written into
+	 * {@code outDir} instead of beside the raw file. Every line msconvert prints,
+	 * errors included, goes to {@code output}, and the exit code is returned
+	 * rather than swallowed.
+	 *
+	 * @return msconvert's exit code
+	 */
+	public static int raw2mzML(String convertCmd, File raw, File outDir, Consumer<String> output)
+			throws IOException, InterruptedException {
+		ProcessBuilder pb = new ProcessBuilder(raw2mzMLCommand(convertCmd, raw, outDir));
+		pb.redirectErrorStream(true);
+		Process p = pb.start();
+		try (BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+			String line;
+			while ((line = br.readLine()) != null) {
+				if (Thread.currentThread().isInterrupted()) {
+					throw new InterruptedException("Interrupted while converting " + raw.getName());
+				}
+				if (output != null && !line.isBlank()) {
+					output.accept(line.trim());
+				}
+			}
+			return p.waitFor();
+		} finally {
+			if (p.isAlive()) {
+				p.destroyForcibly();
+			}
+		}
+	}
+
+	/**
+	 * Arguments for {@link #raw2mzML(String, File, File, Consumer)}, one list
+	 * element each, so paths containing spaces stay single arguments. Vendor
+	 * centroiding of every MS level: Crystal-C and FlashLFQ read MS1 too.
+	 */
+	public static List<String> raw2mzMLCommand(String convertCmd, File raw, File outDir) {
+		return Arrays.asList(convertCmd, raw.getAbsolutePath(), "--mzML", "-o", outDir.getAbsolutePath(), "--zlib",
+				"--filter", "peakPicking true 1-");
+	}
+
+	/**
+	 * The {@code ProteoWizard release: ...} line of msconvert's help, or null
+	 * when it cannot be read.
+	 */
+	public static String version(String convertCmd) {
+		try {
+			ProcessBuilder pb = new ProcessBuilder(convertCmd, "--help");
+			pb.redirectErrorStream(true);
+			Process p = pb.start();
+			String version = null;
+			try (BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+				String line;
+				while ((line = br.readLine()) != null) {
+					if (version == null && line.trim().startsWith("ProteoWizard release:")) {
+						version = line.trim();
+					}
+				}
+			} finally {
+				p.waitFor();
+			}
+			return version;
+		} catch (IOException e) {
+			return null;
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			return null;
+		}
 	}
 
 	public static void help() {

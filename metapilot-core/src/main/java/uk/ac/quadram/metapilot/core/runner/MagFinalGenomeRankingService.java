@@ -69,9 +69,18 @@ public final class MagFinalGenomeRankingService {
 		List<GenomeRow> rows = buildRows(request);
 		double totalIntensity = totalIntensity(rows);
 		if (totalIntensity <= 0.0) {
-			throw new IOException(
-					"Final genome intensity total is zero; RelativeAbundance cannot be calculated. "
-							+ "Check DIA parquet/PR-matrix intensity transfer before writing genome_final_*.tsv.");
+			int genomesWithPeptides = 0;
+			for (GenomeRow row : rows) {
+				if (!row.coveragePeptides.isEmpty()) {
+					genomesWithPeptides++;
+				}
+			}
+			throw new IOException("Final genome intensity total is zero across " + rows.size() + " genomes ("
+					+ genomesWithPeptides + " with assigned peptides); RelativeAbundance cannot be calculated. "
+					+ "The genomes were identified but every peptide intensity reaching post-analysis was zero: "
+					+ "check that the quantified peptide table read by post-analysis is the right file and that its "
+					+ "intensity columns matched (DDA: FlashLFQ/isobaric peptide reader column match in the task log; "
+					+ "DIA: parquet/PR-matrix intensity transfer).");
 		}
 		rows.sort(abundanceComparator());
 

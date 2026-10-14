@@ -1,5 +1,6 @@
 package uk.ac.quadram.metapilot.task.dda.mag.gui;
 
+import uk.ac.quadram.metapilot.core.msfragger.MSFraggerHeadlessRunner;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
@@ -93,7 +94,7 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
 		parameterIO = new DDAMagFragPipeParameterIO();
 		this.resourceParams = resourceParams;
 		
-		loadEnzymesFromIni();
+		loadEnzymeChoices();
 		initializeSpecificUI();
 		// Set MAG databases after UI is initialized
 		setAvailableMagDatabases(magDbItems);
@@ -284,23 +285,21 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
     }
 
     // Add missing utility methods
-    private void loadEnzymesFromIni() {
-        try (InputStream in = getClass().getClassLoader().getResourceAsStream("enzyme_default.ini")) {
-            if (in != null) {
-                BufferedReader reader = new BufferedReader(new InputStreamReader(in));
-                Pattern pattern = Pattern.compile("EN\\d+=(.+?) ");
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    Matcher m = pattern.matcher(line);
-                    if (m.find()) {
-                        String enzymeName = m.group(1).trim();
-                        enzymes.add(enzymeName);
-                    }
-                }
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+    /**
+     * Enzyme choices come from {@link MSFraggerHeadlessRunner#ENZYME_CHOICES}, the
+     * same list the enzyme mapping switches on, rather than from
+     * {@code enzyme_default.ini}.
+     * <p>
+     * That file is pFind's configuration vocabulary, in which {@code Trypsin} is
+     * declared with no proline restriction and {@code Trypsin_P} with one - the
+     * opposite of what those names mean to MSFragger, to MetaPilot's own
+     * {@code core.enzyme.Enzyme} enum, and to its DIA-NN mapping. Populating this
+     * dropdown from there is how that inversion reached the MSFragger workflows.
+     * The pFind panel still reads the file, correctly: there its semantics are the
+     * engine's own.
+     */
+    private void loadEnzymeChoices() {
+        enzymes.setAll(MSFraggerHeadlessRunner.ENZYME_CHOICES);
     }
 
     private Label createSectionTitle(String title) {
@@ -1225,9 +1224,28 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
             genomeSelectionStrategyComboBox.setValue(params.getGenomeSelectionStrategy());
         }
         
-        // Workflow selection - don't update since workflow is not saved in parameters
-        // The workflow is only used to configure FragpipeWorkflow but not persisted
-        // So we keep the current UI selection (which defaults to LFQ-MBR if available)
+        // Search mode / marker-stage / custom workflow overrides ARE persisted
+        // (search_mode, open_search_marker_stage, custom_basic_workflow_path,
+        // custom_combined_workflow_path) - restore them so re-launching the GUI
+        // shows the last-used selection instead of always falling back to the
+        // Closed default.
+        if (searchModeComboBox != null) {
+            String savedMode = params.getSearchMode();
+            searchModeComboBox.setValue("Open".equals(savedMode) ? "Open" : "Closed");
+        }
+        if (openSearchMarkerCheckBox != null) {
+            boolean open = "Open".equals(searchModeComboBox != null ? searchModeComboBox.getValue() : null);
+            openSearchMarkerCheckBox.setDisable(!open);
+            openSearchMarkerCheckBox.setSelected(open && params.isOpenSearchAtMarkerStage());
+        }
+        if (customBasicWorkflowField != null) {
+            customBasicWorkflowField.setText(
+                    params.getCustomBasicWorkflowPath() != null ? params.getCustomBasicWorkflowPath() : "");
+        }
+        if (customCombinedWorkflowField != null) {
+            customCombinedWorkflowField.setText(
+                    params.getCustomCombinedWorkflowPath() != null ? params.getCustomCombinedWorkflowPath() : "");
+        }
         
         // MS data type - use default
         if (msDataTypeComboBox != null) {

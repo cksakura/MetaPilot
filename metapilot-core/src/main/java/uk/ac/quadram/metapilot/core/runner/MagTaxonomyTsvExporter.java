@@ -1,6 +1,8 @@
 package uk.ac.quadram.metapilot.core.runner;
 
 import uk.ac.quadram.metapilot.core.mag.DdaMagGenomeScoringService;
+import uk.ac.quadram.metapilot.core.mag.DdaMagProteinInferenceService;
+import uk.ac.quadram.metapilot.core.mag.GenomeEvidenceTest;
 import uk.ac.quadram.metapilot.core.taxonomy.TaxonomyRanks;
 import uk.ac.quadram.metapilot.core.tools.FormatTool;
 import uk.ac.quadram.metapilot.core.tools.ResourceLoader;
@@ -23,6 +25,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * Headless taxonomy report exporter.
@@ -32,12 +35,16 @@ import java.util.Set;
  * - taxonomy_analysis/Genome.tsv
  * - taxonomy_analysis/Taxa.tsv (DIA-style scoring)
  * - taxonomy_analysis/Taxa_report.tsv
- * - taxonomy_analysis/genome_rank_scores.tsv (DIA-style scoring)
+ * - taxonomy_analysis/genome_rank_scores.tsv (DIA-style scoring), or genome_scores.tsv and
+ *   genome_scores_runinfo.txt when the genomes were tested by GenomeEvidenceTest (open search)
  *
  * This intentionally avoids the GUI-only dependency on a packaged "gtdb_ncbi" mapping resource.
  * Instead, it uses the MAG DB's original taxa TSV directly (from MAGDB_1_0.json version metadata).
  */
 public final class MagTaxonomyTsvExporter {
+
+    static final String GENOME_SCORES_TSV = "genome_scores.tsv";
+    static final String GENOME_SCORES_RUNINFO = "genome_scores_runinfo.txt";
 
     private MagTaxonomyTsvExporter() {
     }
@@ -82,6 +89,38 @@ public final class MagTaxonomyTsvExporter {
                                                   String[] intensityTitles,
                                                   DdaMagGenomeScoringService.DdaGenomeScoreRuninfo runinfo,
                                                   ProgressCallback cb) throws IOException {
+        exportGenomeAndTaxaReports(taxonomyAnalysisDir, originalTaxaTsv, gtdbNcbiMappingTsv, genomeIntensityMap,
+                genomeScoreMap, genomeDiaStats, orderedGenomes, genomePsmCountMap, genomeSelectionLabel,
+                totalPepCountMap, razorPepCountMap, uniquePepCountMap, totalPepWithILMap, razorPepWithILMap,
+                uniquePepWithILMap, intensityTitles, runinfo, null, cb);
+    }
+
+    /**
+     * @param genomeEvidence when not null, {@code genomeDiaStats} holds its
+     *                       {kept peptides, p, q}: Genome.tsv names the columns
+     *                       accordingly and genome_scores.tsv with its run-info
+     *                       replaces genome_rank_scores.tsv ({@code runinfo} is
+     *                       then ignored)
+     */
+    public static void exportGenomeAndTaxaReports(File taxonomyAnalysisDir,
+                                                  File originalTaxaTsv,
+                                                  File gtdbNcbiMappingTsv,
+                                                  Map<String, double[]> genomeIntensityMap,
+                                                  Map<String, Double> genomeScoreMap,
+                                                  Map<String, double[]> genomeDiaStats,
+                                                  List<String> orderedGenomes,
+                                                  Map<String, Integer> genomePsmCountMap,
+                                                  Map<String, String> genomeSelectionLabel,
+                                                  Map<String, ? extends Set<String>> totalPepCountMap,
+                                                  Map<String, ? extends Set<String>> razorPepCountMap,
+                                                  Map<String, ? extends Set<String>> uniquePepCountMap,
+                                                  Map<String, ? extends Set<String>> totalPepWithILMap,
+                                                  Map<String, ? extends Set<String>> razorPepWithILMap,
+                                                  Map<String, ? extends Set<String>> uniquePepWithILMap,
+                                                  String[] intensityTitles,
+                                                  DdaMagGenomeScoringService.DdaGenomeScoreRuninfo runinfo,
+                                                  GenomeEvidenceTest.Result genomeEvidence,
+                                                  ProgressCallback cb) throws IOException {
         if (cb == null) cb = new ProgressCallback.NoOp();
         if (taxonomyAnalysisDir == null) throw new IOException("taxonomyAnalysisDir is null");
         taxonomyAnalysisDir.mkdirs();
@@ -120,7 +159,16 @@ public final class MagTaxonomyTsvExporter {
                 genomeSelectionLabel,
                 totalPepCountMap, razorPepCountMap, uniquePepCountMap,
                 totalPepWithILMap, razorPepWithILMap, uniquePepWithILMap,
-                intensityTitles);
+                intensityTitles, genomeEvidence != null);
+
+        if (genomeEvidence != null) {
+            File scoresFile = new File(taxonomyAnalysisDir, GENOME_SCORES_TSV);
+            cb.onMessage("Writing taxonomy: " + scoresFile.getName());
+            writeGenomeScores(scoresFile, genomeEvidence, genusByGenome(lineageMap));
+            File runinfoFile = new File(taxonomyAnalysisDir, GENOME_SCORES_RUNINFO);
+            cb.onMessage("Writing taxonomy: " + runinfoFile.getName());
+            writeGenomeScoresRuninfo(runinfoFile, scoresFile, genomeEvidence);
+        }
 
         boolean useDiaStyle = genomeDiaStats != null && !genomeDiaStats.isEmpty();
         if (useDiaStyle) {
@@ -129,13 +177,15 @@ public final class MagTaxonomyTsvExporter {
             cb.onMessage("Writing taxonomy: " + taxaTsv.getName());
             writeDiaStyleTaxaTables(taxaTsv, taxaReportTsv, genomeIntensityMap, genomeScoreMap, genomeDiaStats,
                     lineageMap, intensityTitles);
-            File rankScoresFile = new File(taxonomyAnalysisDir, "genome_rank_scores.tsv");
-            cb.onMessage("Writing taxonomy: " + rankScoresFile.getName());
-            writeGenomeRankScores(rankScoresFile, genomeDiaStats, totalPepCountMap, razorPepCountMap);
-            if (runinfo != null) {
-                File runinfoFile = new File(taxonomyAnalysisDir, "genome_rank_scores_runinfo.txt");
-                cb.onMessage("Writing taxonomy: " + runinfoFile.getName());
-                writeGenomeRankScoresRuninfo(runinfoFile, rankScoresFile, runinfo);
+            if (genomeEvidence == null) {
+                File rankScoresFile = new File(taxonomyAnalysisDir, "genome_rank_scores.tsv");
+                cb.onMessage("Writing taxonomy: " + rankScoresFile.getName());
+                writeGenomeRankScores(rankScoresFile, genomeDiaStats, totalPepCountMap, razorPepCountMap);
+                if (runinfo != null) {
+                    File runinfoFile = new File(taxonomyAnalysisDir, "genome_rank_scores_runinfo.txt");
+                    cb.onMessage("Writing taxonomy: " + runinfoFile.getName());
+                    writeGenomeRankScoresRuninfo(runinfoFile, rankScoresFile, runinfo);
+                }
             }
         } else {
             File taxaReportTsv = new File(taxonomyAnalysisDir, "Taxa_report.tsv");
@@ -263,7 +313,8 @@ public final class MagTaxonomyTsvExporter {
                                       Map<String, ? extends Set<String>> totalPepWithILMap,
                                       Map<String, ? extends Set<String>> razorPepWithILMap,
                                       Map<String, ? extends Set<String>> uniquePepWithILMap,
-                                      String[] intensityTitles) throws IOException {
+                                      String[] intensityTitles,
+                                      boolean evidenceStats) throws IOException {
         TaxonomyRanks[] mainRanks = TaxonomyRanks.getMainRanks();
         String[] genomes = orderGenomes(genomeIntensityMap, orderedGenomes);
 
@@ -271,7 +322,11 @@ public final class MagTaxonomyTsvExporter {
             StringBuilder h = new StringBuilder();
             h.append("Genome\t");
             boolean useDiaStyleHeader = (genomeDiaStats != null && !genomeDiaStats.isEmpty());
-            if (useDiaStyleHeader) {
+            if (useDiaStyleHeader && evidenceStats) {
+                h.append("kept_unique_peptides\t");
+                h.append("genome_p_value\t");
+                h.append("genome_q_value\t");
+            } else if (useDiaStyleHeader) {
                 h.append("genome_score_S\t");
                 h.append("genome_p_emp\t");
                 h.append("genome_q_value\t");
@@ -322,7 +377,11 @@ public final class MagTaxonomyTsvExporter {
                 sb.append(g).append("\t");
                 Map<String, double[]> dia = genomeDiaStats;
                 double[] st = (dia != null) ? dia.get(g) : null;
-                if (st != null && st.length >= 3) {
+                if (st != null && st.length >= 3 && evidenceStats) {
+                    sb.append((long) st[0]).append("\t");
+                    sb.append(FormatTool.getDFE4().format(st[1])).append("\t");
+                    sb.append(FormatTool.getDFE4().format(st[2])).append("\t");
+                } else if (st != null && st.length >= 3) {
                     sb.append(FormatTool.getDFE4().format(st[0])).append("\t");
                     sb.append(FormatTool.getDF4().format(st[1])).append("\t");
                     sb.append(FormatTool.getDF4().format(st[2])).append("\t");
@@ -603,6 +662,133 @@ public final class MagTaxonomyTsvExporter {
         }
     }
 
+    private static HashMap<String, String> genusByGenome(Map<String, Lineage> lineageMap) {
+        HashMap<String, String> out = new HashMap<>();
+        String genus = TaxonomyRanks.Genus.getName();
+        for (Map.Entry<String, Lineage> e : lineageMap.entrySet()) {
+            String name = e.getValue().byRank.get(genus);
+            if (name != null && !name.isBlank()) {
+                out.put(e.getKey(), name);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Accepted target genome -> the accepted genome with the most kept peptides
+     * in its GTDB genus (ties by name), when that is another genome. A label, not
+     * a rejection: the database genome closest to a present strain wins its
+     * peptides, and this names the stronger same-genus neighbour.
+     */
+    static HashMap<String, String> sameGenusAs(List<GenomeEvidenceTest.GenomeRow> rows,
+                                               Map<String, String> genusByGenome) {
+        HashMap<String, GenomeEvidenceTest.GenomeRow> topByGenus = new HashMap<>();
+        for (GenomeEvidenceTest.GenomeRow row : rows) {
+            String genus = genusByGenome.get(row.genome);
+            if (row.decoy || !row.accepted || genus == null) continue;
+            GenomeEvidenceTest.GenomeRow top = topByGenus.get(genus);
+            if (top == null || row.keptPeptides > top.keptPeptides
+                    || (row.keptPeptides == top.keptPeptides && row.genome.compareTo(top.genome) < 0)) {
+                topByGenus.put(genus, row);
+            }
+        }
+        HashMap<String, String> out = new HashMap<>();
+        for (GenomeEvidenceTest.GenomeRow row : rows) {
+            String genus = genusByGenome.get(row.genome);
+            if (row.decoy || !row.accepted || genus == null) continue;
+            GenomeEvidenceTest.GenomeRow top = topByGenus.get(genus);
+            if (!top.genome.equals(row.genome)) {
+                out.put(row.genome, top.genome);
+            }
+        }
+        return out;
+    }
+
+    static void writeGenomeScores(File out, GenomeEvidenceTest.Result evidence, Map<String, String> genusByGenome)
+            throws IOException {
+        HashMap<String, String> sameGenus = sameGenusAs(evidence.rows, genusByGenome);
+        try (PrintWriter pw = new PrintWriter(out)) {
+            pw.println("genome\tis_decoy\truns_searched\tunique_peptides\texcluded_near_neighbour\tkept_peptides"
+                    + "\tdecoy_unique_peptides\texpected_false\tlog_p\tp_value\tq_value\taccepted\tacceptance_order"
+                    + "\tresolved_rank\tsame_genus_as");
+            for (GenomeEvidenceTest.GenomeRow row : evidence.rows) {
+                pw.println(row.genome + "\t" + row.decoy + "\t" + row.runsSearched + "\t" + row.uniquePeptides
+                        + "\t" + row.excludedNearNeighbour + "\t" + row.keptPeptides + "\t" + row.decoyUniquePeptides
+                        + "\t" + FormatTool.getDFE4().format(row.expectedFalse)
+                        + "\t" + FormatTool.getDFE4().format(row.logP)
+                        + "\t" + FormatTool.getDFE4().format(Math.exp(row.logP))
+                        + "\t" + FormatTool.getDFE4().format(row.qValue)
+                        + "\t" + row.accepted + "\t" + row.acceptanceOrder
+                        + "\tnot_assessed\t" + sameGenus.getOrDefault(row.genome, ""));
+            }
+        }
+    }
+
+    static void writeGenomeScoresRuninfo(File out, File scoresFile, GenomeEvidenceTest.Result evidence)
+            throws IOException {
+        GenomeEvidenceTest.Calibration c = evidence.calibration;
+        try (PrintWriter pw = new PrintWriter(out)) {
+            pw.println("=================================================================================");
+            pw.println("genome_scores run info (DDA MAG open search, expected false counts)");
+            pw.println("=================================================================================");
+            pw.println();
+            pw.println("output_scores\t" + scoresFile.getAbsolutePath());
+            pw.println("runs\t" + c.runs);
+            pw.println("candidate_genomes\t" + c.candidateGenomes);
+            pw.println();
+            pw.println("--- Step 1: peptide FDR per class (spectrum winners; unit = base peptide, I = L) ---");
+            pw.println("peptide_fdr\t" + c.peptideFdr);
+            pw.println("class\ttarget_psms\tdecoy_psms\ttarget_peptides_accepted\tdecoy_peptides_accepted");
+            for (GenomeEvidenceTest.PeptideClass cls : GenomeEvidenceTest.PeptideClass.values()) {
+                int k = cls.ordinal();
+                pw.println(cls.name().toLowerCase() + "\t" + c.psms[k][0] + "\t" + c.psms[k][1] + "\t"
+                        + c.acceptedUnits[k][0] + "\t" + c.acceptedUnits[k][1]);
+            }
+            pw.println();
+            pw.println("--- Step 2: uniqueness against each run's database ---");
+            pw.println("status\ttarget_evidence_peptides\tdecoy_peptides");
+            Set<String> statuses = new TreeSet<>(c.targetUniqueness.keySet());
+            statuses.addAll(c.decoyUniqueness.keySet());
+            for (String status : statuses) {
+                pw.println(status + "\t" + c.targetUniqueness.getOrDefault(status, 0) + "\t"
+                        + c.decoyUniqueness.getOrDefault(status, 0));
+            }
+            pw.println("F_decoy_evidence_peptides_unique\t" + c.decoyEvidencePeptides);
+            pw.println("window_K\t" + c.windowK);
+            pw.println("window_size\t" + c.windowSize + "\t(of " + c.windowAvailable
+                    + " unique open-search decoy peptides of any class)");
+            pw.println("window_edge_score\t" + formatOrNa(c.windowEdgeScore));
+            pw.println();
+            pw.println("--- Step 3: sequential near-neighbour exclusion ---");
+            pw.println("max_substitutions\t" + c.maxSubstitutions);
+            pw.println("genome_fdr\t" + c.genomeFdr);
+            pw.println("target_genomes_accepted\t" + c.targetGenomesAccepted);
+            pw.println("running_vs_final_q_mismatches\t" + c.runningVersusFinalMismatches);
+            pw.println();
+            pw.println("--- Calibration: reversed genomes through the same test ---");
+            pw.println("decoy_genomes_accepted\t" + c.decoyGenomesAccepted + "\t(expected near 0)");
+            pw.println("chi_square_accepted_decoys_vs_F_pi\t" + formatOrNa(c.chiSquare)
+                    + "\tdf\t" + c.chiSquareDf + "\tp\t" + formatOrNa(c.chiSquareP));
+            if (c.psms[GenomeEvidenceTest.PeptideClass.CLOSED.ordinal()][0]
+                    + c.psms[GenomeEvidenceTest.PeptideClass.CLOSED.ordinal()][1] > 0) {
+                // F includes closed-stage decoys, pi_g comes from open-search decoys: only a
+                // failure of the open-stage reading points at pi_g.
+                pw.println("chi_square_open_stage_decoys_vs_F_pi\t" + formatOrNa(c.chiSquareOpen)
+                        + "\tdf\t" + c.chiSquareOpenDf + "\tp\t" + formatOrNa(c.chiSquareOpenP)
+                        + "\tF_open\t" + c.openDecoyEvidencePeptides);
+            }
+            pw.println();
+            pw.println("--- Step 5: picked protein FDR within accepted genomes (reported, not a filter) ---");
+            pw.println("target_proteins_scored\t" + c.targetProteinsScored);
+            pw.println("decoy_proteins_scored\t" + c.decoyProteinsScored);
+            pw.println("target_proteins_q<=" + c.proteinFdr + "\t" + c.targetProteinsAtFdr);
+        }
+    }
+
+    private static String formatOrNa(double v) {
+        return Double.isNaN(v) ? "NA" : FormatTool.getDFE4().format(v);
+    }
+
     private static void writeGenomeHtml(File out, Set<String> genomes, Map<String, Lineage> lineageMap)
             throws IOException {
         HashMap<String, String[]> genomeMap = new HashMap<>();
@@ -664,7 +850,36 @@ public final class MagTaxonomyTsvExporter {
             pw.println("--- Genome counts ---");
             pw.println("n_target_genomes\t" + (runinfo.SMap != null ? runinfo.SMap.size() : 0));
             pw.println("n_decoy_pool_entries\t" + runinfo.decoyPoolSize);
+            pw.println();
+            double threshold = DdaMagProteinInferenceService.DEFAULT_GENOME_Q_VALUE_THRESHOLD;
+            pw.println("--- Decoy genome calibration (reversed proteomes through the same test) ---");
+            pw.println("Estimated genome FDR at a p threshold = decoy genomes passing / target genomes passing.");
+            int targetScorePass = 0;
+            if (runinfo.pempArr != null) {
+                for (double p : runinfo.pempArr) {
+                    if (p <= threshold) targetScorePass++;
+                }
+            }
+            int decoyScorePass = countAtOrBelow(runinfo.decoyGenomeScorePMap, threshold);
+            pw.println("score_test\ttarget_genomes_p<=" + threshold + "\t" + targetScorePass
+                    + "\tdecoy_genomes_p<=" + threshold + "\t" + decoyScorePass + " of "
+                    + runinfo.decoyGenomeScorePMap.size());
+            pw.println("reversed_genome\tn_peptides\tp");
+            List<String> decoyGenomes = new ArrayList<>(runinfo.decoyGenomeScorePMap.keySet());
+            decoyGenomes.sort(Comparator.comparingDouble(runinfo.decoyGenomeScorePMap::get));
+            for (String g : decoyGenomes) {
+                pw.println(g + "\t" + runinfo.decoyGenomeScoreNMap.getOrDefault(g, 0) + "\t"
+                        + FormatTool.getDF4().format(runinfo.decoyGenomeScorePMap.get(g)));
+            }
         }
+    }
+
+    private static int countAtOrBelow(Map<String, Double> pValues, double threshold) {
+        int n = 0;
+        for (double p : pValues.values()) {
+            if (p <= threshold) n++;
+        }
+        return n;
     }
 
     private static String[] orderGenomes(Map<String, double[]> genomeIntensityMap, List<String> orderedGenomes) {

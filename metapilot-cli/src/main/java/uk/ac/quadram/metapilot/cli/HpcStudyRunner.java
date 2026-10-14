@@ -254,10 +254,14 @@ final class HpcStudyRunner {
                 MagFragPipeHeadlessRunner.requireInstalledWorkflow(fragpipeExe, basicTemplate);
             }
             if (params.getCustomCombinedWorkflowPath() == null || params.getCustomCombinedWorkflowPath().isBlank()) {
-                MagFragPipeHeadlessRunner.requireInstalledWorkflow(fragpipeExe, MagFragPipeHeadlessRunner.LFQ_MBR_WORKFLOW);
-                if (params.isOpenSearch()) {
-                    MagFragPipeHeadlessRunner.requireInstalledWorkflow(fragpipeExe, MagFragPipeHeadlessRunner.OPEN_SEARCH_WORKFLOW);
-                }
+                // Open mode's combined stage is Open.workflow with its quant keys switched
+                // on (see MagFragPipeHeadlessRunner.buildOpenLfqHybridTemplate) - confirmed
+                // against a FragPipe-authored reference template, it does not reference
+                // LFQ-MBR.workflow at all, so only Open.workflow is required here.
+                String combinedTemplate = params.isOpenSearch()
+                        ? MagFragPipeHeadlessRunner.OPEN_SEARCH_WORKFLOW
+                        : MagFragPipeHeadlessRunner.LFQ_MBR_WORKFLOW;
+                MagFragPipeHeadlessRunner.requireInstalledWorkflow(fragpipeExe, combinedTemplate);
             }
         } catch (IOException e) {
             System.err.println("ERROR: required FragPipe workflow is not available in the installed FragPipe folder: "

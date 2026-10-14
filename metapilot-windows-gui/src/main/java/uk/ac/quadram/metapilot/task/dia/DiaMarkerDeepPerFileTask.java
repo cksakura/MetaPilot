@@ -10,11 +10,22 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.logging.log4j.Logger;
 
+import javafx.application.Platform;
+import javafx.scene.control.Alert;
+import javafx.scene.control.Alert.AlertType;
+import javafx.scene.control.ButtonBar;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.ProgressBar;
+import javafx.scene.control.TextArea;
+import javafx.scene.layout.GridPane;
+import javafx.scene.layout.Priority;
 
 import uk.ac.quadram.metapilot.core.dia.DiaDeepProteinMappingService;
 import uk.ac.quadram.metapilot.core.mag.MagGenomeSelectionService;
@@ -192,7 +203,8 @@ public class DiaMarkerDeepPerFileTask extends DiaMarkerCoreTask {
 					magDbConfigFile,
 					createGuiProgressCallback(),
 					condaPrefix,
-					funcDbFile);
+					funcDbFile,
+					this::askContinueWithPartialMarkerResults);
 			logger.info(getTaskName() + ": per-file Marker/Deep core runner completed");
 
 			this.resultFolderFile = result.markerDeepDir;
@@ -232,6 +244,57 @@ public class DiaMarkerDeepPerFileTask extends DiaMarkerCoreTask {
 			updateSecondaryProgress(0.0);
 			throw e;
 		}
+	}
+
+	/**
+	 * GUI decision after the Deep per-file marker phase when some candidate files
+	 * (all files, or representatives when clustering is on) lack genome selection outputs.
+	 */
+	private boolean askContinueWithPartialMarkerResults(List<String> missingRawNames, int successfulFileCount)
+			throws InterruptedException {
+		CountDownLatch latch = new CountDownLatch(1);
+		AtomicBoolean continueRun = new AtomicBoolean(false);
+		Platform.runLater(() -> {
+			try {
+				ButtonType continueButton = new ButtonType("Continue with successful files",
+						ButtonBar.ButtonData.OK_DONE);
+				ButtonType stopButton = new ButtonType("Stop", ButtonBar.ButtonData.CANCEL_CLOSE);
+				Alert alert = new Alert(AlertType.CONFIRMATION);
+				alert.setTitle("Incomplete marker results");
+				alert.setHeaderText("Some files have no genome selection result");
+				alert.setContentText(
+						"Marker search finished, but " + missingRawNames.size()
+								+ " file(s) are missing genome_evidence.tsv / genome_ranked.tsv / genome_selected.tsv.\n\n"
+								+ successfulFileCount
+								+ " file(s) have complete results.\n\n"
+								+ "Stop now if you want to replace the failing files, or continue and build the "
+								+ "combined database from the successful marker results only.");
+
+				TextArea details = new TextArea(String.join("\n", missingRawNames));
+				details.setEditable(false);
+				details.setWrapText(true);
+				details.setMaxWidth(Double.MAX_VALUE);
+				details.setMaxHeight(Double.MAX_VALUE);
+				GridPane.setVgrow(details, Priority.ALWAYS);
+				GridPane.setHgrow(details, Priority.ALWAYS);
+				GridPane expandable = new GridPane();
+				expandable.setMaxWidth(Double.MAX_VALUE);
+				expandable.add(details, 0, 0);
+				alert.getDialogPane().setExpandableContent(expandable);
+				alert.getDialogPane().setExpanded(true);
+				alert.getButtonTypes().setAll(continueButton, stopButton);
+
+				Optional<ButtonType> answer = alert.showAndWait();
+				continueRun.set(answer.isPresent() && answer.get() == continueButton);
+			} finally {
+				latch.countDown();
+			}
+		});
+		latch.await();
+		boolean chosen = continueRun.get();
+		logger.info(getTaskName() + ": partial marker result decision -> {} (missing={}, successful={})",
+				chosen ? "continue" : "stop", missingRawNames.size(), successfulFileCount);
+		return chosen;
 	}
 
 	/**

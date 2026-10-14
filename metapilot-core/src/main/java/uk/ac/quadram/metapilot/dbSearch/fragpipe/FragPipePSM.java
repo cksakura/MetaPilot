@@ -1,6 +1,12 @@
 package uk.ac.quadram.metapilot.dbSearch.fragpipe;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import uk.ac.quadram.metapilot.task.io.pep.MetaPSM;
+import uk.ac.quadram.metapilot.task.io.qpx.EngineModificationParser;
+import uk.ac.quadram.metapilot.task.io.qpx.QpxModification;
+import uk.ac.quadram.metapilot.task.io.qpx.QpxScore;
 
 /**
  * FragPipe PSM implementation extending MetaPSM
@@ -17,6 +23,10 @@ public class FragPipePSM extends MetaPSM {
     private double probability;
     private double qValue;
     private boolean decoy;
+    // Optional psm.tsv columns, read when present (NaN = column absent)
+    private double expectation = Double.NaN;
+    private double nextscore = Double.NaN;
+    private double ionMobility = Double.NaN;
     
     /**
      * Constructor for FragPipePSM
@@ -110,5 +120,96 @@ public class FragPipePSM extends MetaPSM {
     @Override
     public double getPEP() {
         return qValue;
+    }
+
+    public void setExpectation(double expectation) {
+        this.expectation = expectation;
+    }
+
+    public void setNextscore(double nextscore) {
+        this.nextscore = nextscore;
+    }
+
+    public void setIonMobility(double ionMobility) {
+        this.ionMobility = ionMobility;
+    }
+
+    // ------------------------------------------------------------------
+    // Normalised accessors (see MetaPSM). psm.tsv semantics: "Retention" is in
+    // seconds; "Observed Mass" / "Calculated Peptide Mass" are neutral masses, the
+    // calculated one including every assigned modification; "Probability" is the
+    // posterior probability the PSM is correct (PeptideProphet or Percolator), so
+    // PEP = 1 - Probability.
+    // ------------------------------------------------------------------
+
+    @Override
+    public String getSearchEngine() {
+        return "MSFragger";
+    }
+
+    @Override
+    public String getSpectrumFileName() {
+        // "Spectrum" is <run>.<scan>.<scan>.<charge>; the run name is authoritative
+        // (the IGC reader's fileName is the experiment folder, the MAG reader's is the
+        // pep.xml path).
+        if (spectrum != null) {
+            String[] parts = spectrum.split("\\.");
+            if (parts.length >= 4) {
+                StringBuilder sb = new StringBuilder(parts[0]);
+                for (int i = 1; i < parts.length - 3; i++) {
+                    sb.append('.').append(parts[i]);
+                }
+                return sb.toString();
+            }
+        }
+        return super.getSpectrumFileName();
+    }
+
+    @Override
+    public double getRtSeconds() {
+        return rt;
+    }
+
+    @Override
+    public double getIonMobility() {
+        return ionMobility > 0 ? ionMobility : Double.NaN;
+    }
+
+    @Override
+    public double getObservedNeutralMass() {
+        return expMass;
+    }
+
+    @Override
+    public double getTheoreticalNeutralMass() {
+        return calMass;
+    }
+
+    @Override
+    public double getPosteriorErrorProbability() {
+        if (Double.isNaN(probability) || probability < 0 || probability > 1) {
+            return Double.NaN;
+        }
+        return 1.0 - probability;
+    }
+
+    @Override
+    public double getPsmQValue() {
+        return qValue;
+    }
+
+    @Override
+    public List<QpxModification> getQpxModifications() {
+        return EngineModificationParser.fromFragPipeAssigned(getBaseSequence(), mod);
+    }
+
+    @Override
+    public List<QpxScore> getAdditionalScores() {
+        List<QpxScore> scores = new ArrayList<>(4);
+        QpxScore.addIfFinite(scores, "msfragger_hyperscore", score, Boolean.TRUE);
+        QpxScore.addIfFinite(scores, "msfragger_nextscore", nextscore, Boolean.TRUE);
+        QpxScore.addIfFinite(scores, "msfragger_expect", expectation, Boolean.FALSE);
+        QpxScore.addIfFinite(scores, "q_value", qValue, Boolean.FALSE);
+        return scores;
     }
 }

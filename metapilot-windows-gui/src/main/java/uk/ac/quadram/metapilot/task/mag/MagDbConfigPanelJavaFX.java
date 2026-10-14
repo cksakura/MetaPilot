@@ -31,6 +31,7 @@ import java.util.Set;
 
 import uk.ac.quadram.metapilot.core.MGYG.HapExtractor;
 import uk.ac.quadram.metapilot.core.MGYG.MGYGFtpTaskJavaFX;
+import uk.ac.quadram.metapilot.core.variant.ProteinCatalogueInstaller;
 
 /**
  * JavaFX implementation of the MagDbConfigPanel Provides the same functionality
@@ -51,6 +52,11 @@ public class MagDbConfigPanelJavaFX extends BorderPane {
 	private Button downloadButton;
 	private ProgressBar mgnifyDLBar;
 	private TextArea mgnifyConsoleArea;
+	private CheckBox proteinCatalogueCheckBox;
+	private CheckBox deleteProteinArchiveCheckBox;
+	private Button prepareProteinButton;
+	private Label proteinStatusLabel;
+	private boolean mgnifyTaskRunning;
 
 	// Local panel controls
 	private TextField localNameTextField;
@@ -386,9 +392,14 @@ public class MagDbConfigPanelJavaFX extends BorderPane {
 			downloadButton.setDisable(true);
 			browseButton.setDisable(true);
 			mgnifyComboBox.setDisable(true);
+			setMgnifyTaskRunning(true);
 
 			// Create download task using MGYGFtpTaskJavaFX
 			MGYGFtpTaskJavaFX downloadTask = new MGYGFtpTaskJavaFX(selectedItem);
+			downloadTask.setProteinCatalogue(
+					proteinCatalogueCheckBox.isSelected()
+							&& ProteinCatalogueInstaller.supports(selectedItem.getCatalogueID()),
+					deleteProteinArchiveCheckBox.isSelected());
 
 			// Bind progress and messages
 			mgnifyDLBar.progressProperty().bind(downloadTask.progressProperty());
@@ -404,6 +415,7 @@ public class MagDbConfigPanelJavaFX extends BorderPane {
 				// Unbind properties
 				mgnifyDLBar.progressProperty().unbind();
 				mgnifyConsoleArea.textProperty().unbind();
+				setMgnifyTaskRunning(false);
 
 				// Set database as available
 				selectedItem.setAvailable();
@@ -428,6 +440,7 @@ public class MagDbConfigPanelJavaFX extends BorderPane {
 				// Unbind properties
 				mgnifyDLBar.progressProperty().unbind();
 				mgnifyConsoleArea.textProperty().unbind();
+				setMgnifyTaskRunning(false);
 
 				// Show error message
 				Throwable exception = downloadTask.getException();
@@ -444,12 +457,87 @@ public class MagDbConfigPanelJavaFX extends BorderPane {
 				// Unbind properties
 				mgnifyDLBar.progressProperty().unbind();
 				mgnifyConsoleArea.textProperty().unbind();
+				setMgnifyTaskRunning(false);
 
 				showAlert(Alert.AlertType.INFORMATION, "Download Cancelled", "MGnify database download was cancelled");
 			});
 
 			// Start the task
 			Thread thread = new Thread(downloadTask);
+			thread.setDaemon(true);
+			thread.start();
+		});
+
+		// UHGP-100 protein catalogue for the pangenome variant check (human-gut only)
+		proteinCatalogueCheckBox = new CheckBox("Also download the UHGP-100 protein catalogue (28 GB download, "
+				+ "about 23 GB on disk; used only by the pangenome variant check)");
+		proteinCatalogueCheckBox.setSelected(false);
+		deleteProteinArchiveCheckBox = new CheckBox("Delete the archive after preparation");
+		deleteProteinArchiveCheckBox.setSelected(true);
+		prepareProteinButton = new Button("Prepare protein catalogue");
+		proteinStatusLabel = new Label();
+
+		prepareProteinButton.setOnAction(e -> {
+			MagDbItem selectedItem = mgnifyComboBox.getValue();
+			File versionDir = localVersionDir(selectedItem);
+			if (selectedItem == null || versionDir == null) {
+				showAlert(Alert.AlertType.WARNING, "Database Required",
+						"Download the MAG database before preparing its protein catalogue");
+				return;
+			}
+			Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+					"This downloads the 28 GB UHGP-100 archive (an interrupted download resumes) and prepares it, "
+							+ "which takes about 45 minutes and needs about 51 GB free during preparation "
+							+ "(23 GB afterwards if the archive is deleted).\n\nTarget: "
+							+ ProteinCatalogueInstaller.directory(versionDir).getAbsolutePath(),
+					ButtonType.OK, ButtonType.CANCEL);
+			confirm.setTitle("Prepare protein catalogue");
+			confirm.setHeaderText("Prepare the UHGP-100 protein catalogue?");
+			if (confirm.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) {
+				return;
+			}
+
+			downloadButton.setDisable(true);
+			browseButton.setDisable(true);
+			mgnifyComboBox.setDisable(true);
+			setMgnifyTaskRunning(true);
+
+			MGYGFtpTaskJavaFX prepareTask = MGYGFtpTaskJavaFX.proteinCatalogueOnly(selectedItem,
+					versionDir.getName(), deleteProteinArchiveCheckBox.isSelected());
+			mgnifyDLBar.progressProperty().bind(prepareTask.progressProperty());
+			mgnifyConsoleArea.textProperty().bind(prepareTask.messageProperty());
+
+			Runnable restore = () -> {
+				downloadButton.setDisable(false);
+				browseButton.setDisable(false);
+				mgnifyComboBox.setDisable(false);
+				mgnifyDLBar.progressProperty().unbind();
+				mgnifyConsoleArea.textProperty().unbind();
+				setMgnifyTaskRunning(false);
+			};
+			prepareTask.setOnSucceeded(event -> {
+				restore.run();
+				if (Boolean.TRUE.equals(prepareTask.getValue())) {
+					showAlert(Alert.AlertType.INFORMATION, "Protein Catalogue Ready",
+							"The UHGP-100 protein catalogue was prepared in "
+									+ ProteinCatalogueInstaller.directory(versionDir).getAbsolutePath());
+				} else {
+					showAlert(Alert.AlertType.ERROR, "Preparation Failed", mgnifyConsoleArea.getText());
+				}
+			});
+			prepareTask.setOnFailed(event -> {
+				restore.run();
+				Throwable exception = prepareTask.getException();
+				showAlert(Alert.AlertType.ERROR, "Preparation Failed", "Failed to prepare the protein catalogue: "
+						+ (exception != null ? exception.getMessage() : "Unknown error"));
+			});
+			prepareTask.setOnCancelled(event -> {
+				restore.run();
+				showAlert(Alert.AlertType.INFORMATION, "Preparation Cancelled",
+						"Protein catalogue preparation was cancelled");
+			});
+
+			Thread thread = new Thread(prepareTask);
 			thread.setDaemon(true);
 			thread.start();
 		});
@@ -483,6 +571,16 @@ public class MagDbConfigPanelJavaFX extends BorderPane {
 		row++;
 		formGrid.add(downloadButton, 0, row);
 		formGrid.add(mgnifyDLBar, 1, row, 3, 1);
+
+		row++;
+		formGrid.add(proteinCatalogueCheckBox, 0, row, 4, 1);
+
+		row++;
+		formGrid.add(deleteProteinArchiveCheckBox, 0, row, 2, 1);
+		formGrid.add(prepareProteinButton, 2, row);
+		formGrid.add(proteinStatusLabel, 3, row);
+
+		updateProteinCatalogueControls();
 
 		// Make the console area expand to fill available space
 		VBox.setVgrow(mgnifyConsoleArea, Priority.ALWAYS);
@@ -543,6 +641,61 @@ public class MagDbConfigPanelJavaFX extends BorderPane {
 				downloadButton.setDisable(true);
 			}
 		}
+		updateProteinCatalogueControls();
+	}
+
+	private void setMgnifyTaskRunning(boolean running) {
+		mgnifyTaskRunning = running;
+		updateProteinCatalogueControls();
+	}
+
+	/**
+	 * The protein catalogue controls apply to human-gut only; the prepare button
+	 * also needs the MAG database already on disk.
+	 */
+	private void updateProteinCatalogueControls() {
+		if (proteinCatalogueCheckBox == null || mgnifyComboBox == null) {
+			return;
+		}
+		MagDbItem item = mgnifyComboBox.getValue();
+		boolean supported = item != null && ProteinCatalogueInstaller.supports(item.getCatalogueID());
+		File versionDir = supported ? localVersionDir(item) : null;
+		boolean installed = versionDir != null && ProteinCatalogueInstaller.isInstalled(versionDir);
+
+		proteinCatalogueCheckBox.setDisable(mgnifyTaskRunning || !supported);
+		if (!supported) {
+			proteinCatalogueCheckBox.setSelected(false);
+		}
+		deleteProteinArchiveCheckBox.setDisable(mgnifyTaskRunning || !supported);
+		prepareProteinButton.setDisable(mgnifyTaskRunning || versionDir == null || installed);
+		if (!supported) {
+			proteinStatusLabel.setText("Protein catalogue: human-gut only");
+		} else if (installed) {
+			proteinStatusLabel.setText("Protein catalogue: prepared");
+		} else if (versionDir != null) {
+			proteinStatusLabel.setText("Protein catalogue: not prepared");
+		} else {
+			proteinStatusLabel.setText("");
+		}
+	}
+
+	/**
+	 * The downloaded version directory, {@code <repository>/<version>}: the latest
+	 * version if present, otherwise the local one; null when neither exists.
+	 */
+	private static File localVersionDir(MagDbItem item) {
+		if (item == null || item.getRepositoryFile() == null) {
+			return null;
+		}
+		for (String version : new String[] { item.getCatalogueVersion(), item.getOldVersion() }) {
+			if (version != null && !version.isBlank()) {
+				File dir = new File(item.getRepositoryFile(), version);
+				if (dir.isDirectory()) {
+					return dir;
+				}
+			}
+		}
+		return null;
 	}
 
 	/**

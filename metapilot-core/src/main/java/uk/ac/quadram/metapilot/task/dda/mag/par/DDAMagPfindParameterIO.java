@@ -9,6 +9,8 @@ import org.json.JSONObject;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.LogManager;
 
+import uk.ac.quadram.metapilot.core.mod.IsobaricTag;
+import uk.ac.quadram.metapilot.task.par.IsobaricLabelSettings;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.task.par.BaseParameterIO;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
@@ -124,6 +126,8 @@ public class DDAMagPfindParameterIO extends BaseParameterIO {
 			additionalParams.put("genome_selection_strategy", params.getGenomeSelectionStrategy());
 			additionalParams.put("generate_sample_specific_db", params.isReduceDb());
 			additionalParams.put("spectra_clustering", params.isSpectraCluster());
+			params.getPangenomeVariantSettings().save(additionalParams);
+			additionalParams.put("undecidable_tolerance_da", params.getUndecidableToleranceDa());
 			json.put("additional_parameters", additionalParams);
 
 			// Modifications
@@ -149,13 +153,34 @@ public class DDAMagPfindParameterIO extends BaseParameterIO {
 			JSONObject quantMode = new JSONObject();
 			quantMode.put("mode", params.getQuantitativeMode());
 
-			if ("Isotopic".equals(params.getQuantitativeMode())) {
+			String mode = params.getQuantitativeMode();
+			if (mode != null && mode.toLowerCase().contains("isotopic")) {
 				quantMode.put("light_labels", new JSONArray(params.getLightLabels()));
 				quantMode.put("medium_labels", new JSONArray(params.getMediumLabels()));
 				quantMode.put("heavy_labels", new JSONArray(params.getHeavyLabels()));
-			} else if ("Isobaric".equals(params.getQuantitativeMode())) {
-				quantMode.put("isobaric_type", params.getIsobaricType());
+			} else if (IsobaricLabelSettings.isIsobaricMode(mode)) {
+				// Save the resolved tag name (e.g. "TMT10plex"), not the mode text, so the
+				// tag survives a reload and the GUI can reselect it.
+				IsobaricTag tag = params.getIsobaricTag();
+				quantMode.put("isobaric_type", tag != null ? tag.getName() : params.getIsobaricType());
 				quantMode.put("combine_label", params.isCombineLabel());
+
+				JSONArray isobaricTable = new JSONArray();
+				if (params.getIsobaricTableData() != null) {
+					for (String[] row : params.getIsobaricTableData()) {
+						if (row == null || row.length == 0) {
+							continue;
+						}
+						JSONObject label = new JSONObject();
+						label.put("label_name", row[0]);
+						label.put("minus2", row.length > 1 ? row[1] : "0");
+						label.put("minus1", row.length > 2 ? row[2] : "0");
+						label.put("plus1", row.length > 3 ? row[3] : "0");
+						label.put("plus2", row.length > 4 ? row[4] : "0");
+						isobaricTable.put(label);
+					}
+				}
+				quantMode.put("isobaric_table", isobaricTable);
 			}
 
 			json.put("quantitative_mode", quantMode);
@@ -259,6 +284,9 @@ public class DDAMagPfindParameterIO extends BaseParameterIO {
 				params.setGenomeSelectionStrategy(additionalParams.optString("genome_selection_strategy", "Focus"));
 				params.setReduceDb(additionalParams.optBoolean("generate_sample_specific_db", true));
 				params.setSpectraCluster(additionalParams.optBoolean("spectra_clustering", true));
+				params.getPangenomeVariantSettings().load(additionalParams);
+				params.setUndecidableToleranceDa(
+						additionalParams.optDouble("undecidable_tolerance_da", params.getUndecidableToleranceDa()));
 			}
 
 			// Load modifications
@@ -319,6 +347,17 @@ public class DDAMagPfindParameterIO extends BaseParameterIO {
 				}
 				if (quantMode.has("combine_label")) {
 					params.setCombineLabel(quantMode.optBoolean("combine_label", false));
+				}
+				if (quantMode.has("isobaric_table")) {
+					JSONArray isobaricTable = quantMode.getJSONArray("isobaric_table");
+					List<String[]> isobaricTableData = new ArrayList<>();
+					for (int i = 0; i < isobaricTable.length(); i++) {
+						JSONObject row = isobaricTable.getJSONObject(i);
+						isobaricTableData.add(new String[] { row.optString("label_name", ""),
+								row.optString("minus2", "0"), row.optString("minus1", "0"),
+								row.optString("plus1", "0"), row.optString("plus2", "0") });
+					}
+					params.setIsobaricTableData(isobaricTableData);
 				}
 			}
 

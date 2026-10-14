@@ -15,9 +15,16 @@ import org.apache.commons.io.FileUtils;
 
 public class SagePsmReader {
 
-	private SagePSM[] psms;
+	/**
+	 * PSM-level FDR applied to the PSMs that reach MetaPilot's peptide/PSM layer -
+	 * the same 1% Sage's own LFQ stage applies to peptide_q. Before this existed
+	 * every PSM of a peptide listed in lfq.tsv was kept regardless of its own
+	 * spectrum_q (on 12mix YS-194-1-1, 38,640 of 169,510 target PSMs with
+	 * peptide_q <= 0.01 had spectrum_q > 0.01).
+	 */
+	public static final double PSM_Q_VALUE_THRESHOLD = 0.01;
 
-	private static final String REV = "REV_";
+	private SagePSM[] psms;
 
 	private HashMap<String, Integer> ms2CountMap;
 
@@ -62,6 +69,11 @@ public class SagePsmReader {
 			int peptideQValueID = -1;
 			int proteinQValueID = -1;
 			int ms2IntensityID = -1;
+			// Optional (QPX export / PSM filtering); absent columns leave defaults
+			int labelID = -1;
+			int rankID = -1;
+			int posteriorErrorID = -1;
+			int ionMobilityID = -1;
 
 			for (int i = 0; i < title.length; i++) {
 				if (title[i].equals("filename")) {
@@ -100,6 +112,14 @@ public class SagePsmReader {
 					fragPPMID = i;
 				} else if (title[i].equals("ms2_intensity")) {
 					ms2IntensityID = i;
+				} else if (title[i].equals("label")) {
+					labelID = i;
+				} else if (title[i].equals("rank")) {
+					rankID = i;
+				} else if (title[i].equals("posterior_error")) {
+					posteriorErrorID = i;
+				} else if (title[i].equals("ion_mobility")) {
+					ionMobilityID = i;
 				}
 			}
 
@@ -144,10 +164,17 @@ public class SagePsmReader {
 					double disScore = Double.parseDouble(cs[disScoreID]);
 					boolean isTarget = true;
 					String[] proteins = cs[proteinID].split(";");
-					for (String pro : proteins) {
-						if (pro.startsWith(REV)) {
-							isTarget = false;
-						}
+					// Sage's OWN decoys, which the identification output retains. Not
+					// shuf_: those are targets as far as Sage is concerned, and they
+					// carry genome-level FDR after quantification instead - see
+					// SageDecoyTags.
+					if (SageDecoyTags.anyEngineDecoy(proteins)) {
+						isTarget = false;
+					}
+					// Sage's own label (1 target, -1 decoy) is authoritative when present.
+					// On 12mix YS-194-1-1 it agreed with the accession rule on every row.
+					if (labelID >= 0) {
+						isTarget = "1".equals(cs[labelID].trim());
 					}
 					double peptideQ = Double.parseDouble(cs[peptideQValueID]);
 					double proteinQ = Double.parseDouble(cs[proteinQValueID]);
@@ -157,6 +184,15 @@ public class SagePsmReader {
 					SagePSM psm = new SagePSM(fileName, scan, sb.toString(), modseq, expMass, calMass, massPPM, fragPPM,
 							charge, miss, specificity, rt, qValue, hyperscore, disScore, proteins, isTarget, peptideQ,
 							proteinQ, ms2Intensity);
+					if (rankID >= 0) {
+						psm.setRank(parseIntOr(cs[rankID], 1));
+					}
+					if (posteriorErrorID >= 0) {
+						psm.setPosteriorErrorLog10(parseDoubleOr(cs[posteriorErrorID], Double.NaN));
+					}
+					if (ionMobilityID >= 0) {
+						psm.setIonMobility(parseDoubleOr(cs[ionMobilityID], Double.NaN));
+					}
 					list.add(psm);
 				}
 			}
@@ -171,6 +207,31 @@ public class SagePsmReader {
 
 	public SagePSM[] getPsms() {
 		return psms;
+	}
+
+	/**
+	 * The PSMs MetaPilot treats as identifications: Sage targets, top-ranked
+	 * candidate, spectrum_q <= {@link #PSM_Q_VALUE_THRESHOLD}.
+	 */
+	public static boolean isConfidentPsm(SagePSM psm) {
+		return psm != null && psm.isTarget() && psm.getRank() <= 1
+				&& psm.getqValue() <= PSM_Q_VALUE_THRESHOLD;
+	}
+
+	private static int parseIntOr(String s, int fallback) {
+		try {
+			return Integer.parseInt(s.trim());
+		} catch (RuntimeException e) {
+			return fallback;
+		}
+	}
+
+	private static double parseDoubleOr(String s, double fallback) {
+		try {
+			return Double.parseDouble(s.trim());
+		} catch (RuntimeException e) {
+			return fallback;
+		}
 	}
 	
 	public SagePSM[] getPsms(double qvalueThreshold) {

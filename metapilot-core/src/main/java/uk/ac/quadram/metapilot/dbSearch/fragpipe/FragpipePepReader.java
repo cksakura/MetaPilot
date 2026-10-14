@@ -498,6 +498,11 @@ public class FragpipePepReader extends AbstractMetaPeptideReader {
 							int proteinId = -1;
 							int mappedProteinsId = -1;
 							int modId = -1;
+							// Optional columns for the QPX PSM export (absent in older FragPipe)
+							int expectationId = -1;
+							int nextscoreId = -1;
+							int ionMobilityId = -1;
+							int isDecoyId = -1;
 
 						// Find column indices
 						for (int j = 0; j < title.length; j++) {
@@ -550,6 +555,18 @@ public class FragpipePepReader extends AbstractMetaPeptideReader {
 							case "Assigned Modifications":
 								modId = j;
 								break;
+							case "Expectation":
+								expectationId = j;
+								break;
+							case "Nextscore":
+								nextscoreId = j;
+								break;
+							case "Ion Mobility":
+								ionMobilityId = j;
+								break;
+							case "Is Decoy":
+								isDecoyId = j;
+								break;
 							}
 						}
 
@@ -575,7 +592,9 @@ public class FragpipePepReader extends AbstractMetaPeptideReader {
 							double massDiff = deltaMassId >= 0 ? Double.parseDouble(cs[deltaMassId]) : 0.0;
 							int miss = missedCleavagesId >= 0 ? Integer.parseInt(cs[missedCleavagesId]) : 0;
 							double score = hyperscoreId >= 0 ? Double.parseDouble(cs[hyperscoreId]) : 0.0;
-							double probability = probabilityId >= 0 ? Double.parseDouble(cs[probabilityId]) : 0.0;
+							// NaN, not 0, when the column is absent: 0 would read as "certainly
+							// wrong" (PEP = 1) in the QPX export.
+							double probability = probabilityId >= 0 ? Double.parseDouble(cs[probabilityId]) : Double.NaN;
 							double qValue = qvalueId >= 0 ? Double.parseDouble(cs[qvalueId]) : 1.0;
 							String protein = proteinId >= 0 ? cs[proteinId] : "";
 							String mappedProteins = mappedProteinsId >= 0 && mappedProteinsId < cs.length ? cs[mappedProteinsId] : "";
@@ -586,8 +605,14 @@ public class FragpipePepReader extends AbstractMetaPeptideReader {
 
 							String[] proteins = parseProteinList(protein, mappedProteins);
 
+							boolean decoy = isDecoyId >= 0 && isDecoyId < cs.length
+									&& "true".equalsIgnoreCase(cs[isDecoyId].trim());
 							FragPipePSM psm = new FragPipePSM(fileNames[i], scan, spectrum, sequence, modSeq, mod,
-									charge, expMass, calMass, massDiff, miss, rt, score, probability, qValue, proteins);
+									charge, expMass, calMass, massDiff, miss, rt, score, probability, qValue, proteins,
+									decoy);
+							psm.setExpectation(optionalDouble(cs, expectationId));
+							psm.setNextscore(optionalDouble(cs, nextscoreId));
+							psm.setIonMobility(optionalDouble(cs, ionMobilityId));
 							psmList.add(psm);
 						}
 
@@ -631,6 +656,17 @@ public class FragpipePepReader extends AbstractMetaPeptideReader {
 	 * 
 	 * @return Array of FragPipePSM objects
 	 */
+	private static double optionalDouble(String[] cs, int id) {
+		if (id < 0 || id >= cs.length || cs[id].trim().isEmpty()) {
+			return Double.NaN;
+		}
+		try {
+			return Double.parseDouble(cs[id].trim());
+		} catch (NumberFormatException e) {
+			return Double.NaN;
+		}
+	}
+
 	public FragPipePSM[] getPSMs() {
 		return psms;
 	}

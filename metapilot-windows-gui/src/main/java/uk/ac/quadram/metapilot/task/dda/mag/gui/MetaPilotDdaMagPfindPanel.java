@@ -91,6 +91,12 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
     private ObservableList<String> enzymes = FXCollections.observableArrayList();
     
     private MetaResourceParameters resourceParams;
+
+    // Pangenome variant check settings have no controls; kept from the loaded
+    // parameter file so saving from the UI does not reset hand-edited values.
+    private final uk.ac.quadram.metapilot.core.variant.PangenomeVariantSettings pangenomeVariantSettings =
+            new uk.ac.quadram.metapilot.core.variant.PangenomeVariantSettings();
+    private double undecidableToleranceDa = DDAMagPfindParameters.DEFAULT_UNDECIDABLE_TOLERANCE_DA;
     
     public MetaPilotDdaMagPfindPanel(MagDbItem[] magDbItems, MetaResourceParameters resourceParams) {
         // Call parent constructor first
@@ -1283,6 +1289,9 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
 				analysisParams.setMetadataTableData(metadataArrays);
 			}
 
+			analysisParams.getPangenomeVariantSettings().copyFrom(pangenomeVariantSettings);
+			analysisParams.setUndecidableToleranceDa(undecidableToleranceDa);
+
 			consolePanel.appendConsoleText("✓ Successfully collected parameters from UI\n");
 			LOGGER.info("Successfully collected parameters from UI for MAG pFind workflow");
 			return analysisParams;
@@ -1538,6 +1547,9 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
                 LOGGER.warn("No parameters to apply to UI");
                 return;
             }
+
+        pangenomeVariantSettings.copyFrom(params.getPangenomeVariantSettings());
+        undecidableToleranceDa = params.getUndecidableToleranceDa();
         
         // Apply experiment data to IO panel if available - convert String arrays back to JavaFX rows
         if (params.getExperimentData() != null && !params.getExperimentData().isEmpty()) {

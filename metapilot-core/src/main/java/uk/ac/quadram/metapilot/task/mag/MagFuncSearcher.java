@@ -315,45 +315,21 @@ public class MagFuncSearcher extends IGCFuncSqliteSearcher {
 					MetaProtein mp = proMap.get(content[0]);
 
 					String[] cognogs = content[MetaProteinAnnoMag.nogID].split(",");
-					String cogRoot = "";
-					String cogBacteria = "";
 
 					StringBuilder nogSb = new StringBuilder();
 
 					for (int i = 0; i < cognogs.length; i++) {
-						if (cognogs[i].startsWith("COG")) {
-
-							if (cognogs[i].endsWith("root")) {
-								cogRoot = cognogs[i].split("@")[0];
-							} else if (cognogs[i].endsWith("Bacteria")) {
-								cogBacteria = cognogs[i].split("@")[0];
-							}
-						} else {
+						if (!cognogs[i].startsWith("COG")) {
 							String nog = cognogs[i].split("\\|")[0];
 							nogSb.append(cognogs[i]).append(",");
 							nogSet.add(nog);
 						}
 					}
 
-					String cog = "";
-					if (cogRoot.length() > 0) {
-						if (cogBacteria.length() > 0) {
-							if (cogRoot.equals(cogBacteria)) {
-								cog = cogRoot;
-								cogSet.add(cogRoot);
-							} else {
-								cog = cogRoot + "," + cogBacteria;
-								cogSet.add(cogRoot);
-								cogSet.add(cogBacteria);
-							}
-						} else {
-							cog = cogRoot;
-							cogSet.add(cogRoot);
-						}
-					} else {
-						if (cogBacteria.length() > 0) {
-							cog = cogBacteria;
-							cogSet.add(cogBacteria);
+					String cog = cogAccession(content[MetaProteinAnnoMag.nogID]);
+					for (String c : cog.split(",")) {
+						if (!c.isEmpty()) {
+							cogSet.add(c);
 						}
 					}
 
@@ -395,6 +371,29 @@ public class MagFuncSearcher extends IGCFuncSqliteSearcher {
 		getReference(cogSet, nogSet, goSet, ecSet, keggSet);
 
 		return list.toArray(new MetaProteinAnnoMag[list.size()]);
+	}
+
+	/**
+	 * COG accession from an eggNOG-mapper {@code eggNOG_OGs} value: the
+	 * root-level COG, followed by the Bacteria-level one when they differ
+	 * ({@code COG0001,COG0002}); empty when there is neither.
+	 */
+	public static String cogAccession(String eggNogOgs) {
+		String cogRoot = "";
+		String cogBacteria = "";
+		for (String og : eggNogOgs == null ? new String[0] : eggNogOgs.split(",")) {
+			if (og.startsWith("COG")) {
+				if (og.endsWith("root")) {
+					cogRoot = og.split("@")[0];
+				} else if (og.endsWith("Bacteria")) {
+					cogBacteria = og.split("@")[0];
+				}
+			}
+		}
+		if (cogRoot.isEmpty()) {
+			return cogBacteria;
+		}
+		return cogBacteria.isEmpty() || cogRoot.equals(cogBacteria) ? cogRoot : cogRoot + "," + cogBacteria;
 	}
 
 }

@@ -9,6 +9,7 @@ import org.json.JSONObject;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.LogManager;
 
+import uk.ac.quadram.metapilot.core.msfragger.MSFraggerHeadlessRunner;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.task.par.BaseParameterIO;
 
@@ -170,7 +171,8 @@ public class DDAMagFragPipeParameterIO extends BaseParameterIO {
 			// Load enzyme settings
 			if (json.has("enzyme_settings")) {
 				JSONObject enzymeSettings = json.getJSONObject("enzyme_settings");
-				params.setEnzyme(enzymeSettings.optString("enzyme", "Trypsin"));
+				params.setEnzyme(migrateEnzymeName(enzymeSettings,
+						enzymeSettings.optString("enzyme", MSFraggerHeadlessRunner.DEFAULT_ENZYME)));
 				params.setMissCleavages(enzymeSettings.optInt("missed_cleavages", 2));
 				params.setDigestMode(enzymeSettings.optString("digestion_mode", "Specific"));
 			}
@@ -290,6 +292,7 @@ public class DDAMagFragPipeParameterIO extends BaseParameterIO {
 			// Enzyme settings
 			JSONObject enzymeSettings = new JSONObject();
 			enzymeSettings.put("enzyme", params.getEnzyme());
+			enzymeSettings.put(ENZYME_NAMING_KEY, ENZYME_NAMING_STANDARD);
 			enzymeSettings.put("missed_cleavages", params.getMissCleavages());
 			enzymeSettings.put("digestion_mode", params.getDigestModeString());
 			json.put("enzyme_settings", enzymeSettings);
@@ -357,6 +360,58 @@ public class DDAMagFragPipeParameterIO extends BaseParameterIO {
 	@Override
 	protected Object loadParametersFromFile(File inputFile) {
 		return loadParameters(inputFile);
+	}
+
+	/**
+	 * Marks a parameter file as using the corrected enzyme naming.
+	 * <p>
+	 * Before the correction, {@code "Trypsin"} in these files meant MSFragger's
+	 * {@code stricttrypsin} - cleavage after K/R including before proline - and
+	 * {@code "Trypsin/P"} meant the conventional proline-restricted digest. The
+	 * names now mean what they say. A file written before the change therefore
+	 * asks for a different digest than its author intended, and reloading one
+	 * would silently re-run a study with a different enzyme.
+	 * <p>
+	 * The shared header's {@code version} field is hard-coded and never read
+	 * back, so it cannot date a file. The presence of this key can: it is written
+	 * from now on and absent from everything older.
+	 */
+	private static final String ENZYME_NAMING_KEY = "enzyme_naming";
+	private static final String ENZYME_NAMING_STANDARD = "standard";
+
+	/**
+	 * Translates a pre-correction enzyme name to the one that means the same
+	 * digest today. Only the two inverted pairs move; everything else is
+	 * unchanged, and a file already carrying {@link #ENZYME_NAMING_KEY} is left
+	 * exactly as written.
+	 */
+	private static String migrateEnzymeName(JSONObject enzymeSettings, String enzyme) {
+		if (enzymeSettings.has(ENZYME_NAMING_KEY) || enzyme == null) {
+			return enzyme;
+		}
+		String migrated;
+		switch (enzyme.trim().toLowerCase(java.util.Locale.ROOT)) {
+		case "trypsin":
+			migrated = "Trypsin/P";
+			break;
+		case "trypsin/p":
+		case "trypsin_p":
+			migrated = "Trypsin";
+			break;
+		case "lysc":
+			migrated = "LysC/P";
+			break;
+		case "lysc/p":
+		case "lysc_p":
+			migrated = "LysC";
+			break;
+		default:
+			return enzyme;
+		}
+		LOGGER.warn("This parameter file predates the enzyme-naming correction, where \"{}\" meant the digest now "
+				+ "called \"{}\". Loading it as \"{}\" so the study runs the enzyme it was written with. Re-save the "
+				+ "file to make this permanent.", enzyme, migrated, migrated);
+		return migrated;
 	}
 
 }

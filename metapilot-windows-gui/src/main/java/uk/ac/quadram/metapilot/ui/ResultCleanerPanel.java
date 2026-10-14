@@ -544,6 +544,7 @@ public class ResultCleanerPanel extends BorderPane {
 				new WorkflowChoice("DDA / MAG Database / pFind", WorkflowType.DDA_MAG_PFIND),
 				new WorkflowChoice("DDA / MAG Database / FragPipe", WorkflowType.DDA_MAG_FRAGPIPE),
 				new WorkflowChoice("DDA / MAG Database / Sage", WorkflowType.DDA_MAG_SAGE),
+				new WorkflowChoice("DDA / MAG Database / Open Search", WorkflowType.DDA_MAG_OPENSEARCH),
 				new WorkflowChoice("DIA / Marker", WorkflowType.DIA_MARKER),
 				new WorkflowChoice("DIA / Seeded", WorkflowType.DIA_SEED),
 				new WorkflowChoice("DIA / Target", WorkflowType.DIA_TARGET),

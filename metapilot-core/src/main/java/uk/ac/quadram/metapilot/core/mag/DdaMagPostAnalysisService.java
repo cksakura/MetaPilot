@@ -22,6 +22,16 @@ public final class DdaMagPostAnalysisService {
 	private DdaMagPostAnalysisService() {
 	}
 
+	private static <T> T[] concat(T[] first, T[] second, java.util.function.IntFunction<T[]> newArray) {
+		if (second == null || second.length == 0) {
+			return first;
+		}
+		T[] out = newArray.apply(first.length + second.length);
+		System.arraycopy(first, 0, out, 0, first.length);
+		System.arraycopy(second, 0, out, first.length, second.length);
+		return out;
+	}
+
 	@FunctionalInterface
 	public interface FileIndexResolver {
 		int resolve(String fileName, Map<String, Integer> fileIdMap, List<String> fileList);
@@ -36,6 +46,20 @@ public final class DdaMagPostAnalysisService {
 		public final String magIdentifier;
 		public final FileIndexResolver fileIndexResolver;
 		public final boolean preferPeptideMs2Counts;
+		/**
+		 * Decoy peptides and PSMs seen only by genome scoring, as its null
+		 * background; they are never counted, reported or used for protein
+		 * inference. For callers whose {@link #psms} hold targets only. Null when
+		 * {@link #psms} already carry the decoys.
+		 */
+		public final MetaPeptide[] genomeBackgroundPeptides;
+		public final MetaPSM[] genomeBackgroundPsms;
+		/**
+		 * Genome and protein statistics already computed by
+		 * {@link GenomeEvidenceTest}; when set they replace the resampling genome
+		 * test and protein scores, and the genome background is not used.
+		 */
+		public final GenomeEvidenceTest.Result genomeEvidence;
 
 		public Input(MetaPeptide[] peptides, MetaPSM[] psms, HashMap<String, Integer> fileIdMap,
 				ArrayList<String> fileList, String decoySymbol, String magIdentifier) {
@@ -45,6 +69,26 @@ public final class DdaMagPostAnalysisService {
 		public Input(MetaPeptide[] peptides, MetaPSM[] psms, HashMap<String, Integer> fileIdMap,
 				ArrayList<String> fileList, String decoySymbol, String magIdentifier,
 				FileIndexResolver fileIndexResolver, boolean preferPeptideMs2Counts) {
+			this(peptides, psms, fileIdMap, fileList, decoySymbol, magIdentifier, fileIndexResolver,
+					preferPeptideMs2Counts, null, null);
+		}
+
+		public Input(MetaPeptide[] peptides, MetaPSM[] psms, HashMap<String, Integer> fileIdMap,
+				ArrayList<String> fileList, String decoySymbol, String magIdentifier,
+				FileIndexResolver fileIndexResolver, boolean preferPeptideMs2Counts,
+				MetaPeptide[] genomeBackgroundPeptides, MetaPSM[] genomeBackgroundPsms) {
+			this(peptides, psms, fileIdMap, fileList, decoySymbol, magIdentifier, fileIndexResolver,
+					preferPeptideMs2Counts, genomeBackgroundPeptides, genomeBackgroundPsms, null);
+		}
+
+		public Input(MetaPeptide[] peptides, MetaPSM[] psms, HashMap<String, Integer> fileIdMap,
+				ArrayList<String> fileList, String decoySymbol, String magIdentifier,
+				FileIndexResolver fileIndexResolver, boolean preferPeptideMs2Counts,
+				MetaPeptide[] genomeBackgroundPeptides, MetaPSM[] genomeBackgroundPsms,
+				GenomeEvidenceTest.Result genomeEvidence) {
+			this.genomeEvidence = genomeEvidence;
+			this.genomeBackgroundPeptides = genomeBackgroundPeptides;
+			this.genomeBackgroundPsms = genomeBackgroundPsms;
 			this.peptides = peptides;
 			this.psms = psms;
 			this.fileIdMap = fileIdMap;
@@ -89,6 +133,18 @@ public final class DdaMagPostAnalysisService {
 		public final HashMap<String, Integer> proteinIdMap;
 		public final HashMap<String, Integer> razorPsmCountMap;
 		public final MetaProtein[] metaProteins;
+		/**
+		 * Validated, quantified peptides in {@link #peptideList} whose every
+		 * candidate protein belongs to a genome that did not clear the
+		 * confident-genome q-value gate ({@link DdaMagProteinInferenceService#confidentGenomes}),
+		 * so no razor protein could be assigned. Not a data-quality problem with
+		 * the peptide itself - it is still in {@link #peptideList} with an empty
+		 * razor protein (see {@code DdaMagReportExportService.resolveRazorProtein})
+		 * and contributes to no razor/genome/protein-intensity map - only a count
+		 * of how many identifications carry no confident genome attribution, so a
+		 * caller can report it instead of it being invisible.
+		 */
+		public final int peptidesWithoutConfidentRazorProtein;
 
 		private Result(HashMap<String, MetaPSM> psmMap, HashMap<String, int[]> pepPsmCountMap,
 				HashMap<String, int[]> pepChargeMap, HashMap<String, double[]> pepExpectMap,
@@ -107,7 +163,8 @@ public final class DdaMagPostAnalysisService {
 				HashMap<String, HashSet<String>> razorPepWithILMap,
 				HashMap<String, HashSet<String>> uniquePepWithILMap, ArrayList<MetaPeptide> peptideList,
 				String[] proteins, String[] allProteins, HashMap<String, Integer> proteinIdMap,
-				HashMap<String, Integer> razorPsmCountMap, MetaProtein[] metaProteins) {
+				HashMap<String, Integer> razorPsmCountMap, MetaProtein[] metaProteins,
+				int peptidesWithoutConfidentRazorProtein) {
 			this.psmMap = psmMap;
 			this.pepPsmCountMap = pepPsmCountMap;
 			this.pepChargeMap = pepChargeMap;
@@ -140,6 +197,7 @@ public final class DdaMagPostAnalysisService {
 			this.proteinIdMap = proteinIdMap;
 			this.razorPsmCountMap = razorPsmCountMap;
 			this.metaProteins = metaProteins;
+			this.peptidesWithoutConfidentRazorProtein = peptidesWithoutConfidentRazorProtein;
 		}
 	}
 
@@ -262,11 +320,70 @@ public final class DdaMagPostAnalysisService {
 
 //		enrichPeptideProteinsFromPsms(peptides, psms);
 
-		MagPostAnalysisScoringService.DdaResult scoring = MagPostAnalysisScoringService.scoreDda(peptides, psms,
-				decoySymbol, magIdentifier);
+		MagPostAnalysisScoringService.DdaResult scoring = input.genomeEvidence != null
+				? MagPostAnalysisScoringService.scoreDda(peptides, input.genomeEvidence, decoySymbol, magIdentifier)
+				: MagPostAnalysisScoringService.scoreDda(peptides, psms,
+						concat(peptides, input.genomeBackgroundPeptides, MetaPeptide[]::new),
+						concat(psms, input.genomeBackgroundPsms, MetaPSM[]::new), decoySymbol, magIdentifier);
 		return buildResult(peptides, decoySymbol, magIdentifier, psmMap, pepPsmCountMap, pepChargeMap, pepExpectMap,
 				psmCountMap, filePsmCount, fileSequenceSets, scoring.genomeScoring, scoring.confidentGenomeScoreMap,
 				scoring.proteinInference, scoring.proteinScoreMap);
+	}
+
+	/**
+	 * Post-analysis for peptide input that carries no PSMs, scores or decoys (a plain
+	 * peptide intensity table mapped to MAG proteins). Genome scoring is skipped: the
+	 * caller supplies the accepted genome set, every accepted genome is treated as
+	 * confident, and razor assignment plus genome/protein intensity roll-up then run
+	 * through the same {@link DdaMagProteinInferenceService#refineProteins} and
+	 * {@code buildResult} path as {@link #analyze}. PSM-derived maps in the result are
+	 * empty.
+	 *
+	 * @param peptides         peptides with {@code getProteins()} already set to their
+	 *                         mapped MAG proteins and {@code getIntensity()} of length
+	 *                         {@code fileCount}
+	 * @param acceptedGenomes  genomes allowed to receive razor peptides and intensity
+	 */
+	public static Result analyzeWithAcceptedGenomes(MetaPeptide[] peptides, int fileCount, String magIdentifier,
+			Set<String> acceptedGenomes) {
+		MetaPeptide[] peps = peptides != null ? peptides : new MetaPeptide[0];
+		String magId = magIdentifier != null ? magIdentifier : "";
+		HashMap<String, Double> genomeScoreMap = new HashMap<>();
+		if (acceptedGenomes != null) {
+			for (String genome : acceptedGenomes) {
+				if (genome != null) {
+					genomeScoreMap.put(genome, 1.0);
+				}
+			}
+		}
+
+		@SuppressWarnings("unchecked")
+		HashSet<String>[] fileSequenceSets = new HashSet[fileCount];
+		for (int i = 0; i < fileCount; i++) {
+			fileSequenceSets[i] = new HashSet<>();
+		}
+		for (MetaPeptide peptide : peps) {
+			if (peptide == null || peptide.getSequence() == null || peptide.getIntensity() == null) {
+				continue;
+			}
+			double[] intensity = peptide.getIntensity();
+			for (int i = 0; i < Math.min(fileCount, intensity.length); i++) {
+				if (intensity[i] > 0) {
+					fileSequenceSets[i].add(peptide.getSequence());
+				}
+			}
+		}
+
+		// decoySymbol == null: the input has no decoys, and both services treat a null
+		// decoy symbol as "nothing is a decoy" (an empty string would match everything
+		// in DdaMagProteinInferenceService.isDecoyProtein).
+		DdaMagProteinInferenceService.Result refinement = DdaMagProteinInferenceService.refineProteins(peps,
+				genomeScoreMap, null, magId, null);
+		DdaMagGenomeScoringService.Result genomeScoring = DdaMagGenomeScoringService.Result
+				.acceptedGenomesOnly(genomeScoreMap);
+		return buildResult(peps, null, magId, new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>(),
+				new HashMap<>(), new int[fileCount], fileSequenceSets, genomeScoring, genomeScoreMap, refinement,
+				new HashMap<>());
 	}
 
 	/**
@@ -355,8 +472,37 @@ public final class DdaMagPostAnalysisService {
 		HashMap<String, HashSet<String>> uniquePepWithILMap = new HashMap<>();
 		ArrayList<MetaPeptide> peptideList = new ArrayList<>();
 
+		// A peptide with no razor protein (razorProteins[i] == null) is one whose
+		// every candidate protein belongs to a genome that did not clear the
+		// confident-genome q-value gate (DdaMagProteinInferenceService.confidentGenomes,
+		// q <= DEFAULT_GENOME_Q_VALUE_THRESHOLD). That is a statement about GENOME
+		// identity confidence, not about whether this peptide was validly
+		// identified and quantified. This loop used to `continue` before adding
+		// such a peptide to peptideList, so it silently vanished from
+		// final_peptides.tsv/razor_proteins.tsv/all_proteins.tsv - undercounting
+		// real, validated, quantified identifications with no trace anywhere.
+		// Measured on the 12mix 2026-09-18 MSFragger-only open-search run: 78.3%
+		// of validated distinct peptides (84,374 of 107,797) were dropped this
+		// way, because their only candidate genomes failed the genome q-value
+		// gate - not because the peptides themselves were unreliable. The genome
+		// failures were not a matter of identification depth: on the 2026-10-08
+		// IPX0003851001 MSFragger-only run the same pattern (2 of 32 genomes,
+		// 76% of peptides unattributed) came from genome scoring receiving
+		// PerEngineClassifier's calibrated score, capped at 12 for most accepted
+		// PSMs, in place of the classifier logit (see OpenSearchMetaPsm), scored
+		// against a null of target peptides that also map to a rev_ protein
+		// rather than the validated decoys (see OpenSearchPostAnalysisTsvExporter).
+		//
+		// The peptide is now always added to peptideList (so it is always
+		// reported, with an empty Razor protein column - see
+		// DdaMagReportExportService.resolveRazorProtein). It still contributes to
+		// no razor/genome/protein-intensity map when it has no razor protein, so
+		// every genome- and protein-level statistic below is computed exactly as
+		// before this change - only whether the peptide ITSELF is reported at all
+		// has changed.
+		int peptidesWithoutConfidentRazorProtein = 0;
 		for (int i = 0; i < peptides.length; i++) {
-			if (i >= razorProteins.length || razorProteins[i] == null || peptides[i] == null) {
+			if (peptides[i] == null) {
 				continue;
 			}
 			String sequence = peptides[i].getSequence();
@@ -364,6 +510,10 @@ public final class DdaMagPostAnalysisService {
 				continue;
 			}
 			peptideList.add(peptides[i]);
+			if (i >= razorProteins.length || razorProteins[i] == null) {
+				peptidesWithoutConfidentRazorProtein++;
+				continue;
+			}
 			boolean hasIorL = hasIorL(sequence);
 			razorPepCountMap.computeIfAbsent(razorProteins[i], k -> new HashSet<>()).add(sequence);
 			if (isMagProtein(razorProteins[i], magIdentifier)) {
@@ -471,7 +621,7 @@ public final class DdaMagPostAnalysisService {
 				allProteinPepCountMap, allProteinPsmCountMap, allProteinScoreMap, totalPepCountMap,
 				razorPepCountMap, uniquePepCountMap, totalPepWithILMap, razorPepWithILMap, uniquePepWithILMap,
 				peptideList, proteins, allProteins,
-				proteinIdMap, razorPsmCountMap, metaProteins);
+				proteinIdMap, razorPsmCountMap, metaProteins, peptidesWithoutConfidentRazorProtein);
 	}
 
 	private static void addAllProteinEvidence(MetaPeptide peptide, String decoySymbol,

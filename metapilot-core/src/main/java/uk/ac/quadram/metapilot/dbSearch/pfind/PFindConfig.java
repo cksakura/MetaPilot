@@ -838,71 +838,7 @@ public class PFindConfig {
 			boolean isAutoRev, double psmFdr, String[] fixedMods, String[] variMods, String enzyme, int missCleavages,
 			int digestType, IsobaricTag tag) {
 
-		StringBuilder fixsb = new StringBuilder();
-		for (int i = 0; i < fixedMods.length; i++) {
-			String mod = fixedMods[i];
-			if (mod != null && !mod.trim().isEmpty()) {
-				String modName = mod.indexOf(" ") > 0 ? mod.substring(0, mod.indexOf(" ")).trim() : mod.trim();
-				fixsb.append(modName).append(";");
-			}
-		}
-
-		if (tag == null) {
-			if (fixsb.length() > 0) {
-				fixsb.deleteCharAt(fixsb.length() - 1);
-			}
-		} else {
-			if (tag.getName().startsWith("TMT2")) {
-				fixsb.append("TMT2plex[AnyN-term]").append(";");
-				fixsb.append("TMT2plex[K]");
-			} else if (tag.getName().startsWith("iodoTMT6")) {
-				fixsb.append("iodoTMT6plex[K]");
-			} else if (tag.getName().startsWith("iTRAQ4")) {
-				fixsb.append("iTRAQ4plex114[AnyN-term]").append(";");
-				fixsb.append("iTRAQ4plex114[K]");
-			} else if (tag.getName().startsWith("iTRAQ8")) {
-				fixsb.append("iTRAQ8plex[AnyN-term]").append(";");
-				fixsb.append("iTRAQ8plex[K]");
-			} else {
-				fixsb.append("TMT6plex[AnyN-term]").append(";");
-				fixsb.append("TMT6plex[K]");
-			}
-		}
-
-		StringBuilder varisb = new StringBuilder();
-		for (int i = 0; i < variMods.length; i++) {
-			String mod = variMods[i];
-			if (mod != null && !mod.trim().isEmpty()) {
-				String modName = mod.indexOf(" ") > 0 ? mod.substring(0, mod.indexOf(" ")).trim() : mod.trim();
-				varisb.append(modName).append(";");
-			}
-		}
-		if (varisb.length() > 0) {
-			varisb.deleteCharAt(varisb.length() - 1);
-		}
-
-		// For open search (open=1), do not write any modification to fixmod/selectmod
-		if (isOpenSearch) {
-			if (this.findMap.containsKey("fixmod")) {
-				this.findMap.get("fixmod").setValue("");
-			}
-			if (this.findMap.containsKey("selectmod")) {
-				this.findMap.get("selectmod").setValue("");
-			}
-			if (this.findMap.containsKey("open")) {
-				this.findMap.get("open").setValue("1");
-			}
-		} else {
-			if (this.findMap.containsKey("fixmod")) {
-				this.findMap.get("fixmod").setValue(fixsb.toString());
-			}
-			if (this.findMap.containsKey("selectmod")) {
-				this.findMap.get("selectmod").setValue(varisb.toString());
-			}
-			if (this.findMap.containsKey("open")) {
-				this.findMap.get("open").setValue("0");
-			}
-		}
+		applyModifications(isOpenSearch, fixedMods, variMods, tag);
 
 		if (this.findMap.containsKey("max_clv_sites")) {
 			this.findMap.get("max_clv_sites").setValue(String.valueOf(missCleavages));
@@ -957,7 +893,7 @@ public class PFindConfig {
 			this.findMap.get("activation_type").setValue(ms2Type);
 		}
 		if (this.findMap.containsKey("modpath")) {
-			this.findMap.get("modpath").setValue(new File(pFindBin, "modification.ini").getAbsolutePath());
+			this.findMap.get("modpath").setValue(modificationIniFor(tag, result).getAbsolutePath());
 		}
 		if (this.findMap.containsKey("aapath")) {
 			this.findMap.get("aapath").setValue(new File(pFindBin, "aa.ini").getAbsolutePath());
@@ -1042,75 +978,7 @@ public class PFindConfig {
 			boolean isAutoRev, double psmFdr, String[] fixedMods, String[] variMods, String enzyme, int missCleavages,
 			int digestType, IsobaricTag tag) {
 
-		StringBuilder fixsb = new StringBuilder();
-		for (int i = 0; i < fixedMods.length; i++) {
-			String mod = fixedMods[i];
-			if (mod != null && !mod.trim().isEmpty()) {
-				// Support both "Carbamidomethyl[C]" (JSON/Unimod) and "Carbamidomethyl[C] 0" (modification.ini) formats
-				String modName = mod.indexOf(" ") > 0 ? mod.substring(0, mod.indexOf(" ")).trim() : mod.trim();
-				fixsb.append(modName).append(";");
-			}
-		}
-		if (tag == null) {
-			if (fixsb.length() > 0) {
-				fixsb.deleteCharAt(fixsb.length() - 1);
-			}
-		} else {
-			if (tag.getName().startsWith("TMT2")) {
-				fixsb.append("TMT2plex[AnyN-term]").append(";");
-				fixsb.append("TMT2plex[K]");
-			} else if (tag.getName().startsWith("TMTpro")) {
-				fixsb.append("TMTpro[AnyN-term]").append(";");
-				fixsb.append("TMTpro[K]");
-			} else if (tag.getName().startsWith("iodoTMT6")) {
-				fixsb.append("iodoTMT6plex[K]");
-			} else if (tag.getName().startsWith("iTRAQ4")) {
-				fixsb.append("iTRAQ4plex114[AnyN-term]").append(";");
-				fixsb.append("iTRAQ4plex114[K]");
-			} else if (tag.getName().startsWith("iTRAQ8")) {
-				fixsb.append("iTRAQ8plex[AnyN-term]").append(";");
-				fixsb.append("iTRAQ8plex[K]");
-			} else {
-				fixsb.append("TMT6plex[AnyN-term]").append(";");
-				fixsb.append("TMT6plex[K]");
-			}
-		}
-
-		StringBuilder varisb = new StringBuilder();
-		for (int i = 0; i < variMods.length; i++) {
-			String mod = variMods[i];
-			if (mod != null && !mod.trim().isEmpty()) {
-				// Support both "Oxidation[M]" (JSON/Unimod) and "Oxidation[M] 0" (modification.ini) formats
-				String modName = mod.indexOf(" ") > 0 ? mod.substring(0, mod.indexOf(" ")).trim() : mod.trim();
-				varisb.append(modName).append(";");
-			}
-		}
-		if (varisb.length() > 0) {
-			varisb.deleteCharAt(varisb.length() - 1);
-		}
-
-		// For open search (open=1), do not write any modification to fixmod/selectmod
-		if (isOpenSearch) {
-			if (this.findMap.containsKey("fixmod")) {
-				this.findMap.get("fixmod").setValue("");
-			}
-			if (this.findMap.containsKey("selectmod")) {
-				this.findMap.get("selectmod").setValue("");
-			}
-			if (this.findMap.containsKey("open")) {
-				this.findMap.get("open").setValue("1");
-			}
-		} else {
-			if (this.findMap.containsKey("fixmod")) {
-				this.findMap.get("fixmod").setValue(fixsb.toString());
-			}
-			if (this.findMap.containsKey("selectmod")) {
-				this.findMap.get("selectmod").setValue(varisb.toString());
-			}
-			if (this.findMap.containsKey("open")) {
-				this.findMap.get("open").setValue("0");
-			}
-		}
+		applyModifications(isOpenSearch, fixedMods, variMods, tag);
 		if (this.findMap.containsKey("len_lower")) {
 			this.findMap.get("len_lower").setValue("6");
 		}
@@ -1168,7 +1036,7 @@ public class PFindConfig {
 			this.findMap.get("activation_type").setValue(ms2Type);
 		}
 		if (this.findMap.containsKey("modpath")) {
-			this.findMap.get("modpath").setValue(new File(pFindBin, "modification.ini").getAbsolutePath());
+			this.findMap.get("modpath").setValue(modificationIniFor(tag, result).getAbsolutePath());
 		}
 		if (this.findMap.containsKey("aapath")) {
 			this.findMap.get("aapath").setValue(new File(pFindBin, "aa.ini").getAbsolutePath());
@@ -1458,73 +1326,7 @@ public class PFindConfig {
 			boolean isAutoRev, double psmFdr, String[] fixedMods, String[] variMods, String enzyme, int missCleavages,
 			int digestType, IsobaricTag tag) {
 
-		StringBuilder fixsb = new StringBuilder();
-		for (int i = 0; i < fixedMods.length; i++) {
-			String mod = fixedMods[i];
-			if (mod != null && !mod.trim().isEmpty()) {
-				String modName = mod.indexOf(" ") > 0 ? mod.substring(0, mod.indexOf(" ")).trim() : mod.trim();
-				fixsb.append(modName).append(";");
-			}
-		}
-		if (tag == null) {
-			if (fixsb.length() > 0) {
-				fixsb.deleteCharAt(fixsb.length() - 1);
-			}
-		} else {
-			if (tag.getName().startsWith("TMT2")) {
-				fixsb.append("TMT2plex[AnyN-term]").append(";");
-				fixsb.append("TMT2plex[K]");
-			} else if (tag.getName().startsWith("TMTpro")) {
-				fixsb.append("TMT2plex[AnyN-term]").append(";");
-				fixsb.append("TMT2plex[K]");
-			} else if (tag.getName().startsWith("iodoTMT6")) {
-				fixsb.append("iodoTMT6plex[K]");
-			} else if (tag.getName().startsWith("iTRAQ4")) {
-				fixsb.append("iTRAQ4plex114[AnyN-term]").append(";");
-				fixsb.append("iTRAQ4plex114[K]");
-			} else if (tag.getName().startsWith("iTRAQ8")) {
-				fixsb.append("iTRAQ8plex[AnyN-term]").append(";");
-				fixsb.append("iTRAQ8plex[K]");
-			} else {
-				fixsb.append("TMT6plex[AnyN-term]").append(";");
-				fixsb.append("TMT6plex[K]");
-			}
-		}
-
-		StringBuilder varisb = new StringBuilder();
-		for (int i = 0; i < variMods.length; i++) {
-			String mod = variMods[i];
-			if (mod != null && !mod.trim().isEmpty()) {
-				String modName = mod.indexOf(" ") > 0 ? mod.substring(0, mod.indexOf(" ")).trim() : mod.trim();
-				varisb.append(modName).append(";");
-			}
-		}
-		if (varisb.length() > 0) {
-			varisb.deleteCharAt(varisb.length() - 1);
-		}
-
-		// For open search (open=1), do not write any modification to fixmod/selectmod
-		if (isOpenSearch) {
-			if (this.findMap.containsKey("fixmod")) {
-				this.findMap.get("fixmod").setValue("");
-			}
-			if (this.findMap.containsKey("selectmod")) {
-				this.findMap.get("selectmod").setValue("");
-			}
-			if (this.findMap.containsKey("open")) {
-				this.findMap.get("open").setValue("1");
-			}
-		} else {
-			if (this.findMap.containsKey("fixmod")) {
-				this.findMap.get("fixmod").setValue(fixsb.toString());
-			}
-			if (this.findMap.containsKey("selectmod")) {
-				this.findMap.get("selectmod").setValue(varisb.toString());
-			}
-			if (this.findMap.containsKey("open")) {
-				this.findMap.get("open").setValue("0");
-			}
-		}
+		applyModifications(isOpenSearch, fixedMods, variMods, tag);
 		if (this.findMap.containsKey("len_lower")) {
 			this.findMap.get("len_lower").setValue("6");
 		}
@@ -1581,7 +1383,7 @@ public class PFindConfig {
 			this.findMap.get("activation_type").setValue(ms2Type);
 		}
 		if (this.findMap.containsKey("modpath")) {
-			this.findMap.get("modpath").setValue(new File(pFindBin, "modification.ini").getAbsolutePath());
+			this.findMap.get("modpath").setValue(modificationIniFor(tag, result).getAbsolutePath());
 		}
 		if (this.findMap.containsKey("aapath")) {
 			this.findMap.get("aapath").setValue(new File(pFindBin, "aa.ini").getAbsolutePath());
@@ -1783,6 +1585,152 @@ public class PFindConfig {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
+	}
+
+	/**
+	 * Writes fixmod / selectmod / open for a search.
+	 * <p>
+	 * Isobaric labels are always fixed modifications, including in open search:
+	 * every peptide carries them, so leaving them out would make pFind explain
+	 * the label mass as an unknown delta on every spectrum. For a cysteine tag
+	 * (iodoTMT) user fixed modifications on C are dropped because the tag
+	 * occupies the cysteine.
+	 */
+	private void applyModifications(boolean isOpenSearch, String[] fixedMods, String[] variMods, IsobaricTag tag) {
+
+		java.util.LinkedHashSet<String> fix = new java.util.LinkedHashSet<String>();
+		if (!isOpenSearch) {
+			for (String name : modNames(fixedMods)) {
+				if (tag != null && tag.isCysteineLabel() && name.endsWith("[C]")) {
+					continue;
+				}
+				fix.add(name);
+			}
+		}
+		if (tag != null) {
+			fix.addAll(Arrays.asList(tag.getPFindFixedMods()));
+		}
+
+		java.util.LinkedHashSet<String> vari = new java.util.LinkedHashSet<String>();
+		if (!isOpenSearch) {
+			vari.addAll(modNames(variMods));
+			// a fixed label must not also be searched as variable
+			vari.removeAll(fix);
+		}
+
+		if (this.findMap.containsKey("fixmod")) {
+			this.findMap.get("fixmod").setValue(String.join(";", fix));
+		}
+		if (this.findMap.containsKey("selectmod")) {
+			this.findMap.get("selectmod").setValue(String.join(";", vari));
+		}
+		if (this.findMap.containsKey("open")) {
+			this.findMap.get("open").setValue(isOpenSearch ? "1" : "0");
+		}
+	}
+
+	/**
+	 * Modification names from GUI / JSON entries; accepts both "Oxidation[M]" and
+	 * the modification.ini style "Oxidation[M] 0".
+	 */
+	private static java.util.List<String> modNames(String[] mods) {
+		java.util.List<String> names = new java.util.ArrayList<String>();
+		if (mods == null) {
+			return names;
+		}
+		for (String mod : mods) {
+			if (mod == null || mod.trim().isEmpty()) {
+				continue;
+			}
+			String m = mod.trim();
+			int space = m.indexOf(' ');
+			names.add(space > 0 ? m.substring(0, space).trim() : m);
+		}
+		return names;
+	}
+
+	/**
+	 * The modification.ini pFind should use for this search. Without a tag, or
+	 * when pFind's own modification.ini already defines every label
+	 * modification, that file is returned unchanged. Otherwise (TMTpro and
+	 * iTRAQ4plex[AnyN-term]/[K] are missing from the pFind 3 ini) a copy with the
+	 * missing entries appended is written into the result folder and returned.
+	 */
+	File modificationIniFor(IsobaricTag tag, String resultDir) {
+		File base = new File(pFindBin, "modification.ini");
+		if (tag == null || !base.exists()) {
+			return base;
+		}
+
+		java.util.List<String> lines;
+		try {
+			lines = java.nio.file.Files.readAllLines(base.toPath(), java.nio.charset.StandardCharsets.ISO_8859_1);
+		} catch (IOException e) {
+			e.printStackTrace();
+			return base;
+		}
+
+		java.util.HashSet<String> defined = new java.util.HashSet<String>();
+		int maxIndex = 0;
+		int countLine = -1;
+		for (int i = 0; i < lines.size(); i++) {
+			String line = lines.get(i).trim();
+			if (line.startsWith("@NUMBER_MODIFICATION=")) {
+				countLine = i;
+			} else if (line.startsWith("name")) {
+				int eq = line.indexOf('=');
+				if (eq > 4) {
+					try {
+						maxIndex = Math.max(maxIndex, Integer.parseInt(line.substring(4, eq)));
+						String value = line.substring(eq + 1).trim();
+						int space = value.lastIndexOf(' ');
+						defined.add(space > 0 ? value.substring(0, space) : value);
+					} catch (NumberFormatException e) {
+						// a modification whose own name starts with "name"; not an index line
+					}
+				}
+			}
+		}
+
+		java.util.LinkedHashMap<String, String> missing = new java.util.LinkedHashMap<String, String>();
+		for (java.util.Map.Entry<String, String> entry : tag.getPFindModDefinitions().entrySet()) {
+			if (!defined.contains(entry.getKey())) {
+				missing.put(entry.getKey(), entry.getValue());
+			}
+		}
+		if (missing.isEmpty()) {
+			return base;
+		}
+
+		java.util.List<String> out = new java.util.ArrayList<String>(lines);
+		int index = maxIndex;
+		for (java.util.Map.Entry<String, String> entry : missing.entrySet()) {
+			index++;
+			out.add("name" + index + "=" + entry.getKey() + " 0");
+			out.add(entry.getKey() + "=" + entry.getValue());
+		}
+		if (countLine >= 0) {
+			out.set(countLine, "@NUMBER_MODIFICATION=" + index);
+		} else {
+			out.add(0, "@NUMBER_MODIFICATION=" + index);
+		}
+
+		File dir = new File(resultDir);
+		if (!dir.exists()) {
+			dir.mkdirs();
+		}
+		// not named modification.ini: PFindTask.cleanPFindResultFolder deletes that name
+		File augmented = new File(dir, "pFind_modification_metapilot.ini");
+		try (PrintWriter writer = new PrintWriter(augmented, "ISO-8859-1")) {
+			for (String line : out) {
+				writer.print(line);
+				writer.print("\r\n");
+			}
+		} catch (IOException e) {
+			e.printStackTrace();
+			return base;
+		}
+		return augmented;
 	}
 
 	private void writeTask(File taskOutput) {

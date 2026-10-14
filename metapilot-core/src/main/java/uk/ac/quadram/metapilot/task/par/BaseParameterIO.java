@@ -12,6 +12,8 @@ import org.json.JSONObject;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.LogManager;
 
+import uk.ac.quadram.metapilot.MetaPilotVersion;
+
 /**
  * Base class for parameter IO operations across all workflows
  * 
@@ -25,6 +27,7 @@ public abstract class BaseParameterIO {
 	// Common file naming constants
 	protected static final String PREFERENCES_DIR = ".metapilot";
 	protected static final String CONFIG_DIR = "config";
+	protected static final String ANALYSIS_PARAMETERS_DESCRIPTION = "Analysis-specific parameters";
 	
 	// Registry for workflow type to ParameterIO class mapping
 	private static final Map<String, Class<? extends BaseParameterIO>> PARAMETER_IO_REGISTRY = new HashMap<>();
@@ -141,7 +144,7 @@ public abstract class BaseParameterIO {
 			}
 
 			File outputFile = new File(outputDirectory, getAnalysisParameterFileName());
-			return saveParametersToFile(parameters, outputFile, "Analysis-specific parameters");
+			return saveParametersToFile(parameters, outputFile, ANALYSIS_PARAMETERS_DESCRIPTION);
 
 		} catch (Exception e) {
 			LOGGER.error("Failed to save analysis parameters to " + outputDirectory, e);
@@ -403,7 +406,14 @@ public abstract class BaseParameterIO {
 		if (description != null) {
 			json.put("description", description);
 		}
+		appendSoftwareVersion(json, description);
 		return json;
+	}
+
+	protected void appendSoftwareVersion(JSONObject json, String description) {
+		if (ANALYSIS_PARAMETERS_DESCRIPTION.equals(description)) {
+			json.put("metapilot_version", MetaPilotVersion.getCurrentVersion());
+		}
 	}
 
 	/**

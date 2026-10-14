@@ -44,6 +44,35 @@ public class PFindPSM extends MetaPSM {
 		this.fragMassShift = fragMassShift;
 	}
 
+	private static final java.util.regex.Pattern PFIND_SITE = java.util.regex.Pattern
+			.compile("[A-Z]|AnyN-term|AnyC-term|ProteinN-term|ProteinC-term");
+
+	/**
+	 * The modification name of one pFind "Modification" entry without its site:
+	 * {@code Oxidation[M]} -> {@code Oxidation}, {@code Cation_Fe[II][D]} ->
+	 * {@code Cation_Fe[II]}, and for an entry carrying pFind's alias group,
+	 * {@code Methyl[S](Ser->Thr[S])} -> {@code Methyl}. The alias case used to be cut
+	 * at the last '[' - inside the alias - giving the unbalanced
+	 * {@code Methyl[S](Ser->Thr} (1,501 of 1,255,000 PSMs in the 12mix pFind psms.tsv).
+	 */
+	static String modificationName(String entry) {
+		String e = entry.trim();
+		if (e.endsWith(")")) {
+			int k = e.indexOf("](");
+			while (k >= 0) {
+				String primary = e.substring(0, k + 1);
+				int open = primary.lastIndexOf('[');
+				if (open > 0 && PFIND_SITE.matcher(primary.substring(open + 1, primary.length() - 1)).matches()) {
+					e = primary;
+					break;
+				}
+				k = e.indexOf("](", k + 1);
+			}
+		}
+		int bracket = e.lastIndexOf('[');
+		return bracket > 0 ? e.substring(0, bracket) : e;
+	}
+
 	private static String buildModSeq(String sequence, String mod) {
 		if (sequence == null) {
 			return "";
@@ -59,7 +88,7 @@ public class PFindPSM extends MetaPSM {
 			int id = mods[i].indexOf(",");
 			if (id > 0) {
 				int loc = Integer.parseInt(mods[i].substring(0, id));
-				String name = mods[i].substring(id + 1, mods[i].lastIndexOf("["));
+				String name = modificationName(mods[i].substring(id + 1));
 				modmap.put(loc, name);
 			}
 		}

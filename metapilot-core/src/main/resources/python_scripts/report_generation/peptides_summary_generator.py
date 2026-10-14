@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -41,20 +42,26 @@ class PeptidesSummaryGenerator(BaseReportGenerator):
         # Use experiment names directly (no file ID mapping needed)
         simple_names = sample_names
 
-        # Peptide counts per raw file
+        print(f"INFO: peptides report: {len(peptides_df)} peptides, {len(intensity_cols)} sample columns",
+              flush=True)
+
+        # Peptide counts per sample (column-wise on numpy arrays; no DataFrame
+        # copies per sample, which cost minutes with thousands of TMT channels)
         if len(intensity_cols) > 0:
             peptide_counts = []
             unique_counts = []
-            
+            sequences = peptides_df['Sequence'].to_numpy() if 'Sequence' in peptides_df.columns else None
+            sequences_unique = sequences is not None and peptides_df['Sequence'].is_unique
+
             for col in intensity_cols:
-                peptide_count = (peptides_df[col] > 0).sum()
+                present = np.nan_to_num(peptides_df[col].to_numpy(dtype='float64'), nan=0.0) > 0
+                peptide_count = int(present.sum())
                 peptide_counts.append(peptide_count)
-                
-                if 'Sequence' in peptides_df.columns:
-                    unique_seqs = peptides_df[peptides_df[col] > 0]['Sequence'].nunique()
-                    unique_counts.append(unique_seqs)
-                else:
+
+                if sequences is None or sequences_unique:
                     unique_counts.append(peptide_count)
+                else:
+                    unique_counts.append(int(pd.unique(sequences[present]).size))
             
             # Color by groups if available
             colors = [group_colors[groups[i]] if groups and group_colors else self.colors['primary'] 
@@ -172,7 +179,6 @@ class PeptidesSummaryGenerator(BaseReportGenerator):
         if mass_col:
             mass_data = peptides_df[mass_col].dropna()
             if len(mass_data) > 0:
-                import numpy as np
                 # Determine optimal number of bins based on data range
                 data_range = mass_data.max() - mass_data.min()
                 num_bins = min(40, max(15, int(data_range / 100)))  # Between 15-40 bins
@@ -189,51 +195,46 @@ class PeptidesSummaryGenerator(BaseReportGenerator):
                              x=0.75, y=0.65, showarrow=False, row=2, col=2)
 
         # 5. MS/MS Count Distribution by Sample (row 4, col 1) - Bar chart
+        # MS/MS counts are per raw file. Label them with the sample names only when
+        # the sample columns are also per raw file (label-free); with isobaric
+        # labels there are several channels per raw file, so use the file names.
         msms_count_cols = [col for col in peptides_df.columns if 'MS/MS count' in col]
         if msms_count_cols and len(simple_names) > 0:
-            msms_totals = []
-            for col in msms_count_cols:
-                total_msms = peptides_df[col].sum()
-                msms_totals.append(total_msms)
-            
+            msms_totals = [float(peptides_df[col].sum()) for col in msms_count_cols]
+            if len(msms_count_cols) == len(intensity_cols):
+                msms_labels = simple_names[:len(msms_totals)]
+            else:
+                msms_labels = [col.replace('MS/MS count', '', 1).strip() for col in msms_count_cols]
+
             if msms_totals:
-                fig.add_trace(go.Bar(x=simple_names[:len(msms_totals)], y=msms_totals, name='MS/MS Count Total',
+                fig.add_trace(go.Bar(x=msms_labels, y=msms_totals, name='MS/MS Count Total',
                                       marker_color=self.colors['primary']), row=4, col=1)
 
         # 6. Intensity Distribution by Sample (row 4, col 2) - Bar chart
         intensity_sample_cols = intensity_cols
         if intensity_sample_cols and len(simple_names) > 0:
-            intensity_totals = []
-            for col in intensity_sample_cols:
-                total_intensity = peptides_df[col].sum()
-                intensity_totals.append(total_intensity)
+            intensity_totals = [float(peptides_df[col].to_numpy().sum(dtype='float64'))
+                                for col in intensity_sample_cols]
             
             if intensity_totals:
                 fig.add_trace(go.Bar(x=simple_names[:len(intensity_totals)], y=intensity_totals, name='Intensity Total',
                                       marker_color=self.colors['secondary']), row=4, col=2)
 
-        # 9. Peptide Intensity Heatmap (row 5, spanning both columns)
+        # 9. Peptide Intensity Heatmap (row 5, spanning both columns): top peptides
+        # by total intensity, limited to HEATMAP_CELL_BUDGET cells (all peptides
+        # when they fit). Writing every peptide x sample cell made TMT reports
+        # (hundreds of millions of cells) run for hours.
+        heatmap_rows_shown = None
         if 'Intensity' in peptides_df.columns and len(intensity_sample_cols) > 0:
-            # Use all peptides ordered by total intensity
-            all_peptides = peptides_df.sort_values('Intensity', ascending=False)
-            
-            # Prepare data for heatmap with log transformation
-            heatmap_data = []
-            import numpy as np
-            
-            for _, row in all_peptides.iterrows():
-                # Get intensity values for each sample
-                sample_intensities = []
-                for col in intensity_sample_cols:
-                    intensity_val = row[col] if pd.notna(row[col]) else 0
-                    # Apply log transformation but keep 0 as 0
-                    if intensity_val > 0:
-                        log_intensity = np.log10(intensity_val)
-                    else:
-                        log_intensity = 0
-                    sample_intensities.append(log_intensity)
-                heatmap_data.append(sample_intensities)
-            
+            heatmap_data, heatmap_rows_shown, heatmap_rows_total = self.top_rows_log_matrix(
+                peptides_df, intensity_sample_cols, 'Intensity')
+            if heatmap_rows_shown < heatmap_rows_total:
+                self.set_subplot_title(fig, 'Peptide Intensity Heatmap',
+                                       f'Peptide Intensity Heatmap (Top {heatmap_rows_shown:,} of '
+                                       f'{heatmap_rows_total:,} Peptides by Total Intensity)')
+            print(f"INFO: peptide heatmap: {heatmap_rows_shown} of {heatmap_rows_total} peptides x "
+                  f"{len(intensity_sample_cols)} samples", flush=True)
+
             # Create heatmap with file IDs
             heatmap_sample_names = simple_names[:len(intensity_sample_cols)] if len(simple_names) > 0 else [f"Sample_{i+1}" for i in range(len(intensity_sample_cols))]
             
@@ -268,7 +269,7 @@ class PeptidesSummaryGenerator(BaseReportGenerator):
         fig.update_yaxes(title_text="Unique Sequences", row=3, col=2)
         fig.update_yaxes(title_text="Total MS/MS Count", row=4, col=1)
         fig.update_yaxes(title_text="Total Intensity", row=4, col=2)
-        fig.update_yaxes(title_text="All Peptides (by Total Intensity)", row=5, col=1)
+        fig.update_yaxes(title_text="Peptides (by Total Intensity)", row=5, col=1)
 
         return fig
 

@@ -364,6 +364,7 @@ public class DDAIgcFragPipeParameterIO extends BaseParameterIO {
         json.put("description", description);
         json.put("created", new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()));
         json.put("parameter_type", "DDAIgcFragPipeParameters");
+        appendSoftwareVersion(json, description);
         return json;
     }
 }

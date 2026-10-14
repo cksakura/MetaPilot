@@ -531,14 +531,14 @@ public final class MetaPilotCliApp {
                 // combined-stage template doesn't need to be installed for this mode.
                 if (!identificationOnly
                         && (p.getCustomCombinedWorkflowPath() == null || p.getCustomCombinedWorkflowPath().isBlank())) {
-                    uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.requireInstalledWorkflow(
-                            fragpipeExe, uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.LFQ_MBR_WORKFLOW);
-                    if (p.isOpenSearch()) {
-                        // Open mode's combined stage is a synthesized hybrid of Open.workflow +
-                        // LFQ-MBR.workflow, so both need to be installed.
-                        uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.requireInstalledWorkflow(
-                                fragpipeExe, uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.OPEN_SEARCH_WORKFLOW);
-                    }
+                    // Open mode's combined stage is Open.workflow with its quant keys
+                    // switched on (see MagFragPipeHeadlessRunner.buildOpenLfqHybridTemplate) -
+                    // confirmed against a FragPipe-authored reference template, it does not
+                    // reference LFQ-MBR.workflow at all, so only Open.workflow is required here.
+                    String combinedTemplate = p.isOpenSearch()
+                            ? uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.OPEN_SEARCH_WORKFLOW
+                            : uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.LFQ_MBR_WORKFLOW;
+                    uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner.requireInstalledWorkflow(fragpipeExe, combinedTemplate);
                 }
             } catch (java.io.IOException e) {
                 System.err.println("ERROR: required FragPipe workflows are not available in the installed FragPipe folder: "
@@ -1043,7 +1043,28 @@ public final class MetaPilotCliApp {
             }
         };
 
+        boolean proteinCatalogueOnly = cmd.hasOption("protein-catalogue-only");
+        boolean proteinCatalogue = proteinCatalogueOnly || cmd.hasOption("protein-catalogue");
+        boolean deleteProteinArchive = !cmd.hasOption("keep-protein-archive");
+        if (proteinCatalogue
+                && !uk.ac.quadram.metapilot.core.variant.ProteinCatalogueInstaller.supports(catalogue)) {
+            System.err.println("ERROR: the UHGP-100 protein catalogue is only available for the "
+                    + uk.ac.quadram.metapilot.core.variant.ProteinCatalogueInstaller.SUPPORTED_CATALOGUE
+                    + " catalogue.");
+            return 2;
+        }
+
         try {
+            if (proteinCatalogueOnly) {
+                uk.ac.quadram.metapilot.core.MGYG.MGYGMagDownloader.prepareProteinCatalogue(
+                        catalogue,
+                        version,
+                        new java.io.File(out),
+                        deleteProteinArchive,
+                        cb
+                );
+                return 0;
+            }
             uk.ac.quadram.metapilot.core.MGYG.MGYGMagDownloader.downloadCatalogue(
                     catalogue,
                     version,
@@ -1051,6 +1072,8 @@ public final class MetaPilotCliApp {
                     resume,
                     threads,
                     waitHours,
+                    proteinCatalogue,
+                    deleteProteinArchive,
                     cb
             );
             return 0;
@@ -1976,6 +1999,23 @@ public final class MetaPilotCliApp {
                 .desc("Maximum hours to wait for downloads (default: 6)")
                 .build());
 
+        opts.addOption(Option.builder()
+                .longOpt("protein-catalogue")
+                .desc("Also download and prepare the UHGP-100 protein catalogue for the pangenome variant check "
+                        + "(human-gut only; 28 GB download, about 45 min preparation, about 23 GB on disk)")
+                .build());
+
+        opts.addOption(Option.builder()
+                .longOpt("protein-catalogue-only")
+                .desc("Only download and prepare the UHGP-100 protein catalogue for an already downloaded "
+                        + "<out>/<catalogue>/<version>")
+                .build());
+
+        opts.addOption(Option.builder()
+                .longOpt("keep-protein-archive")
+                .desc("Keep uhgp-100.tar.gz after preparation (default: delete it)")
+                .build());
+
         return opts;
     }
 
@@ -1992,7 +2032,11 @@ public final class MetaPilotCliApp {
                         + "\n"
                         + "  # Default output (next to jar): <jar-folder>/magdb/<catalogue>/<version>/...\n"
                         + "  java -jar metapilot-cli-1.1.1-shaded.jar mag-download \\\n"
-                        + "    --catalogue human-gut --version v2.0.2 --resume\n",
+                        + "    --catalogue human-gut --version v2.0.2 --resume\n"
+                        + "\n"
+                        + "  # Add the UHGP-100 protein catalogue to an existing database\n"
+                        + "  java -jar metapilot-cli-1.1.1-shaded.jar mag-download \\\n"
+                        + "    --catalogue human-gut --version v2.0.2 --out /data/magdb --protein-catalogue-only\n",
                 true
         );
     }

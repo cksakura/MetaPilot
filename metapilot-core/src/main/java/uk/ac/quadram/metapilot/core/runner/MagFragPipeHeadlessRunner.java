@@ -1,5 +1,6 @@
 package uk.ac.quadram.metapilot.core.runner;
 
+import uk.ac.quadram.metapilot.core.msfragger.MSFraggerHeadlessRunner;
 import uk.ac.quadram.metapilot.core.fragpipe.FragPipeHeadlessRunner;
 import uk.ac.quadram.metapilot.core.fragpipe.FragpipeWorkflowFile;
 import uk.ac.quadram.metapilot.core.mag.MagGenomeSelectionService;
@@ -69,7 +70,30 @@ public final class MagFragPipeHeadlessRunner {
 	private static final String MARKER_SEARCH_DIR = "marker";
 	private static final String SAMPLE_DB_SEARCH_DIR = "sample_db";
 	private static final long BYTES_PER_GB = 1024L * 1024L * 1024L;
+	/**
+	 * Floor, not an estimate: no FragPipe task is given less than this, and the
+	 * parallel-task count is derived from how many such shares the memory budget
+	 * holds. A MAG-scale database has to fit MSFragger's fragment index or it
+	 * falls back to slicing the database and re-reading the spectra per slice,
+	 * so splitting memory too far is slower as well as riskier.
+	 */
 	private static final long MIN_MEMORY_PER_FRAGPIPE_TASK_BYTES = 60L * BYTES_PER_GB;
+
+	/**
+	 * Share of detected memory FragPipe tasks may use between them; the rest is
+	 * left to the OS and to MetaPilot itself. FragPipe's own auto-detection keeps
+	 * a comparable margin (it picks ~112 GB of 128 GB).
+	 */
+	private static final double FRAGPIPE_MEMORY_BUDGET_FRACTION = 0.85;
+
+	/**
+	 * Hard ceiling on concurrent FragPipe instances, whatever the memory allows.
+	 * Concurrent instances share one filesystem, one FragPipe cache and one set of
+	 * MSBooster model files - none of which upstream supports being used this way -
+	 * so past a handful the shared resources, not the CPU, set the pace. Memory
+	 * usually binds first; this only matters on very large machines.
+	 */
+	private static final int MAX_FRAGPIPE_PARALLEL_TASKS = 4;
 	private static final Object DECOY_FASTA_LOCK = new Object();
 
 	// Coarse step-to-percent mapping for cb.onProgress(...), on a 0-100 scale
@@ -282,22 +306,25 @@ public final class MagFragPipeHeadlessRunner {
 		ParallelTaskPlan parallelPlan = determineFragpipeParallelTaskPlan(rawFiles.length, threads, requestedParallelTasks);
 		int parallelTasks = parallelPlan.parallelTasks;
 		int perTaskThreads = Math.max(1, threads / parallelTasks);
-		if (requestedParallelTasks > 0 && parallelTasks > parallelPlan.memorySafeParallelTasks) {
-			cb.onMessage("WARNING: requested FragPipe parallel tasks (" + requestedParallelTasks
-					+ ") exceeds the memory-based safe estimate (" + parallelPlan.memorySafeParallelTasks + "). "
-					+ "Each FragPipe task is assumed to need " + (MIN_MEMORY_PER_FRAGPIPE_TASK_BYTES / BYTES_PER_GB)
-					+ " GB. This may cause the job to fail with an out-of-memory error.");
-		}
-		if (requestedParallelTasks > 0 && parallelTasks > threads) {
-			cb.onMessage("WARNING: requested FragPipe parallel tasks (" + requestedParallelTasks
-					+ ") exceeds totalThreads (" + threads + "); per-task threads will be reduced to 1.");
+		int perTaskRamGb = parallelPlan.perTaskRamGb;
+		if (requestedParallelTasks > 0 && requestedParallelTasks > parallelTasks) {
+			// Clamped rather than merely warned about: the previous behavior let this
+			// field overcommit the machine, and since every FragPipe instance sizes
+			// itself from the whole machine's RAM, the overcommit was silent until a
+			// task died.
+			cb.onMessage("Requested FragPipe parallel tasks (" + requestedParallelTasks + ") reduced to "
+					+ parallelTasks + ": limited by samples (" + rawFiles.length + "), totalThreads (" + threads
+					+ ") and memory (" + parallelPlan.memorySafeParallelTasks + " task(s) of at least "
+					+ (MIN_MEMORY_PER_FRAGPIPE_TASK_BYTES / BYTES_PER_GB) + " GB).");
 		}
 		cb.onMessage("FragPipe parallel plan: totalThreads=" + threads + ", parallelTasks=" + parallelTasks
-				+ ", perTaskThreads=" + perTaskThreads + ", memoryPerTaskGb="
-				+ (MIN_MEMORY_PER_FRAGPIPE_TASK_BYTES / BYTES_PER_GB) + ", memorySafeParallelTasks="
-				+ parallelPlan.memorySafeParallelTasks + ", requestedParallelTasks="
+				+ ", perTaskThreads=" + perTaskThreads + ", perTaskRamGb="
+				+ (perTaskRamGb > 0 ? String.valueOf(perTaskRamGb) : "fragpipe-default")
+				+ ", minRamPerTaskGb=" + (MIN_MEMORY_PER_FRAGPIPE_TASK_BYTES / BYTES_PER_GB)
+				+ ", memorySafeParallelTasks=" + parallelPlan.memorySafeParallelTasks + ", requestedParallelTasks="
 				+ (requestedParallelTasks > 0 ? requestedParallelTasks : "auto") + ", detectedMemoryGb="
-				+ parallelPlan.detectedMemoryGb + ", memorySource=" + parallelPlan.memorySource);
+				+ parallelPlan.detectedMemoryGb + ", budgetMemoryGb=" + parallelPlan.budgetRamGb + ", memorySource="
+				+ parallelPlan.memorySource);
 
 		File basicWorkflowTemplate = resolveBasicWorkflowTemplate(resourcesFragpipe, workflowTemplate, params);
 		// Identification-only runs never reach the combined/quant search, so don't
@@ -308,7 +335,7 @@ public final class MagFragPipeHeadlessRunner {
 		// Step A: per-sample marker searches
 		cb.onMessage("Step A: running marker searches (per sample) ...");
 		runStepAParallel(rawFiles, expNames, params, mag, resourcesFragpipe, basicWorkflowTemplate, searchResultsRoot,
-				parallelTasks, perTaskThreads, cb);
+				parallelTasks, perTaskThreads, perTaskRamGb, cb);
 
 		// Step B: select genomes and build sample-specific FASTAs
 		cb.onMessage("Step B: selecting genomes and building sample-specific FASTAs ...");
@@ -361,7 +388,7 @@ public final class MagFragPipeHeadlessRunner {
 		// Step C: sample-specific searches (per sample)
 		cb.onMessage("Step C: running sample-specific searches (per sample) ...");
 		runStepCParallel(rawFiles, expNames, params, resourcesFragpipe, basicWorkflowTemplate, searchResultsRoot,
-				parallelTasks, perTaskThreads, cb);
+				parallelTasks, perTaskThreads, perTaskRamGb, cb);
 
 		if (identificationOnly) {
 			// Headless identification-only mode: stop here. Skip the combined FASTA
@@ -452,8 +479,9 @@ public final class MagFragPipeHeadlessRunner {
 		cleanupMarkerSearchIntermediates(rawFiles, searchResultsRoot, cb);
 		if (!quanPep.exists() || quanPep.length() == 0) {
 			cb.onMessage("Running combined FragPipe search (quant outputs) ...");
+			// Runs on its own, so it gets the whole budget rather than a per-task share.
 			int exit = FragPipeHeadlessRunner.run(resourcesFragpipe, combinedWorkflow, combinedManifest, combinedDir,
-					threads, cb);
+					threads, parallelPlan.budgetRamGb, cb);
 			if (exit != 0) {
 				throw new IOException("FragPipe combined search failed (exit=" + exit + ")");
 			}
@@ -554,7 +582,7 @@ public final class MagFragPipeHeadlessRunner {
 
 	private static void runStepAParallel(String[] rawFiles, String[] expNames, DDAMagFragPipeParameters params,
 			MagDbItem mag, File resourcesFragpipe, File basicWorkflowTemplate, File searchResultsRoot, int parallelTasks,
-			int perTaskThreads, ProgressCallback cb) throws Exception {
+			int perTaskThreads, int perTaskRamGb, ProgressCallback cb) throws Exception {
 		runParallelSampleTasks(rawFiles, parallelTasks, "FragPipe-StepA", STEP_A_START_PERCENT, STEP_A_END_PERCENT, cb,
 				rawFile -> {
 			File sampleDir = new File(searchResultsRoot, baseNameNoExt(rawFile));
@@ -591,8 +619,10 @@ public final class MagFragPipeHeadlessRunner {
 					.set("protein-prophet.run-protein-prophet", "true").setDatabase(hapTdFasta.getAbsolutePath())
 					.write(wfOut.toPath());
 
-			cb.onMessage("Marker search: " + rawFile + " (threads=" + perTaskThreads + ")");
-			int exit = FragPipeHeadlessRunner.run(resourcesFragpipe, wfOut, manifest, markerDir, perTaskThreads, cb);
+			cb.onMessage("Marker search: " + rawFile + " (threads=" + perTaskThreads + ", ramGb="
+					+ (perTaskRamGb > 0 ? String.valueOf(perTaskRamGb) : "fragpipe-default") + ")");
+			int exit = FragPipeHeadlessRunner.run(resourcesFragpipe, wfOut, manifest, markerDir, perTaskThreads,
+					perTaskRamGb, cb);
 			File psmAfterRun = new File(fragPipeResultFolder(markerDir, expNames, sampleIndex), "psm.tsv");
 			if (exit != 0) {
 				if (hasContent(psmAfterRun)) {
@@ -712,7 +742,7 @@ public final class MagFragPipeHeadlessRunner {
 
 	private static void runStepCParallel(String[] rawFiles, String[] expNames, DDAMagFragPipeParameters params,
 			File resourcesFragpipe, File basicWorkflowTemplate, File searchResultsRoot, int parallelTasks, int perTaskThreads,
-			ProgressCallback cb) throws Exception {
+			int perTaskRamGb, ProgressCallback cb) throws Exception {
 		runParallelSampleTasks(rawFiles, parallelTasks, "FragPipe-StepC", STEP_C_START_PERCENT, STEP_C_END_PERCENT, cb,
 				rawFile -> {
 			File sampleDir = new File(searchResultsRoot, baseNameNoExt(rawFile));
@@ -743,9 +773,10 @@ public final class MagFragPipeHeadlessRunner {
 					.set("protein-prophet.run-protein-prophet", "true").setDatabase(sampleFasta.getAbsolutePath())
 					.write(wfOut.toPath());
 
-			cb.onMessage("Sample-specific search: " + rawFile + " (threads=" + perTaskThreads + ")");
+			cb.onMessage("Sample-specific search: " + rawFile + " (threads=" + perTaskThreads + ", ramGb="
+					+ (perTaskRamGb > 0 ? String.valueOf(perTaskRamGb) : "fragpipe-default") + ")");
 			int exit = FragPipeHeadlessRunner.run(resourcesFragpipe, wfOut, manifest, sampleSearchDir, perTaskThreads,
-					cb);
+					perTaskRamGb, cb);
 			if (exit != 0) {
 				throw new IOException("FragPipe sample-specific search failed (exit=" + exit + ") for " + rawFile);
 			}
@@ -885,22 +916,46 @@ public final class MagFragPipeHeadlessRunner {
 		}
 	}
 
+	/**
+	 * Decides how many FragPipe searches may run at once, and how much memory each
+	 * one gets.
+	 * <p>
+	 * These two numbers have to be decided together. FragPipe's {@code --ram}
+	 * defaults to 0, meaning "FragPipe decides", and what it decides is nearly the
+	 * whole machine - so concurrent instances each claim all of it and one of them
+	 * eventually dies. Splitting a single budget keeps the count honest: the task
+	 * count is how many shares of {@link #MIN_MEMORY_PER_FRAGPIPE_TASK_BYTES} the
+	 * budget holds, and each task is then told its share.
+	 * <p>
+	 * A requested count is clamped to that ceiling rather than overriding it.
+	 * Asking for more parallelism than the memory supports cannot make the run
+	 * faster - beyond the point where MSFragger's index no longer fits, it makes
+	 * it slower - so there is nothing to gain by honoring the request.
+	 */
 	private static ParallelTaskPlan determineFragpipeParallelTaskPlan(int sampleCount, int totalThreads,
 			int requestedParallelTasks) {
 		MemoryInfo memoryInfo = detectFragpipeMemoryLimit();
+		long budgetBytes = memoryInfo.bytes > 0 ? (long) (memoryInfo.bytes * FRAGPIPE_MEMORY_BUDGET_FRACTION) : -1L;
 		int memoryLimitedTasks = 1;
-		if (memoryInfo.bytes > 0) {
-			memoryLimitedTasks = (int) Math.max(1L, memoryInfo.bytes / MIN_MEMORY_PER_FRAGPIPE_TASK_BYTES);
+		if (budgetBytes > 0) {
+			memoryLimitedTasks = (int) Math.max(1L, budgetBytes / MIN_MEMORY_PER_FRAGPIPE_TASK_BYTES);
 		}
 
 		int sampleCap = Math.max(1, sampleCount);
 		int threadCap = Math.max(1, totalThreads);
-		int memorySafeTasks = Math.max(1, Math.min(sampleCap, Math.min(threadCap, memoryLimitedTasks)));
+		int memorySafeTasks = Math.max(1,
+				Math.min(MAX_FRAGPIPE_PARALLEL_TASKS, Math.min(sampleCap, Math.min(threadCap, memoryLimitedTasks))));
 		int parallelTasks = memorySafeTasks;
 		if (requestedParallelTasks > 0) {
-			parallelTasks = Math.max(1, Math.min(sampleCap, requestedParallelTasks));
+			parallelTasks = Math.max(1, Math.min(memorySafeTasks, requestedParallelTasks));
 		}
-		return new ParallelTaskPlan(parallelTasks, memorySafeTasks, memoryInfo.gb(), memoryInfo.source);
+
+		// 0 keeps FragPipe's own behavior when memory could not be detected, rather
+		// than inventing a limit that might be below what the machine can give.
+		long budgetGb = budgetBytes > 0 ? budgetBytes / BYTES_PER_GB : 0L;
+		int perTaskRamGb = budgetGb > 0 ? (int) Math.max(1L, budgetGb / parallelTasks) : 0;
+		return new ParallelTaskPlan(parallelTasks, memorySafeTasks, memoryInfo.gb(), (int) budgetGb, perTaskRamGb,
+				memoryInfo.source);
 	}
 
 	private static MemoryInfo detectFragpipeMemoryLimit() {
@@ -973,12 +1028,19 @@ public final class MagFragPipeHeadlessRunner {
 		final int parallelTasks;
 		final int memorySafeParallelTasks;
 		final long detectedMemoryGb;
+		/** Memory the tasks may use between them, after OS headroom. 0 = undetected. */
+		final int budgetRamGb;
+		/** {@code --ram} for one task. 0 = omit the flag and let FragPipe decide. */
+		final int perTaskRamGb;
 		final String memorySource;
 
-		ParallelTaskPlan(int parallelTasks, int memorySafeParallelTasks, long detectedMemoryGb, String memorySource) {
+		ParallelTaskPlan(int parallelTasks, int memorySafeParallelTasks, long detectedMemoryGb, int budgetRamGb,
+				int perTaskRamGb, String memorySource) {
 			this.parallelTasks = parallelTasks;
 			this.memorySafeParallelTasks = memorySafeParallelTasks;
 			this.detectedMemoryGb = detectedMemoryGb;
+			this.budgetRamGb = budgetRamGb;
+			this.perTaskRamGb = perTaskRamGb;
 			this.memorySource = memorySource;
 		}
 	}
@@ -1021,7 +1083,10 @@ public final class MagFragPipeHeadlessRunner {
 			return workflow;
 		}
 
-		String[] enzyme = getEnzymeInfo(params.getEnzyme());
+		// One mapping for every MSFragger-family workflow; see
+		// MSFraggerHeadlessRunner.enzymeInfo, which also documents the proline-rule
+		// correction this used to carry a second, independently-drifting copy of.
+		String[] enzyme = MSFraggerHeadlessRunner.enzymeInfo(params.getEnzyme());
 		int missedCleavages = Math.max(0, params.getMissCleavages());
 		// Structural overlay only: enzyme/missed-cleavages come from the UI/CLI params
 		// regardless of search mode. Precursor/fragment tolerance, localize_delta_mass,
@@ -1041,37 +1106,6 @@ public final class MagFragPipeHeadlessRunner {
 		return workflow;
 	}
 
-	private static String[] getEnzymeInfo(String enzyme) {
-		String normalized = enzyme == null ? "" : enzyme.trim().toLowerCase();
-		switch (normalized) {
-		case "trypsin":
-			return new String[] { "stricttrypsin", "KR", "" };
-		case "trypsin/p":
-			return new String[] { "trypsin", "KR", "P" };
-		case "chymotrypsin":
-			return new String[] { "chymotrypsin", "FWY", "" };
-		case "gluc":
-			return new String[] { "gluc", "DE", "" };
-		case "gluc-bicarb":
-			return new String[] { "gluc-bicarb", "DE", "" };
-		case "lysc":
-			return new String[] { "lysc", "K", "" };
-		case "lysc-p":
-			return new String[] { "lysc-p", "K", "P" };
-		case "argc":
-			return new String[] { "argc", "R", "" };
-		case "aspn":
-			return new String[] { "aspn", "D", "" };
-		case "elastase":
-			return new String[] { "elastase", "AGILV", "" };
-		case "proteinasek":
-			return new String[] { "proteinasek", "AEFILMVWY", "" };
-		case "thermolysin":
-			return new String[] { "thermolysin", "AEFILMV", "" };
-		default:
-			return new String[] { "stricttrypsin", "KR", "" };
-		}
-	}
 
 	@FunctionalInterface
 	private interface SampleTask {
@@ -1172,11 +1206,10 @@ public final class MagFragPipeHeadlessRunner {
 	/**
 	 * Resolves the combined/quant search template (Step D/E/F). Priority: the
 	 * legacy explicit Java-API override, then {@code customCombinedWorkflowPath},
-	 * then - if the analysis is running in Open search mode - a synthesized
-	 * hybrid of {@link #OPEN_SEARCH_WORKFLOW} (identification/PTM-discovery
-	 * settings) and {@link #LFQ_MBR_WORKFLOW} (cross-experiment MBR
-	 * quantification settings), since FragPipe ships no combined-search template
-	 * that does both. Otherwise the historical default {@link #LFQ_MBR_WORKFLOW}.
+	 * then - if the analysis is running in Open search mode - {@link #OPEN_SEARCH_WORKFLOW}
+	 * with its quantification keys switched on (see {@link #buildOpenLfqHybridTemplate}),
+	 * since FragPipe ships no bundled combined-search template for open search.
+	 * Otherwise the historical default {@link #LFQ_MBR_WORKFLOW}.
 	 */
 	private static File resolveCombinedWorkflowTemplate(File resourcesFragpipe, File explicitWorkflowTemplate,
 			DDAMagFragPipeParameters params) throws IOException {
@@ -1205,27 +1238,69 @@ public final class MagFragPipeHeadlessRunner {
 	}
 
 	/**
-	 * Builds the combined-stage Open-search template by starting from
-	 * {@link #OPEN_SEARCH_WORKFLOW}'s identification/PTM-discovery settings
-	 * (wide precursor window, localize_delta_mass, crystalc, PeptideProphet
-	 * instead of Percolator, PTMShepherd) and overlaying just the
-	 * quantification/combination cluster from {@link #LFQ_MBR_WORKFLOW}
-	 * (label-free quant + IonQuant with match-between-runs), since neither
-	 * bundled FragPipe template covers both on its own. Written to a temp file
-	 * so downstream code can keep treating the result as an ordinary resolved
-	 * template path.
+	 * Builds the combined-stage Open-search template: {@link #OPEN_SEARCH_WORKFLOW}
+	 * with the quantification keys switched on - enable {@code ionquant.run-ionquant},
+	 * disable {@code freequant.run-freequant} (IonQuant supersedes it), set
+	 * {@code msfragger.mass_diff_to_variable_mod=1} so identified mass shifts are
+	 * represented as pseudo-variable-mods IonQuant can track at the
+	 * modified-peptide level, and enable {@code quantitation.run-label-free-quant}
+	 * - FragPipe's "Run MS1 quant" master switch. That last key is required:
+	 * confirmed by an actual failed run (2026-08-30) where
+	 * {@code ionquant.run-ionquant=true} but {@code quantitation.run-label-free-quant=false}
+	 * produced a completed pipeline with IonQuant simply absent from the task
+	 * list - no error, just spectral-counts-only output with all intensities
+	 * zero, matching FragPipe's documented behavior for "no quantification
+	 * method selected". An earlier version of this method left this key
+	 * unchanged based on a user-supplied reference template that turned out to
+	 * be wrong on this point - do not remove it again without re-running an
+	 * actual open-search combined-stage test and checking IonQuant appears in
+	 * the Task Runtimes summary.
+	 * <p>
+	 * Deliberately does NOT touch {@code ionquant.mbr} (stays 0 - match-between-runs
+	 * is left off for open search; this one IS independently confirmed by
+	 * FragPipe's own documentation: "MBR is available for closed search
+	 * workflows"). {@link #LFQ_MBR_WORKFLOW} is not referenced at all - this is a
+	 * targeted edit of Open.workflow, not a merge of the two bundled templates.
+	 * Written to a temp file so downstream code can keep treating the result as
+	 * an ordinary resolved template path.
 	 */
 	static File buildOpenLfqHybridTemplate(File resourcesFragpipe) throws IOException {
 		File openTemplate = requireInstalledWorkflow(resourcesFragpipe, OPEN_SEARCH_WORKFLOW);
-		File lfqTemplate = requireInstalledWorkflow(resourcesFragpipe, LFQ_MBR_WORKFLOW);
-
 		FragpipeWorkflowFile hybrid = FragpipeWorkflowFile.parse(openTemplate.toPath());
-		FragpipeWorkflowFile lfq = FragpipeWorkflowFile.parse(lfqTemplate.toPath());
 
-		hybrid.set("quantitation.run-label-free-quant", lfq.get("quantitation.run-label-free-quant"))
-				.set("ionquant.run-ionquant", lfq.get("ionquant.run-ionquant"))
-				.set("ionquant.mbr", lfq.get("ionquant.mbr"))
-				.set("freequant.run-freequant", lfq.get("freequant.run-freequant"));
+		// mass_diff_to_variable_mod stays at Open.workflow's own default (0,
+		// "No") and ionquant.mbr is left off (0). We tested mode 1 ("Yes,
+		// remove delta mass", needed for IonQuant to quantify open-search
+		// shifted peptides) twice against real data: it cost ~40% of PSMs
+		// overall -- not just the shifted ones, plain unmodified peptides
+		// dropped by the same margin -- because it forces PeptideProphet off
+		// its extended mass model, which recalibrates probability/FDR for the
+		// whole experiment, not just the shifted subset. Mode 2 ("keep delta
+		// mass") avoids that model change but FragPipe's own docs say
+		// quantification of the offsets then needs "additional downstream
+		// processing" that only exists for glycoproteomics-specific searches
+		// (PTM-Shepherd glycan assignments feeding IonQuant directly), not a
+		// general mechanism. Net conclusion: full open-search sensitivity and
+		// quantification of the open-search-specific peptides are not both
+		// achievable with the current FragPipe version, so this template
+		// prioritizes sensitivity/correctness (mode 0) and accepts that
+		// IonQuant will only quantify the normal/unmodified peptide pool, not
+		// the delta-mass-shifted identifications from the open search itself.
+		hybrid.set("ionquant.run-ionquant", "true")
+				.set("freequant.run-freequant", "false")
+				.set("msfragger.mass_diff_to_variable_mod", "0")
+				.set("quantitation.run-label-free-quant", "true")
+				.set("ionquant.mbr", "0");
+
+		// Defensive/future-proofing only: per FragPipe's docs, masswidth is
+		// incompatible with mode 1. Dormant while mode 0 is the default above.
+		if ("1".equals(hybrid.get("msfragger.mass_diff_to_variable_mod"))) {
+			String cmdOpts = hybrid.get("peptide-prophet.cmd-opts");
+			if (cmdOpts != null && cmdOpts.contains("--masswidth")) {
+				String stripped = cmdOpts.replaceAll("\\s*--masswidth\\s+\\S+", "").trim();
+				hybrid.set("peptide-prophet.cmd-opts", stripped);
+			}
+		}
 
 		File out = File.createTempFile("metapilot-open-lfq-mbr-", ".workflow");
 		out.deleteOnExit();

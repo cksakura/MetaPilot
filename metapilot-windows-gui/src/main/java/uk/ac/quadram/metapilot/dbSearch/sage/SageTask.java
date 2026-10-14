@@ -30,6 +30,13 @@ public class SageTask {
 	private static final Logger LOGGER = LogManager.getLogger(SageTask.class);
 	private SimpleDateFormat format = new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss");
 
+	/**
+	 * Prefix on the decoys Sage generates for itself. Must stay in step with
+	 * {@code SageDecoyTags.isEngineDecoy}, which is how the PSM reader decides
+	 * target/decoy in results.sage.tsv.
+	 */
+	public static final String DEFAULT_DECOY_TAG = "REV_";
+
 	private File sageFile;
 	private ArrayList<String> parList;
 	private StringBuilder headsb;
@@ -91,6 +98,10 @@ public class SageTask {
 			String enzyme, int missedCleavages, int minPepLen, int maxPepLen, double fdr, String[] fixedMods,
 			String[] variableMods) {
 		
+		String decoyTag = DEFAULT_DECOY_TAG;
+		boolean generateDecoys = true;
+		int maxVariableMods = 3;
+
 		File resultDir = new File(result);
 		if (!resultDir.exists()) {
 			resultDir.mkdirs();
@@ -106,30 +117,12 @@ public class SageTask {
 			JSONObject database = new JSONObject();
 			database.put("bucket_size", 8192);
 			
-			// Enzyme section
-			JSONObject enzymeObj = new JSONObject();
-			enzymeObj.put("missed_cleavages", missedCleavages);
-			enzymeObj.put("min_len", minPepLen);
-			enzymeObj.put("max_len", maxPepLen);
-			
-			// Only add cleave_at if it's not empty
-			String cleaveAt = getEnzymeCleavageSites(enzyme);
-			if (!cleaveAt.isEmpty()) {
-				enzymeObj.put("cleave_at", cleaveAt);
-			}
-			
-			// Only add restrict if it's not empty
-			String restrict = getEnzymeRestriction(enzyme);
-			if (!restrict.isEmpty()) {
-				enzymeObj.put("restrict", restrict);
-			}
-			
-			database.put("enzyme", enzymeObj);
+			database.put("enzyme", buildEnzyme(enzyme, missedCleavages, minPepLen, maxPepLen));
 			database.put("peptide_min_mass", 500.0);
 			database.put("peptide_max_mass", 5000.0);
 			database.put("ion_kinds", new JSONArray().put("b").put("y"));
 			database.put("min_ion_index", 2);
-			database.put("max_variable_mods", 3);
+			database.put("max_variable_mods", maxVariableMods);
 			
 			// Fixed modifications
 			JSONObject staticMods = new JSONObject();
@@ -162,8 +155,8 @@ public class SageTask {
 				}
 			}
 			database.put("variable_mods", variableModsObj);
-			database.put("decoy_tag", "REV_");
-			database.put("generate_decoys", true);
+			database.put("decoy_tag", decoyTag);
+			database.put("generate_decoys", generateDecoys);
 			database.put("fasta", db);
 			
 			config.put("database", database);
@@ -235,6 +228,16 @@ public class SageTask {
 		String fragmentUnit = parameter.getFragmentToleranceUnit();
 		int minPepLen = parameter.getMinPeptideLength();
 		int maxPepLen = parameter.getMaxPeptideLength();
+		// Sage always generates its own decoys, under its own tag, whatever the
+		// FASTA already contains. The combined database also carries shuf_
+		// sequences, but those are ordinary entries to Sage on purpose: they are
+		// the only decoy population that survives quantification, which keeps
+		// targets only. See SageDecoyTags. So these two are fixed rather than
+		// taken from the parameters - turning generate_decoys off here would
+		// leave Sage with nothing to estimate its own q-values against.
+		String decoyTag = DEFAULT_DECOY_TAG;
+		boolean generateDecoys = true;
+		int maxVariableMods = Math.max(1, parameter.getMaxVariableModifications());
 
 		File resultDir = new File(result);
 		if (!resultDir.exists()) {
@@ -251,30 +254,12 @@ public class SageTask {
 			JSONObject database = new JSONObject();
 			database.put("bucket_size", 8192);
 			
-			// Enzyme section
-			JSONObject enzymeObj = new JSONObject();
-			enzymeObj.put("missed_cleavages", missedCleavages);
-			enzymeObj.put("min_len", minPepLen);
-			enzymeObj.put("max_len", maxPepLen);
-			
-			// Only add cleave_at if it's not empty
-			String cleaveAt = getEnzymeCleavageSites(enzyme);
-			if (!cleaveAt.isEmpty()) {
-				enzymeObj.put("cleave_at", cleaveAt);
-			}
-			
-			// Only add restrict if it's not empty
-			String restrict = getEnzymeRestriction(enzyme);
-			if (!restrict.isEmpty()) {
-				enzymeObj.put("restrict", restrict);
-			}
-			
-			database.put("enzyme", enzymeObj);
+			database.put("enzyme", buildEnzyme(enzyme, missedCleavages, minPepLen, maxPepLen));
 			database.put("peptide_min_mass", 500.0);
 			database.put("peptide_max_mass", 5000.0);
 			database.put("ion_kinds", new JSONArray().put("b").put("y"));
 			database.put("min_ion_index", 2);
-			database.put("max_variable_mods", 3);
+			database.put("max_variable_mods", maxVariableMods);
 			
 			// Fixed modifications - Format: "site:mass" (e.g., "C:57.02146", "peptide n-term:42.0106")
 			JSONObject staticMods = new JSONObject();
@@ -341,8 +326,8 @@ public class SageTask {
 				}
 			}
 			database.put("variable_mods", variableModsObj);
-			database.put("decoy_tag", "REV_");
-			database.put("generate_decoys", true);
+			database.put("decoy_tag", decoyTag);
+			database.put("generate_decoys", generateDecoys);
 			database.put("fasta", db);
 			
 			config.put("database", database);
@@ -376,7 +361,10 @@ public class SageTask {
 				config.put("max_peaks", 150);
 				config.put("max_fragment_charge", 1);
 				config.put("min_matched_peaks", 4);
-				config.put("predict_rt", true);
+				// Not predict_rt: Sage documents it as incompatible with
+				// quant.lfq = true, which turns on global RT alignment and
+				// prediction by itself. Setting both asks for the same feature
+				// twice, from two models.
 			} else {
 				// Open search format - use unit from parameter (usually "da" for precursor, "ppm" for fragment)
 				JSONObject precursorTolObj = new JSONObject();
@@ -444,6 +432,16 @@ public class SageTask {
 		String fragmentUnit = parameter.getFragmentToleranceUnit();
 		int minPepLen = parameter.getMinPeptideLength();
 		int maxPepLen = parameter.getMaxPeptideLength();
+		// Sage always generates its own decoys, under its own tag, whatever the
+		// FASTA already contains. The combined database also carries shuf_
+		// sequences, but those are ordinary entries to Sage on purpose: they are
+		// the only decoy population that survives quantification, which keeps
+		// targets only. See SageDecoyTags. So these two are fixed rather than
+		// taken from the parameters - turning generate_decoys off here would
+		// leave Sage with nothing to estimate its own q-values against.
+		String decoyTag = DEFAULT_DECOY_TAG;
+		boolean generateDecoys = true;
+		int maxVariableMods = Math.max(1, parameter.getMaxVariableModifications());
 
 		File resultDir = new File(result);
 		if (!resultDir.exists()) {
@@ -460,30 +458,12 @@ public class SageTask {
 			JSONObject database = new JSONObject();
 			database.put("bucket_size", 8192);
 			
-			// Enzyme section
-			JSONObject enzymeObj = new JSONObject();
-			enzymeObj.put("missed_cleavages", missedCleavages);
-			enzymeObj.put("min_len", minPepLen);
-			enzymeObj.put("max_len", maxPepLen);
-			
-			// Only add cleave_at if it's not empty
-			String cleaveAt = getEnzymeCleavageSites(enzyme);
-			if (!cleaveAt.isEmpty()) {
-				enzymeObj.put("cleave_at", cleaveAt);
-			}
-			
-			// Only add restrict if it's not empty
-			String restrict = getEnzymeRestriction(enzyme);
-			if (!restrict.isEmpty()) {
-				enzymeObj.put("restrict", restrict);
-			}
-			
-			database.put("enzyme", enzymeObj);
+			database.put("enzyme", buildEnzyme(enzyme, missedCleavages, minPepLen, maxPepLen));
 			database.put("peptide_min_mass", 500.0);
 			database.put("peptide_max_mass", 5000.0);
 			database.put("ion_kinds", new JSONArray().put("b").put("y"));
 			database.put("min_ion_index", 2);
-			database.put("max_variable_mods", 3);
+			database.put("max_variable_mods", maxVariableMods);
 			
 			// Fixed modifications - Format: "site:mass" (e.g., "C:57.02146", "peptide n-term:42.0106")
 			JSONObject staticMods = new JSONObject();
@@ -550,8 +530,8 @@ public class SageTask {
 				}
 			}
 			database.put("variable_mods", variableModsObj);
-			database.put("decoy_tag", "REV_");
-			database.put("generate_decoys", true);
+			database.put("decoy_tag", decoyTag);
+			database.put("generate_decoys", generateDecoys);
 			database.put("fasta", db);
 			
 			config.put("database", database);
@@ -585,7 +565,10 @@ public class SageTask {
 				config.put("max_peaks", 150);
 				config.put("max_fragment_charge", 1);
 				config.put("min_matched_peaks", 4);
-				config.put("predict_rt", true);
+				// Not predict_rt: Sage documents it as incompatible with
+				// quant.lfq = true, which turns on global RT alignment and
+				// prediction by itself. Setting both asks for the same feature
+				// twice, from two models.
 			} else {
 				// Open search format - use unit from parameter (usually "da" for precursor, "ppm" for fragment)
 				JSONObject precursorTolObj = new JSONObject();
@@ -648,6 +631,10 @@ public class SageTask {
 			double fragmentTol, String enzyme, int missedCleavages, String[] fixedMods, String[] variableMods,
 			boolean isQuant) {
 		
+		String decoyTag = DEFAULT_DECOY_TAG;
+		boolean generateDecoys = true;
+		int maxVariableMods = 3;
+
 		File resultDir = new File(result);
 		if (!resultDir.exists()) {
 			resultDir.mkdirs();
@@ -663,30 +650,12 @@ public class SageTask {
 			JSONObject database = new JSONObject();
 			database.put("bucket_size", 8192);
 			
-			// Enzyme section
-			JSONObject enzymeObj = new JSONObject();
-			enzymeObj.put("missed_cleavages", missedCleavages);
-			enzymeObj.put("min_len", 7);
-			enzymeObj.put("max_len", 50);
-			
-			// Only add cleave_at if it's not empty
-			String cleaveAt = getEnzymeCleavageSites(enzyme);
-			if (!cleaveAt.isEmpty()) {
-				enzymeObj.put("cleave_at", cleaveAt);
-			}
-			
-			// Only add restrict if it's not empty
-			String restrict = getEnzymeRestriction(enzyme);
-			if (!restrict.isEmpty()) {
-				enzymeObj.put("restrict", restrict);
-			}
-			
-			database.put("enzyme", enzymeObj);
+			database.put("enzyme", buildEnzyme(enzyme, missedCleavages, 7, 50));
 			database.put("peptide_min_mass", 500.0);
 			database.put("peptide_max_mass", 5000.0);
 			database.put("ion_kinds", new JSONArray().put("b").put("y"));
 			database.put("min_ion_index", 2);
-			database.put("max_variable_mods", 3);
+			database.put("max_variable_mods", maxVariableMods);
 			
 			// Fixed modifications
 			JSONObject staticMods = new JSONObject();
@@ -719,8 +688,8 @@ public class SageTask {
 				}
 			}
 			database.put("variable_mods", variableModsObj);
-			database.put("decoy_tag", "REV_");
-			database.put("generate_decoys", true);
+			database.put("decoy_tag", decoyTag);
+			database.put("generate_decoys", generateDecoys);
 			database.put("fasta", db);
 			
 			config.put("database", database);
@@ -754,7 +723,10 @@ public class SageTask {
 				config.put("max_peaks", 150);
 				config.put("max_fragment_charge", 1);
 				config.put("min_matched_peaks", 4);
-				config.put("predict_rt", true);
+				// Not predict_rt: Sage documents it as incompatible with
+				// quant.lfq = true, which turns on global RT alignment and
+				// prediction by itself. Setting both asks for the same feature
+				// twice, from two models.
 			} else {
 				// Open search format - use da for precursor, ppm for fragment
 				JSONObject precursorTolObj = new JSONObject();
@@ -795,6 +767,48 @@ public class SageTask {
 		}
 		
 		addTask(configFile);
+	}
+
+	/**
+	 * Builds Sage's {@code database.enzyme} object.
+	 * <p>
+	 * Both {@code cleave_at} and {@code restrict} are written unconditionally,
+	 * which the previous version did not do. Omitting them does not mean "no
+	 * value" to Sage - it means "use my default", and Sage's defaults are
+	 * {@code cleave_at: "KR"} and {@code restrict: "P"}. So a non-specific digest
+	 * used to come out tryptic, and every non-tryptic enzyme used to acquire a
+	 * proline restriction nobody asked for. {@code restrict} is written as JSON
+	 * null when there is none, which is how Sage is told not to restrict.
+	 * <p>
+	 * {@code c_terminal} is false for the N-terminal cleaving enzymes (Asp-N,
+	 * Lys-N): they cut before the residue, not after it.
+	 */
+	private JSONObject buildEnzyme(String enzyme, int missedCleavages, int minPepLen, int maxPepLen) {
+		JSONObject enzymeObj = new JSONObject();
+		enzymeObj.put("missed_cleavages", missedCleavages);
+		enzymeObj.put("min_len", minPepLen);
+		enzymeObj.put("max_len", maxPepLen);
+		enzymeObj.put("cleave_at", getEnzymeCleavageSites(enzyme));
+
+		String restrict = getEnzymeRestriction(enzyme);
+		enzymeObj.put("restrict", restrict == null || restrict.isEmpty() ? JSONObject.NULL : restrict);
+		enzymeObj.put("c_terminal", isCTerminalCleaving(enzyme));
+		return enzymeObj;
+	}
+
+	/** False for enzymes that cleave N-terminal to their recognition residue. */
+	private boolean isCTerminalCleaving(String enzyme) {
+		if (enzyme == null) {
+			return true;
+		}
+		switch (enzyme.toLowerCase().trim()) {
+		case "asp-n":
+		case "aspartyl endopeptidase":
+		case "lys-n":
+			return false;
+		default:
+			return true;
+		}
 	}
 
 	/**
@@ -876,6 +890,8 @@ public class SageTask {
 		case "trypsin":
 		case "trypsin/p":
 			return "KR";
+		case "lys-n":
+			return "K";
 		case "lys-c":
 		case "lysyl endopeptidase":
 			return "K";
@@ -904,7 +920,9 @@ public class SageTask {
 			return "E";
 		case "no enzyme":
 		case "unspecific":
-			return ""; // Return empty string - will be omitted from JSON
+			// Empty cleave_at is how Sage is told to digest non-specifically; it is
+			// written out rather than omitted, or Sage would fall back to "KR".
+			return "";
 		default:
 			LOGGER.warn("Unknown enzyme: " + enzyme + ", using default trypsin cleavage sites (KR)");
 			return "KR";
@@ -919,11 +937,15 @@ public class SageTask {
 			return "P";
 
 		switch (enzyme.toLowerCase().trim()) {
-		case "trypsin/p":
-			return "P";
+		// Trypsin does not cleave before proline; Trypsin/P is the variant that
+		// does. These two were the wrong way round.
 		case "trypsin":
+			return "P";
+		case "trypsin/p":
+			return "";
 		case "lys-c":
 		case "lysyl endopeptidase":
+		case "lys-n":
 		case "arg-c":
 		case "arginyl endopeptidase":
 		case "glu-c":
@@ -937,10 +959,10 @@ public class SageTask {
 		case "pepsin":
 		case "clostripain":
 		case "staph protease":
-			return ""; // Return empty string - will be omitted from JSON
+			return ""; // no restriction - written as JSON null by buildEnzyme
 		case "no enzyme":
 		case "unspecific":
-			return ""; // Return empty string - will be omitted from JSON
+			return ""; // no restriction - written as JSON null by buildEnzyme
 		default:
 			LOGGER.warn("Unknown enzyme: " + enzyme + ", using default restriction (P)");
 			return "P";

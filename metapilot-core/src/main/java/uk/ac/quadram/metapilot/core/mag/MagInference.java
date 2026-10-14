@@ -259,15 +259,7 @@ public final class MagInference {
             int charge = psm.getCharge();
             double score = psm.getScore();
             String[] pros = psm.getProteins();
-            boolean isDecoy = false;
-            if (pros != null) {
-                for (String pro : pros) {
-                    if (pro != null && pro.startsWith(revIdentifier)) {
-                        isDecoy = true;
-                        break;
-                    }
-                }
-            }
+            boolean isDecoy = DdaMagGenomeScoringService.isDecoyOnly(pros, revIdentifier);
             String key = modseq + "|" + charge + "|" + isDecoy;
             DdaPeptideEvidence ev = peptideMap.get(key);
             if (ev == null) {

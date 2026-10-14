@@ -14,6 +14,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -28,6 +29,72 @@ public final class DdaMagGenomeScoringService {
 	private static final boolean DDA_GENOME_SCORE_INTENSITY_ONLY = false;
 
 	private DdaMagGenomeScoringService() {
+	}
+
+	/**
+	 * True when every protein of a PSM is a decoy. A target sequence that also
+	 * occurs in a reversed protein (short or near-palindromic tryptic peptides
+	 * such as ARIPLAK) is target evidence with a target-level score; counting it
+	 * as a decoy puts target scores into the resampling null. On PXD050781 that
+	 * contamination (553 such peptides, 68 at target-level weight) moved genome
+	 * p_emp from 0.004 to 0.18 and dropped 18 genomes from the MSFragger + Sage run.
+	 */
+	static boolean isDecoyOnly(String[] proteins, String decoyPrefix) {
+		if (proteins == null || decoyPrefix == null || decoyPrefix.isEmpty()) {
+			return false;
+		}
+		boolean anyDecoy = false;
+		for (String protein : proteins) {
+			if (protein == null || protein.isEmpty()) {
+				continue;
+			}
+			if (!protein.startsWith(decoyPrefix)) {
+				return false;
+			}
+			anyDecoy = true;
+		}
+		return anyDecoy;
+	}
+
+	/** Scoring unit: the base peptide with I and L merged, so charge states and modified forms count once. */
+	static String peptideKey(MetaPSM psm) {
+		String seq = psm.getBaseSequence();
+		if (seq == null || seq.isEmpty()) {
+			seq = stripModifications(psm.getModSeq());
+		}
+		return seq.replace('I', 'L');
+	}
+
+	private static String stripModifications(String modseq) {
+		StringBuilder sb = new StringBuilder(modseq.length());
+		int depth = 0;
+		for (int i = 0; i < modseq.length(); i++) {
+			char c = modseq.charAt(i);
+			if (c == '[' || c == '(') {
+				depth++;
+			} else if (c == ']' || c == ')') {
+				depth = Math.max(0, depth - 1);
+			} else if (depth == 0 && c >= 'A' && c <= 'Z') {
+				sb.append(c);
+			}
+		}
+		return sb.toString();
+	}
+
+	private static String uniqueDecoyGenome(Set<String> proteins, String revIdentifier, String magIdentifier) {
+		String genome = null;
+		for (String pro : proteins) {
+			if (!pro.startsWith(revIdentifier)) {
+				continue;
+			}
+			String g = (magIdentifier + pro.substring(revIdentifier.length())).split("_")[0];
+			if (genome == null) {
+				genome = g;
+			} else if (!genome.equals(g)) {
+				return null;
+			}
+		}
+		return genome;
 	}
 
 	public static final class Result {
@@ -58,6 +125,26 @@ public final class DdaMagGenomeScoringService {
 			this.genomeCountAfterFiltering = genomeCountAfterFiltering;
 			this.refinedDecoyGenomeLogIntensities = refinedDecoyGenomeLogIntensities;
 			this.diaStyle = diaStyle;
+		}
+
+		/**
+		 * Result for input on which no genome scoring can run (no PSMs, scores or
+		 * decoys - e.g. a plain peptide intensity table). The caller has already
+		 * decided the accepted genome set; every entry of the map is accepted and no
+		 * statistics (S / p_emp / q_value) are attached.
+		 */
+		public static Result acceptedGenomesOnly(HashMap<String, Double> acceptedGenomeScoreMap) {
+			HashMap<String, Double> map = acceptedGenomeScoreMap != null ? acceptedGenomeScoreMap : new HashMap<>();
+			return new Result(map, null, null, 0, 0, 0, 0, 0, map.size(), new double[0], false);
+		}
+
+		/** Result carrying {@link GenomeEvidenceTest} statistics ({@code {kept peptides, p, q}} per genome). */
+		public static Result fromGenomeEvidence(HashMap<String, Double> genomeScoreMap,
+				HashMap<String, double[]> genomeStats) {
+			int accepted = DdaMagProteinInferenceService.confidentGenomes(genomeScoreMap, genomeStats,
+					DdaMagProteinInferenceService.DEFAULT_GENOME_Q_VALUE_THRESHOLD).size();
+			return new Result(genomeScoreMap, genomeStats, null, 0, 0, genomeStats.size(), 0, 0, accepted,
+					new double[0], true);
 		}
 	}
 
@@ -94,13 +181,7 @@ public final class DdaMagGenomeScoringService {
 				continue;
 			}
 			String[] proteins = psm.getProteins();
-			boolean isDecoy = false;
-			for (String protein : proteins != null ? proteins : new String[0]) {
-				if (protein != null && !decoyPrefix.isEmpty() && protein.startsWith(decoyPrefix)) {
-					isDecoy = true;
-					break;
-				}
-			}
+			boolean isDecoy = isDecoyOnly(proteins, decoyPrefix);
 			String key = modseq + "|" + psm.getCharge() + "|" + isDecoy;
 			DdaPeptideEvidence ev = peptideMap.get(key);
 			if (ev == null) {
@@ -438,53 +519,70 @@ public final class DdaMagGenomeScoringService {
 			}
 		}
 
-		HashMap<String, DdaPeptideEvidence> peptideMap = new HashMap<>();
+		// Intensity is per modified form; everything else is per peptide unit
+		// (peptideKey), which takes its strongest form's weight.
+		HashMap<String, DdaPeptideEvidence> formMap = new HashMap<>();
+		HashMap<String, DdaPeptideEvidence> unitMap = new HashMap<>();
 		for (MetaPSM psm : psms) {
+			if (psm == null) continue;
 			String modseq = psm.getModSeq();
 			if (modseq == null || modseq.isEmpty()) continue;
-			int charge = psm.getCharge();
 			double score = psm.getScore();
 			String[] pros = psm.getProteins();
-			boolean isDecoy = false;
-			if (pros != null) {
-				for (String pro : pros) {
-					if (pro != null && pro.startsWith(revIdentifier)) {
-						isDecoy = true;
-						break;
-					}
-				}
-			}
-			String key = modseq + "|" + charge + "|" + isDecoy;
-			DdaPeptideEvidence ev = peptideMap.get(key);
-			if (ev == null) {
-				ev = new DdaPeptideEvidence();
-				ev.bestScore = score;
-				ev.totalIntensity = 0;
-				ev.isDecoy = isDecoy;
-				ev.proteins = new HashSet<>();
+			boolean isDecoy = isDecoyOnly(pros, revIdentifier);
+			String unitKey = peptideKey(psm) + "|" + isDecoy;
+			String formKey = modseq + "|" + isDecoy;
+			DdaPeptideEvidence form = formMap.get(formKey);
+			if (form == null) {
+				form = new DdaPeptideEvidence();
+				form.bestScore = score;
+				form.isDecoy = isDecoy;
+				form.unitKey = unitKey;
 				MetaPeptide pep = modSeqToPeptide.get(modseq);
 				if (pep != null && pep.getIntensity() != null) {
-					ev.totalIntensity = MathTool.getTotal(pep.getIntensity());
+					form.totalIntensity = MathTool.getTotal(pep.getIntensity());
 				}
-				peptideMap.put(key, ev);
+				formMap.put(formKey, form);
 			} else {
-				ev.bestScore = Math.max(ev.bestScore, score);
+				form.bestScore = Math.max(form.bestScore, score);
+			}
+			DdaPeptideEvidence unit = unitMap.get(unitKey);
+			if (unit == null) {
+				unit = new DdaPeptideEvidence();
+				unit.bestScore = score;
+				unit.isDecoy = isDecoy;
+				unitMap.put(unitKey, unit);
+			} else {
+				unit.bestScore = Math.max(unit.bestScore, score);
 			}
 			if (pros != null) {
 				for (String pro : pros) {
-					if (pro != null && !pro.isEmpty()) ev.proteins.add(pro);
+					if (pro != null && !pro.isEmpty()) unit.proteins.add(pro);
 				}
 			}
 		}
 
 		double minLog = Double.MAX_VALUE, maxLog = -Double.MAX_VALUE;
-		for (DdaPeptideEvidence ev : peptideMap.values()) {
+		for (DdaPeptideEvidence ev : formMap.values()) {
 			double logI = Math.log(1.0 + Math.max(0, ev.totalIntensity)) / Math.log(2.0);
 			minLog = Math.min(minLog, logI);
 			maxLog = Math.max(maxLog, logI);
 		}
 		double logRange = Math.max(1e-10, maxLog - minLog);
 		final double cap = 50.0;
+		for (DdaPeptideEvidence form : formMap.values()) {
+			double eRaw = Math.min(cap, Math.max(0, form.bestScore));
+			double e = DDA_GENOME_SCORE_INTENSITY_ONLY ? 1.0 : eRaw;
+			double logI = Math.log(1.0 + Math.max(0, form.totalIntensity)) / Math.log(2.0);
+			double intensityFactor = 0.5 + 0.5 * (logI - minLog) / logRange;
+			DdaPeptideEvidence unit = unitMap.get(form.unitKey);
+			if (e * intensityFactor > unit.weight) {
+				unit.weight = e * intensityFactor;
+				unit.eRaw = eRaw;
+				unit.e = e;
+				unit.intensityFactor = intensityFactor;
+			}
+		}
 		ArrayList<Double> decoyEPool = new ArrayList<>();
 		HashMap<String, DdaGenomePeptideEntry> genomePeptides = new HashMap<>();
 		int nTargetPeptides = 0;
@@ -495,19 +593,22 @@ public final class DdaMagGenomeScoringService {
 		ArrayList<Double> targetERaw = new ArrayList<>();
 		ArrayList<Double> decoyERaw = new ArrayList<>();
 
-		for (Map.Entry<String, DdaPeptideEvidence> ent : peptideMap.entrySet()) {
+		HashMap<String, ArrayList<Double>> decoyGenomeWeights = new HashMap<>();
+		for (Map.Entry<String, DdaPeptideEvidence> ent : unitMap.entrySet()) {
 			DdaPeptideEvidence ev = ent.getValue();
-			double eRaw = Math.min(cap, Math.max(0, ev.bestScore));
-			double e = DDA_GENOME_SCORE_INTENSITY_ONLY ? 1.0 : eRaw;
-			double logI = Math.log(1.0 + Math.max(0, ev.totalIntensity)) / Math.log(2.0);
-			double norm = (logI - minLog) / logRange;
-			double intensityFactor = 0.5 + 0.5 * norm;
-			String modseq = ent.getKey().split("\\|", 2)[0];
+			double eRaw = ev.eRaw;
+			double e = ev.e;
+			double intensityFactor = ev.intensityFactor;
+			String peptide = ent.getKey().split("\\|", 2)[0];
 
 			if (ev.isDecoy) {
 				nDecoyPeptides++;
 				decoyERaw.add(eRaw);
-				decoyEPool.add(e * intensityFactor);
+				decoyEPool.add(ev.weight);
+				String decoyGenome = uniqueDecoyGenome(ev.proteins, revIdentifier, magIdentifier);
+				if (decoyGenome != null) {
+					decoyGenomeWeights.computeIfAbsent(decoyGenome, g -> new ArrayList<>()).add(ev.weight);
+				}
 				continue;
 			}
 			targetERaw.add(eRaw);
@@ -536,7 +637,7 @@ public final class DdaMagGenomeScoringService {
 
 			for (String g : genomes) {
 				DdaWeightedScore wps = new DdaWeightedScore();
-				wps.seq = modseq;
+				wps.seq = peptide;
 				wps.e = e;
 				wps.w = w;
 				wps.intensityFactor = intensityFactor;
@@ -589,6 +690,29 @@ public final class DdaMagGenomeScoringService {
 			}
 			double pemp = (1.0 + count) / (1.0 + B);
 			pempMap.put(g, pemp);
+		}
+
+		// Reversed proteomes through the same statistic, for calibration only.
+		HashMap<String, Double> decoyGenomeScorePMap = new HashMap<>();
+		HashMap<String, Integer> decoyGenomeScoreNMap = new HashMap<>();
+		for (Map.Entry<String, ArrayList<Double>> ent : decoyGenomeWeights.entrySet()) {
+			ArrayList<Double> weights = ent.getValue();
+			weights.sort(Collections.reverseOrder());
+			int M = weights.size();
+			int ng = Math.min(k, M);
+			double Sg = 0;
+			for (int i = 0; i < ng; i++) Sg += weights.get(i);
+			double[] draws = new double[M];
+			int count = 0;
+			for (int b = 0; b < B; b++) {
+				for (int i = 0; i < M; i++) draws[i] = decoyArr[rnd.nextInt(decoyLen)];
+				Arrays.sort(draws);
+				double Sb = 0;
+				for (int i = M - 1; i >= M - ng; i--) Sb += draws[i];
+				if (Sb >= Sg) count++;
+			}
+			decoyGenomeScorePMap.put(ent.getKey(), (1.0 + count) / (1.0 + B));
+			decoyGenomeScoreNMap.put(ent.getKey(), M);
 		}
 
 		String[] genomes = pempMap.keySet().toArray(new String[0]);
@@ -655,6 +779,8 @@ public final class DdaMagGenomeScoringService {
 		runinfo.targetERaw = targetERaw;
 		runinfo.decoyERaw = decoyERaw;
 		runinfo.useIntensityOnly = DDA_GENOME_SCORE_INTENSITY_ONLY;
+		runinfo.decoyGenomeScorePMap = decoyGenomeScorePMap;
+		runinfo.decoyGenomeScoreNMap = decoyGenomeScoreNMap;
 
 		return new Result(result, statsForTaxonomy, runinfo, nTargetPeptides, nDecoyPeptides, 0, 0, decoyPoolSize,
 				result.size(), new double[0], true);
@@ -700,6 +826,9 @@ public final class DdaMagGenomeScoringService {
 		public ArrayList<Double> targetERaw;
 		public ArrayList<Double> decoyERaw;
 		public boolean useIntensityOnly;
+		/** Reversed proteomes through the genome statistic: p-value and unique decoy peptide count. */
+		public HashMap<String, Double> decoyGenomeScorePMap = new HashMap<>();
+		public HashMap<String, Integer> decoyGenomeScoreNMap = new HashMap<>();
 	}
 
 	private static final class DdaPeptideEvidence {
@@ -707,6 +836,12 @@ public final class DdaMagGenomeScoringService {
 		double totalIntensity;
 		boolean isDecoy;
 		HashSet<String> proteins = new HashSet<>();
+		/** Genome scoring only: the peptide unit a modified form belongs to, and the unit's weight. */
+		String unitKey;
+		double weight = -1;
+		double eRaw;
+		double e;
+		double intensityFactor;
 	}
 
 	public static final class DdaWeightedScore {

@@ -77,8 +77,17 @@ public final class MagResultLayoutUtil {
 	 * @param resultRoot e.g. {@code <result>/pfind_MAG_search}
 	 */
 	public static File resolveSearchResultsRoot(File resultRoot) {
+		return resolveSearchResultsRoot(resultRoot, Collections.emptySet());
+	}
+
+	/**
+	 * As {@link #resolveSearchResultsRoot(File)}, leaving the workflow's own
+	 * top-level folders {@code workflowDirNames} where they are rather than
+	 * taking them for legacy sample folders.
+	 */
+	public static File resolveSearchResultsRoot(File resultRoot, Set<String> workflowDirNames) {
 		File searchResultsDir = new File(resultRoot, SEARCH_RESULTS_DIR_NAME);
-		migrateLegacyFlatLayoutIfNeeded(resultRoot, searchResultsDir);
+		migrateLegacyFlatLayoutIfNeeded(resultRoot, searchResultsDir, workflowDirNames);
 		if (!searchResultsDir.exists()) {
 			searchResultsDir.mkdirs();
 		}
@@ -108,6 +117,11 @@ public final class MagResultLayoutUtil {
 	 * same result folder at once is unsupported regardless of this method.)
 	 */
 	public static void migrateLegacyFlatLayoutIfNeeded(File resultRoot, File searchResultsDir) {
+		migrateLegacyFlatLayoutIfNeeded(resultRoot, searchResultsDir, Collections.emptySet());
+	}
+
+	private static void migrateLegacyFlatLayoutIfNeeded(File resultRoot, File searchResultsDir,
+			Set<String> workflowDirNames) {
 		if (resultRoot == null || !resultRoot.isDirectory()) {
 			return;
 		}
@@ -119,7 +133,7 @@ public final class MagResultLayoutUtil {
 
 		for (File child : children) {
 			String name = child.getName();
-			if (FIXED_TOP_LEVEL_DIR_NAMES.contains(name)) {
+			if (FIXED_TOP_LEVEL_DIR_NAMES.contains(name) || workflowDirNames.contains(name)) {
 				continue;
 			}
 

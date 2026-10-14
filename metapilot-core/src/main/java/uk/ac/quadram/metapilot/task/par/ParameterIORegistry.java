@@ -32,6 +32,8 @@ public final class ParameterIORegistry {
         BaseParameterIO.registerParameterIO(WorkflowType.DDA_MAG_PFIND.getAnalysisType(), DDAMagPfindParameterIO.class);
         BaseParameterIO.registerParameterIO(WorkflowType.DDA_MAG_FRAGPIPE.getAnalysisType(), DDAMagFragPipeParameterIO.class);
         BaseParameterIO.registerParameterIO(WorkflowType.DDA_MAG_SAGE.getAnalysisType(), DDAMagSageParameterIO.class);
+        BaseParameterIO.registerParameterIO(WorkflowType.DDA_MAG_OPENSEARCH.getAnalysisType(),
+                uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagOpenSearchParameterIO.class);
 
         BaseParameterIO.registerParameterIO(WorkflowType.DDA_IGC_PFIND.getAnalysisType(), DDAIgcPFindParameterIO.class);
         BaseParameterIO.registerParameterIO(WorkflowType.DDA_IGC_MAXQUANT.getAnalysisType(), DDAIgcMaxQuantParameterIO.class);

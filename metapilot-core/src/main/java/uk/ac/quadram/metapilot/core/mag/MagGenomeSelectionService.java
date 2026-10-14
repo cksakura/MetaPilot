@@ -53,6 +53,15 @@ public final class MagGenomeSelectionService {
         public boolean allowMarker4LibraryFallback;
         public boolean logDiagnostics;
         public String sourceDescription;
+        /**
+         * Files the selection is derived from, for the staleness check below.
+         * <p>
+         * Optional: leave null and the resume check is existence-only, as it was.
+         * Supply the PSM file a caller just rewrote and a cached selection older
+         * than it is recomputed instead of reused - which is what a caller means
+         * when it rewrites its evidence and calls again.
+         */
+        public File[] inputs;
     }
 
     public static HashSet<String> selectGenomes(Request request, ProgressCallback cb) throws Exception {
@@ -60,8 +69,22 @@ public final class MagGenomeSelectionService {
         validate(request);
 
         if (hasContent(request.evidenceFile) && hasContent(request.rankedFile) && hasContent(request.selectedFile)) {
-            cb.onMessage("Genome selection already exists, skipping: " + request.selectedFile.getAbsolutePath());
-            return readSelectedGenomes(request.selectedFile);
+            // Existence is not enough. This resume check sits INSIDE a step whose
+            // own caller may already have decided to re-run: the open-search
+            // workflow rewrites unmodified_psms.tsv with a rescored PSM set, calls
+            // here, and - before this check looked at timestamps - got the previous
+            // run's genomes back and rebuilt a byte-identical FASTA from them. The
+            // rescoring was computed, written to disk, and then discarded, with the
+            // selection audit files left describing evidence that no longer
+            // existed. A caller that supplies request.inputs gets the selection
+            // recomputed whenever its evidence is newer than the cached answer.
+            File stale = newerThan(request.selectedFile, request.inputs);
+            if (stale == null) {
+                cb.onMessage("Genome selection already exists, skipping: " + request.selectedFile.getAbsolutePath());
+                return readSelectedGenomes(request.selectedFile);
+            }
+            cb.onMessage("Genome selection is older than " + stale.getName() + "; recomputing it from the current "
+                    + "evidence rather than reusing " + request.selectedFile.getName());
         }
 
         List<MetaPSM> psmList = new ArrayList<>();
@@ -265,6 +288,19 @@ public final class MagGenomeSelectionService {
 
     private static boolean hasContent(File file) {
         return file != null && file.exists() && file.length() > 0;
+    }
+
+    /** The first input newer than {@code artefact}, or null when none is. */
+    private static File newerThan(File artefact, File[] inputs) {
+        if (inputs == null || artefact == null) {
+            return null;
+        }
+        for (File input : inputs) {
+            if (input != null && input.exists() && input.lastModified() > artefact.lastModified()) {
+                return input;
+            }
+        }
+        return null;
     }
 
     private static void logMarkerSelectionDiagnostics(List<? extends MetaPSM> psmList, File markerFasta,

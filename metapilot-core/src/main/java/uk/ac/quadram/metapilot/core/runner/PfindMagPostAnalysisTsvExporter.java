@@ -5,6 +5,7 @@ import uk.ac.quadram.metapilot.core.workflow.ProgressCallback;
 import uk.ac.quadram.metapilot.dbSearch.pfind.PFindResultReader;
 import uk.ac.quadram.metapilot.quant.flashLFQ.FlashLfqPsm;
 import uk.ac.quadram.metapilot.quant.flashLFQ.FlashLfqPsmReader;
+import uk.ac.quadram.metapilot.task.io.qpx.QpxPsmExport;
 import uk.ac.quadram.metapilot.quant.flashLFQ.FlashLfqQuanPepReader;
 import uk.ac.quadram.metapilot.quant.flashLFQ.FlashLfqQuanPeptide;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
@@ -147,13 +148,16 @@ public final class PfindMagPostAnalysisTsvExporter {
 		DdaMagReportExportService.writeProteinReport(proOut, analysis.proteins, analysis.proteinIntensityMap,
 				analysis.proteinTotalIntenMap, analysis.totalPepCountMap, analysis.razorPepCountMap,
 				analysis.psmCountMap, MetaConstants.labelFree, intensityTitle, analysis.peptideList,
-				analysis.allProteinScoreMap);
+				analysis.allProteinScoreMap, analysis.psmMap);
 
 		cb.onMessage(taskName + ": writing " + allProOut.getName());
 		DdaMagReportExportService.writeAllProteinReport(allProOut, analysis.allProteins,
 				analysis.allProteinIntensityMap, analysis.allProteinTotalIntenMap, analysis.allProteinPepCountMap,
 				analysis.razorPepCountMap, analysis.allProteinPsmCountMap, MetaConstants.labelFree, intensityTitle,
-				analysis.peptideList, analysis.allProteinScoreMap);
+				analysis.peptideList, analysis.allProteinScoreMap, analysis.psmMap);
+
+		// The PSM layer as QPX psm.parquet, beside final_peptides.tsv (never fails the export).
+		QpxPsmExport.writeQuietly(outDir, psms, cb);
 
 		Result res = new Result();
 		res.idTsv = idOut;

@@ -33,7 +33,9 @@ public class ResourceConfigPanel extends BorderPane {
 	 * Keep parameters intact so the tool can be re-enabled later.
 	 */
 	private boolean shouldShowToolInUI(ToolType toolType) {
-		return toolType != ToolType.DBREDUCER;
+		// MSFragger is resolved from the configured FragPipe installation and is
+		// therefore a workflow dependency, not a separately editable resource.
+		return toolType != ToolType.DBREDUCER && toolType != ToolType.MSFRAGGER;
 	}
 
 	/**

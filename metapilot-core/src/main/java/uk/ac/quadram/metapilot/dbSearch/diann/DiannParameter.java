@@ -212,7 +212,12 @@ public class DiannParameter {
 		if (this.matrices) {
 			sb.append("--matrices ");
 			sb.append("--matrix-qvalue ").append(libSearchPar.getqValue()).append(" ");
-			sb.append("--matrix-spec-q ").append(libSearchPar.getqValue()).append(" ");
+			// Run-specific protein-level FDR is intentionally looser than the
+			// global matrix q-value (DIA-NN default: 5% vs 1%) so MBR can still
+			// fill in matrix values recovered from a run with weaker per-run
+			// evidence. Previously this was pinned to libSearchPar.getqValue()
+			// (1%), which suppressed exactly the completeness MBR is meant to add.
+			sb.append("--matrix-spec-q ").append(this.looseQValue).append(" ");
 		}
 
 		if (this.relaxed_prot_inf) {
@@ -686,6 +691,18 @@ public class DiannParameter {
 		this.qvalue = qvalue;
 	}
 
+	/**
+	 * --matrix-spec-q value: the additional run-specific protein-level FDR
+	 * filter DIA-NN applies on top of the global matrix q-value when
+	 * generating cross-run matrices (lets MBR-recovered values into the
+	 * protein matrices even when a precursor's evidence in one particular
+	 * run is weaker than the global cutoff). DIA-NN's own default is 0.05;
+	 * this is intentionally independent of {@link #qvalue}.
+	 */
+	public void setLooseQValue(double looseQValue) {
+		this.looseQValue = looseQValue;
+	}
+
 	public void setMatrices(boolean matrices) {
 		this.matrices = matrices;
 	}
@@ -768,6 +785,10 @@ public class DiannParameter {
 
 	public double getQvalue() {
 		return qvalue;
+	}
+
+	public double getLooseQValue() {
+		return looseQValue;
 	}
 
 	public boolean isMatrices() {

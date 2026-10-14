@@ -277,6 +277,11 @@ public class DDAMagFragPipeTask extends MetaPilotMagTask {
 			@Override
 			public void onMessage(String message) {
 				if (message != null && !message.isBlank()) {
+					// Also goes to the task log: the core runners stream the whole
+					// child-process output (FragPipe, MSFragger, Philosopher) through
+					// this callback, and without this line a tool failure leaves only
+					// an exit code behind, with the text explaining it discarded.
+					logger.info(message);
 					updateMessage(message);
 					if (statusLabel != null) {
 						Platform.runLater(() -> statusLabel.setText(message));

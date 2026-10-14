@@ -1,6 +1,7 @@
 package uk.ac.quadram.metapilot.core.runner;
 
 import uk.ac.quadram.metapilot.core.mag.DdaMagGenomeScoringService;
+import uk.ac.quadram.metapilot.core.mag.GenomeEvidenceTest;
 import uk.ac.quadram.metapilot.core.workflow.ProgressCallback;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 
@@ -45,6 +46,11 @@ public final class MagTaxonomyAnalysisService {
 		public HashMap<String, Double> genomeScoreMap;
 		public HashMap<String, double[]> genomeStats;
 		public DdaMagGenomeScoringService.DdaGenomeScoreRuninfo genomeScoreRuninfo;
+		/**
+		 * The open-search genome test behind {@link #genomeStats}; when set, genome_scores.tsv and
+		 * its run-info are written instead of genome_rank_scores.tsv.
+		 */
+		public GenomeEvidenceTest.Result genomeEvidence;
 		public HashMap<String, Integer> psmCountMap;
 		public HashMap<String, HashSet<String>> totalPepCountMap;
 		public HashMap<String, HashSet<String>> razorPepCountMap;
@@ -70,6 +76,7 @@ public final class MagTaxonomyAnalysisService {
 		public File genomeTsv;
 		public File taxaTsv;
 		public File taxaReportTsv;
+		/** genome_rank_scores.tsv, or genome_scores.tsv for the open-search genome test. */
 		public File genomeRankScoresTsv;
 		public File genomeRankScoresRuninfo;
 		public RankedTsvLabelParser.RankedGenomeSelectionResult rankedSelection;
@@ -109,7 +116,8 @@ public final class MagTaxonomyAnalysisService {
 				request.genomeScoreMap, request.genomeStats, rankedSelection.orderedGenomes, request.psmCountMap,
 				rankedSelection.genomeSelectionLabel, request.totalPepCountMap, request.razorPepCountMap,
 				request.uniquePepCountMap, request.totalPepWithILMap, request.razorPepWithILMap,
-				request.uniquePepWithILMap, request.intensityTitles, request.genomeScoreRuninfo, cb);
+				request.uniquePepWithILMap, request.intensityTitles, request.genomeScoreRuninfo,
+				request.genomeEvidence, cb);
 
 		if (request.exportMetaAtlasParquet) {
 			try {
@@ -127,8 +135,11 @@ public final class MagTaxonomyAnalysisService {
 		result.genomeTsv = new File(request.taxonomyAnalysisDir, "Genome.tsv");
 		result.taxaTsv = new File(request.taxonomyAnalysisDir, "Taxa.tsv");
 		result.taxaReportTsv = new File(request.taxonomyAnalysisDir, "Taxa_report.tsv");
-		result.genomeRankScoresTsv = new File(request.taxonomyAnalysisDir, "genome_rank_scores.tsv");
-		result.genomeRankScoresRuninfo = new File(request.taxonomyAnalysisDir, "genome_rank_scores_runinfo.txt");
+		boolean evidence = request.genomeEvidence != null;
+		result.genomeRankScoresTsv = new File(request.taxonomyAnalysisDir,
+				evidence ? MagTaxonomyTsvExporter.GENOME_SCORES_TSV : "genome_rank_scores.tsv");
+		result.genomeRankScoresRuninfo = new File(request.taxonomyAnalysisDir,
+				evidence ? MagTaxonomyTsvExporter.GENOME_SCORES_RUNINFO : "genome_rank_scores_runinfo.txt");
 		result.rankedSelection = rankedSelection;
 		return result;
 	}

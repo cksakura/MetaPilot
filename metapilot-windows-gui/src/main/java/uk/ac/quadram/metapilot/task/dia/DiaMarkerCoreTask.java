@@ -1098,6 +1098,11 @@ public class DiaMarkerCoreTask extends MetaDiaTask {
 		DiannPrMatrixReader prReader = new DiannPrMatrixReader(quanPepFile);
 		FlashLfqQuanPeptide[] peps = prReader.getMetaPeptides(diaTask.diaPp);
 		diaTask.setExportQuanExpNames(prReader.getIntensityTitle());
+		// Capture the per-run summary counts while the precursor array is still
+		// populated: exportSummary() further down only needs these small maps, so
+		// diaPp can be released afterwards without a NullPointerException. Done on
+		// every run, not only the low-memory path, so both paths behave identically.
+		diaTask.captureSummaryStats();
 		if (largeParquetExport) {
 			diaTask.diaPp = null;
 		}

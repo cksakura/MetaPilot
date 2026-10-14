@@ -3,6 +3,7 @@ package uk.ac.quadram.metapilot.core.MGYG;
 import org.apache.commons.net.ftp.FTPClient;
 import org.apache.commons.net.ftp.FTPFile;
 import uk.ac.quadram.metapilot.core.tools.ResumableDownload;
+import uk.ac.quadram.metapilot.core.variant.ProteinCatalogueInstaller;
 import uk.ac.quadram.metapilot.core.workflow.ProgressCallback;
 
 import java.io.File;
@@ -23,6 +24,7 @@ import java.util.concurrent.TimeUnit;
  * - Use FTP only for directory listing (species catalogue and genome IDs)
  * - Use HTTP for actual file downloads (supports resume)
  * - Generate Marker2.fasta and Marker4.fasta after download
+ * - Optionally download and prepare the UHGP-100 protein catalogue (human-gut only)
  */
 public final class MGYGMagDownloader {
 
@@ -45,6 +47,25 @@ public final class MGYGMagDownloader {
                                          int threads,
                                          int waitHours,
                                          ProgressCallback cb) throws IOException {
+        downloadCatalogue(catalogueId, version, outputDir, resume, threads, waitHours, false, true, cb);
+    }
+
+    /**
+     * @param proteinCatalogue     also download and prepare the UHGP-100 protein
+     *                             catalogue (human-gut only) for the pangenome
+     *                             variant check. A failure there is reported and
+     *                             leaves the MAG database usable.
+     * @param deleteProteinArchive delete {@code uhgp-100.tar.gz} once prepared
+     */
+    public static void downloadCatalogue(String catalogueId,
+                                         String version,
+                                         File outputDir,
+                                         boolean resume,
+                                         int threads,
+                                         int waitHours,
+                                         boolean proteinCatalogue,
+                                         boolean deleteProteinArchive,
+                                         ProgressCallback cb) throws IOException {
         Objects.requireNonNull(catalogueId, "catalogueId");
         Objects.requireNonNull(version, "version");
         Objects.requireNonNull(outputDir, "outputDir");
@@ -65,7 +86,7 @@ public final class MGYGMagDownloader {
         originalDbDir.mkdirs();
         eggnogDir.mkdirs();
 
-        String httpBase = "http://" + SERVER + MGNIFY_ROOT + "/" + catalogueId + "/" + version;
+        String httpBase = httpBase(catalogueId, version);
 
         cb.onMessage("MGYG download: " + catalogueId + " / " + version);
         cb.onMessage("Output: " + versionDir.getAbsolutePath());
@@ -135,8 +156,55 @@ public final class MGYGMagDownloader {
             throw new IOException("Downloaded, but marker FASTA generation failed: " + e.getMessage(), e);
         }
 
+        if (proteinCatalogue) {
+            if (!ProteinCatalogueInstaller.supports(catalogueId)) {
+                cb.onMessage("UHGP-100 protein catalogue skipped: only available for the "
+                        + ProteinCatalogueInstaller.SUPPORTED_CATALOGUE + " catalogue");
+            } else {
+                try {
+                    ProteinCatalogueInstaller.install(httpBase, versionDir, deleteProteinArchive, cb);
+                } catch (IOException | RuntimeException e) {
+                    cb.onMessage("WARNING: the MAG database is complete and usable, but the UHGP-100 protein "
+                            + "catalogue failed (" + e.getMessage() + "). Retry with 'Prepare protein catalogue' "
+                            + "(GUI) or mag-download --protein-catalogue-only (CLI); the archive download resumes.");
+                }
+            }
+        }
+
         cb.onMessage("MGYG download complete.");
         cb.onComplete(versionDir);
+    }
+
+    /**
+     * Downloads and prepares only the UHGP-100 protein catalogue, for a MAG
+     * database that is already downloaded.
+     *
+     * @param outputDir the same base directory as {@link #downloadCatalogue}; the
+     *                  database is {@code <outputDir>/<catalogueId>/<version>/}
+     */
+    public static void prepareProteinCatalogue(String catalogueId,
+                                               String version,
+                                               File outputDir,
+                                               boolean deleteArchive,
+                                               ProgressCallback cb) throws IOException {
+        Objects.requireNonNull(catalogueId, "catalogueId");
+        Objects.requireNonNull(version, "version");
+        Objects.requireNonNull(outputDir, "outputDir");
+        if (cb == null) cb = new ProgressCallback.NoOp();
+        if (!ProteinCatalogueInstaller.supports(catalogueId)) {
+            throw new IOException("The UHGP-100 protein catalogue is only available for the "
+                    + ProteinCatalogueInstaller.SUPPORTED_CATALOGUE + " catalogue, not " + catalogueId);
+        }
+        File versionDir = new File(new File(outputDir, catalogueId), version);
+        if (!versionDir.isDirectory()) {
+            throw new IOException("MAG database not found: " + versionDir.getAbsolutePath());
+        }
+        File dir = ProteinCatalogueInstaller.install(httpBase(catalogueId, version), versionDir, deleteArchive, cb);
+        cb.onComplete(dir);
+    }
+
+    private static String httpBase(String catalogueId, String version) {
+        return "http://" + SERVER + MGNIFY_ROOT + "/" + catalogueId + "/" + version;
     }
 
     private static Callable<Boolean> downloadJob(String url, File dest, boolean resume, ProgressCallback cb) {

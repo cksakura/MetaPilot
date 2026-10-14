@@ -27,6 +27,14 @@ public enum WorkflowType {
     DDA_MAG_PFIND("DDA_MAG_PFIND"),
     DDA_MAG_FRAGPIPE("DDA_MAG_FRAGPIPE"),
     DDA_MAG_SAGE("DDA_MAG_SAGE"),
+    /**
+     * Standalone open search: MSFragger run directly (no FragPipe, no
+     * Philosopher) with MetaPilot's own delta-mass peak fitting, ML
+     * classifier and per-modification validation. Both search rounds are open
+     * searches; the first consumes only its unmodified PSMs for genome
+     * discovery. See {@code docs/developer/open-search-standalone-design.md}.
+     */
+    DDA_MAG_OPENSEARCH("DDA_MAG_OPENSEARCH"),
     
     // DIA Workflows
     /** Marker-based DIA workflow (Marker4 genome selection). */

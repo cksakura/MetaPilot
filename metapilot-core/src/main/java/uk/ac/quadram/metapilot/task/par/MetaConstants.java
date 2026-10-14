@@ -102,7 +102,14 @@ public class MetaConstants {
 	 * Metagenome-assembled genomes
 	 */
 	public static String alphapeptMAG = "AlphapeptMAG";
-	
+
+	/**
+	 * Database search engine: MSFragger open search (+ optional Sage)
+	 * Searching high abundant protein database
+	 * Metagenome-assembled genomes
+	 */
+	public static String openSearchMAG = "OpenSearchMAG";
+
 	/**
 	 * Quantification: flashLFQ
 	 */

@@ -32,6 +32,13 @@ public class SageResultReader extends AbstractMetaPeptideReader {
 		SagePsmReader reader = new SagePsmReader(psmFile);
 		HashMap<String, ArrayList<SagePSM>> psmMap = new HashMap<String, ArrayList<SagePSM>>();
 		for (SagePSM psm : reader.getPsms()) {
+			// Only confident PSMs (target, rank 1, spectrum_q <= 1%) count as
+			// identifications: they drive MS/MS counts, identification type and the PSM
+			// list. A peptide lfq.tsv lists without any such PSM is therefore no longer
+			// reported. See SagePsmReader.PSM_Q_VALUE_THRESHOLD.
+			if (!SagePsmReader.isConfidentPsm(psm)) {
+				continue;
+			}
 			String modseq = psm.getModSeq();
 			if (psmMap.containsKey(modseq)) {
 				psmMap.get(modseq).add(psm);
@@ -113,13 +120,10 @@ public class SageResultReader extends AbstractMetaPeptideReader {
 						}
 					}
 
-					boolean isDecoy = false;
-					for (String pro : proteins) {
-						if (pro.startsWith(SHUF)) {
-							isDecoy = true;
-							break;
-						}
-					}
+					// The shuffled entries, not Sage's own decoys: this reads lfq.tsv,
+					// and Sage quantifies targets only (peptide_q <= 0.01 && label == 1),
+					// so a Sage-generated decoy never appears here - see SageDecoyTags.
+					boolean isDecoy = SageDecoyTags.anyShuffledDecoy(proteins);
 
 					SagePeptide peptide = new SagePeptide(sequence, modseq, proteins, intensity, idenType,
 							Double.parseDouble(cs[qvalueId]), Double.parseDouble(cs[scoreId]), isDecoy);
@@ -152,7 +156,7 @@ public class SageResultReader extends AbstractMetaPeptideReader {
 		ArrayList<SagePSM> psmList = new ArrayList<SagePSM>();
 		for (SagePSM psm : reader.getPsms()) {
 			String modseq = psm.getModSeq();
-			if (modPepSet.contains(modseq)) {
+			if (modPepSet.contains(modseq) && SagePsmReader.isConfidentPsm(psm)) {
 				psmList.add(psm);
 			}
 		}

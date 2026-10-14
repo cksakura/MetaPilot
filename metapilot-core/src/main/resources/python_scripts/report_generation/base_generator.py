@@ -359,6 +359,101 @@ class BaseReportGenerator:
             print(f"Warning: Dendrogram failed: {e}")
             return None, None
 
+    # ------------------------------------------------------------------
+    # Size limits for per-sample tables. A TMT run has one intensity column per
+    # raw file x channel (e.g. 195 x 11 = 2145); writing every peptide x sample
+    # cell into one HTML file (hundreds of millions of values) never finishes.
+    # ------------------------------------------------------------------
+    # Max heatmap cells written to a report (rows = top features by total intensity).
+    HEATMAP_CELL_BUDGET = 1_000_000
+    # Above this many per-sample points, distribution plots use precomputed box
+    # statistics instead of drawing every point.
+    DISTRIBUTION_POINT_LIMIT = 200_000
+    # Per-sample columns that are read as float32 to halve memory.
+    _SAMPLE_COLUMN_PREFIXES = ('Intensity ', 'Intensity_', 'LFQ intensity ', 'iBAQ ', 'MS/MS count ')
+    # Per-file text columns no table report uses; skipped on load (one Python
+    # string per cell otherwise).
+    _SKIPPED_COLUMN_PREFIXES = ('Identification type',)
+
+    def load_table(self, path):
+        """Read a peptide/protein report TSV with bounded memory.
+
+        Skips per-file text columns the reports do not use and reads per-sample
+        numeric columns as float32.
+        """
+        header = pd.read_csv(path, sep='\t', nrows=0).columns.tolist()
+        usecols = [c for c in header if not c.startswith(self._SKIPPED_COLUMN_PREFIXES)]
+        dtypes = {c: 'float32' for c in usecols if c.startswith(self._SAMPLE_COLUMN_PREFIXES)}
+        df = pd.read_csv(path, sep='\t', usecols=usecols, dtype=dtypes)
+        print(f"INFO: loaded {os.path.basename(path)}: {len(df)} rows, {len(header)} columns "
+              f"({len(dtypes)} per-sample numeric, {len(header) - len(usecols)} skipped)", flush=True)
+        return df
+
+    def top_rows_log_matrix(self, df, value_cols, order_col='Intensity'):
+        """log10 matrix (0 where value <= 0) of the top rows by order_col.
+
+        Rows are limited so rows x len(value_cols) <= HEATMAP_CELL_BUDGET (at least
+        50 rows). Returns (z as nested lists rounded to 3 decimals, rows shown,
+        total rows).
+        """
+        n_cols = max(1, len(value_cols))
+        max_rows = max(50, self.HEATMAP_CELL_BUDGET // n_cols)
+        total = len(df)
+        if order_col in df.columns and total > max_rows:
+            top = df.nlargest(max_rows, order_col)
+        elif order_col in df.columns:
+            top = df.sort_values(order_col, ascending=False)
+        else:
+            top = df.head(max_rows)
+        values = np.nan_to_num(top[value_cols].to_numpy(dtype='float64'), nan=0.0)
+        z = np.zeros_like(values)
+        positive = values > 0
+        z[positive] = np.log10(values[positive])
+        return np.round(z, 3).tolist(), len(top), total
+
+    def add_sample_distribution(self, fig, sample_labels, per_sample_values, name, color, row, col):
+        """Per-sample distribution: violin with all points when small, otherwise
+        precomputed box statistics (quartiles, Tukey fences clipped to the data).
+        """
+        total_points = int(sum(len(v) for v in per_sample_values))
+        if total_points == 0:
+            return
+        if total_points <= self.DISTRIBUTION_POINT_LIMIT:
+            xs, ys = [], []
+            for label, values in zip(sample_labels, per_sample_values):
+                xs.extend([label] * len(values))
+                ys.extend(np.asarray(values).tolist())
+            fig.add_trace(go.Violin(x=xs, y=ys, name=name, box_visible=True, meanline_visible=True,
+                                    points='all', pointpos=0, jitter=0.3, marker_color=color),
+                          row=row, col=col)
+            return
+        labels, q1s, meds, q3s, lows, highs = [], [], [], [], [], []
+        for label, values in zip(sample_labels, per_sample_values):
+            values = np.asarray(values, dtype='float64')
+            if values.size == 0:
+                continue
+            q1, med, q3 = np.percentile(values, [25, 50, 75])
+            iqr = q3 - q1
+            inside = values[(values >= q1 - 1.5 * iqr) & (values <= q3 + 1.5 * iqr)]
+            labels.append(label)
+            q1s.append(float(q1))
+            meds.append(float(med))
+            q3s.append(float(q3))
+            lows.append(float(inside.min()) if inside.size else float(q1))
+            highs.append(float(inside.max()) if inside.size else float(q3))
+        fig.add_trace(go.Box(x=labels, q1=q1s, median=meds, q3=q3s, lowerfence=lows, upperfence=highs,
+                             name=name, marker_color=color, boxpoints=False),
+                      row=row, col=col)
+        print(f"INFO: {name}: {total_points} points across {len(labels)} samples summarised as box statistics",
+              flush=True)
+
+    def set_subplot_title(self, fig, old_prefix, new_text):
+        """Replace the subplot title that starts with old_prefix."""
+        for annotation in fig.layout.annotations:
+            if annotation.text and annotation.text.startswith(old_prefix):
+                annotation.text = new_text
+                return
+
     def create_empty_data_plot(self, title, message):
         """Create a placeholder plot for empty data."""
         fig = make_subplots(rows=1, cols=1, subplot_titles=(title,))

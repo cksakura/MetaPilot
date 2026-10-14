@@ -51,6 +51,11 @@ public class MGYGFtpTaskJavaFX extends Task<Boolean> {
 	private MagDbItem[] repositoryItems;
 
 	private int waitHours = 4;
+
+	private boolean proteinCatalogue;
+	private boolean deleteProteinArchive = true;
+	/** Non-null: skip the MAG files and only prepare the protein catalogue for this local version. */
+	private String proteinCatalogueOnlyVersion;
 	
 	private static String taskName = "MGnify database FTP task";
 	private static final Logger LOGGER = LogManager.getLogger(MGYGFtpTaskJavaFX.class);
@@ -77,6 +82,23 @@ public class MGYGFtpTaskJavaFX extends Task<Boolean> {
 	 */
 	public MGYGFtpTaskJavaFX(MagDbItem[] repositoryItems) {
 		this.repositoryItems = repositoryItems;
+	}
+
+	/**
+	 * Task that only downloads and prepares the UHGP-100 protein catalogue for an
+	 * already downloaded MAG database version.
+	 */
+	public static MGYGFtpTaskJavaFX proteinCatalogueOnly(MagDbItem item, String localVersion, boolean deleteArchive) {
+		MGYGFtpTaskJavaFX task = new MGYGFtpTaskJavaFX(item);
+		task.proteinCatalogueOnlyVersion = localVersion;
+		task.deleteProteinArchive = deleteArchive;
+		return task;
+	}
+
+	/** Also download and prepare the UHGP-100 protein catalogue after the MAG files. */
+	public void setProteinCatalogue(boolean include, boolean deleteArchive) {
+		this.proteinCatalogue = include;
+		this.deleteProteinArchive = deleteArchive;
 	}
 
 	/**
@@ -107,6 +129,10 @@ public class MGYGFtpTaskJavaFX extends Task<Boolean> {
 			if (this.repositoryItems != null) {
 				finish = true;
 			}
+		} else if (proteinCatalogueOnlyVersion != null) {
+			updateMessage("Preparing the UHGP-100 protein catalogue for " + item.getCatalogueID() + " "
+					+ proteinCatalogueOnlyVersion);
+			finish = download();
 		} else {
 			updateMessage("Downloading catalog: " + item.getCatalogueID());
 			finish = download();
@@ -296,7 +322,20 @@ public class MGYGFtpTaskJavaFX extends Task<Boolean> {
 			boolean resume = true;
 			int threads = Math.max(1, Runtime.getRuntime().availableProcessors() / 2);
 
-			MGYGMagDownloader.downloadCatalogue(catalogueId, version, baseDir, resume, threads, waitHours, cb);
+			if (proteinCatalogueOnlyVersion != null) {
+				MGYGMagDownloader.prepareProteinCatalogue(catalogueId, proteinCatalogueOnlyVersion, baseDir,
+						deleteProteinArchive, cb);
+				if (isCancelled()) {
+					updateMessage("Protein catalogue preparation cancelled by user");
+					return false;
+				}
+				updateMessage("UHGP-100 protein catalogue ready");
+				updateProgress(100, 100);
+				return true;
+			}
+
+			MGYGMagDownloader.downloadCatalogue(catalogueId, version, baseDir, resume, threads, waitHours,
+					proteinCatalogue, deleteProteinArchive, cb);
 
 			if (isCancelled()) {
 				updateMessage("Download cancelled by user");

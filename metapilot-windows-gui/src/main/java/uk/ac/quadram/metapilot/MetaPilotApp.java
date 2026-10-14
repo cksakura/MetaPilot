@@ -51,6 +51,7 @@ import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcFragPipePanel;
 import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcSagePanel;
 import uk.ac.quadram.metapilot.task.dda.mag.gui.MetaPilotDdaMagPfindPanel;
 import uk.ac.quadram.metapilot.task.dda.mag.gui.MetaPilotDdaMagFragPipePanel;
+import uk.ac.quadram.metapilot.task.dda.mag.gui.MetaPilotDdaMagOpenSearchPanel;
 import uk.ac.quadram.metapilot.task.dda.mag.gui.MetaPilotDdaMagSagePanel;
 import uk.ac.quadram.metapilot.task.dia.gui.MetaPilotDiaMarkerPanel;
 import uk.ac.quadram.metapilot.task.dia.gui.MetaPilotDiaSeedPanel;
@@ -555,7 +556,11 @@ public class MetaPilotApp extends Application {
 						createWorkflowBox("FragPipe", "Run DDA workflow using FragPipe",
 								e -> launchWorkflow(WorkflowType.DDA_MAG_FRAGPIPE)),
 						createWorkflowBox("Sage", "Run DDA workflow using Sage",
-								e -> launchWorkflow(WorkflowType.DDA_MAG_SAGE)));
+								e -> launchWorkflow(WorkflowType.DDA_MAG_SAGE)),
+						createWorkflowBox("Open Search",
+								"Open search for PTM discovery using MSFragger directly, with MetaPilot's own "
+										+ "delta-mass peak fitting and machine-learning validation",
+								e -> launchWorkflow(WorkflowType.DDA_MAG_OPENSEARCH)));
 
 		magPanel.setContent(magWorkflows);
 
@@ -633,6 +638,10 @@ public class MetaPilotApp extends Application {
 			return resourceParams.isToolAvailable(ToolType.FRAGPIPE);
 		case DDA_MAG_SAGE:
 			return resourceParams.isToolAvailable(ToolType.SAGE);
+		case DDA_MAG_OPENSEARCH:
+			// The workflow invokes MSFragger.jar directly, but the jar is resolved
+			// from the FragPipe installation configured under Resources.
+			return resourceParams.isToolAvailable(ToolType.MSFRAGGER);
 
 		// DIA Workflows
 		case DIA_MARKER:
@@ -646,6 +655,37 @@ public class MetaPilotApp extends Application {
 		}
 	}
 
+	/**
+	 * Human-readable account of which tool a workflow is missing, so the dialog
+	 * points at the actual gap instead of asking the user to audit every entry.
+	 */
+	private String describeMissingResource(WorkflowType type) {
+		switch (type) {
+		case DDA_IGC_MAXQUANT:
+			return "MaxQuant is not configured.";
+		case DDA_IGC_PFIND:
+		case DDA_MAG_PFIND:
+			return "pFind is not configured.";
+		case DDA_IGC_FRAGPIPE:
+		case DDA_MAG_FRAGPIPE:
+			return "FragPipe is not configured.";
+		case DDA_IGC_SAGE:
+		case DDA_MAG_SAGE:
+			return "Sage is not configured.";
+		case DDA_MAG_OPENSEARCH:
+			return "MSFragger.jar was not found inside the configured FragPipe installation.\n\n"
+					+ "Set the FragPipe entry under Resources to its bin/fragpipe launcher. MetaPilot then "
+					+ "detects the bundled tools/MSFragger-*/MSFragger-*.jar automatically.";
+		case DIA_MARKER:
+		case DIA_SEED:
+		case DIA_TARGET:
+		case DIA_REALTIME:
+			return "DIA-NN is not configured.";
+		default:
+			return "A required tool for this workflow is not configured.";
+		}
+	}
+
 	private void launchWorkflow(WorkflowType type) {
 		// First check if registration is required and enabled
 		if (REGISTRATION_ENABLED && !checkRegistration()) {
@@ -656,8 +696,10 @@ public class MetaPilotApp extends Application {
 
 		// Then check if all required resources are available
 		if (!checkRequiredResources(type)) {
-			showWarning("Missing Resources", "Some required resources are missing for this workflow. "
-					+ "Please configure all required resources first.");
+			// Name the tool rather than saying "some resources": a generic message
+			// leaves the user re-checking entries that were already configured.
+			showWarning("Missing Resources",
+					describeMissingResource(type) + "\n\nConfigure it under Resources, then try again.");
 			return;
 		}
 
@@ -860,6 +902,32 @@ public class MetaPilotApp extends Application {
 				magSageStage.setMinHeight(600);
 				magSageStage.setMaximized(true);
 				magSageStage.show();
+				break;
+
+			case DDA_MAG_OPENSEARCH:
+				Stage magOpenSearchStage = new Stage();
+				magOpenSearchStage.setTitle("DDA MAG Open Search Workflow");
+				MetaPilotDdaMagOpenSearchPanel magOpenSearchPanel = new MetaPilotDdaMagOpenSearchPanel(items,
+						resourceParams);
+				Scene magOpenSearchScene = new Scene(magOpenSearchPanel, 1600, 900);
+				try {
+					magOpenSearchScene.getStylesheets()
+							.add(getClass().getResource("/styles/metapilot.css").toExternalForm());
+				} catch (Exception e) {
+					System.err.println("Could not load stylesheet: " + e.getMessage());
+				}
+				magOpenSearchStage.setScene(magOpenSearchScene);
+				magOpenSearchStage.setMinWidth(800);
+				magOpenSearchStage.setMinHeight(600);
+				magOpenSearchStage.setMaximized(true);
+				magOpenSearchStage.setOnCloseRequest(event -> {
+					try {
+						magOpenSearchPanel.saveCurrentParameters();
+					} catch (Exception e) {
+						System.err.println("Error saving open-search parameters on close: " + e.getMessage());
+					}
+				});
+				magOpenSearchStage.show();
 				break;
 
 			case DIA_MARKER:
@@ -1086,8 +1154,10 @@ public class MetaPilotApp extends Application {
 
 		// Then check if all required resources are available
 		if (!checkRequiredResources(type)) {
-			showWarning("Missing Resources", "Some required resources are missing for this workflow. "
-					+ "Please configure all required resources first.");
+			// Name the tool rather than saying "some resources": a generic message
+			// leaves the user re-checking entries that were already configured.
+			showWarning("Missing Resources",
+					describeMissingResource(type) + "\n\nConfigure it under Resources, then try again.");
 			return;
 		}
 
@@ -1134,6 +1204,9 @@ public class MetaPilotApp extends Application {
 				break;
 			case DDA_MAG_SAGE:
 				launchDdaMagSageWithParameters(parameters, items);
+				break;
+			case DDA_MAG_OPENSEARCH:
+				launchDdaMagOpenSearchWithParameters(parameters, items);
 				break;
 			case DIA_MARKER:
 				launchDiaFocusWithParameters(parameters, items);
@@ -1314,6 +1387,28 @@ public class MetaPilotApp extends Application {
 
 		// Apply loaded parameters to the panel
 		magSagePanel.loadParametersFromObject(parameters);
+	}
+
+	private void launchDdaMagOpenSearchWithParameters(Object parameters, MagDbItem[] items) {
+		Stage magOpenSearchStage = new Stage();
+		magOpenSearchStage.setTitle("DDA MAG Open Search Workflow");
+
+		MetaPilotDdaMagOpenSearchPanel magOpenSearchPanel = new MetaPilotDdaMagOpenSearchPanel(items, resourceParams);
+
+		Scene magOpenSearchScene = new Scene(magOpenSearchPanel, 1600, 900);
+		try {
+			magOpenSearchScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
+		} catch (Exception e) {
+			System.err.println("Could not load stylesheet: " + e.getMessage());
+		}
+
+		magOpenSearchStage.setScene(magOpenSearchScene);
+		magOpenSearchStage.setMinWidth(800);
+		magOpenSearchStage.setMinHeight(600);
+		magOpenSearchStage.setMaximized(true);
+		magOpenSearchStage.show();
+
+		magOpenSearchPanel.loadParametersFromObject(parameters);
 	}
 
 	private void launchDiaFocusWithParameters(Object parameters, MagDbItem[] items) {

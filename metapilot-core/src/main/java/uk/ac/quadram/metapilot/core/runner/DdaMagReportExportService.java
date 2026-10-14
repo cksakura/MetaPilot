@@ -111,15 +111,31 @@ public final class DdaMagReportExportService {
 			for (String file : fileList)
 				titlesb.append("MS/MS count ").append(file).append("\t");
 			titlesb.append("Intensity\t");
-			if (MetaConstants.labelFree.equals(quanMode)) {
+			// Per-sample intensity columns: one per raw file (label-free) or one per
+			// raw file x reporter channel (isobaric), matching writeProteinReport.
+			boolean writeSampleIntensity = MetaConstants.labelFree.equals(quanMode)
+					|| MetaConstants.isobaricLabel.equals(quanMode);
+			if (writeSampleIntensity) {
 				for (String title : intensityTitle)
 					titlesb.append("Intensity ").append(title).append("\t");
+			}
+			// Intensity values per raw file: 1 (label-free) or reporter channels per
+			// file (isobaric, laid out file-major: file * channels + channel). The
+			// Identification type MBR test below must look at the whole file block;
+			// indexing the isobaric array by file index labelled peptides MBR from
+			// another file's channel.
+			// Isobaric columns combined across raw files (combineLabel) are not per-file,
+			// so no per-file intensity exists and MBR is not inferred (valuesPerFile 0).
+			int valuesPerFile = 1;
+			if (MetaConstants.isobaricLabel.equals(quanMode)) {
+				valuesPerFile = isobaricValuesPerFile(fileList, intensityTitle);
 			}
 			titlesb.append("Reverse\tPotential contaminant\tid\tProtein group IDs\tMS/MS Count");
 			writer.println(titlesb);
 
-			int id = 0;
-			for (MetaPeptide peptide : peptideList) {
+			int[] writtenIds = computeWrittenPeptideIds(peptideList, psmMap);
+			for (int rowIdx = 0; rowIdx < peptideList.size(); rowIdx++) {
+				MetaPeptide peptide = peptideList.get(rowIdx);
 				if (peptide == null)
 					continue;
 				String fullSeq = peptide.getModSeq();
@@ -127,6 +143,7 @@ public final class DdaMagReportExportService {
 				MetaPSM psm = psmMap.get(fullSeq);
 				if (psm == null)
 					continue;
+				int id = writtenIds[rowIdx];
 
 				StringBuilder sb = new StringBuilder();
 				sb.append(fullSeq).append("\t");
@@ -162,7 +179,7 @@ public final class DdaMagReportExportService {
 					if (count > 0) {
 						totalMsCount += count;
 						sb.append("By MS/MS\t");
-					} else if (j < intensity.length && intensity[j] > 0) {
+					} else if (hasFileIntensity(intensity, j, valuesPerFile)) {
 						sb.append("MBR\t");
 					} else {
 						sb.append("NotDetected\t");
@@ -176,7 +193,7 @@ public final class DdaMagReportExportService {
 				for (double value : intensity)
 					totalIntensity += value;
 				sb.append(BigInteger.valueOf((long) Math.floor(totalIntensity))).append("\t");
-				if (MetaConstants.labelFree.equals(quanMode)) {
+				if (writeSampleIntensity) {
 					for (int j = 0; j < intensityTitle.length; j++) {
 						double value = j < intensity.length ? intensity[j] : 0;
 						sb.append(BigInteger.valueOf((long) Math.floor(value))).append("\t");
@@ -194,9 +211,56 @@ public final class DdaMagReportExportService {
 				}
 				sb.append("\t").append(totalMsCount);
 				writer.println(sb);
-				id++;
 			}
 		}
+	}
+
+	/**
+	 * Computes, for each position in {@code peptideList}, the sequential id
+	 * that {@link #writePeptideReport} assigns to that peptide's row in
+	 * final_peptides.tsv - or -1 if the peptide has no matching entry in
+	 * {@code psmMap} and is therefore skipped from that report entirely
+	 * (never gets a row, never gets an id).
+	 *
+	 * {@link #writeProteinReport} and {@link #writeAllProteinReport} must
+	 * reference peptides in their "Peptide IDs" column by this SAME id,
+	 * since that id is exactly what final_peptides.tsv's own "id" column
+	 * contains - there is nothing else that "id" could mean to a reader
+	 * cross-referencing the two files. Previously each writer recomputed
+	 * its own notion of "id": writePeptideReport skipped peptides with no
+	 * psmMap entry (never assigning them an id), while the protein-report
+	 * writers used the raw, un-skipped array position in {@code peptideList}
+	 * as the id. Once any peptide was skipped, every id referenced
+	 * afterwards in razor_proteins.tsv/all_proteins.tsv pointed at the
+	 * wrong row (or, far more often, no row at all - out of range) in
+	 * final_peptides.tsv. Measured on the 12mix 2026-09-18 MSFragger-only
+	 * open-search run: ~76% of peptideList entries had no psmMap entry, so
+	 * this was not an edge case - the "Peptide IDs"/"Peptide is razor"
+	 * columns in both protein reports were effectively scrambled (e.g. one
+	 * protein's row claimed 70 peptides in its count column but listed
+	 * 1,745 "Peptide IDs", nearly all of which pointed at unrelated or
+	 * nonexistent final_peptides.tsv rows). Computing the id once here and
+	 * sharing it across all three writers is what keeps the cross-reference
+	 * correct; it changes nothing else - "Peptide counts (all)/(razor)",
+	 * PSM counts, scores and intensities are unaffected, since none of them
+	 * were ever derived from this id.
+	 */
+	public static int[] computeWrittenPeptideIds(ArrayList<MetaPeptide> peptideList, HashMap<String, MetaPSM> psmMap) {
+		int size = peptideList == null ? 0 : peptideList.size();
+		int[] ids = new int[size];
+		if (psmMap == null) {
+			psmMap = new HashMap<>();
+		}
+		int next = 0;
+		for (int i = 0; i < size; i++) {
+			MetaPeptide peptide = peptideList.get(i);
+			if (peptide == null || psmMap.get(peptide.getModSeq()) == null) {
+				ids[i] = -1;
+			} else {
+				ids[i] = next++;
+			}
+		}
+		return ids;
 	}
 
 	private static String resolveRazorProtein(HashMap<String, String> razorProteinMap, String modSeq, String sequence) {
@@ -210,12 +274,47 @@ public final class DdaMagReportExportService {
 		return razor != null ? razor : "";
 	}
 
+	/**
+	 * Channels per raw file when the isobaric intensity titles form a file-major
+	 * {@code <raw>_<label>} grid over fileList; 0 otherwise (e.g. combined labels).
+	 */
+	private static int isobaricValuesPerFile(ArrayList<String> fileList, String[] intensityTitle) {
+		if (fileList.isEmpty() || intensityTitle.length == 0 || intensityTitle.length % fileList.size() != 0) {
+			return 0;
+		}
+		int perFile = intensityTitle.length / fileList.size();
+		for (int j = 0; j < fileList.size(); j++) {
+			for (int k = 0; k < perFile; k++) {
+				String title = intensityTitle[j * perFile + k];
+				if (title == null || !title.startsWith(fileList.get(j) + "_")) {
+					return 0;
+				}
+			}
+		}
+		return perFile;
+	}
+
+	/** True if any intensity value of raw file {@code fileIndex} is > 0 (file-major layout). */
+	private static boolean hasFileIntensity(double[] intensity, int fileIndex, int valuesPerFile) {
+		if (valuesPerFile <= 0) {
+			return false;
+		}
+		int start = fileIndex * valuesPerFile;
+		int end = Math.min(intensity.length, start + valuesPerFile);
+		for (int k = start; k < end; k++) {
+			if (intensity[k] > 0) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	public static void writeProteinReport(File out, String[] proteins, HashMap<String, double[]> proteinIntensityMap,
 			HashMap<String, Double> proteinTotalIntenMap, HashMap<String, HashSet<String>> totalPepCountMap,
 			HashMap<String, HashSet<String>> razorPepCountMap, HashMap<String, Integer> psmCountMap, String quanMode,
 			String[] intensityTitle, ArrayList<MetaPeptide> peptideList) throws IOException {
 		writeProteinReport(out, proteins, proteinIntensityMap, proteinTotalIntenMap, totalPepCountMap,
-				razorPepCountMap, psmCountMap, quanMode, intensityTitle, peptideList, null);
+				razorPepCountMap, psmCountMap, quanMode, intensityTitle, peptideList, null, null);
 	}
 
 	public static void writeProteinReport(File out, String[] proteins, HashMap<String, double[]> proteinIntensityMap,
@@ -223,6 +322,32 @@ public final class DdaMagReportExportService {
 			HashMap<String, HashSet<String>> razorPepCountMap, HashMap<String, Integer> psmCountMap, String quanMode,
 			String[] intensityTitle, ArrayList<MetaPeptide> peptideList, HashMap<String, double[]> proteinScoreMap)
 			throws IOException {
+		writeProteinReport(out, proteins, proteinIntensityMap, proteinTotalIntenMap, totalPepCountMap,
+				razorPepCountMap, psmCountMap, quanMode, intensityTitle, peptideList, proteinScoreMap, null);
+	}
+
+	/** Column names of the three protein statistics written by the resampling protein test. */
+	public static final String[] RESAMPLING_PROTEIN_SCORE_COLUMNS = { "protein_score_S", "protein_p_emp",
+			"protein_q_value" };
+	/** Column names for the picked protein FDR of {@code GenomeEvidenceTest}. */
+	public static final String[] PICKED_PROTEIN_SCORE_COLUMNS = { "protein_score", "protein_decoy_score",
+			"protein_q_value" };
+
+	public static void writeProteinReport(File out, String[] proteins, HashMap<String, double[]> proteinIntensityMap,
+			HashMap<String, Double> proteinTotalIntenMap, HashMap<String, HashSet<String>> totalPepCountMap,
+			HashMap<String, HashSet<String>> razorPepCountMap, HashMap<String, Integer> psmCountMap, String quanMode,
+			String[] intensityTitle, ArrayList<MetaPeptide> peptideList, HashMap<String, double[]> proteinScoreMap,
+			HashMap<String, MetaPSM> psmMap) throws IOException {
+		writeProteinReport(out, proteins, proteinIntensityMap, proteinTotalIntenMap, totalPepCountMap,
+				razorPepCountMap, psmCountMap, quanMode, intensityTitle, peptideList, proteinScoreMap, psmMap,
+				RESAMPLING_PROTEIN_SCORE_COLUMNS);
+	}
+
+	public static void writeProteinReport(File out, String[] proteins, HashMap<String, double[]> proteinIntensityMap,
+			HashMap<String, Double> proteinTotalIntenMap, HashMap<String, HashSet<String>> totalPepCountMap,
+			HashMap<String, HashSet<String>> razorPepCountMap, HashMap<String, Integer> psmCountMap, String quanMode,
+			String[] intensityTitle, ArrayList<MetaPeptide> peptideList, HashMap<String, double[]> proteinScoreMap,
+			HashMap<String, MetaPSM> psmMap, String[] scoreColumns) throws IOException {
 		if (proteins == null)
 			proteins = new String[0];
 		if (proteinIntensityMap == null)
@@ -241,10 +366,11 @@ public final class DdaMagReportExportService {
 			proteinScoreMap = new HashMap<>();
 		if (out.getParentFile() != null)
 			out.getParentFile().mkdirs();
+		int[] writtenIds = computeWrittenPeptideIds(peptideList, psmMap);
 		try (PrintWriter writer = new PrintWriter(out)) {
 			StringBuilder titlesb = new StringBuilder();
-			titlesb.append(
-					"Protein IDs\tPeptide counts (all)\tPeptide counts (razor)\tNumber of PSMs\tprotein_score_S\tprotein_p_emp\tprotein_q_value\tIntensity\t");
+			titlesb.append("Protein IDs\tPeptide counts (all)\tPeptide counts (razor)\tNumber of PSMs\t")
+					.append(String.join("\t", scoreColumns)).append("\tIntensity\t");
 			if (MetaConstants.labelFree.equals(quanMode) || MetaConstants.isobaricLabel.equals(quanMode)) {
 				for (String title : intensityTitle)
 					titlesb.append("Intensity ").append(title).append("\t");
@@ -262,14 +388,7 @@ public final class DdaMagReportExportService {
 				sb.append(totalPepSet.size()).append("\t");
 				sb.append(razorPepSet.size()).append("\t");
 				sb.append(psmCountMap.getOrDefault(protein, 0)).append("\t");
-				double[] scores = proteinScoreMap.get(protein);
-				if (scores != null && scores.length >= 3) {
-					sb.append(df.format(scores[0])).append("\t");
-					sb.append(df.format(scores[1])).append("\t");
-					sb.append(df.format(scores[2])).append("\t");
-				} else {
-					sb.append("\t\t\t");
-				}
+				appendScores(sb, proteinScoreMap.get(protein), df);
 				double totalIntensity = proteinTotalIntenMap.getOrDefault(protein, 0.0);
 				sb.append(df.format(totalIntensity)).append("\t");
 				double[] intensity = proteinIntensityMap.getOrDefault(protein, new double[0]);
@@ -280,9 +399,19 @@ public final class DdaMagReportExportService {
 					}
 				}
 				sb.append("\t\t").append(i).append("\t");
-				appendPeptideIdsAndRazorFlags(sb, totalPepSet, razorPepSet, peptideList);
+				appendPeptideIdsAndRazorFlags(sb, totalPepSet, razorPepSet, peptideList, writtenIds);
 				writer.println(sb);
 			}
+		}
+	}
+
+	/** Three score cells; a missing or NaN statistic is left blank. */
+	private static void appendScores(StringBuilder sb, double[] scores, DecimalFormat df) {
+		for (int k = 0; k < 3; k++) {
+			if (scores != null && scores.length >= 3 && !Double.isNaN(scores[k])) {
+				sb.append(df.format(scores[k]));
+			}
+			sb.append("\t");
 		}
 	}
 
@@ -291,7 +420,7 @@ public final class DdaMagReportExportService {
 			HashMap<String, HashSet<String>> razorPepCountMap, HashMap<String, Integer> psmCountMap, String quanMode,
 			String[] intensityTitle, ArrayList<MetaPeptide> peptideList) throws IOException {
 		writeAllProteinReport(out, proteins, proteinIntensityMap, proteinTotalIntenMap, totalPepCountMap,
-				razorPepCountMap, psmCountMap, quanMode, intensityTitle, peptideList, null);
+				razorPepCountMap, psmCountMap, quanMode, intensityTitle, peptideList, null, null);
 	}
 
 	public static void writeAllProteinReport(File out, String[] proteins, HashMap<String, double[]> proteinIntensityMap,
@@ -299,6 +428,25 @@ public final class DdaMagReportExportService {
 			HashMap<String, HashSet<String>> razorPepCountMap, HashMap<String, Integer> psmCountMap, String quanMode,
 			String[] intensityTitle, ArrayList<MetaPeptide> peptideList, HashMap<String, double[]> proteinScoreMap)
 			throws IOException {
+		writeAllProteinReport(out, proteins, proteinIntensityMap, proteinTotalIntenMap, totalPepCountMap,
+				razorPepCountMap, psmCountMap, quanMode, intensityTitle, peptideList, proteinScoreMap, null);
+	}
+
+	public static void writeAllProteinReport(File out, String[] proteins, HashMap<String, double[]> proteinIntensityMap,
+			HashMap<String, Double> proteinTotalIntenMap, HashMap<String, HashSet<String>> totalPepCountMap,
+			HashMap<String, HashSet<String>> razorPepCountMap, HashMap<String, Integer> psmCountMap, String quanMode,
+			String[] intensityTitle, ArrayList<MetaPeptide> peptideList, HashMap<String, double[]> proteinScoreMap,
+			HashMap<String, MetaPSM> psmMap) throws IOException {
+		writeAllProteinReport(out, proteins, proteinIntensityMap, proteinTotalIntenMap, totalPepCountMap,
+				razorPepCountMap, psmCountMap, quanMode, intensityTitle, peptideList, proteinScoreMap, psmMap,
+				RESAMPLING_PROTEIN_SCORE_COLUMNS);
+	}
+
+	public static void writeAllProteinReport(File out, String[] proteins, HashMap<String, double[]> proteinIntensityMap,
+			HashMap<String, Double> proteinTotalIntenMap, HashMap<String, HashSet<String>> totalPepCountMap,
+			HashMap<String, HashSet<String>> razorPepCountMap, HashMap<String, Integer> psmCountMap, String quanMode,
+			String[] intensityTitle, ArrayList<MetaPeptide> peptideList, HashMap<String, double[]> proteinScoreMap,
+			HashMap<String, MetaPSM> psmMap, String[] scoreColumns) throws IOException {
 		if (proteins == null)
 			proteins = new String[0];
 		if (proteinIntensityMap == null)
@@ -317,11 +465,12 @@ public final class DdaMagReportExportService {
 			proteinScoreMap = new HashMap<>();
 		if (out.getParentFile() != null)
 			out.getParentFile().mkdirs();
+		int[] writtenIds = computeWrittenPeptideIds(peptideList, psmMap);
 
 		try (PrintWriter writer = new PrintWriter(out)) {
 			StringBuilder header = new StringBuilder();
 			header.append("Protein IDs\tPeptide counts (all)\tPeptide counts (razor)\tNumber of PSMs\t");
-			header.append("protein_score_S\tprotein_p_emp\tprotein_q_value\tIntensity\t");
+			header.append(String.join("\t", scoreColumns)).append("\tIntensity\t");
 			if (MetaConstants.labelFree.equals(quanMode) || MetaConstants.isobaricLabel.equals(quanMode)) {
 				for (String title : intensityTitle) {
 					header.append("Intensity ").append(title).append("\t");
@@ -340,14 +489,7 @@ public final class DdaMagReportExportService {
 				sb.append(totalPepSet.size()).append("\t");
 				sb.append(razorPepSet.size()).append("\t");
 				sb.append(psmCountMap.getOrDefault(protein, 0)).append("\t");
-				double[] scores = proteinScoreMap.get(protein);
-				if (scores != null && scores.length >= 3) {
-					sb.append(df.format(scores[0])).append("\t");
-					sb.append(df.format(scores[1])).append("\t");
-					sb.append(df.format(scores[2])).append("\t");
-				} else {
-					sb.append("\t\t\t");
-				}
+				appendScores(sb, proteinScoreMap.get(protein), df);
 				double totalIntensity = proteinTotalIntenMap.getOrDefault(protein, 0.0);
 				sb.append(df.format(totalIntensity)).append("\t");
 				double[] intensity = proteinIntensityMap.getOrDefault(protein, new double[0]);
@@ -358,7 +500,7 @@ public final class DdaMagReportExportService {
 					}
 				}
 				sb.append("\t\t").append(i).append("\t");
-				appendPeptideIdsAndRazorFlags(sb, totalPepSet, razorPepSet, peptideList);
+				appendPeptideIdsAndRazorFlags(sb, totalPepSet, razorPepSet, peptideList, writtenIds);
 				writer.println(sb);
 			}
 		}
@@ -486,12 +628,24 @@ public final class DdaMagReportExportService {
 	}
 
 	private static void appendPeptideIdsAndRazorFlags(StringBuilder sb, HashSet<String> totalPepSet,
-			HashSet<String> razorPepSet, ArrayList<MetaPeptide> peptideList) {
+			HashSet<String> razorPepSet, ArrayList<MetaPeptide> peptideList, int[] writtenIds) {
 		StringBuilder idSb = new StringBuilder();
 		StringBuilder razorSb = new StringBuilder();
-		if (peptideList != null) {
-			for (int id = 0; id < peptideList.size(); id++) {
-				String seq = peptideList.get(id).getSequence();
+		if (peptideList != null && writtenIds != null) {
+			int n = Math.min(peptideList.size(), writtenIds.length);
+			for (int i = 0; i < n; i++) {
+				// -1 means this peptide has no matching final_peptides.tsv row (no psmMap
+				// entry - see computeWrittenPeptideIds), so there is no id to reference it
+				// by; skip it rather than pointing at the wrong row.
+				int id = writtenIds[i];
+				if (id < 0) {
+					continue;
+				}
+				MetaPeptide peptide = peptideList.get(i);
+				if (peptide == null) {
+					continue;
+				}
+				String seq = peptide.getSequence();
 				if (totalPepSet.contains(seq)) {
 					if (idSb.length() > 0) {
 						idSb.append(";");
