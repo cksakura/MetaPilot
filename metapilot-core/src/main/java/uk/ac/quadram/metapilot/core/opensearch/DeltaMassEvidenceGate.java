@@ -12,7 +12,6 @@ import java.util.function.Consumer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import uk.ac.quadram.metapilot.core.opensearch.ExpectedPeakSelector.ExpectedShift;
 
 /**
  * Rejects fitted peaks whose members show no fragment-level evidence of
@@ -60,14 +59,24 @@ import uk.ac.quadram.metapilot.core.opensearch.ExpectedPeakSelector.ExpectedShif
  * as the record of what the instrument actually reported, exactly as it does
  * after isotope-family folding.
  *
- * <h2>Why allow-list masses are never folded</h2>
+ * <h2>Why peaks inside the exclude range are never folded</h2>
  * MSFragger does not search shifted fragment ions inside
  * {@code delta_mass_exclude_ranges} (-1.5 to +3.5 Da in the bundled open-search
  * parameters), so a peak there reports no gain whether or not the shift is
  * real. On PXD050781 this gate folded the deamidation peak (+0.9836 Da, 96.5%
- * no-gain of 254 scored) onto zero. Allow-list masses are hypotheses stated in
- * advance and are judged by {@link ModificationValidator}; their evidence is
- * still measured and reported.
+ * no-gain of 254 scored) onto zero. A peak inside that range is therefore left to
+ * {@link ModificationValidator}; its evidence is still measured and reported.
+ * <p>
+ * This replaced an exemption by a hand-picked list of seven masses (2026-11-08).
+ * A catalogue such as UNIMOD cannot take its place: the +3.8..+4.2 and +4.8..+5.2
+ * Da artefact bands are a comb of fitted peaks about 10 mDa apart, and even
+ * without isotopic labels 5 of 73 such peaks on 12mix and 5 of 52 on faecal lie
+ * within 8 mDa of a UNIMOD mass (Val-&gt;Cys, Formylasparagine, Trp-&gt;Kynurenin),
+ * so a catalogue exemption would keep artefacts this gate exists to remove.
+ * <p>
+ * In the joint and cascade identifications ({@link Config#foldRejected} off) the
+ * gate folds nothing and its rejections are read by no later step; only the
+ * per-peak support it records reaches {@code modification_verdicts.tsv}.
  */
 public final class DeltaMassEvidenceGate {
 
@@ -75,6 +84,10 @@ public final class DeltaMassEvidenceGate {
 
 	/** Recorded on a PSM this gate moved; surfaces in {@code validated_psms.tsv}. */
 	public static final String REASSIGNMENT_TAG = "PRECURSOR_ARTIFACT";
+
+	/** {@code delta_mass_exclude_ranges = (-1.5,3.5)} in the bundled MSFragger open-search parameters. */
+	public static final double DELTA_MASS_EXCLUDE_LOWER_DA = -1.5;
+	public static final double DELTA_MASS_EXCLUDE_UPPER_DA = 3.5;
 
 	public static final class Config {
 		/**
@@ -92,10 +105,14 @@ public final class DeltaMassEvidenceGate {
 		public double gainEpsilon = 0.001;
 		/** Peaks this close to zero are the zero family and are never tested. */
 		public double zeroWindowDa = 0.05;
-		/** Masses that are never rejected or folded; see the class docs. */
-		public List<ExpectedShift> exemptShifts = ExpectedPeakSelector.DEFAULT_SHIFTS;
-		/** Matching tolerance, in Da, between a peak centroid and an exempt shift. */
-		public double exemptToleranceDa = 0.008;
+		/**
+		 * Lower bound, Da, of the search engine's {@code delta_mass_exclude_ranges}: a peak whose
+		 * centroid lies inside it cannot show shifted-fragment gain and is never rejected or folded.
+		 * Must equal the value in the bundled {@code msfragger/open_fragger*.params}, which a test checks.
+		 */
+		public double exemptRangeLowerDa = DELTA_MASS_EXCLUDE_LOWER_DA;
+		/** Upper bound, Da, of that range. */
+		public double exemptRangeUpperDa = DELTA_MASS_EXCLUDE_UPPER_DA;
 		/** Off restores the previous behaviour exactly. */
 		public boolean enabled = true;
 		/**
@@ -205,7 +222,7 @@ public final class DeltaMassEvidenceGate {
 			int scored = e.getValue()[0];
 			double frac = scored == 0 ? 0.0 : (double) e.getValue()[1] / scored;
 			double c = centroid.getOrDefault(e.getKey(), Double.NaN);
-			boolean exempt = ExpectedPeakSelector.matching(c, cfg.exemptShifts, cfg.exemptToleranceDa) != null;
+			boolean exempt = c >= cfg.exemptRangeLowerDa && c <= cfg.exemptRangeUpperDa;
 			boolean enoughScored = scored >= cfg.minScoredPsms;
 			boolean noSupport = enoughScored && frac >= cfg.maxNoGainFraction;
 			boolean rej = noSupport && !exempt;
@@ -233,7 +250,7 @@ public final class DeltaMassEvidenceGate {
 				progress.accept(String.format(Locale.ROOT,
 						"Delta-mass evidence gate: %d of %d non-zero peaks show no shifted-fragment support "
 								+ "(>=%.0f%% of members gain nothing) and are rejected; their %,d PSMs keep "
-								+ "their delta as unexplained shifts; %d allow-list peak(s) without support kept",
+								+ "their delta as unexplained shifts; %d peak(s) inside the engine exclude range without support kept",
 						rejected.size(), counts.size(), 100 * cfg.maxNoGainFraction, kept, exemptedFromRejection));
 			}
 			return new Result(evidence, rejected, supported, 0);
@@ -277,7 +294,7 @@ public final class DeltaMassEvidenceGate {
 			progress.accept(String.format(Locale.ROOT,
 					"Delta-mass evidence gate: %d of %d non-zero peaks show no shifted-fragment support "
 							+ "(>=%.0f%% of members gain nothing); %,d PSMs folded onto the zero family as "
-							+ "precursor artifacts; %d allow-list peak(s) without support kept as fitted",
+							+ "precursor artifacts; %d peak(s) inside the engine exclude range without support kept as fitted",
 					rejected.size(), counts.size(), 100 * cfg.maxNoGainFraction, moved, exemptedFromRejection));
 			int shown = 0;
 			for (PeakEvidence pe : evidence) {
@@ -289,7 +306,7 @@ public final class DeltaMassEvidenceGate {
 			}
 		}
 		LOGGER.info("Delta-mass evidence gate rejected {} peaks and reassigned {} PSMs to the zero family; "
-				+ "{} allow-list peaks exempted", rejected.size(), moved, exemptedFromRejection);
+				+ "{} peaks inside the engine exclude range exempted", rejected.size(), moved, exemptedFromRejection);
 		return new Result(evidence, rejected, supported, moved);
 	}
 }

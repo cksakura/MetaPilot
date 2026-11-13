@@ -417,18 +417,41 @@ public class MagDbConfigPanelJavaFX extends BorderPane {
 				mgnifyConsoleArea.textProperty().unbind();
 				setMgnifyTaskRunning(false);
 
+				if (!Boolean.TRUE.equals(downloadTask.getValue())) {
+					showAlert(Alert.AlertType.ERROR, "Download Failed",
+							mgnifyConsoleArea.getText() == null || mgnifyConsoleArea.getText().isBlank()
+									? "Failed to download the MGnify database"
+									: mgnifyConsoleArea.getText());
+					return;
+				}
+
 				// Set database as available
 				selectedItem.setAvailable();
 				selectedItem.setCurrentFile(repoFile);
+				saveMagDbConfig();
 
 				// Update table to show database is now available
 				Platform.runLater(() -> {
 					mgnifyTable.refresh();
 				});
+				updateProteinCatalogueControls();
 
-				// Show success message
-				showAlert(Alert.AlertType.INFORMATION, "Download Complete",
-						"The MGnify database was downloaded successfully");
+				boolean wantedUhgp = proteinCatalogueCheckBox.isSelected()
+						&& ProteinCatalogueInstaller.supports(selectedItem.getCatalogueID());
+				File versionDir = localVersionDir(selectedItem);
+				boolean uhgpReady = versionDir != null && ProteinCatalogueInstaller.isInstalled(versionDir);
+				if (wantedUhgp && !uhgpReady) {
+					showAlert(Alert.AlertType.WARNING, "Download Complete",
+							"The MGnify database was downloaded, but the UHGP-100 protein catalogue was not prepared. "
+									+ "Use Prepare protein catalogue to retry; a partial archive download resumes.");
+				} else if (wantedUhgp) {
+					showAlert(Alert.AlertType.INFORMATION, "Download Complete",
+							"The MGnify database and the UHGP-100 protein catalogue were downloaded successfully.\n"
+									+ ProteinCatalogueInstaller.directory(versionDir).getAbsolutePath());
+				} else {
+					showAlert(Alert.AlertType.INFORMATION, "Download Complete",
+							"The MGnify database was downloaded successfully");
+				}
 			});
 
 			downloadTask.setOnFailed(event -> {
@@ -469,8 +492,8 @@ public class MagDbConfigPanelJavaFX extends BorderPane {
 		});
 
 		// UHGP-100 protein catalogue for the pangenome variant check (human-gut only)
-		proteinCatalogueCheckBox = new CheckBox("Also download the UHGP-100 protein catalogue (28 GB download, "
-				+ "about 23 GB on disk; used only by the pangenome variant check)");
+		proteinCatalogueCheckBox = new CheckBox("Also download the UHGP-100 protein catalogue (the 100% archive name "
+				+ "is read from the catalogue folder; about 28–32 GB download, 23 GB on disk; human-gut only)");
 		proteinCatalogueCheckBox.setSelected(false);
 		deleteProteinArchiveCheckBox = new CheckBox("Delete the archive after preparation");
 		deleteProteinArchiveCheckBox.setSelected(true);

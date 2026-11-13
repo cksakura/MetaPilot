@@ -16,7 +16,12 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.function.Consumer;
 
 /**
@@ -37,8 +42,11 @@ import java.util.function.Consumer;
  * The ion number is the residue count of the fragment: b_n holds the first n
  * residues, y_n the last n. Format as read by MSBooster's
  * {@code DiannSpeclibReader} (Apache-2.0).
+ * <p>
+ * Public for the joint closed+open identification, which scores every candidate against its
+ * predicted spectrum and retention time ({@code PredictedSpectrumFeatures}).
  */
-final class DiannFragmentPredictor {
+public final class DiannFragmentPredictor {
 
 	static final String INPUT_FILE = "variant_forms.tsv";
 	static final String OUTPUT_FILE = "variant_forms.predicted.bin";
@@ -46,24 +54,33 @@ final class DiannFragmentPredictor {
 	private static final int LOG_TAIL = 30;
 	/** Rows per DIA-NN call; bounds its memory the way MSBooster's prediction limit does. */
 	static final int BATCH_LIMIT = 500_000;
+	/** Rows per single-threaded DIA-NN call. Fixed, so slice boundaries never depend on the thread count. */
+	static final int SLICE = 5_000;
 	private static final int EXIT_ACCESS_VIOLATION = -1073741819;
 	private static final int EXIT_MISSING_VC_RUNTIME = -1073741515;
 
 	/** Predicted fragments of one precursor. */
-	static final class Prediction {
-		final int[] ionNumber;
-		final boolean[] yIon;
-		final int[] charge;
-		final float[] intensity;
+	public static final class Prediction {
+		public final int[] ionNumber;
+		public final boolean[] yIon;
+		public final int[] charge;
+		public final float[] intensity;
+		/** DIA-NN's predicted indexed retention time; NaN when the file holds none. */
+		public final float iRT;
 
 		Prediction(int[] ionNumber, boolean[] yIon, int[] charge, float[] intensity) {
+			this(ionNumber, yIon, charge, intensity, Float.NaN);
+		}
+
+		public Prediction(int[] ionNumber, boolean[] yIon, int[] charge, float[] intensity, float iRT) {
 			this.ionNumber = ionNumber;
 			this.yIon = yIon;
 			this.charge = charge;
 			this.intensity = intensity;
+			this.iRT = iRT;
 		}
 
-		int size() {
+		public int size() {
 			return intensity.length;
 		}
 	}
@@ -71,7 +88,7 @@ final class DiannFragmentPredictor {
 	private DiannFragmentPredictor() {
 	}
 
-	static String key(String peptide, int charge) {
+	public static String key(String peptide, int charge) {
 		return peptide + "/" + charge;
 	}
 
@@ -83,7 +100,7 @@ final class DiannFragmentPredictor {
 	 * @param carbamidomethyl whether C carries the fixed carbamidomethyl
 	 * @return predictions keyed by {@link #key}
 	 */
-	static Map<String, Prediction> predict(File diann, List<String> peptides, List<Integer> charges,
+	public static Map<String, Prediction> predict(File diann, List<String> peptides, List<Integer> charges,
 			boolean carbamidomethyl, File workDir, int threads, Consumer<String> log) throws IOException {
 		if (!workDir.isDirectory() && !workDir.mkdirs()) {
 			throw new IOException("Cannot create " + workDir);
@@ -98,13 +115,7 @@ final class DiannFragmentPredictor {
 			if (batches > 1) {
 				log.accept("MS2 form ranking: DIA-NN batch " + (b + 1) + " of " + batches);
 			}
-			List<Prediction> predictions;
-			try {
-				predictions = predictBatch(diann, pep, chg, carbamidomethyl, workDir, threads, log);
-			} catch (AccessViolation e) {
-				log.accept("MS2 form ranking: DIA-NN stopped with an access violation; retrying once");
-				predictions = predictBatch(diann, pep, chg, carbamidomethyl, workDir, threads, log);
-			}
+			List<Prediction> predictions = predictBatch(diann, pep, chg, carbamidomethyl, workDir, threads, log);
 			for (int i = 0; i < pep.size(); i++) {
 				out.put(key(pep.get(i), chg.get(i)), predictions.get(i));
 			}
@@ -121,16 +132,72 @@ final class DiannFragmentPredictor {
 		}
 	}
 
+	/**
+	 * DIA-NN with several threads predicts slightly different intensities and iRT on every run (seen
+	 * on 1.8.1.8: four 24-thread runs of one input gave four different outputs, two 1-thread runs
+	 * gave identical ones), and those differences reach the classifier as features. So every slice of
+	 * {@link #SLICE} rows is predicted by its own single-threaded DIA-NN, up to {@code threads} at a
+	 * time: the output depends on the input alone, not on scheduling or on the thread count.
+	 */
 	private static List<Prediction> predictBatch(File diann, List<String> peptides, List<Integer> charges,
 			boolean carbamidomethyl, File workDir, int threads, Consumer<String> log) throws IOException {
+		int slices = (peptides.size() + SLICE - 1) / SLICE;
+		int parallel = Math.max(1, Math.min(threads, slices));
+		log.accept("MS2 form ranking: predicting " + peptides.size() + " precursors in " + slices
+				+ " single-threaded DIA-NN slice(s), " + parallel + " at a time, with " + diann.getAbsolutePath()
+				+ " --lib <slice>/" + INPUT_FILE + " --predict --threads 1 --strip-unknown-mods --predict-n-frag 100");
+		if (slices <= 1) {
+			return predictSlice(diann, peptides, charges, carbamidomethyl, workDir);
+		}
+		ExecutorService pool = Executors.newFixedThreadPool(parallel);
+		try {
+			List<Future<List<Prediction>>> futures = new ArrayList<>(slices);
+			for (int s = 0; s < slices; s++) {
+				int from = s * SLICE;
+				int to = Math.min(peptides.size(), from + SLICE);
+				File dir = new File(workDir, String.format(Locale.ROOT, "slice_%04d", s));
+				List<String> pep = peptides.subList(from, to);
+				List<Integer> chg = charges.subList(from, to);
+				futures.add(pool.submit(() -> predictSlice(diann, pep, chg, carbamidomethyl, dir)));
+			}
+			List<Prediction> out = new ArrayList<>(peptides.size());
+			for (Future<List<Prediction>> f : futures) {
+				out.addAll(f.get());
+			}
+			return out;
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			throw new IOException("Interrupted while DIA-NN was predicting", e);
+		} catch (ExecutionException e) {
+			Throwable cause = e.getCause();
+			throw cause instanceof IOException io ? io : new IOException(cause);
+		} finally {
+			pool.shutdownNow();
+		}
+	}
+
+	/** One single-threaded DIA-NN call in its own folder, retried once after an access violation. */
+	private static List<Prediction> predictSlice(File diann, List<String> peptides, List<Integer> charges,
+			boolean carbamidomethyl, File dir) throws IOException {
+		if (!dir.isDirectory() && !dir.mkdirs()) {
+			throw new IOException("Cannot create " + dir);
+		}
+		try {
+			return runDiann(diann, peptides, charges, carbamidomethyl, dir);
+		} catch (AccessViolation e) {
+			return runDiann(diann, peptides, charges, carbamidomethyl, dir);
+		}
+	}
+
+	private static List<Prediction> runDiann(File diann, List<String> peptides, List<Integer> charges,
+			boolean carbamidomethyl, File workDir) throws IOException {
 		File input = new File(workDir, INPUT_FILE);
 		File output = new File(workDir, OUTPUT_FILE);
 		Files.deleteIfExists(output.toPath());
 		writeInput(input, peptides, charges, carbamidomethyl);
 
 		List<String> cmd = List.of(diann.getAbsolutePath(), "--lib", input.getAbsolutePath(), "--predict",
-				"--threads", String.valueOf(Math.max(1, threads)), "--strip-unknown-mods", "--predict-n-frag", "100");
-		log.accept("MS2 form ranking: predicting " + peptides.size() + " precursors with " + String.join(" ", cmd));
+				"--threads", "1", "--strip-unknown-mods", "--predict-n-frag", "100");
 		ProcessBuilder pb = new ProcessBuilder(cmd);
 		pb.directory(workDir);
 		pb.redirectErrorStream(true);
@@ -208,7 +275,7 @@ final class DiannFragmentPredictor {
 				if (n < 0 || n > MAX_FRAGMENTS) {
 					throw new IOException(bin.getName() + ": implausible fragment count " + n + " at record " + r);
 				}
-				in.readInt();
+				float iRT = Float.intBitsToFloat(Integer.reverseBytes(in.readInt()));
 				in.readInt();
 				int[] ion = new int[n];
 				boolean[] y = new boolean[n];
@@ -221,7 +288,7 @@ final class DiannFragmentPredictor {
 					y[i] = ((f >>> 2) & 0x1) == 1;
 					charge[i] = (f & 0x3) + 1;
 				}
-				out.add(new Prediction(ion, y, charge, intensity));
+				out.add(new Prediction(ion, y, charge, intensity, iRT));
 			}
 			if (in.read() != -1) {
 				throw new IOException(bin.getName() + " holds more predictions than the " + expected

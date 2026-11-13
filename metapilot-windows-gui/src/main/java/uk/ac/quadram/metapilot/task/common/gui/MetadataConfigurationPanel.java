@@ -14,6 +14,7 @@ import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.util.converter.DefaultStringConverter;
 import javafx.beans.property.SimpleStringProperty;
 import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel;
+import uk.ac.quadram.metapilot.task.par.MetaData;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -37,17 +38,16 @@ public class MetadataConfigurationPanel extends VBox {
     private Runnable parameterUpdateCallback;
     
     public MetadataConfigurationPanel() {
-        initializeUI();
+        this(false);
     }
-    
-    private void initializeUI() {
-        setSpacing(10);
-        setPadding(new Insets(10));
-        setStyle("-fx-background-color: #fff8f0; -fx-background-radius: 5;");
-        setMinHeight(240);
+
+    public MetadataConfigurationPanel(boolean titledSection) {
+        initializeUI(titledSection);
+    }
+
+    private void initializeUI(boolean titledSection) {
         VBox.setVgrow(this, Priority.ALWAYS);
         
-        Label titleLabel = createSectionTitle("Metadata Configuration");
         Label infoLabel = new Label("Metadata will be configured based on selected quantitative mode");
         infoLabel.setStyle("-fx-font-style: italic; -fx-text-fill: #666666;");
         
@@ -112,7 +112,17 @@ public class MetadataConfigurationPanel extends VBox {
             resetMetadataButton
         );
         
-        getChildren().addAll(titleLabel, infoLabel, metadataTable, controlBox);
+        if (titledSection) {
+            VBox body = new VBox(10, infoLabel, metadataTable, controlBox);
+            TitledPane section = ParameterSection.create("Metadata Configuration", body);
+            VBox.setVgrow(section, Priority.ALWAYS);
+            getChildren().add(section);
+        } else {
+            setSpacing(10);
+            setPadding(new Insets(10));
+            setStyle("-fx-background-color: #fff8f0; -fx-background-radius: 5;");
+            getChildren().addAll(createSectionTitle("Metadata Configuration"), infoLabel, metadataTable, controlBox);
+        }
     }
     
     private Label createSectionTitle(String title) {
@@ -392,6 +402,54 @@ public class MetadataConfigurationPanel extends VBox {
     }
     
     /**
+     * Copies the visible metadata columns onto {@code metaData} in table order.
+     * Every workflow panel calls this so condition reaches {@code metainfo.tsv}.
+     */
+    public void applyTo(MetaData metaData) {
+        applyRows(metaData, metadataTableData, getMetadataColumnNames());
+    }
+
+    public static void applyRows(MetaData metaData, List<MetaPilotDdaIgcMaxQuantPanel.MetadataRow> rows,
+            List<String> columnNames) {
+        if (metaData == null) {
+            return;
+        }
+        List<String> columns = columnNames == null ? new ArrayList<>() : columnNames;
+        int rowCount = rows == null ? 0 : rows.size();
+        if (columns.isEmpty()) {
+            metaData.setMetaTypeCount(0);
+            metaData.setMetaInfo(new String[0][0]);
+            metaData.setMetaTypeTitles(new String[0]);
+            return;
+        }
+        String[][] metaInfo = new String[rowCount][columns.size()];
+        for (int i = 0; i < rowCount; i++) {
+            MetaPilotDdaIgcMaxQuantPanel.MetadataRow row = rows.get(i);
+            for (int j = 0; j < columns.size(); j++) {
+                String value = row == null ? "" : row.getValueByColumnName(columns.get(j));
+                metaInfo[i][j] = value == null ? "" : value;
+            }
+        }
+        metaData.setMetaTypeCount(columns.size());
+        metaData.setMetaInfo(metaInfo);
+        metaData.setMetaTypeTitles(columns.toArray(new String[0]));
+    }
+
+    /** Column titles after the Sample column, in the order shown in the table. */
+    public static List<String> columnNames(TableView<MetaPilotDdaIgcMaxQuantPanel.MetadataRow> table) {
+        List<String> names = new ArrayList<>();
+        if (table == null) {
+            return names;
+        }
+        var columns = table.getColumns();
+        for (int i = 1; i < columns.size(); i++) {
+            String text = columns.get(i).getText();
+            names.add(text == null ? "" : text);
+        }
+        return names;
+    }
+
+    /**
      * Returns the display names of metadata columns (excluding Sample column).
      * Uses the label from the Metadata configuration panel only; never "meta1", "meta2", etc.
      */
@@ -490,4 +548,4 @@ public class MetadataConfigurationPanel extends VBox {
         // Notify that parameters have changed
         notifyParameterUpdate();
     }
-} 
+}

@@ -317,4 +317,92 @@ class GenomeEvidenceTestTest {
 		assertFalse(GenomeEvidenceTest.withinSubstitutions("PEPTLDEK", 0, "PAPTNDEK", 1));
 		assertTrue(GenomeEvidenceTest.withinSubstitutions("PEPTLDEK", 0, "PAPTNDEK", 2));
 	}
+
+	@Test
+	@DisplayName("RESET decoy weight counts each passed decoy twice in the peptide walk and the expected false count")
+	void decoyWeightCountsEachDecoyTwice() throws IOException {
+		GenomeEvidenceTest.Result plain = new Fixture().run(null);
+		GenomeEvidenceTest.Settings reset = new GenomeEvidenceTest.Settings();
+		reset.decoyWeight = 2.0;
+		GenomeEvidenceTest.Result weighted = new Fixture().run(reset);
+		int u = PeptideClass.UNMODIFIED.ordinal();
+		// Plain: all 341 target units and the 3 decoys pass (3/341 < 1%). Weighted: 2 x 1/221 < 1% just before
+		// the second decoy, 2 x 2/221 > 1% after it, and the walk never comes back under 1%.
+		assertEquals(341, plain.calibration.acceptedUnits[u][0]);
+		assertEquals(3, plain.calibration.acceptedUnits[u][1]);
+		assertEquals(221, weighted.calibration.acceptedUnits[u][0]);
+		assertEquals(1, weighted.calibration.acceptedUnits[u][1]);
+		// Same F and window: the expected false count of a target genome doubles.
+		GenomeEvidenceTest.Settings sameWalk = new GenomeEvidenceTest.Settings();
+		sameWalk.decoyWeight = 2.0;
+		sameWalk.peptideFdr = 0.05;
+		GenomeEvidenceTest.Settings plainWide = new GenomeEvidenceTest.Settings();
+		plainWide.peptideFdr = 0.05;
+		Map<String, GenomeRow> a = byGenome(new Fixture().run(plainWide));
+		Map<String, GenomeRow> b = byGenome(new Fixture().run(sameWalk));
+		assertEquals(2 * a.get("GB").expectedFalse, b.get("GB").expectedFalse, 1e-9);
+	}
+
+	@Test
+	@DisplayName("Protein filter keeps proteins with two or more peptides and walks one-peptide proteins to the FDR")
+	void proteinFilterWalksOnePeptideProteins() {
+		Map<String, Double> targetScores = new HashMap<>();
+		Map<String, Integer> targetPeptides = new HashMap<>();
+		for (int i = 0; i < 200; i++) {
+			targetScores.put("T" + i, 300.0 - i);
+			targetPeptides.put("T" + i, 1);
+		}
+		for (int i = 0; i < 3; i++) {
+			targetScores.put("M" + i, 1.0);
+			targetPeptides.put("M" + i, 2);
+		}
+		Map<String, Double> decoyScores = new HashMap<>();
+		Map<String, Integer> decoyPeptides = new HashMap<>();
+		decoyScores.put("rev_D0", 150.5);
+		decoyPeptides.put("rev_D0", 1);
+		decoyScores.put("rev_D1", 0.0);
+		decoyPeptides.put("rev_D1", 1);
+		decoyScores.put("rev_D2", 500.0);
+		decoyPeptides.put("rev_D2", 3);
+		// Weight 1 at 1.4%: (1 + 1) / 200 = 1% above the last decoy, so every target passes; that decoy is at 3 / 200.
+		GenomeEvidenceTest.Calibration plain = new GenomeEvidenceTest.Calibration();
+		Set<String> all = GenomeEvidenceTest.proteinFilter(targetScores, targetPeptides, decoyScores, decoyPeptides,
+				0.014, 1.0, plain);
+		assertEquals(203, all.size());
+		assertEquals(3, plain.proteinsTwoOrMore[0]);
+		assertEquals(1, plain.proteinsTwoOrMore[1], "multi-peptide decoys are counted, never walked");
+		assertEquals(200, plain.proteinsOnePeptide[0]);
+		assertEquals(2, plain.proteinsOnePeptide[1]);
+		assertEquals(1, plain.proteinsOnePeptidePassing[1]);
+		// Weight 2: 2 x 1 / 150 = 1.3% above the first decoy; 2 x 2 / 200 = 2% below it.
+		GenomeEvidenceTest.Calibration reset = new GenomeEvidenceTest.Calibration();
+		Set<String> kept = GenomeEvidenceTest.proteinFilter(targetScores, targetPeptides, decoyScores, decoyPeptides,
+				0.014, 2.0, reset);
+		assertEquals(153, kept.size());
+		assertTrue(kept.contains("T149") && !kept.contains("T150") && kept.contains("M2"));
+		assertEquals(0, reset.proteinsOnePeptidePassing[1]);
+	}
+
+	@Test
+	@DisplayName("Host proteins are no candidate genome, and a peptide they contain is no genome evidence")
+	void hostPeptidesAreNotGenomeEvidence() throws IOException {
+		Fixture f = new Fixture();
+		// Ten of GB's peptides also occur in a host protein; one host protein shares nothing.
+		f.proteins.put("sp|P00001|HOST1_HUMAN", String.join("", f.gb.subList(0, 10)));
+		f.proteins.put("sp|P00002|HOST2_HUMAN", String.join("", f.peptides(5)));
+		GenomeEvidenceTest.Settings settings = new GenomeEvidenceTest.Settings();
+		settings.genomePrefix = "G";
+		GenomeEvidenceTest.Result result = f.run(settings);
+		Map<String, GenomeRow> rows = byGenome(result);
+
+		assertEquals(150, rows.get("GB").uniquePeptides);
+		assertEquals(10, result.calibration.targetUniqueness.get("host").intValue());
+		assertTrue(rows.get("GB").accepted);
+		for (GenomeRow row : result.rows) {
+			assertTrue(row.genome.startsWith("G") || row.genome.startsWith("rev_G"), row.genome);
+		}
+
+		// Without the prefix the host is ignored as before, and the shared peptides count for GB.
+		assertEquals(160, byGenome(f.run(null)).get("GB").uniquePeptides);
+	}
 }

@@ -7,15 +7,13 @@ import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
-import javafx.scene.text.Font;
-import javafx.scene.text.FontWeight;
-import javafx.scene.paint.Color;
 import javafx.scene.control.Alert.AlertType;
 import java.util.Optional;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.beans.property.SimpleStringProperty;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
+import uk.ac.quadram.metapilot.task.common.gui.ParameterSection;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX.ExperimentRow;
 import uk.ac.quadram.metapilot.task.common.gui.DdaIgcInputOutputPanel;
 import uk.ac.quadram.metapilot.task.common.gui.ModificationsPanel;
@@ -26,6 +24,7 @@ import uk.ac.quadram.metapilot.dbSearch.fragpipe.FragpipeWorkflow;
 import uk.ac.quadram.metapilot.resources.MetaResourceIO;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.common.gui.AbstractWorkflowPanel;
+import uk.ac.quadram.metapilot.task.common.gui.MetadataConfigurationPanel;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.MetaPilotApp;
 import java.util.ArrayList;
@@ -136,7 +135,6 @@ public class MetaPilotDdaIgcFragPipePanel extends AbstractWorkflowPanel<DDAIgcFr
 		VBox tabContent = new VBox(10);
 		tabContent.setPadding(new Insets(10));
 		tabContent.setMinWidth(960);
-		tabContent.setMinHeight(760);
 
 		// Create main grid layout for parameters with 2-column responsive sizing
 		GridPane mainGrid = new GridPane();
@@ -144,8 +142,6 @@ public class MetaPilotDdaIgcFragPipePanel extends AbstractWorkflowPanel<DDAIgcFr
 		mainGrid.setVgap(15);
 		mainGrid.setPadding(new Insets(10));
 		mainGrid.setMinWidth(940);
-		mainGrid.setMinHeight(740);
-		VBox.setVgrow(mainGrid, Priority.ALWAYS);
 
 		// Column constraints for 2-column layout
 		ColumnConstraints col1 = new ColumnConstraints();
@@ -161,15 +157,14 @@ public class MetaPilotDdaIgcFragPipePanel extends AbstractWorkflowPanel<DDAIgcFr
 		// Row constraints
 		RowConstraints row1 = new RowConstraints();
 		row1.setVgrow(Priority.ALWAYS);
-		row1.setMinHeight(400);
 		mainGrid.getRowConstraints().add(row1);
 
 		// Left column: Enzyme Settings, Additional Parameters, Taxonomic Analysis, and
 		// Modifications Panel
 		VBox leftColumn = new VBox(15);
 		leftColumn.setMinWidth(430);
-		VBox enzymeSection = createEnzymeSection();
-		VBox additionalParamsSection = createAdditionalParametersSection();
+		TitledPane enzymeSection = createEnzymeSection();
+		TitledPane additionalParamsSection = createAdditionalParametersSection();
 
 		// Create horizontal modifications panel with fixed mods (narrow) and variable
 		// mods (wider)
@@ -181,7 +176,7 @@ public class MetaPilotDdaIgcFragPipePanel extends AbstractWorkflowPanel<DDAIgcFr
 		// Right column: Metadata Configuration only
 		VBox rightColumn = new VBox(15);
 		rightColumn.setMinWidth(430);
-		VBox metadataSection = createMetadataConfigurationSection();
+		TitledPane metadataSection = createMetadataConfigurationSection();
 		rightColumn.getChildren().addAll(metadataSection);
 		GridPane.setVgrow(rightColumn, Priority.ALWAYS);
 
@@ -189,7 +184,7 @@ public class MetaPilotDdaIgcFragPipePanel extends AbstractWorkflowPanel<DDAIgcFr
 		mainGrid.add(leftColumn, 0, 0);
 		mainGrid.add(rightColumn, 1, 0);
 
-		tabContent.getChildren().add(mainGrid);
+		tabContent.getChildren().add(ParameterSection.createViewport(mainGrid));
 		return tabContent;
 	}
 
@@ -269,19 +264,9 @@ public class MetaPilotDdaIgcFragPipePanel extends AbstractWorkflowPanel<DDAIgcFr
 		}
 	}
 
-	private Label createSectionTitle(String title) {
-		Label label = new Label(title);
-		label.setFont(Font.font("System", FontWeight.BOLD, 14));
-		label.setTextFill(Color.DARKBLUE);
-		return label;
-	}
 
-	private VBox createEnzymeSection() {
+	private TitledPane createEnzymeSection() {
 		VBox section = new VBox(10);
-		section.setPadding(new Insets(10));
-		section.setStyle("-fx-background-color: #f5f5f5; -fx-background-radius: 5;");
-
-		Label titleLabel = createSectionTitle("Enzyme Settings");
 
 		HBox enzymeParamsBox = new HBox(15);
 		enzymeParamsBox.setAlignment(Pos.CENTER_LEFT);
@@ -333,16 +318,12 @@ public class MetaPilotDdaIgcFragPipePanel extends AbstractWorkflowPanel<DDAIgcFr
 
 		enzymeParamsBox.getChildren().addAll(enzymeBox, missedCleavagesBox, digestionModeBox);
 
-		section.getChildren().addAll(titleLabel, enzymeParamsBox);
-		return section;
+		section.getChildren().addAll(enzymeParamsBox);
+		return ParameterSection.create("Enzyme Settings", section);
 	}
 
-	private VBox createAdditionalParametersSection() {
+	private TitledPane createAdditionalParametersSection() {
 		VBox section = new VBox(10);
-		section.setPadding(new Insets(10));
-		section.setStyle("-fx-background-color: #f0f8ff; -fx-background-radius: 5;");
-
-		Label titleLabel = createSectionTitle("Additional Parameters");
 
 		GridPane paramGrid = new GridPane();
 		paramGrid.setHgap(15);
@@ -425,8 +406,8 @@ public class MetaPilotDdaIgcFragPipePanel extends AbstractWorkflowPanel<DDAIgcFr
 
 		checkBoxContainer.getChildren().addAll(generateSampleSpecificDBCheckBox, spectraClusteringCheckBox);
 
-		section.getChildren().addAll(titleLabel, paramGrid, checkBoxContainer);
-		return section;
+		section.getChildren().addAll(paramGrid, checkBoxContainer);
+		return ParameterSection.create("Additional Parameters", section);
 	}
 
 	private void updateMetadataTableFromIOPanel() {
@@ -441,14 +422,9 @@ public class MetaPilotDdaIgcFragPipePanel extends AbstractWorkflowPanel<DDAIgcFr
 		}
 	}
 
-	private VBox createMetadataConfigurationSection() {
+	private TitledPane createMetadataConfigurationSection() {
 		VBox section = new VBox(10);
-		section.setPadding(new Insets(10));
-		section.setStyle("-fx-background-color: #fff8f0; -fx-background-radius: 5;");
-		section.setMinHeight(200);
-		VBox.setVgrow(section, Priority.ALWAYS);
 
-		Label titleLabel = createSectionTitle("Metadata Configuration");
 		Label infoLabel = new Label("Metadata will be configured based on selected quantitative mode");
 		infoLabel.setStyle("-fx-font-style: italic; -fx-text-fill: #666666;");
 
@@ -517,8 +493,11 @@ public class MetaPilotDdaIgcFragPipePanel extends AbstractWorkflowPanel<DDAIgcFr
 		controlBox.getChildren().addAll(metadataColumnComboBox, customColumnTextField, addMetadataColumnButton,
 				removeMetadataColumnButton, resetMetadataButton);
 
-		section.getChildren().addAll(titleLabel, infoLabel, metadataTable, controlBox);
-		return section;
+		section.getChildren().addAll(infoLabel, metadataTable, controlBox);
+		TitledPane pane = ParameterSection.create("Metadata Configuration", section);
+		pane.setMinHeight(200);
+		VBox.setVgrow(pane, Priority.ALWAYS);
+		return pane;
 	}
 
 	private void createMetadataTableColumns() {
@@ -1100,6 +1079,8 @@ public class MetaPilotDdaIgcFragPipePanel extends AbstractWorkflowPanel<DDAIgcFr
 				metadataDataArray.add(row.toArray());
 			}
 			params.setMetadataTableData(metadataDataArray);
+			MetadataConfigurationPanel.applyRows(params.getMetadata(), new ArrayList<>(metadataTableData),
+					MetadataConfigurationPanel.columnNames(metadataTable));
 
 			consolePanel.appendConsoleText("✓ Successfully collected parameters from UI\n");
 			LOGGER.info("Successfully collected parameters from UI for IGC FragPipe workflow");

@@ -213,6 +213,7 @@ Same writers and headers as DDA MAG (`MagTaxonomyAnalysisService`):
 | `genome_final_ranked.tsv` | `Rank` (0-based), evidence columns, `Reason` (`PRIVILEGE_UNIQUE_PEPTIDE_1PCT`, `GREEDY`, empty), greedy and knee diagnostics | `Selection_label` and row order of `Genome.tsv` |
 | `genome_final_selected.tsv` | `Genome	Reason` (`GREEDY_core` / `GREEDY_mid` / `GREEDY_tail`), footer counts and knees | diagnostics |
 | `Genome.tsv` | **main genome table**: `Genome	genome_score_S	genome_p_emp	genome_q_value	Selection_label	PSM count	Peptide count	Razor peptide count	Unique peptide count`, three I/L ratios, `GTDB_Name	GTDB_Rank	GTDB_<rank>`..., `NCBI_Name	NCBI_Rank	NCBI_<rank>`..., `Intensity <run>`... ; one row per confident genome | users |
+| `Genome_unique_peptides.tsv` | same columns and rows as `Genome.tsv`; `Intensity` is summed from peptides unique to that genome only | users |
 | `Genome.html` | genome table with lineage | report (GUI copies to `report/reports/`) |
 | `Taxa.tsv` | `Name	Score	Rank	domain	kingdom	phylum	class	order	family	genus	species	Intensity <run>`...; `Score` = sum of genome S | users |
 | `Taxa_report.tsv` | as `Taxa.tsv` without `Score` | `report_taxonomy_summary.html` |
@@ -221,6 +222,7 @@ Same writers and headers as DDA MAG (`MagTaxonomyAnalysisService`):
 
 `Selection_label`: `core` (privileged or greedy within the focus knee), `mid` (within the
 comprehensive knee), `tail`. Genome intensity = sum of its razor-protein intensities.
+`Genome_unique_peptides.tsv` uses the same rows with intensity summed from peptides unique to that genome.
 
 ### 5c. Functional annotation (`R/functional_annotation/`)
 

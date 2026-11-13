@@ -164,6 +164,51 @@ public final class MSFraggerHeadlessRunner {
 		}
 	}
 
+	public static final String DIGEST_SPECIFIC = "Specific";
+	public static final String DIGEST_SEMI_SPECIFIC = "Semi specific";
+	public static final String DIGEST_NONSPECIFIC = "Unspecific";
+
+	/** The digestion modes MSFragger's {@code num_enzyme_termini} can express. */
+	public static final java.util.List<String> DIGEST_CHOICES = java.util.List.of(DIGEST_SPECIFIC,
+			DIGEST_SEMI_SPECIFIC, DIGEST_NONSPECIFIC);
+
+	/**
+	 * MSFragger's {@code num_enzyme_termini}: 2 fully enzymatic, 1 semi, 0 none.
+	 * The non-specific enzyme always gets 0, since requiring enzymatic termini
+	 * with no cleavage rule would leave nothing to search.
+	 * <p>
+	 * Older parameter files may carry "Semi free N-term" or "Semi free C-term",
+	 * which MSFragger cannot restrict to one terminus; both are searched
+	 * semi-specifically. "None" is non-specific.
+	 */
+	public static int enzymeTermini(String digestMode, String enzyme) {
+		if ("nonspecific".equals(enzymeInfo(enzyme)[0])) {
+			return 0;
+		}
+		String mode = digestMode == null ? "" : digestMode.trim().toLowerCase(java.util.Locale.ROOT);
+		if (mode.isEmpty() || mode.equals("specific") || mode.equals("fully-specific")) {
+			return 2;
+		}
+		if (mode.startsWith("semi")) {
+			return 1;
+		}
+		if (mode.equals("unspecific") || mode.equals("non-specific") || mode.equals("nonspecific")
+				|| mode.equals("none")) {
+			return 0;
+		}
+		throw new IllegalArgumentException("Unknown digestion mode '" + digestMode + "'. Expected one of "
+				+ DIGEST_CHOICES);
+	}
+
+	/**
+	 * MSFragger's {@code search_enzyme_sense_1}: the side of the cut residue
+	 * the enzyme cleaves. Asp-N cleaves before D; every other choice cleaves
+	 * after its residues.
+	 */
+	public static String enzymeSense(String enzyme) {
+		return "aspn".equals(enzymeInfo(enzyme)[0]) ? "N" : "C";
+	}
+
 	/** Settings that vary per run; everything else comes from the bundled template. */
 	public static final class OpenSearchSettings {
 		public File targetDecoyFasta;
@@ -194,6 +239,12 @@ public final class MSFraggerHeadlessRunner {
 		 */
 		public String outputFormat = "pepXML";
 		public String decoyTag = DECOY_TAG;
+		/**
+		 * {@code write_uncalibrated_mzml = 1}: for a .raw or .d input, MSFragger also writes
+		 * {@code <run>_uncalibrated.mzML} beside it, the spectra the rest of the workflow reads.
+		 * Off leaves the template's value, so the parameter text of mzML runs does not change.
+		 */
+		public boolean writeUncalibratedMzml = false;
 	}
 
 	/**
@@ -251,6 +302,9 @@ public final class MSFraggerHeadlessRunner {
 		par.set("output_report_topN", String.valueOf(settings.outputReportTopN));
 		if (settings.outputFormat != null && !settings.outputFormat.isBlank()) {
 			par.set("output_format", settings.outputFormat.trim());
+		}
+		if (settings.writeUncalibratedMzml) {
+			par.set("write_uncalibrated_mzml", "1");
 		}
 
 		// Current-generation MSFragger enzyme keys (search_enzyme_*_1). Not using

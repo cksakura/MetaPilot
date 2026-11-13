@@ -151,15 +151,48 @@ public final class DiaMagReportHeadlessRunner {
 			File roundRootOverride, File funcDbFile, ProgressCallback cb, boolean generateHtmlReport,
 			String reportPythonHint, MetaPilotResourceConfig reportResourceConfig, boolean exportMetaAtlasParquet,
 			boolean allowIncompleteDeepProteinMapping) throws Exception {
+        return run(params, magDbConfigJson, resultDirOverride, combinedParquetOverride, combinedPrMatrixOverride,
+                peptideProteinMapOverride, roundRootOverride, funcDbFile, cb, generateHtmlReport,
+                reportPythonHint, reportResourceConfig, exportMetaAtlasParquet, allowIncompleteDeepProteinMapping,
+                "SEARCH", null);
+    }
+
+	public static Result run(MetaParameterDiaMarker params, File magDbConfigJson, File resultDirOverride,
+			File combinedParquetOverride, File combinedPrMatrixOverride, File peptideProteinMapOverride,
+			File roundRootOverride, File funcDbFile, ProgressCallback cb, boolean generateHtmlReport,
+			String reportPythonHint, MetaPilotResourceConfig reportResourceConfig, boolean exportMetaAtlasParquet,
+			boolean allowIncompleteDeepProteinMapping, String proteinMappingPolicy, File selectedGenomesTsv) throws Exception {
+        return run(params, magDbConfigJson, resultDirOverride, combinedParquetOverride, combinedPrMatrixOverride,
+                peptideProteinMapOverride, roundRootOverride, funcDbFile, cb, generateHtmlReport,
+                reportPythonHint, reportResourceConfig, exportMetaAtlasParquet, allowIncompleteDeepProteinMapping,
+                proteinMappingPolicy, selectedGenomesTsv, null);
+    }
+
+    public static Result run(MetaParameterDiaMarker params, File magDbConfigJson, File resultDirOverride,
+            File combinedParquetOverride, File combinedPrMatrixOverride, File peptideProteinMapOverride,
+            File roundRootOverride, File funcDbFile, ProgressCallback cb, boolean generateHtmlReport,
+            String reportPythonHint, MetaPilotResourceConfig reportResourceConfig, boolean exportMetaAtlasParquet,
+            boolean allowIncompleteDeepProteinMapping, String proteinMappingPolicy, File selectedGenomesTsv,
+            Double globalPrecursorQValue) throws Exception {
+        if (globalPrecursorQValue != null && !(globalPrecursorQValue > 0.0 && globalPrecursorQValue <= 0.01)) {
+            throw new IllegalArgumentException("Global precursor q-value must be greater than 0 and at most 0.01");
+        }
 		if (cb == null)
 			cb = new ProgressCallback.NoOp();
 		if (params == null)
 			throw new IllegalArgumentException("params is null");
 
 		DiaRefinementMode markerMode = params.getMarkerRefinementMode();
-		if (markerMode == DiaRefinementMode.DIRECT) {
+		if (markerMode == DiaRefinementMode.DIRECT && "SEARCH".equals(proteinMappingPolicy)) {
 			throw new IOException("diann-mag-report does not support DIRECT mode. DIRECT is only valid for DIA Seed workflows.");
 		}
+
+        if (!java.util.Set.of("SEARCH", "ROUND_PROTEINS", "SEED_DIRECT", "SEED_SELECTED").contains(proteinMappingPolicy))
+            throw new IOException("Unknown protein mapping policy: " + proteinMappingPolicy);
+        if (!"SEARCH".equals(proteinMappingPolicy) && resultDirOverride == null)
+            throw new IOException("Seed report recovery requires an explicit --out directory");
+        if ("SEED_SELECTED".equals(proteinMappingPolicy) && (selectedGenomesTsv == null || !selectedGenomesTsv.isFile()))
+            throw new IOException("SEED_SELECTED requires the recorded --selected-genomes TSV");
 
 		MagDbItem magDb = DiaMarkerHeadlessRunner.resolveMagDb(params, magDbConfigJson);
 		if (magDb == null) {
@@ -208,13 +241,28 @@ public final class DiaMagReportHeadlessRunner {
 		if (maybeGtdbNcbi.exists())
 			gtdbNcbi = maybeGtdbNcbi;
 
-		DiaDeepProteinMappingService.Request deepProteinMappingRequest = buildDeepProteinMappingRequest(markerMode,
+		DiaDeepProteinMappingService.Request deepProteinMappingRequest = buildDeepProteinMappingRequest("ROUND_PROTEINS".equals(proteinMappingPolicy)
+                ? (markerMode.isDeep() ? markerMode : DiaRefinementMode.DEEP_TOGETHER)
+                : "SEARCH".equals(proteinMappingPolicy) ? markerMode : DiaRefinementMode.CORE,
 				resultDir, peptideProteinMapOverride, roundRootOverride, params, cb, allowIncompleteDeepProteinMapping);
 
 		cb.onMessage("Step 1: post-analysis (protein/genome inference) + TSV export ...");
-		DiaMagPostAnalysisTsvExporter.Result post = DiaMagPostAnalysisTsvExporter.export(resultDir, magDb,
-				combinedParquet, prMatrix, gtdbNcbi, params.getMarkerMode(), funcDbFile, params.getMicroDb(),
-				params.getQuantitativeMode(), cb, deepProteinMappingRequest, exportMetaAtlasParquet);
+        DiaMagPostAnalysisTsvExporter.Result post;
+        if ("SEARCH".equals(proteinMappingPolicy) || "ROUND_PROTEINS".equals(proteinMappingPolicy)) {
+            post = DiaMagPostAnalysisTsvExporter.export(resultDir, magDb, combinedParquet, prMatrix, gtdbNcbi,
+                    params.getMarkerMode(), funcDbFile, params.getMicroDb(), params.getQuantitativeMode(), cb,
+                    deepProteinMappingRequest, exportMetaAtlasParquet, globalPrecursorQValue);
+        } else {
+            java.util.HashSet<String> allowed = null;
+            if ("SEED_SELECTED".equals(proteinMappingPolicy)) {
+                allowed = new java.util.HashSet<>();
+                DiaMarkerHeadlessRunner.readSelectedGenomesIntoSet(selectedGenomesTsv, allowed);
+                if (allowed.isEmpty()) throw new IOException("Recorded Seed selection is empty");
+            }
+            post = DiaMagPostAnalysisTsvExporter.exportSeed(resultDir, magDb, combinedParquet, prMatrix,
+                    gtdbNcbi, funcDbFile, params.getMicroDb(), params.getQuantitativeMode(), cb,
+                    allowed, exportMetaAtlasParquet, globalPrecursorQValue);
+        }
 
 		runHtmlReportIfRequested(resultDir, params, generateHtmlReport, reportPythonHint, reportResourceConfig, cb);
 
@@ -270,20 +318,8 @@ public final class DiaMagReportHeadlessRunner {
 
 	private static void failOrWarnMissingRoundRoot(File missingDir, boolean allowIncompleteDeepProteinMapping,
 			ProgressCallback cb) throws IOException {
-		String message = "no peptide-protein mapping input found for this Deep-mode run: neither "
-				+ "--peptide-protein-map was given, nor does a round-parquet folder exist at "
-				+ missingDir.getAbsolutePath() + ". For Deep Together / Deep Per File, combined.parquet alone tags "
-				+ "every peptide with a single arbitrary protein (see class docs) - scoring off it directly would "
-				+ "silently misclassify peptides shared across genomes. Run diann-mag-peptide-map locally (where "
-				+ "the round parquets already exist) and pass its output via --peptide-protein-map, or copy the "
-				+ "'marker' folder and use --round-root, or pass --allow-incomplete-deep-protein-mapping to proceed "
-				+ "anyway and accept that limitation.";
-		if (!allowIncompleteDeepProteinMapping) {
-			throw new IOException("diann-mag-report: " + message);
-		}
-		cb.onMessage("WARNING: diann-mag-report: " + message + " Proceeding anyway because "
-				+ "--allow-incomplete-deep-protein-mapping was set - genome/protein inference for this run will be "
-				+ "less accurate than the original local result.");
+        throw new IOException("No recorded Deep peptide-protein mappings at " + missingDir.getAbsolutePath()
+                + ". Supply --peptide-protein-map or --round-root. Incomplete combined-parquet mappings cannot be finalised.");
 	}
 
 	private static void runHtmlReportIfRequested(File resultDir, MetaParameterDiaMarker params,
@@ -295,7 +331,8 @@ public final class DiaMagReportHeadlessRunner {
 		}
 		cb.onMessage("DIA MAG report: generating shared HTML report");
 		MetaPilotHtmlReportService.Result report = MetaPilotHtmlReportService.runStandardReportWarningOnly(resultDir,
-				"DIA_MAG", params != null ? params.getThreadCount() : 1, reportPythonHint, reportResourceConfig, cb);
+				"DIA_MAG", params != null ? params.getThreadCount() : 1, reportPythonHint, reportResourceConfig, cb,
+				params != null ? params.getMetadata() : null);
 		if (!report.warnings.isEmpty()) {
 			cb.onMessage(
 					"WARNING: HTML report generation completed with warnings: " + String.join("; ", report.warnings));

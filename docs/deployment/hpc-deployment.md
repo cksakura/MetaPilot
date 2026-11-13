@@ -1,6 +1,6 @@
 # MetaPilot HPC Deployment
 
-This guide describes the current HPC deployment model for MetaPilot `1.1.1`.
+This guide describes the current HPC deployment model for MetaPilot `1.2.0`.
 
 ## Current Deployment Model
 
@@ -17,8 +17,8 @@ The Windows GUI remains the primary interface for configuring and running all GU
 
 ```text
 /opt/metapilot/
-  metapilot-cli-1.1.1-shaded.jar
-  metapilot-web-1.1.1.jar          # optional
+  metapilot-cli-1.2.0-shaded.jar
+  metapilot-web-1.2.0.jar          # optional
 
 /data/metapilot/
   site/
@@ -49,7 +49,7 @@ DEEPDETECT=/opt/tools/deepdetect/DeepDetect
 Validate before submitting jobs:
 
 ```bash
-java -jar /opt/metapilot/metapilot-cli-1.1.1-shaded.jar resources-check \
+java -jar /opt/metapilot/metapilot-cli-1.2.0-shaded.jar resources-check \
   --resources /data/metapilot/site/meta_resources.params
 ```
 
@@ -66,7 +66,7 @@ java -jar /opt/metapilot/metapilot-cli-1.1.1-shaded.jar resources-check \
 
 set -euo pipefail
 
-JAR=/opt/metapilot/metapilot-cli-1.1.1-shaded.jar
+JAR=/opt/metapilot/metapilot-cli-1.2.0-shaded.jar
 PARAMS=/data/metapilot/studies/study_parameters.json
 RESOURCES=/data/metapilot/site/meta_resources.params
 MAGDB=/data/metapilot/site/MAGDB_1_0.json
@@ -98,7 +98,7 @@ Use a conservative pool first, then increase only after measuring peak memory on
 DDA MAG FragPipe per-sample searches default to a conservative 60 GB per concurrent task estimate. To use more of a node when the data set is known to need less memory, set an explicit concurrency:
 
 ```bash
-java -jar metapilot-cli-1.1.1-shaded.jar run \
+java -jar metapilot-cli-1.2.0-shaded.jar run \
   --params /path/to/dda_mag_fragpipe_parameters.json \
   --fragpipe-parallel-tasks 4
 ```
@@ -110,7 +110,7 @@ The parameter JSON can also store this as `additional_parameters.fragpipe_parall
 If the release package includes the optional `metapilot-web` artifact, deploy it when users need a browser/API front end:
 
 ```bash
-java -jar /opt/metapilot/metapilot-web-1.1.1.jar
+java -jar /opt/metapilot/metapilot-web-1.2.0.jar
 ```
 
 Configure network access, upload limits and logging through `metapilot-web/src/main/resources/application.properties` or external Spring Boot configuration.

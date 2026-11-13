@@ -78,7 +78,14 @@ public final class CombinedPsmFeatures {
 	/** Cross-engine, missing unless both engines proposed the candidate. */
 	private static final String[] CROSS = { "rank_difference", "best_rank" };
 
-	public static final String[] FEATURE_NAMES = concat(SHARED, PRESENCE, MSFRAGGER, SAGE, CROSS);
+	/**
+	 * DIA-NN predicted-spectrum and retention-time agreement ({@link PredictedSpectrumFeatures#attach}),
+	 * read from the primary row's external features; missing when not computed. The classifier uses
+	 * this block only when some candidate carries it.
+	 */
+	static final String[] PREDICTED = PredictedSpectrumFeatures.PSM_FEATURES;
+
+	public static final String[] FEATURE_NAMES = concat(SHARED, PRESENCE, MSFRAGGER, SAGE, CROSS, PREDICTED);
 
 	public static final String CLASS_ATTRIBUTE = "label";
 	public static final String TARGET_LABEL = "target";
@@ -212,13 +219,18 @@ public final class CombinedPsmFeatures {
 
 		if (fragger != null && sage != null) {
 			out[i++] = Math.abs(fragger.getHitRank() - sage.getHitRank());
-			out[i] = Math.min(fragger.getHitRank(), sage.getHitRank());
+			out[i++] = Math.min(fragger.getHitRank(), sage.getHitRank());
 		} else {
 			// Not "no difference" - undefined. A zero here would tell the model the
 			// two engines agreed perfectly on rank for a candidate only one of them
 			// ever saw.
 			out[i++] = Utils.missingValue();
-			out[i] = fragger != null ? fragger.getHitRank() : sage.getHitRank();
+			out[i++] = fragger != null ? fragger.getHitRank() : sage.getHitRank();
+		}
+
+		for (String name : PREDICTED) {
+			Double v = shared.getExternalFeature(name);
+			out[i++] = v == null ? Utils.missingValue() : orMissing(v);
 		}
 	}
 

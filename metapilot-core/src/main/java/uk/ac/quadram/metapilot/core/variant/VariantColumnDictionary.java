@@ -52,7 +52,8 @@ final class VariantColumnDictionary {
 			{ C, "peak_id", "Open search: the delta-mass peak of the PSM. NA for pFind" },
 			{ C, "peak_substitution_shaped", "Open search: whether the substitution reassigner judged the peak "
 					+ "substitution-shaped (false: a peak whose centroid matches a substitution mass but that failed "
-					+ "its shape or database test; nothing in the workflow acts on these). NA for pFind" },
+					+ "its shape or database test; nothing in the workflow acts on these). NA for pFind and for "
+					+ "candidates from shift localisation alone" },
 			{ C, "ms2_decidable", "false when a modification of the same residue has the same mass (within the "
 					+ "tolerance), so MS2 cannot tell the two readings apart" },
 			{ C, "isobaric_modifications", "Those same-residue modifications, and pFind's own alias if it gave one" },
@@ -93,10 +94,17 @@ final class VariantColumnDictionary {
 			{ C, "assigned_preferred_name", "eggNOG preferred names of the assigned proteins, union over them" },
 			{ C, "assigned_description", "eggNOG descriptions of the assigned proteins, union over them" },
 			{ C, "front_end_call", "What the engine called: pFind's modification entry as written; open search, "
-					+ "the reassigner's verdict, or peak_not_substitution_shaped" },
+					+ "the reassigner's verdict, peak_not_substitution_shaped, or localised (from fragment-supported "
+					+ "shift localisation alone)" },
 			{ C, "localized_sequence", "Open search: the engine's localized sequence. NA for pFind" },
 			{ C, "reassigner_in_db", "Open search: whether the reassigner found the variant in its own database. "
-					+ "NA for pFind" },
+					+ "NA for pFind and for candidates from shift localisation alone" },
+			{ C, "localisation_site_probability", "Open search, identification v2: probability of the substituted "
+					+ "site from fragment-supported shift localisation (ShiftLocaliser). NA when the candidate came "
+					+ "from a peak proposal that localisation did not confirm, and for pFind" },
+			{ C, "localisation_support", "Open search, identification v2: fragment support for the shift sitting "
+					+ "on the backbone at that site, a -log10 contrast of shifted against unshifted ions (2 or more "
+					+ "to localise). NA as localisation_site_probability" },
 
 			{ S, "engine", "pfind or open_search" },
 			{ S, "protein", "An assigned protein; a candidate counts under each of its assigned proteins; NA for "

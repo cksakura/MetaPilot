@@ -3,6 +3,7 @@ package uk.ac.quadram.metapilot.task.dia.gui;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.scene.control.*;
+import uk.ac.quadram.metapilot.task.common.gui.ParameterSection;
 import javafx.scene.control.Alert.AlertType;
 import javafx.scene.layout.*;
 import javafx.collections.FXCollections;
@@ -24,6 +25,7 @@ import uk.ac.quadram.metapilot.task.dia.DiaMarkerCoreTask;
 import uk.ac.quadram.metapilot.task.dia.DiaMarkerDeepPerFileTask;
 import uk.ac.quadram.metapilot.task.dia.DiaMarkerDeepTogetherTask;
 import uk.ac.quadram.metapilot.task.dia.DiaRefinementMode;
+import uk.ac.quadram.metapilot.core.runner.DiaMarkerDeepEntrapmentHeadlessRunner;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagVersion;
 import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel;
 import uk.ac.quadram.metapilot.resources.MetaResourceIO;
@@ -66,6 +68,7 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 	private TextField representativeJaccardField;
 	private TextField representativeContainmentField;
 	private CheckBox representativeDryRunCheckBox;
+	private CheckBox entrapmentCheckBox;
 	private VBox representativeClusteringBox;
 	private VBox representativeCustomThresholdBox;
 	private Label marker4StatusLabel;
@@ -104,7 +107,7 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 	private void initializeSpecificUI() {
 		// Initialize reusable components
 		// Note: consolePanel is already initialized by AbstractWorkflowPanel
-		metadataPanel = new MetadataConfigurationPanel();
+		metadataPanel = new MetadataConfigurationPanel(true);
 		magDatabasePanel = new MagDatabaseSettingsPanel();
 		magDatabasePanel.setHostDatabaseExtensionFilter("DIA host database files",
 				"*.fasta", "*.fa", "*.speclib", "*.parquet");
@@ -190,7 +193,6 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 		VBox tabContent = new VBox(10);
 		tabContent.setPadding(new Insets(10));
 		tabContent.setMinWidth(960);
-		tabContent.setMinHeight(760);
 
 		// Create main grid layout
 		GridPane mainGrid = new GridPane();
@@ -198,8 +200,6 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 		mainGrid.setVgap(15);
 		mainGrid.setPadding(new Insets(10));
 		mainGrid.setMinWidth(940);
-		mainGrid.setMinHeight(740);
-		VBox.setVgrow(mainGrid, Priority.ALWAYS);
 
 		// Column constraints
 		ColumnConstraints col1 = new ColumnConstraints();
@@ -215,17 +215,17 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 		// Row constraints
 		RowConstraints row1 = new RowConstraints();
 		row1.setVgrow(Priority.ALWAYS);
-		row1.setMinHeight(400);
 		mainGrid.getRowConstraints().add(row1);
 
 		// Left column: Performance Settings, Genome Selection, Modifications
 		VBox leftColumn = new VBox(15);
 		leftColumn.setMinWidth(430);
-		VBox workflowSection = createWorkflowSection();
-		VBox performanceSection = createPerformanceSection();
-		VBox genomeSelectionSection = createGenomeSelectionSection();
-		VBox modificationsSection = createModificationsSection();
+		TitledPane workflowSection = createWorkflowSection();
+		TitledPane performanceSection = createPerformanceSection();
+		TitledPane genomeSelectionSection = createGenomeSelectionSection();
+		TitledPane modificationsSection = createModificationsSection();
 		leftColumn.getChildren().addAll(workflowSection, performanceSection, genomeSelectionSection, modificationsSection);
+		VBox.setVgrow(modificationsSection, Priority.ALWAYS);
 		GridPane.setVgrow(leftColumn, Priority.ALWAYS);
 
 		// Right column: Metadata Configuration
@@ -237,16 +237,13 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 		mainGrid.add(leftColumn, 0, 0);
 		mainGrid.add(rightColumn, 1, 0);
 
-		tabContent.getChildren().add(mainGrid);
+		tabContent.getChildren().add(ParameterSection.createViewport(mainGrid));
 		return tabContent;
 	}
 
-	private VBox createWorkflowSection() {
+	private TitledPane createWorkflowSection() {
 		VBox section = new VBox(10);
-		section.setPadding(new Insets(10));
-		section.setStyle("-fx-background-color: #f0f8ff; -fx-background-radius: 5;");
 
-		Label titleLabel = createSectionTitle("Workflow");
 		Label workflowLabel = new Label("Workflow:");
 		workflowLabel.setStyle("-fx-font-weight: bold;");
 		workflowModeComboBox = new ComboBox<>(
@@ -256,6 +253,7 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 		workflowModeComboBox.setValue(WORKFLOW_FOCUS);
 		workflowModeComboBox.setOnAction(e -> {
 			updateRepresentativeClusteringAvailability();
+			updateEntrapmentAvailability();
 			updateParameterView();
 		});
 		Tooltip workflowTooltip = new Tooltip(
@@ -264,8 +262,17 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 				+ "Deep together: deep iterative workflow over all DIA files together.\n"
 				+ "Deep per file: run the full deep-marker iterative workflow independently for each raw file (results under marker/<rawname>/...).");
 		workflowModeComboBox.setTooltip(workflowTooltip);
+		entrapmentCheckBox = new CheckBox("Paired-shuffle entrapment (evaluation)");
+		entrapmentCheckBox.setWrapText(true);
+		entrapmentCheckBox.setTooltip(new Tooltip(
+				"Deep together only. Same processing as dia-marker-deep-entrapment: each round also searches a shuffled copy of that round's genomes.\n"
+						+ "Results go to marker_deep_entrapment/ and do not overwrite a production Deep together run.\n"
+						+ "Off by default."));
+		entrapmentCheckBox.setOnAction(e -> updateParameterView());
+
 		VBox workflowBox = new VBox(5);
-		workflowBox.getChildren().addAll(workflowLabel, workflowModeComboBox);
+		workflowBox.getChildren().addAll(workflowLabel, workflowModeComboBox, entrapmentCheckBox);
+		updateEntrapmentAvailability();
 
 		Label representativeClusteringLabel = new Label("Deep per-file clustering:");
 		representativeClusteringLabel.setStyle("-fx-font-weight: bold;");
@@ -313,16 +320,13 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 				representativeClusteringComboBox, representativeCustomThresholdBox, representativeDryRunCheckBox);
 		updateRepresentativeClusteringAvailability();
 
-		section.getChildren().addAll(titleLabel, workflowBox, representativeClusteringBox);
-		return section;
+		section.getChildren().addAll(workflowBox, representativeClusteringBox);
+		return ParameterSection.create("Workflow", section);
 	}
 
-	private VBox createPerformanceSection() {
+	private TitledPane createPerformanceSection() {
 		VBox section = new VBox(10);
-		section.setPadding(new Insets(10));
-		section.setStyle("-fx-background-color: #f0f8ff; -fx-background-radius: 5;");
 
-		Label titleLabel = createSectionTitle("Performance Settings");
 
 		Label threadsLabel = new Label("Threads:");
 		threadsLabel.setStyle("-fx-font-weight: bold;");
@@ -342,16 +346,13 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 		VBox threadsBox = new VBox(5);
 		threadsBox.getChildren().addAll(threadsLabel, threadsComboBox);
 
-		section.getChildren().addAll(titleLabel, threadsBox);
-		return section;
+		section.getChildren().addAll(threadsBox);
+		return ParameterSection.create("Performance Settings", section);
 	}
 
-	private VBox createGenomeSelectionSection() {
+	private TitledPane createGenomeSelectionSection() {
 		VBox section = new VBox(10);
-		section.setPadding(new Insets(10));
-		section.setStyle("-fx-background-color: #f0f8ff; -fx-background-radius: 5;");
 
-		Label titleLabel = createSectionTitle("Genome Selection");
 
 		GridPane paramGrid = new GridPane();
 		paramGrid.setHgap(15);
@@ -385,16 +386,13 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 		paramGrid.add(marker4StatusBox, 0, 1);
 		paramGrid.add(new Region(), 1, 0); // placeholder for alignment
 
-		section.getChildren().addAll(titleLabel, paramGrid);
-		return section;
+		section.getChildren().addAll(paramGrid);
+		return ParameterSection.create("Genome Selection", section);
 	}
 
-	private VBox createModificationsSection() {
+	private TitledPane createModificationsSection() {
 		VBox section = new VBox(10);
-		section.setPadding(new Insets(10));
-		section.setStyle("-fx-background-color: #f0f8ff; -fx-background-radius: 5;");
 
-		Label titleLabel = createSectionTitle("Modifications");
 
 		VBox checkboxesBox = new VBox(8);
 		
@@ -431,8 +429,8 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 			kGGCheckBox
 		);
 
-		section.getChildren().addAll(titleLabel, checkboxesBox);
-		return section;
+		section.getChildren().addAll(checkboxesBox);
+		return ParameterSection.create("Modifications", section);
 	}
 
 	private Label createSectionTitle(String title) {
@@ -544,17 +542,35 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 		}
 	}
 
+	private void updateEntrapmentAvailability() {
+		if (entrapmentCheckBox == null) {
+			return;
+		}
+		boolean deepTogether = workflowModeComboBox != null
+				&& WORKFLOW_DEEP.equals(workflowModeComboBox.getValue());
+		entrapmentCheckBox.setVisible(deepTogether);
+		entrapmentCheckBox.setManaged(deepTogether);
+		entrapmentCheckBox.setDisable(!deepTogether);
+		if (!deepTogether) {
+			entrapmentCheckBox.setSelected(false);
+		}
+	}
+
 	@Override
 	protected void updateParameterView() {
 		if (consolePanel == null) {
 			return;
 		}
 		updateRepresentativeClusteringAvailability();
+		updateEntrapmentAvailability();
 		StringBuilder sb = new StringBuilder();
 		sb.append("=== Analysis Parameters ===\n\n");
 
 		if (workflowModeComboBox != null && workflowModeComboBox.getValue() != null) {
 			sb.append("Workflow: ").append(workflowModeComboBox.getValue()).append("\n");
+		}
+		if (entrapmentCheckBox != null && entrapmentCheckBox.isVisible()) {
+			sb.append("Paired-shuffle entrapment: ").append(entrapmentCheckBox.isSelected()).append("\n");
 		}
 		sb.append("\n");
 
@@ -731,27 +747,10 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 					: WORKFLOW_FOCUS;
 			params.setMarkerRefinementMode(DiaRefinementMode.fromDisplayLabel(workflow, DiaRefinementMode.CORE));
 			applyRepresentativeClusteringFromUI(params);
+			applyEntrapmentFromUI(params);
 
-			// Collect metadata
 			if (metadataPanel != null) {
-				ObservableList<MetaPilotDdaIgcMaxQuantPanel.MetadataRow> metadataRows = metadataPanel.getMetadataTableData();
-				java.util.List<String> colNames = metadataPanel.getMetadataColumnNames();
-				int metaTypeCount = colNames.size();
-				String[][] metaInfo = new String[metadataRows.size()][Math.max(1, metaTypeCount)];
-				if (!colNames.isEmpty()) {
-					for (int i = 0; i < metadataRows.size(); i++) {
-						MetaPilotDdaIgcMaxQuantPanel.MetadataRow row = metadataRows.get(i);
-						for (int j = 0; j < colNames.size(); j++) {
-							String v = row.getValueByColumnName(colNames.get(j));
-							metaInfo[i][j] = v != null ? v : "";
-						}
-					}
-				}
-				metaData.setMetaTypeCount(Math.max(1, metaTypeCount));
-				metaData.setMetaInfo(metaInfo);
-				if (!colNames.isEmpty()) {
-					metaData.setMetaTypeTitles(colNames.toArray(new String[0]));
-				}
+				metadataPanel.applyTo(metaData);
 			}
 
 			consolePanel.appendConsoleText("✓ Parameters collected successfully\n");
@@ -849,6 +848,7 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 					: WORKFLOW_FOCUS;
 			params.setMarkerRefinementMode(DiaRefinementMode.fromDisplayLabel(workflow, DiaRefinementMode.CORE));
 			applyRepresentativeClusteringFromUI(params);
+			applyEntrapmentFromUI(params);
 
 			return params;
 		} catch (Exception e) {
@@ -1023,6 +1023,13 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 			representativeDryRunCheckBox.setSelected(params.isRepresentativeClusteringDryRun());
 		}
 		updateRepresentativeClusteringAvailability();
+		if (entrapmentCheckBox != null) {
+			entrapmentCheckBox.setSelected(params.isEntrapmentEnabled());
+		}
+		updateEntrapmentAvailability();
+		if (entrapmentCheckBox != null && entrapmentCheckBox.isVisible()) {
+			entrapmentCheckBox.setSelected(params.isEntrapmentEnabled());
+		}
 	}
 
 	private void applyRepresentativeClusteringFromUI(MetaParameterDiaMarker params) {
@@ -1048,6 +1055,15 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 		params.setRepresentativeClusteringDryRun(representativeDryRunCheckBox != null
 				&& representativeDryRunCheckBox.isVisible()
 				&& representativeDryRunCheckBox.isSelected());
+	}
+
+	private void applyEntrapmentFromUI(MetaParameterDiaMarker params) {
+		if (params == null) {
+			return;
+		}
+		boolean deepTogether = workflowModeComboBox != null
+				&& WORKFLOW_DEEP.equals(workflowModeComboBox.getValue());
+		params.setEntrapmentEnabled(deepTogether && entrapmentCheckBox != null && entrapmentCheckBox.isSelected());
 	}
 
 	private String representativeClusteringDisplayToPreset(String value) {
@@ -1148,6 +1164,14 @@ public class MetaPilotDiaMarkerPanel extends AbstractWorkflowPanel<MetaParameter
 			DiaRefinementMode markerMode = DiaRefinementMode.fromDisplayLabel(workflow, DiaRefinementMode.CORE);
 			analysisParams.setMarkerRefinementMode(markerMode);
 			if (markerMode == DiaRefinementMode.DEEP_TOGETHER) {
+				if (analysisParams.isEntrapmentEnabled()) {
+					File entrapmentDir = new File(analysisParams.getResult(),
+							DiaMarkerDeepEntrapmentHeadlessRunner.RESULT_FOLDER);
+					entrapmentDir.mkdirs();
+					analysisParams.setDbSearchResultFile(entrapmentDir);
+					consolePanel.appendConsoleText("Evaluation: paired-shuffle entrapment -> "
+							+ entrapmentDir.getAbsolutePath() + "\n");
+				}
 				currentTask = new DiaMarkerDeepTogetherTask(analysisParams, mrp,
 						consolePanel.getOverallProgressBar(), consolePanel.getCurrentTaskProgressBar());
 				consolePanel.appendConsoleText("Workflow: " + markerMode.getDisplayLabel() + "\n");

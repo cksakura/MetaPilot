@@ -14,7 +14,7 @@ MetaPilot/
 └── docs/                      # Documentation
 ```
 
-Current version target: `1.1.1`.
+Current version target: `1.2.0`.
 
 ## Modules
 

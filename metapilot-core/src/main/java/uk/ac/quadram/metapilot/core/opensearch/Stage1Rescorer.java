@@ -86,6 +86,15 @@ public final class Stage1Rescorer {
 			"log_same_peptide_count", "log_same_protein_count",
 			HYPERSCORE_PER_LENGTH, NEG_LOG10_EXPECT_PER_LENGTH };
 
+	/**
+	 * Logistic ridge for stage 1. A marker search can leave only a few hundred
+	 * seeded positives, and the shared 1e-8 lets that fit diverge; see
+	 * {@link SemiSupervisedPsmClassifier#logisticRegression(double)}. Replayed on
+	 * 20 PXD066732 marker searches, 0.1 rescued every collapsed run and moved the
+	 * two largest by under 0.5%; 10 cost up to 30% on small runs.
+	 */
+	public static final double RIDGE = 0.1;
+
 	public static final class Config {
 		/** Off falls back to the engine-score cut, changing nothing. */
 		public boolean enabled = true;
@@ -97,6 +106,8 @@ public final class Stage1Rescorer {
 			cfg.folds = 3;
 			cfg.maxIterations = 10;
 			cfg.trainQValue = 0.01;
+			cfg.modelFactory = SemiSupervisedPsmClassifier.logisticRegression(RIDGE);
+			cfg.rankByLogit = true;
 			return cfg;
 		}
 	}

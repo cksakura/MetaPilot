@@ -2,7 +2,7 @@
 
 MetaPilot is a metaproteomics workflow platform for DDA and DIA datasets. It combines established search engines with MAG-aware genome selection, refined search-space construction, taxonomy export and functional annotation.
 
-This page reflects the formal release package for `1.1.1`.
+This page targets the upcoming `1.2.0` release, pending finalization of the open-search strategy.
 
 ## Applications
 
@@ -20,8 +20,8 @@ Install MetaPilot from the release ZIP package. Public releases are distributed 
 Typical release contents:
 
 ```text
-MetaPilot-1.1.1/
-  metapilot-cli-1.1.1-shaded.jar
+MetaPilot-1.2.0/
+  metapilot-cli-1.2.0-shaded.jar
   metapilot
   config/
     meta_resources.params.template
@@ -145,8 +145,9 @@ In brief:
 4. Add privileged genomes with at least three unique marker categories and sufficient new peptide contribution.
 5. Optionally add taxonomy representatives.
 6. Greedily order remaining genomes by newly covered marker peptides.
-7. Use knee selection on a five-step moving average of incremental-gain ratios.
-8. Focus uses the median of kneedle, curvature and slope-change knees; Comprehensive uses the later of chord-distance and piecewise knees.
+7. Choose when to stop adding genomes. Automatic, the default, detects the tail of the coverage curve. Focus uses the median of kneedle, curvature and slope-change knees; Comprehensive uses the later of chord-distance and piecewise knees. Focus favours depth on the main genomes; Comprehensive adds more low-abundance genomes.
+8. pFind, FragPipe and open search can instead stop at a PSM coverage: keep genomes until a chosen share of the marker PSMs is explained (default 0.95). A step guard, adopted from MetaLab-MAG (J Proteome Res 2023), stops when further genomes add almost nothing. Set the guard to 0 to reach the target exactly. This is the coverage and step-guard rule adopted from MetaLab-MAG. It is not the MetaLab-MAG workflow, which ranks by plain greedy PSM cover. Higher targets add more genomes, and a larger database can lose low-abundance proteins from the other genomes.
+9. After a pFind run, read the curve as PSM coverage against genomes in rank order. The plot marks where selection stopped, where Focus and Comprehensive would have stopped, and the target when PSM coverage is selected. The run summary gives genomes selected, coverage reached and the stop reason. If the target was missed, the stop reason says why.
 
 ## Outputs
 
@@ -155,6 +156,7 @@ Common output artifacts include:
 - `genome_evidence.tsv`
 - `genome_ranked.tsv`
 - `genome_selected.tsv`
+- `genome_selection_summary.tsv` (DDA MAG pFind: one row per raw file)
 - `combined/combined.parquet`
 - `combined/combined.pr_matrix.tsv`
 - `combined/combined.pg_matrix.tsv`
@@ -170,9 +172,9 @@ GUI workflows may also generate HTML reports.
 Use the CLI for currently supported headless workflows:
 
 ```bash
-java -jar metapilot-cli-1.1.1-shaded.jar init
-java -jar metapilot-cli-1.1.1-shaded.jar params-validate --params study.json
-java -jar metapilot-cli-1.1.1-shaded.jar run --params study.json
+java -jar metapilot-cli-1.2.0-shaded.jar init
+java -jar metapilot-cli-1.2.0-shaded.jar params-validate --params study.json
+java -jar metapilot-cli-1.2.0-shaded.jar run --params study.json
 ```
 
 See [CLI Reference](cli-reference.md) for command details and current support limits.

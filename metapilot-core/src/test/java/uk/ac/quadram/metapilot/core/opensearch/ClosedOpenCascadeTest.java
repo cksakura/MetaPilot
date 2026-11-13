@@ -37,8 +37,105 @@ class ClosedOpenCascadeTest {
 	}
 
 	private static PeakVerdict verdict(int peakId, double centroid, MassClass massClass, boolean accepted) {
-		return new PeakVerdict(peakId, centroid, massClass, "", 0, 0, 0.0, 0.0, Double.NaN, true, accepted, "test",
+		return new PeakVerdict(peakId, centroid, massClass, 0, 0, 0.0, 0.0, Double.NaN, true, accepted, "test",
 				0);
+	}
+
+	/**
+	 * Synthetic closed search, two candidates per spectrum, ranked by hyperscore as the engine ranks
+	 * them. The predicted-spectrum entropy tells the right peptide; the hyperscore does not always: in
+	 * a fifth of the spectra a near-identical wrong target outscores the right peptide.
+	 */
+	@Test
+	void closedRerankingPromotesTheRank2CandidateThePredictedSpectrumSupports() throws Exception {
+		java.util.Random random = new java.util.Random(7);
+		List<OpenSearchPsm> closed = new ArrayList<>();
+		Set<OpenSearchPsm> right = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+		int spectra = 3000;
+		for (int s = 0; s < spectra; s++) {
+			double u = random.nextDouble();
+			boolean hasTrue = u < 0.8;
+			boolean swap = u >= 0.6 && u < 0.8;
+			// {hyperscore, right, target, entropy}
+			double[][] c = new double[2][];
+			double rightScore = 30 + 4 * random.nextGaussian();
+			for (int k = 0; k < 2; k++) {
+				boolean isRight = hasTrue && k == 0;
+				double hyperscore = isRight ? rightScore
+						// A wrong candidate that outscores the right one is a near-identical target peptide.
+						: swap ? rightScore + 0.5 + Math.abs(random.nextGaussian()) : 21 + 4 * random.nextGaussian();
+				boolean target = isRight || swap || random.nextBoolean();
+				double entropy = isRight ? 0.6 + 0.4 * random.nextDouble() : 0.45 * random.nextDouble();
+				c[k] = new double[] { hyperscore, isRight ? 1 : 0, target ? 1 : 0, entropy };
+			}
+			java.util.Arrays.sort(c, (a, b) -> Double.compare(b[0], a[0]));
+			double nextscore = 17 + 2 * random.nextGaussian();
+			for (int rank = 1; rank <= 2; rank++) {
+				double[] x = c[rank - 1];
+				OpenSearchPsm psm = closedPsm(s, rank, x[2] == 1, x[0], nextscore, x[3], x[3] - c[2 - rank][3], random);
+				closed.add(psm);
+				if (x[1] == 1) {
+					right.add(psm);
+				}
+			}
+		}
+		int rightAtRankOne = 0;
+		for (OpenSearchPsm psm : right) {
+			rightAtRankOne += psm.getHitRank() == 1 ? 1 : 0;
+		}
+		SemiSupervisedPsmClassifier.Config cfg = new SemiSupervisedPsmClassifier.Config();
+		ClosedOpenCascade.ClosedStage plain = ClosedOpenCascade.validateClosed(closed, cfg, 0.01, null);
+		for (OpenSearchPsm psm : plain.winners) {
+			assertEquals(1, psm.getHitRank());
+		}
+		ClosedOpenCascade.ClosedStage reranked = ClosedOpenCascade.validateClosed(closed, cfg, 0.01, null, true,
+				PredictedSpectrumFeatures.PSM_FEATURES);
+		assertEquals(spectra, reranked.winners.size());
+		int rightChosen = 0;
+		int rightRankOneKept = 0;
+		for (OpenSearchPsm psm : reranked.winners) {
+			if (right.contains(psm)) {
+				rightChosen++;
+				rightRankOneKept += psm.getHitRank() == 1 ? 1 : 0;
+			}
+		}
+		assertTrue(right.size() - rightAtRankOne > 0.15 * right.size(), "the test needs rank-2 right answers");
+		assertTrue(rightChosen > 0.97 * right.size(), rightChosen + " of " + right.size());
+		assertTrue(rightRankOneKept > 0.99 * rightAtRankOne, rightRankOneKept + " of " + rightAtRankOne);
+		assertTrue(reranked.acceptedTargets > plain.acceptedTargets, reranked.acceptedTargets + " vs " + plain.acceptedTargets);
+	}
+
+	private static OpenSearchPsm closedPsm(int scan, int rank, boolean target, double hyperscore, double nextscore,
+			double entropy, double entropyMargin, java.util.Random random) {
+		StringBuilder peptide = new StringBuilder();
+		String residues = "ACDEFGHKLMNPQRSTVWY";
+		for (int k = 0; k < 9 + random.nextInt(6); k++) {
+			peptide.append(residues.charAt(random.nextInt(residues.length())));
+		}
+		peptide.append('K');
+		OpenSearchPsm psm = new OpenSearchPsm();
+		psm.setFileName("run1");
+		psm.setScan(scan);
+		psm.setHitRank(rank);
+		psm.setClosedStage(true);
+		psm.setPeptide(peptide.toString());
+		psm.setProtein((target ? "P" : "rev_P") + scan + "_" + rank);
+		psm.setTarget(target);
+		psm.setCharge(2);
+		psm.setPrecursorNeutralMass(1200 + 400 * random.nextDouble());
+		psm.setMassDiff(0.001 * random.nextGaussian());
+		psm.setNumMatchedIons((int) Math.max(1, Math.round(hyperscore / 3 + random.nextGaussian())));
+		psm.setTotNumIons(18 + random.nextInt(8));
+		psm.setHyperscore(hyperscore);
+		psm.setNextscore(nextscore);
+		psm.setExpect(Math.pow(10, -(hyperscore - nextscore) / 3 + 0.3 * random.nextGaussian()));
+		Map<String, Double> external = new java.util.HashMap<>();
+		external.put(PredictedSpectrumFeatures.ENTROPY, entropy);
+		external.put(PredictedSpectrumFeatures.MATCHED_FRACTION, Math.min(1, entropy + 0.2 * random.nextDouble()));
+		external.put(PredictedSpectrumFeatures.ENTROPY_MARGIN, entropyMargin);
+		external.put(PredictedSpectrumFeatures.RT_ERROR, Math.abs(random.nextGaussian()) * (entropy > 0.5 ? 1 : 3));
+		psm.setExternalFeatures(external);
+		return psm;
 	}
 
 	@Test
@@ -82,7 +179,7 @@ class ClosedOpenCascadeTest {
 
 		assertEquals(1.0, filter.factor, 0.0);
 		assertEquals(101, filter.kept.size());
-		assertArrayEquals(new int[] { 0, 0 }, filter.psmsKept.get(IdClass.OPEN_KNOWN_SHIFT));
+		assertArrayEquals(new int[] { 0, 0 }, filter.psmsKept.get(IdClass.OPEN_ACCEPTED_SHIFT));
 	}
 
 	@Test
@@ -108,7 +205,7 @@ class ClosedOpenCascadeTest {
 			remaining.add(psm("NOPEAK" + i, true, 100 - i, -1));
 		}
 		ModificationValidator.Gate gate = new ModificationValidator.Gate(Set.of(0, 1),
-				List.of(verdict(0, 0.0, MassClass.ZERO, true), verdict(1, 15.9949, MassClass.KNOWN, true),
+				List.of(verdict(0, 0.0, MassClass.ZERO, true), verdict(1, 15.9949, MassClass.ESTABLISHED, true),
 						verdict(2, 7.3, MassClass.UNEXPLAINED, false)),
 				Set.of());
 
@@ -135,7 +232,7 @@ class ClosedOpenCascadeTest {
 		List<OpenSearchPsm> shifted = new ArrayList<>();
 		for (int i = 0; i < 60; i++) {
 			OpenSearchPsm p = psm("SHIFT" + i, true, 10, 1);
-			p.setPeakCentroid(2.718);
+			p.setPeakCentroid(4.718);
 			p.setScoreWithDeltaMass(5.0);
 			p.setScoreWithoutDeltaMass(5.0);
 			shifted.add(p);
@@ -150,7 +247,7 @@ class ClosedOpenCascadeTest {
 		assertEquals(0, result.psmsReassigned);
 		for (OpenSearchPsm p : shifted) {
 			assertEquals(1, p.getPeakId());
-			assertEquals(2.718, p.getPeakCentroid(), 0.0);
+			assertEquals(4.718, p.getPeakCentroid(), 0.0);
 		}
 	}
 

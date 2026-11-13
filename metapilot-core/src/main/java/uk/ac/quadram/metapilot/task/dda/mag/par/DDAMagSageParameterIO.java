@@ -10,6 +10,7 @@ import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.LogManager;
 
 import uk.ac.quadram.metapilot.task.par.MetaData;
+import uk.ac.quadram.metapilot.task.par.SampleMetadata;
 import uk.ac.quadram.metapilot.task.par.BaseParameterIO;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 
@@ -251,6 +252,7 @@ public class DDAMagSageParameterIO extends BaseParameterIO {
 					metadataTableData.add(metadataRow);
 				}
 				params.setMetadataTableData(metadataTableData);
+				SampleMetadata.apply(params.getMetadata(), metadataTableData);
 			}
 
 			LOGGER.info("Successfully loaded parameters from: {}", inputFile.getAbsolutePath());

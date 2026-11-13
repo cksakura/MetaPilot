@@ -8,9 +8,11 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -23,7 +25,9 @@ import org.apache.logging.log4j.Logger;
  * {@code dbSearch/pia/} (that XML sits in the Java source tree, which Maven does not
  * package, so it is not reachable at run time). Columns: record_id, title,
  * mono_mass, and {@code site@position} specificities with a trailing {@code !}
- * marking UNIMOD's "hidden" (rarely used) ones.
+ * marking UNIMOD's "hidden" (rarely used) ones, then the record's classifications over all its
+ * specificities (column added 2026-11-08, appended from the same XML by record id; older rows
+ * without it read as unclassified).
  * <p>
  * Two lookups, matching what the engines report:
  * <ul>
@@ -44,6 +48,12 @@ public final class UnimodCatalog {
 
 	public static final String RESOURCE = "/unimod_compact.tsv";
 
+	/** UNIMOD's classification for mass tags introduced on purpose (SILAC, 18O, dimethyl labels). */
+	public static final String ISOTOPIC_LABEL = "Isotopic label";
+
+	/** UNIMOD's classification for one residue replaced by another. */
+	public static final String AA_SUBSTITUTION = "AA substitution";
+
 	/** A UNIMOD record. */
 	public static final class Entry {
 		public final int recordId;
@@ -51,12 +61,46 @@ public final class UnimodCatalog {
 		public final double monoMass;
 		/** site@position -> hidden */
 		final Map<String, Boolean> specificities;
+		/** UNIMOD classifications over all specificities ("Post-translational", "Isotopic label", ...). */
+		public final Set<String> classifications;
 
 		Entry(int recordId, String title, double monoMass, Map<String, Boolean> specificities) {
+			this(recordId, title, monoMass, specificities, Collections.emptySet());
+		}
+
+		Entry(int recordId, String title, double monoMass, Map<String, Boolean> specificities,
+				Set<String> classifications) {
 			this.recordId = recordId;
 			this.title = title;
 			this.monoMass = monoMass;
 			this.specificities = specificities;
+			this.classifications = classifications;
+		}
+
+		/**
+		 * True when every specificity is an isotopic label: the mass exists only in a sample that was
+		 * labelled on purpose, so in a label-free sample a delta at it is an isotope peak or a wrong
+		 * precursor mass.
+		 */
+		public boolean isIsotopicLabelOnly() {
+			return !classifications.isEmpty() && classifications.stream().allMatch(ISOTOPIC_LABEL::equals);
+		}
+
+		/**
+		 * True when every specificity is an amino acid substitution ({@code Ala->Ser}, {@code Val->Xle}):
+		 * the entry names a sequence difference, not a mass added to a residue, so it is no modification
+		 * explanation of a shift. On the faecal and 12mix entrapment runs (2026-11-10) such an entry was
+		 * the only UNIMOD explanation of 80% and 83% of the substitution-site PSMs, which made a
+		 * substitution alone read as "substitution or modification".
+		 */
+		public boolean isAminoAcidSubstitutionOnly() {
+			return !classifications.isEmpty() && classifications.stream().allMatch(AA_SUBSTITUTION::equals);
+		}
+
+		/** Whether this entry lists the site as a commonly used specificity (not one UNIMOD hides as rare). */
+		public boolean listsCommonly(Site site) {
+			Boolean hidden = hiddenFor(site);
+			return hidden != null && !hidden;
 		}
 
 		public String accession() {
@@ -198,7 +242,16 @@ public final class UnimodCatalog {
 						boolean hidden = s.endsWith("!");
 						spec.put(hidden ? s.substring(0, s.length() - 1) : s, hidden);
 					}
-					list.add(new Entry(Integer.parseInt(cs[0]), cs[1], Double.parseDouble(cs[2]), spec));
+					Set<String> classes = new HashSet<>();
+					if (cs.length > 4) {
+						for (String s : cs[4].split(";")) {
+							if (!s.isEmpty()) {
+								classes.add(s);
+							}
+						}
+					}
+					list.add(new Entry(Integer.parseInt(cs[0]), cs[1], Double.parseDouble(cs[2]), spec,
+							Collections.unmodifiableSet(classes)));
 				}
 			}
 		} catch (IOException | RuntimeException e) {
@@ -206,6 +259,11 @@ public final class UnimodCatalog {
 			list.clear();
 		}
 		return new UnimodCatalog(list);
+	}
+
+	/** Every record, in file order. */
+	public List<Entry> entries() {
+		return Collections.unmodifiableList(entries);
 	}
 
 	public int size() {
@@ -257,6 +315,45 @@ public final class UnimodCatalog {
 			return hidden;
 		}
 		return null;
+	}
+
+	/**
+	 * Distance in Da from {@code mass} to the nearest UNIMOD entry of any site, isotopic labels
+	 * excluded ({@link Entry#isIsotopicLabelOnly}); infinity without entries. For explaining an
+	 * observed mass shift in a label-free sample, where a label mass can only be an isotope peak or
+	 * a wrong precursor mass. On 12mix and faecal (2026-11-08) labels alone kept the +4/+5 Da
+	 * artefact peaks out of isotope families (Label:18O(2) at +4.0104, Label:13C(2)15N(2) at
+	 * +4.0023, ...).
+	 */
+	public double distanceToNearestMass(double mass) {
+		double best = Double.POSITIVE_INFINITY;
+		for (Entry e : entries) {
+			if (!e.isIsotopicLabelOnly()) {
+				best = Math.min(best, Math.abs(e.monoMass - mass));
+			}
+		}
+		return best;
+	}
+
+	/**
+	 * Every UNIMOD entry within {@code tolerance} of {@code mass} that lists {@code site}, hidden
+	 * specificities included, isotopic labels excluded as in {@link #distanceToNearestMass}; empty
+	 * when there is none. Unlike {@link #byMass(double, Site, double)}, an ambiguous match returns all
+	 * candidates. On 12mix and faecal (2026-11-08) labels were the only explanation of about 32
+	 * closed isotope-offset PSMs per run at 0.992 and 1.996 Da ({@code Label:15N(1)}) and of one
+	 * faecal open PSM at +7.039 ({@code Label:2H(6)15N(1)}).
+	 */
+	public List<Entry> allByMass(double mass, Site site, double tolerance) {
+		List<Entry> out = new ArrayList<>();
+		if (Double.isNaN(mass) || site == null) {
+			return out;
+		}
+		for (Entry e : entries) {
+			if (!e.isIsotopicLabelOnly() && Math.abs(e.monoMass - mass) <= tolerance && e.hiddenFor(site) != null) {
+				out.add(e);
+			}
+		}
+		return out;
 	}
 
 	public Entry byMass(double mass, Site site) {

@@ -24,9 +24,9 @@ import java.util.TreeMap;
  * 1, 2, 3 and 5).
  * <ol>
  * <li><b>Peptide FDR per class.</b> Unit: base peptide with I = L, scored by its
- * best PSM. Separate target-decoy walks for unmodified, known-shift and
+ * best PSM. Separate target-decoy walks for unmodified, accepted-shift and
  * unexplained-shift units; q &lt;= {@link Settings#peptideFdr}. Unmodified and
- * known shift are evidence; unexplained shift never is.</li>
+ * accepted shift are evidence; unexplained shift never is.</li>
  * <li><b>Expected false count.</b> A peptide is unique to genome g in run r when
  * every protein of r's database containing it (search digest) belongs to g; it
  * counts for g only when every run in which it was accepted calls it unique to
@@ -59,7 +59,7 @@ import java.util.TreeMap;
 public final class GenomeEvidenceTest {
 
 	public enum PeptideClass {
-		UNMODIFIED, KNOWN_SHIFT, UNEXPLAINED,
+		UNMODIFIED, ACCEPTED_SHIFT, UNEXPLAINED,
 		/**
 		 * Closed-stage PSMs of the closed-then-open identification. Evidence; its decoys count in
 		 * {@code F} but stay out of the {@code pi_g} window, which keeps the open search's score
@@ -86,6 +86,29 @@ public final class GenomeEvidenceTest {
 		public int minLength = 7;
 		public int maxLength = 50;
 		public String decoyPrefix = "rev_";
+		/**
+		 * How many decoys each decoy in {@link Hits} stands for. 1 (the default) is plain target-decoy
+		 * competition. 2 is RESET: only the estimating half of the decoys is passed in (the training half
+		 * shaped the PSM model and is withheld), and every decoy-based estimate that decides acceptance - the
+		 * per-class peptide FDR and the expected false count {@code F} - counts each twice. The reversed-genome
+		 * rows and the picked protein FDR see only the decoys passed in and stay diagnostics.
+		 */
+		public double decoyWeight = 1.0;
+		/**
+		 * Protein filter (identification v2, P8): on the step-5 assignment of evidence peptides to
+		 * proteins, a protein with two or more peptides passes; one-peptide target and decoy proteins are
+		 * walked together by their peptide's score to {@link #proteinFdr} (decoys counted
+		 * {@link #decoyWeight} times, tied scores as one block), and those within it pass. Off: no filter,
+		 * {@link Result#passingProteins} is null.
+		 */
+		public boolean proteinFilter = false;
+		/**
+		 * Accession prefix of genome proteins ({@code MGYG}). Proteins without it (the host appended to
+		 * the searched databases) are no candidate genomes, and a peptide one of them contains is no
+		 * genome evidence: it is counted as {@code host} in the uniqueness step. Null: every protein
+		 * belongs to a genome.
+		 */
+		public String genomePrefix = null;
 	}
 
 	/** Streams (accession, sequence) for every protein of the union of the runs' databases, once each. */
@@ -210,6 +233,10 @@ public final class GenomeEvidenceTest {
 		public int targetProteinsScored;
 		public int decoyProteinsScored;
 		public int targetProteinsAtFdr;
+		/** Protein filter: {targets, decoys} with two or more peptides, one-peptide, one-peptide passing. */
+		public int[] proteinsTwoOrMore = new int[2];
+		public int[] proteinsOnePeptide = new int[2];
+		public int[] proteinsOnePeptidePassing = new int[2];
 		public double genomeFdr;
 		public double peptideFdr;
 		public double proteinFdr;
@@ -225,6 +252,8 @@ public final class GenomeEvidenceTest {
 		/** Target protein -> {score, score of its reversed counterpart or NaN, picked q-value}. */
 		public final HashMap<String, double[]> proteinStats;
 		public final Calibration calibration;
+		/** Target proteins passing the protein filter ({@link Settings#proteinFilter}); null when it is off. */
+		public java.util.Set<String> passingProteins;
 
 		private Result(List<GenomeRow> rows, HashMap<String, double[]> genomeStats,
 				HashMap<String, Double> genomeScoreMap, HashMap<String, double[]> proteinStats,
@@ -242,6 +271,7 @@ public final class GenomeEvidenceTest {
 	private static final String INCONSISTENT = "unique_to_different_genomes_in_different_runs";
 	private static final String SHARED = "shared";
 	private static final String UNIQUE = "unique";
+	private static final String HOST = "host";
 
 	private GenomeEvidenceTest() {
 	}
@@ -296,7 +326,7 @@ public final class GenomeEvidenceTest {
 		boolean hasClosedClass = false;
 		for (PeptideClass c : PeptideClass.values()) {
 			HashMap<String, Evidence> classDecoys = c.isEvidence() ? new HashMap<>() : null;
-			int[] accepted = peptideFdr(hits.targets.get(c), hits.decoys.get(c), s.peptideFdr,
+			int[] accepted = peptideFdr(hits.targets.get(c), hits.decoys.get(c), s.peptideFdr, s.decoyWeight,
 					c.isEvidence() ? targetEvidence : null, classDecoys);
 			cal.acceptedUnits[c.ordinal()] = accepted;
 			if (classDecoys != null) {
@@ -322,9 +352,26 @@ public final class GenomeEvidenceTest {
 		List<String> proteinNames = new ArrayList<>();
 		HashMap<String, Integer> proteinIndex = new HashMap<>();
 		Digest digest = new Digest(s);
+		java.util.HashSet<String> hostTargetKeys = new java.util.HashSet<>();
+		java.util.HashSet<String> hostDecoyKeys = new java.util.HashSet<>();
 		proteins.forEach((accession, sequence) -> {
 			boolean decoy = accession.startsWith(s.decoyPrefix);
-			Integer g = genomeIndex.get(genomeOf(decoy ? accession.substring(s.decoyPrefix.length()) : accession));
+			String target = decoy ? accession.substring(s.decoyPrefix.length()) : accession;
+			if (s.genomePrefix != null && !target.startsWith(s.genomePrefix)) {
+				// A host protein: its peptides are evidence for no genome. A reversed host protein marks
+				// the decoys the same way, so the two sides stay comparable.
+				Membership m = decoy ? decoyMembership : targetMembership;
+				java.util.HashSet<String> keys = decoy ? hostDecoyKeys : hostTargetKeys;
+				String seq = sequence.replace('I', 'L');
+				digest.forEach(seq, (a, b) -> {
+					String key = seq.substring(a, b);
+					if (m.genomes.containsKey(key)) {
+						keys.add(key);
+					}
+				});
+				return;
+			}
+			Integer g = genomeIndex.get(genomeOf(target));
 			if (g == null) {
 				return;
 			}
@@ -355,7 +402,8 @@ public final class GenomeEvidenceTest {
 		HashMap<Integer, List<String>> unique = new HashMap<>();
 		HashMap<String, Integer> ownTarget = new HashMap<>();
 		for (Map.Entry<String, Evidence> e : targetEvidence.entrySet()) {
-			Object status = uniqueGenome(e.getValue().runs, targetMembership.genomes.get(e.getKey()), runDb);
+			Object status = hostTargetKeys.contains(e.getKey()) ? HOST
+					: uniqueGenome(e.getValue().runs, targetMembership.genomes.get(e.getKey()), runDb);
 			count(cal.targetUniqueness, status);
 			if (status instanceof Integer) {
 				unique.computeIfAbsent((Integer) status, k -> new ArrayList<>()).add(e.getKey());
@@ -365,7 +413,8 @@ public final class GenomeEvidenceTest {
 		HashMap<Integer, List<String>> decoyUnique = new HashMap<>();
 		HashMap<String, Integer> ownDecoy = new HashMap<>();
 		for (Map.Entry<String, Evidence> e : decoyEvidence.entrySet()) {
-			Object status = uniqueGenome(e.getValue().runs, decoyMembership.genomes.get(e.getKey()), runDb);
+			Object status = hostDecoyKeys.contains(e.getKey()) ? HOST
+					: uniqueGenome(e.getValue().runs, decoyMembership.genomes.get(e.getKey()), runDb);
 			count(cal.decoyUniqueness, status);
 			if (status instanceof Integer) {
 				decoyUnique.computeIfAbsent((Integer) status, k -> new ArrayList<>()).add(e.getKey());
@@ -381,7 +430,8 @@ public final class GenomeEvidenceTest {
 		List<String> window = new ArrayList<>();
 		HashMap<String, Integer> windowGenome = new HashMap<>();
 		for (Map.Entry<String, Unit> e : windowUnits.entrySet()) {
-			Object status = uniqueGenome(e.getValue().runs, decoyMembership.genomes.get(e.getKey()), runDb);
+			Object status = hostDecoyKeys.contains(e.getKey()) ? HOST
+					: uniqueGenome(e.getValue().runs, decoyMembership.genomes.get(e.getKey()), runDb);
 			if (status instanceof Integer) {
 				window.add(e.getKey());
 				windowGenome.put(e.getKey(), (Integer) status);
@@ -405,7 +455,7 @@ public final class GenomeEvidenceTest {
 			windowKeys.computeIfAbsent(g, x -> new ArrayList<>()).add(k);
 			ownDecoy.putIfAbsent(k, g);
 		}
-		double lambdaUnit = Math.max(F, 1) / (double) (window.size() + G);
+		double lambdaUnit = s.decoyWeight * Math.max(F, 1) / (double) (window.size() + G);
 		double[] lambda0 = new double[G];
 		for (int g = 0; g < G; g++) {
 			lambda0[g] = lambdaUnit * (windowCount[g] + 1);
@@ -537,10 +587,12 @@ public final class GenomeEvidenceTest {
 		}
 
 		// Step 5
+		HashMap<String, Integer> targetProteinPeptides = new HashMap<>();
+		HashMap<String, Integer> decoyProteinPeptides = new HashMap<>();
 		HashMap<String, Double> targetProteinScores = proteinScores(targetEvidence, proteinNames, finalAccepted,
-				genomeIndex, s.decoyPrefix);
+				genomeIndex, s.decoyPrefix, targetProteinPeptides);
 		HashMap<String, Double> decoyProteinScores = proteinScores(decoyEvidence, proteinNames, finalAccepted,
-				genomeIndex, s.decoyPrefix);
+				genomeIndex, s.decoyPrefix, decoyProteinPeptides);
 		cal.targetProteinsScored = targetProteinScores.size();
 		cal.decoyProteinsScored = decoyProteinScores.size();
 		HashMap<String, double[]> proteinStats = pickedProteinFdr(targetProteinScores, decoyProteinScores,
@@ -550,7 +602,59 @@ public final class GenomeEvidenceTest {
 				cal.targetProteinsAtFdr++;
 			}
 		}
-		return new Result(rows, genomeStats, genomeScoreMap, proteinStats, cal);
+		Result result = new Result(rows, genomeStats, genomeScoreMap, proteinStats, cal);
+		if (s.proteinFilter) {
+			result.passingProteins = proteinFilter(targetProteinScores, targetProteinPeptides, decoyProteinScores,
+					decoyProteinPeptides, s.proteinFdr, s.decoyWeight, cal);
+		}
+		return result;
+	}
+
+	/** The protein filter ({@link Settings#proteinFilter}); returns the passing target proteins. */
+	static java.util.Set<String> proteinFilter(Map<String, Double> targetScores, Map<String, Integer> targetPeptides,
+			Map<String, Double> decoyScores, Map<String, Integer> decoyPeptides, double fdr, double decoyWeight,
+			Calibration cal) {
+		java.util.Set<String> passing = new java.util.TreeSet<>();
+		List<String> one = new ArrayList<>();
+		List<Double> scores = new ArrayList<>();
+		List<Boolean> isTarget = new ArrayList<>();
+		for (Map.Entry<String, Integer> e : targetPeptides.entrySet()) {
+			if (e.getValue() >= 2) {
+				passing.add(e.getKey());
+				cal.proteinsTwoOrMore[0]++;
+			} else {
+				one.add(e.getKey());
+				scores.add(targetScores.get(e.getKey()));
+				isTarget.add(true);
+				cal.proteinsOnePeptide[0]++;
+			}
+		}
+		for (Map.Entry<String, Integer> e : decoyPeptides.entrySet()) {
+			if (e.getValue() >= 2) {
+				cal.proteinsTwoOrMore[1]++;
+			} else {
+				one.add(e.getKey());
+				scores.add(decoyScores.get(e.getKey()));
+				isTarget.add(false);
+				cal.proteinsOnePeptide[1]++;
+			}
+		}
+		double[] sc = new double[one.size()];
+		boolean[] tg = new boolean[one.size()];
+		for (int i = 0; i < sc.length; i++) {
+			sc[i] = scores.get(i);
+			tg[i] = isTarget.get(i);
+		}
+		double[] q = uk.ac.quadram.metapilot.core.opensearch.TargetDecoyFdr.qValuesConservative(sc, tg, decoyWeight);
+		for (int i = 0; i < sc.length; i++) {
+			if (q[i] <= fdr) {
+				cal.proteinsOnePeptidePassing[tg[i] ? 0 : 1]++;
+				if (tg[i]) {
+					passing.add(one.get(i));
+				}
+			}
+		}
+		return passing;
 	}
 
 	// ---------------------------------------------------------------- step 1
@@ -576,7 +680,7 @@ public final class GenomeEvidenceTest {
 
 	/** @return {accepted targets, accepted decoys} */
 	private static int[] peptideFdr(HashMap<String, Unit> targets, HashMap<String, Unit> decoys, double fdr,
-			HashMap<String, Evidence> targetEvidence, HashMap<String, Evidence> decoyEvidence) {
+			double decoyWeight, HashMap<String, Evidence> targetEvidence, HashMap<String, Evidence> decoyEvidence) {
 		int n = targets.size() + decoys.size();
 		String[] keys = new String[n];
 		Unit[] units = new Unit[n];
@@ -606,7 +710,7 @@ public final class GenomeEvidenceTest {
 			} else {
 				d++;
 			}
-			q[j] = d / (double) Math.max(1, t);
+			q[j] = decoyWeight * d / Math.max(1, t);
 		}
 		for (int j = n - 2; j >= 0; j--) {
 			q[j] = Math.min(q[j], q[j + 1]);
@@ -845,9 +949,14 @@ public final class GenomeEvidenceTest {
 
 	// ---------------------------------------------------------------- step 5
 
+	/**
+	 * Each evidence peptide goes to the protein of an accepted genome holding the most evidence peptides
+	 * (ties by accession); a protein scores its best peptide. {@code assignedPeptides} receives, per
+	 * protein, how many peptides were assigned to it.
+	 */
 	private static HashMap<String, Double> proteinScores(HashMap<String, Evidence> evidence,
 			List<String> proteinNames, BitSet acceptedGenomes, HashMap<String, Integer> genomeIndex,
-			String decoyPrefix) {
+			String decoyPrefix, HashMap<String, Integer> assignedPeptides) {
 		HashMap<Integer, Integer> peptidesPerProtein = new HashMap<>();
 		List<Evidence> usable = new ArrayList<>();
 		for (Evidence ev : evidence.values()) {
@@ -878,6 +987,7 @@ public final class GenomeEvidenceTest {
 				}
 			}
 			scores.merge(proteinNames.get(best), ev.score, Math::max);
+			assignedPeptides.merge(proteinNames.get(best), 1, Integer::sum);
 		}
 		return scores;
 	}

@@ -71,6 +71,69 @@ public final class TargetDecoyFdr {
 	}
 
 	/**
+	 * Monotonised q-values with the {@code (decoys + 1) / targets} estimate and tied scores walked
+	 * as one block, in the caller's original index order.
+	 * <p>
+	 * For small populations, such as the joint identification's per-group walks: with 0 decoys
+	 * among 40 targets, {@link #qValues} reports q = 0 where this reports 1/40. The +1 makes the
+	 * estimate conservative (He et al. 2015; Levitsky et al. 2017) and costs nothing on a large
+	 * group. A block of tied scores is accepted or rejected together, so a target and a decoy at
+	 * the same score never get different q-values from their row order.
+	 */
+	public static double[] qValuesConservative(double[] scores, boolean[] isTarget) {
+		return qValuesConservative(scores, isTarget, 1.0);
+	}
+
+	/**
+	 * As {@link #qValuesConservative(double[], boolean[])}, each decoy standing for
+	 * {@code decoyWeight} decoys: {@code decoyWeight * (decoys + 1) / targets}. RESET passes only the
+	 * estimating half of the decoys and weight 2.
+	 */
+	public static double[] qValuesConservative(double[] scores, boolean[] isTarget, double decoyWeight) {
+		if (scores.length != isTarget.length) {
+			throw new IllegalArgumentException("scores and isTarget differ in length");
+		}
+		int n = scores.length;
+		double[] q = new double[n];
+		if (n == 0) {
+			return q;
+		}
+		Integer[] order = sortedByScoreDesc(scores);
+		double[] running = new double[n];
+		int targets = 0;
+		int decoys = 0;
+		int rank = 0;
+		while (rank < n) {
+			int end = rank;
+			while (end + 1 < n && sameScore(scores[order[end + 1]], scores[order[rank]])) {
+				end++;
+			}
+			for (int k = rank; k <= end; k++) {
+				if (isTarget[order[k]]) {
+					targets++;
+				} else {
+					decoys++;
+				}
+			}
+			double fdr = targets == 0 ? 1.0 : Math.min(1.0, decoyWeight * (decoys + 1.0) / targets);
+			for (int k = rank; k <= end; k++) {
+				running[k] = fdr;
+			}
+			rank = end + 1;
+		}
+		double best = 1.0;
+		for (int k = n - 1; k >= 0; k--) {
+			best = Math.min(best, running[k]);
+			q[order[k]] = best;
+		}
+		return q;
+	}
+
+	private static boolean sameScore(double a, double b) {
+		return a == b || (Double.isNaN(a) && Double.isNaN(b));
+	}
+
+	/**
 	 * The score at the last rank whose q-value still satisfies
 	 * {@code qThreshold}. PSMs scoring at or above this are accepted.
 	 *

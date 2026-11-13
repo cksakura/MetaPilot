@@ -20,6 +20,7 @@ import java.util.Set;
 
 import org.json.JSONObject;
 
+import uk.ac.quadram.metapilot.core.mag.MagResultLayoutUtil;
 import uk.ac.quadram.metapilot.workflow.WorkflowType;
 
 /**
@@ -240,7 +241,7 @@ public class ResultFolderCleaner {
 	}
 
 	private static final Set<String> FINAL_DIRECTORIES = Set.of("taxonomy", "taxonomy_analysis", "function",
-			"functional_annotation", "report", "reports");
+			"functional_annotation", "report", "reports", MagResultLayoutUtil.EXCLUDED_EVIDENCE_DIR_NAME);
 	private static final Set<String> WORKFLOW_RESULT_DIRECTORIES = Set.of("maxquant_search", "pfind_igc_search",
 			"fragpipe_igc_search", "sage_igc_search", "pfind_mag_search", "fragpipe_mag_search", "sage_mag_search",
 			"opensearch_mag_search", "marker_focus", "marker_comprehensive", "marker_deep", "seed_direct",

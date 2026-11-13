@@ -1,14 +1,10 @@
 package uk.ac.quadram.metapilot.task.common.gui;
 
-import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
-import javafx.scene.text.Font;
-import javafx.scene.text.FontWeight;
-import javafx.scene.paint.Color;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -52,12 +48,8 @@ public class PFindModificationPanel extends VBox {
     }
     
     private void initializeUI() {
-        setPadding(new Insets(10));
-        setStyle("-fx-background-color: #f5f5f5; -fx-background-radius: 5;");
-        setMinHeight(250);
         VBox.setVgrow(this, Priority.ALWAYS);
         
-        Label titleLabel = createSectionTitle("Modifications");
         GridPane modGrid = new GridPane();
         modGrid.setHgap(15);
         modGrid.setVgap(10);
@@ -144,7 +136,9 @@ public class PFindModificationPanel extends VBox {
         modGrid.add(removeVariableModButton, 1, 2);
         modGrid.add(modSelectionContainer, 0, 3, 2, 1);
         
-        getChildren().addAll(titleLabel, modGrid);
+        TitledPane section = ParameterSection.create("Modifications", modGrid);
+        VBox.setVgrow(section, Priority.ALWAYS);
+        getChildren().add(section);
     }
     
     private void loadModificationsFromIni() {
@@ -206,12 +200,6 @@ public class PFindModificationPanel extends VBox {
         }
     }
     
-    private Label createSectionTitle(String title) {
-        Label label = new Label(title);
-        label.setFont(Font.font("System", FontWeight.BOLD, 14));
-        label.setTextFill(Color.DARKBLUE);
-        return label;
-    }
     
     // Getters for the modification data
     public ObservableList<String> getFixedModifications() {

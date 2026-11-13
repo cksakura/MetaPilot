@@ -368,6 +368,71 @@ public final class SubstitutionReassigner {
 		return result;
 	}
 
+	/** What {@link #alignWithIdentification} did. */
+	public static final class Alignment {
+		/** PSMs now carrying a substitution verdict. */
+		public int called;
+		/** Of those, with the substituted peptide in the searched database. */
+		public int inDatabase;
+		/** PSMs whose peak-level verdict from {@link #analyse} was removed. */
+		public int cleared;
+	}
+
+	/**
+	 * Makes the substitution verdict of each reported PSM the joint identification's own call, so the
+	 * variant table, {@code substitution_forms.tsv} and the side quantification read one decision.
+	 * <p>
+	 * {@link #analyse} runs before any PSM is scored, per peak, on MSFragger's localisation, and takes
+	 * the first position that fits. The identification decides later, per spectrum, on
+	 * {@link ShiftLocaliser}'s fragment test. Measured on the round-5 entrapment runs (2026-11-10): 639
+	 * of 6,400 (faecal) and 1,289 of 5,169 (12mix) PSMs with a verdict were identified and quantified in
+	 * the main result as well, and 489 of 3,973 and 495 of 2,054 PSMs the identification set aside on a
+	 * substitution site had no verdict and so never reached the variant outputs.
+	 * <p>
+	 * After this, a PSM has a verdict exactly when it is {@code OPEN_SUBSTITUTION_SITE} and a
+	 * substitution is the only explanation at its site
+	 * ({@link ShiftLocaliser.ExplanationClass#SUBSTITUTION}); its candidate is the peptide with that
+	 * residue replaced. Where a modification fits the same residue the spectrum cannot decide, and the
+	 * PSM carries no verdict: it stays in {@code unexplained_psms.tsv} with
+	 * {@code shift_class = modification_or_substitution}. PSMs without an identification group (any
+	 * identification other than the joint one) are left as {@link #analyse} set them.
+	 *
+	 * @param index peptide space of the searched databases; null reports every candidate as absent
+	 */
+	public static Alignment alignWithIdentification(java.util.Collection<OpenSearchPsm> psms,
+			TrypticPeptideIndex index) {
+		Alignment out = new Alignment();
+		for (OpenSearchPsm psm : psms) {
+			if (psm == null || psm.getIdentificationGroup() == null) {
+				continue;
+			}
+			ShiftLocaliser.Result loc = psm.getShiftLocalisation();
+			String peptide = psm.getPeptide();
+			char to = loc == null ? 0 : loc.substitutedResidue();
+			boolean substitution = JointCandidate.Group.OPEN_SUBSTITUTION_SITE.name().equals(psm.getIdentificationGroup())
+					&& loc != null && loc.explanationClass() == ShiftLocaliser.ExplanationClass.SUBSTITUTION && to != 0
+					&& peptide != null && loc.site >= 0 && loc.site < peptide.length();
+			if (!substitution) {
+				if (psm.getSubstitutionVerdict() != null && !psm.getSubstitutionVerdict().isBlank()) {
+					psm.setSubstitutionVerdict(null);
+					psm.setSubstitutionCandidate(null);
+					psm.setDeltaMassReassignment(null);
+					out.cleared++;
+				}
+				continue;
+			}
+			String candidate = peptide.substring(0, loc.site) + to + peptide.substring(loc.site + 1);
+			boolean inDb = index != null && index.contains(candidate);
+			psm.setSubstitutionVerdict((inDb ? Verdict.SUBSTITUTION_IN_DB : Verdict.SUBSTITUTION_NOT_IN_DB).name());
+			psm.setSubstitutionCandidate(candidate);
+			psm.setDeltaMassReassignment(String.format(Locale.ROOT, "SUBSTITUTION:%c%d%c", peptide.charAt(loc.site),
+					loc.site + 1, to));
+			out.called++;
+			out.inDatabase += inDb ? 1 : 0;
+		}
+		return out;
+	}
+
 	/**
 	 * The one candidate this PSM's localization supports, or null.
 	 * <p>

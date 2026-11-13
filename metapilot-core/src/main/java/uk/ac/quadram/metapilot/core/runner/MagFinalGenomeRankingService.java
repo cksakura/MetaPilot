@@ -68,7 +68,7 @@ public final class MagFinalGenomeRankingService {
 
 		List<GenomeRow> rows = buildRows(request);
 		double totalIntensity = totalIntensity(rows);
-		if (totalIntensity <= 0.0) {
+		if (totalIntensity <= 0.0 && !rows.isEmpty()) {
 			int genomesWithPeptides = 0;
 			for (GenomeRow row : rows) {
 				if (!row.coveragePeptides.isEmpty()) {
@@ -112,8 +112,8 @@ public final class MagFinalGenomeRankingService {
 		if (request.taxonomyAnalysisDir == null) {
 			throw new IOException("taxonomyAnalysisDir is null");
 		}
-		if (request.genomeIntensityMap == null || request.genomeIntensityMap.isEmpty()) {
-			throw new IOException("genomeIntensityMap is empty");
+		if (request.genomeIntensityMap == null) {
+			throw new IOException("genomeIntensityMap is null");
 		}
 	}
 
@@ -143,6 +143,17 @@ public final class MagFinalGenomeRankingService {
 			rows.add(row);
 		}
 		return rows;
+	}
+
+	/** In-memory final selection, identical to genome_final_selected.tsv. Zero-gain
+	 * leftovers are evidence, not selected genomes. */
+	public static java.util.Set<String> selectGenomes(Request request) {
+		List<GenomeRow> rows = buildRows(request);
+		rows.sort(abundanceComparator());
+		Ranking ranking = rank(rows, request.privilegeUniquePeptideFraction);
+		java.util.Set<String> selected = new java.util.LinkedHashSet<>(ranking.privileged);
+		selected.addAll(ranking.greedyOrder);
+		return java.util.Collections.unmodifiableSet(selected);
 	}
 
 	private static Ranking rank(List<GenomeRow> rows, double privilegeFraction) {

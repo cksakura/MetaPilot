@@ -80,8 +80,10 @@ public final class MagPostAnalysisScoringService {
 				.fromGenomeEvidence(evidence.genomeScoreMap, evidence.genomeStats);
 		HashMap<String, Double> confidentGenomeScoreMap = filterConfidentGenomeScores(evidence.genomeScoreMap,
 				evidence.genomeStats);
-		DdaMagProteinInferenceService.Result proteinInference = inferDdaProteins(peptides, confidentGenomeScoreMap,
-				evidence.genomeStats, magIdentifier, decoySymbol);
+		// With the protein filter (identification v2), razor assignment considers passing proteins only.
+		DdaMagProteinInferenceService.Result proteinInference = DdaMagProteinInferenceService.refineProteins(peptides,
+				confidentGenomeScoreMap, evidence.genomeStats, magIdentifier, decoySymbol,
+				DdaMagProteinInferenceService.DEFAULT_GENOME_Q_VALUE_THRESHOLD, evidence.passingProteins);
 		return new DdaResult(genomeScoring, confidentGenomeScoreMap, proteinInference, evidence.proteinStats);
 	}
 

@@ -82,6 +82,9 @@ public final class FragpipePostAnalysisTsvExporter {
                 new DdaMagPostAnalysisService.Input(peps, psms, fileIdMap, fileList,
                         AbstractMetaPeptideReader.SHUF, magDb.getIdentifier(),
                         FragpipePostAnalysisTsvExporter::resolveFileIndex, true));
+        analysis.finalSelection.write(outDir);
+        uk.ac.quadram.metapilot.core.mag.MagResultFinalisationService.writeCatalogueContext(outDir, magDb);
+
         HashMap<String, MetaPSM> bestPsmByModSeq = analysis.psmMap;
         HashMap<String, int[]> pepPsmCountMap = analysis.pepPsmCountMap;
         HashMap<String, int[]> pepChargeMap = analysis.pepChargeMap;
@@ -134,6 +137,7 @@ public final class FragpipePostAnalysisTsvExporter {
         res.finalSummaryTsv = summaryOut;
         res.intensityTitles = intensityTitles;
         res.genomeIntensityMap = genomeIntensityMap;
+        res.genomeUniqueIntensityMap = analysis.genomeUniqueIntensityMap;
         res.genomeScoreMap = genomeScoreMap;
         res.genomeDiaStats = genomeDiaStats;
         res.psmCountMap = psmCountMap;
@@ -243,6 +247,7 @@ public final class FragpipePostAnalysisTsvExporter {
         public String[] intensityTitles;
         public MetaProtein[] metaProteins;
         public HashMap<String, double[]> genomeIntensityMap;
+        public HashMap<String, double[]> genomeUniqueIntensityMap;
         public HashMap<String, Double> genomeScoreMap;
         /** genome -> double[]{S, p_emp, q_value} when PSM-score/top-k scoring is used; null otherwise */
         public HashMap<String, double[]> genomeDiaStats;

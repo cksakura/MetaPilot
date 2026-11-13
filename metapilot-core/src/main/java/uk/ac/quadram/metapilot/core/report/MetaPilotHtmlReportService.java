@@ -8,6 +8,8 @@ import uk.ac.quadram.metapilot.core.resources.MetaPilotResourceConfig;
 import uk.ac.quadram.metapilot.core.workflow.ProgressCallback;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.io.ReportManifestGenerator;
+import uk.ac.quadram.metapilot.task.par.MetaData;
+import uk.ac.quadram.metapilot.task.par.SampleMetadata;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -253,8 +255,21 @@ public final class MetaPilotHtmlReportService {
             MetaPilotResourceConfig resourceConfig,
             ProgressCallback cb
     ) {
+        return runStandardReportWarningOnly(resultDir, workflowType, threadCount, pythonHint, resourceConfig, cb, null);
+    }
+
+    public static Result runStandardReportWarningOnly(
+            File resultDir,
+            String workflowType,
+            int threadCount,
+            String pythonHint,
+            MetaPilotResourceConfig resourceConfig,
+            ProgressCallback cb,
+            MetaData metadata
+    ) {
         try {
-            Request request = buildStandardRequest(resultDir, workflowType, threadCount, pythonHint, null, cb);
+            File metadataFile = SampleMetadata.reportFile(resultDir, metadata);
+            Request request = buildStandardRequest(resultDir, workflowType, threadCount, pythonHint, metadataFile, cb);
             request.resourceConfig = resourceConfig;
             request.warnOnly = true;
             request.installTemplate = true;

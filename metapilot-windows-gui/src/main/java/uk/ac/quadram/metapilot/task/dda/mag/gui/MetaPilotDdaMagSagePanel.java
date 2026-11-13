@@ -12,6 +12,7 @@ import javafx.scene.paint.Color;
 import javafx.scene.control.Alert.AlertType;
 import java.util.Optional;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
+import uk.ac.quadram.metapilot.task.common.gui.ParameterSection;
 import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
 import uk.ac.quadram.metapilot.task.common.gui.MetadataConfigurationPanel;
 import uk.ac.quadram.metapilot.task.common.gui.IsobaricLabelingPanel;
@@ -81,8 +82,8 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 	private Spinner<Double> openFragmentToleranceSpinner;
 
 	// Parameter panel references for direct access
-	private VBox closedSearchParamsPanel;
-	private VBox openSearchParamsPanel;
+	private TitledPane closedSearchParamsPanel;
+	private TitledPane openSearchParamsPanel;
 	private ComboBox<String> enzymeComboBox;
 	private Spinner<Integer> missedCleavagesSpinner;
 	private ComboBox<String> digestionModeComboBox;
@@ -134,7 +135,7 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 
 			// Initialize reusable components
 			consolePanel = new ConsolePanel();
-			metadataPanel = new MetadataConfigurationPanel();
+			metadataPanel = new MetadataConfigurationPanel(true);
 			isobaricPanel = new IsobaricLabelingPanel();
 			magDatabasePanel = new MagDatabaseSettingsPanel();
 
@@ -248,7 +249,6 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 		VBox tabContent = new VBox(10);
 		tabContent.setPadding(new Insets(10));
 		tabContent.setMinWidth(960);
-		tabContent.setMinHeight(760);
 
 		// Create main grid layout
 		GridPane mainGrid = new GridPane();
@@ -256,8 +256,6 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 		mainGrid.setVgap(15);
 		mainGrid.setPadding(new Insets(10));
 		mainGrid.setMinWidth(940);
-		mainGrid.setMinHeight(740);
-		VBox.setVgrow(mainGrid, Priority.ALWAYS);
 
 		// Column constraints
 		ColumnConstraints col1 = new ColumnConstraints();
@@ -273,16 +271,15 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 		// Row constraints
 		RowConstraints row1 = new RowConstraints();
 		row1.setVgrow(Priority.ALWAYS);
-		row1.setMinHeight(400);
 		mainGrid.getRowConstraints().add(row1);
 
 		// Left column: Sage-specific parameters, Enzyme Settings, Additional
 		// Parameters, and Modifications Panel
 		VBox leftColumn = new VBox(15);
 		leftColumn.setMinWidth(430);
-		VBox sageParamsSection = createSageParametersSection();
-		VBox enzymeSection = createEnzymeSection();
-		VBox additionalParamsSection = createAdditionalParametersSection();
+		TitledPane sageParamsSection = createSageParametersSection();
+		TitledPane enzymeSection = createEnzymeSection();
+		TitledPane additionalParamsSection = createAdditionalParametersSection();
 
 		// Create horizontal modifications panel with fixed mods (narrow) and variable
 		// mods (wider)
@@ -294,7 +291,7 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 		// Right column: Quantitative Mode and Metadata Configuration
 		VBox rightColumn = new VBox(15);
 		rightColumn.setMinWidth(430);
-		VBox quantModeSection = createQuantitativeModeSection();
+		TitledPane quantModeSection = createQuantitativeModeSection();
 
 		rightColumn.getChildren().addAll(quantModeSection, metadataPanel);
 		GridPane.setVgrow(rightColumn, Priority.ALWAYS);
@@ -303,16 +300,12 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 		mainGrid.add(leftColumn, 0, 0);
 		mainGrid.add(rightColumn, 1, 0);
 
-		tabContent.getChildren().add(mainGrid);
+		tabContent.getChildren().add(ParameterSection.createViewport(mainGrid));
 		return tabContent;
 	}
 
-	private VBox createSageParametersSection() {
+	private TitledPane createSageParametersSection() {
 		VBox section = new VBox(10);
-		section.setPadding(new Insets(10));
-		section.setStyle("-fx-background-color: #e8f5e8; -fx-background-radius: 5;");
-
-		Label titleLabel = createSectionTitle("Sage-Specific Parameters");
 
 		// Search type selection
 		VBox searchTypeBox = new VBox(8);
@@ -337,10 +330,10 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 		VBox toleranceContainer = new VBox(10);
 
 		// Closed search parameters (symmetric)
-		VBox closedSearchParams = createClosedSearchParameters();
+		TitledPane closedSearchParams = createClosedSearchParameters();
 
 		// Open search parameters (asymmetric)
-		VBox openSearchParams = createOpenSearchParameters();
+		TitledPane openSearchParams = createOpenSearchParameters();
 		openSearchParams.setVisible(false);
 		openSearchParams.setManaged(false);
 
@@ -363,18 +356,12 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 			updateParameterView();
 		});
 
-		section.getChildren().addAll(titleLabel, searchTypeBox, toleranceContainer);
-		return section;
+		section.getChildren().addAll(searchTypeBox, toleranceContainer);
+		return ParameterSection.create("Sage-Specific Parameters", section);
 	}
 
-	private VBox createClosedSearchParameters() {
+	private TitledPane createClosedSearchParameters() {
 		VBox section = new VBox(10);
-		this.closedSearchParamsPanel = section; // Store reference for direct access
-		section.setPadding(new Insets(5));
-		section.setStyle("-fx-background-color: #f0f8ff; -fx-background-radius: 3;");
-
-		Label titleLabel = new Label("Closed Search Parameters");
-		titleLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: #2E8B57;");
 
 		GridPane paramGrid = new GridPane();
 		paramGrid.setHgap(15);
@@ -427,18 +414,13 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 		paramGrid.add(precursorContainer, 0, 0);
 		paramGrid.add(fragmentContainer, 1, 0);
 
-		section.getChildren().addAll(titleLabel, paramGrid);
-		return section;
+		section.getChildren().addAll(paramGrid);
+		closedSearchParamsPanel = ParameterSection.create("Closed Search Parameters", section);
+		return closedSearchParamsPanel;
 	}
 
-	private VBox createOpenSearchParameters() {
+	private TitledPane createOpenSearchParameters() {
 		VBox section = new VBox(10);
-		this.openSearchParamsPanel = section; // Store reference for direct access
-		section.setPadding(new Insets(5));
-		section.setStyle("-fx-background-color: #fff8dc; -fx-background-radius: 3;");
-
-		Label titleLabel = new Label("Open Search Parameters");
-		titleLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: #B8860B;");
 
 		GridPane paramGrid = new GridPane();
 		paramGrid.setHgap(15);
@@ -511,18 +493,14 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 		paramGrid.add(precursorContainer, 0, 0);
 		paramGrid.add(fragmentContainer, 1, 0);
 
-		section.getChildren().addAll(titleLabel, paramGrid);
-		return section;
+		section.getChildren().addAll(paramGrid);
+		openSearchParamsPanel = ParameterSection.create("Open Search Parameters", section);
+		return openSearchParamsPanel;
 	}
 
-	private VBox createQuantitativeModeSection() {
+	private TitledPane createQuantitativeModeSection() {
 		VBox section = new VBox(10);
-		section.setPadding(new Insets(10));
-		section.setStyle("-fx-background-color: #f5f5f5; -fx-background-radius: 5;");
-		section.setMinHeight(300);
-		VBox.setVgrow(section, Priority.ALWAYS);
 
-		Label titleLabel = createSectionTitle("Quantitative Mode");
 		quantModeGroup = new ToggleGroup();
 
 		RadioButton labelFreeRadio = new RadioButton("Label-free");
@@ -537,7 +515,6 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 		radioBox.getChildren().addAll(labelFreeRadio, isobaricRadio);
 
 		StackPane labelingStackPane = new StackPane();
-		labelingStackPane.setMinHeight(200);
 		labelingStackPane.setMaxHeight(Double.MAX_VALUE);
 		VBox.setVgrow(labelingStackPane, Priority.ALWAYS);
 
@@ -562,8 +539,8 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 			updateMetadataTable();
 		});
 
-		section.getChildren().addAll(titleLabel, radioBox, labelingStackPane);
-		return section;
+		section.getChildren().addAll(radioBox, labelingStackPane);
+		return ParameterSection.create("Quantitative Mode", section);
 	}
 
 	private Label createSectionTitle(String title) {
@@ -573,12 +550,8 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 		return label;
 	}
 
-	private VBox createEnzymeSection() {
+	private TitledPane createEnzymeSection() {
 		VBox section = new VBox(10);
-		section.setPadding(new Insets(10));
-		section.setStyle("-fx-background-color: #f5f5f5; -fx-background-radius: 5;");
-
-		Label titleLabel = createSectionTitle("Enzyme Settings");
 
 		HBox enzymeParamsBox = new HBox(15);
 		enzymeParamsBox.setAlignment(Pos.CENTER_LEFT);
@@ -630,16 +603,12 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 
 		enzymeParamsBox.getChildren().addAll(enzymeBox, missedCleavagesBox, digestionModeBox);
 
-		section.getChildren().addAll(titleLabel, enzymeParamsBox);
-		return section;
+		section.getChildren().addAll(enzymeParamsBox);
+		return ParameterSection.create("Enzyme Settings", section);
 	}
 
-	private VBox createAdditionalParametersSection() {
+	private TitledPane createAdditionalParametersSection() {
 		VBox section = new VBox(10);
-		section.setPadding(new Insets(10));
-		section.setStyle("-fx-background-color: #f0f8ff; -fx-background-radius: 5;");
-
-		Label titleLabel = createSectionTitle("Additional Parameters");
 
 		GridPane paramGrid = new GridPane();
 		paramGrid.setHgap(15);
@@ -758,8 +727,8 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 		paramGrid.add(genomeSelectorBox, 0, 1);
 		paramGrid.add(progressBox, 1, 1);
 
-		section.getChildren().addAll(titleLabel, paramGrid);
-		return section;
+		section.getChildren().addAll(paramGrid);
+		return ParameterSection.create("Additional Parameters", section);
 	}
 
 	/**
@@ -1426,6 +1395,7 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 					metadataArrays.add(row.toArray());
 				}
 				analysisParams.setMetadataTableData(metadataArrays);
+				metadataPanel.applyTo(analysisParams.getMetadata());
 			}
 
 			LOGGER.info("Successfully collected parameters from UI for saving (MAG Sage workflow)");
@@ -1657,6 +1627,15 @@ public class MetaPilotDdaMagSagePanel extends AbstractWorkflowPanel<DDAMagSagePa
 				experimentArrays.add(row.toArray());
 			}
 			analysisParams.setExperimentData(experimentArrays);
+
+			if (metadataPanel != null) {
+				List<String[]> metadataArrays = new ArrayList<>();
+				for (var row : metadataPanel.getMetadataTableData()) {
+					metadataArrays.add(row.toArray());
+				}
+				analysisParams.setMetadataTableData(metadataArrays);
+				metadataPanel.applyTo(analysisParams.getMetadata());
+			}
 
 			consolePanel.appendConsoleText("✓ Successfully collected parameters from UI\n");
 			LOGGER.info("Successfully collected parameters from UI for MAG Sage workflow");

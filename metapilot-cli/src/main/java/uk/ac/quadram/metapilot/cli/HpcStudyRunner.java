@@ -5,10 +5,16 @@ import uk.ac.quadram.metapilot.core.resources.MetaPilotResourceConfig;
 import uk.ac.quadram.metapilot.core.resources.ToolKey;
 import uk.ac.quadram.metapilot.core.report.PythonEnvironmentResolver;
 import uk.ac.quadram.metapilot.core.runner.DiaMarkerHeadlessRunner;
+import uk.ac.quadram.metapilot.core.runner.DiaSeedHeadlessRunner;
 import uk.ac.quadram.metapilot.core.runner.MagFragPipeHeadlessRunner;
+import uk.ac.quadram.metapilot.core.runner.MagOpenSearchHeadlessRunner;
+import uk.ac.quadram.metapilot.core.runner.MagOpenSearchToolSetup;
 import uk.ac.quadram.metapilot.core.workflow.ProgressCallback;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagFragPipeParameters;
+import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagOpenSearchParameters;
 import uk.ac.quadram.metapilot.task.dia.DiaRefinementMode;
+import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaMarker;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.MagDbItemResolver;
@@ -67,8 +73,14 @@ final class HpcStudyRunner {
             if (WorkflowType.DIA_MARKER.getAnalysisType().equals(workflow)) {
                 return validateDiaMarker((MetaParameterDiaMarker) loaded, rc, resourcesCfg, magdbCfg.toFile());
             }
+            if (WorkflowType.DIA_SEED.getAnalysisType().equals(workflow)) {
+                return validateDiaSeed((MetaParameterDia) loaded, rc, resourcesCfg, magdbCfg.toFile());
+            }
             if (WorkflowType.DDA_MAG_FRAGPIPE.getAnalysisType().equals(workflow)) {
                 return validateMagFragpipe((DDAMagFragPipeParameters) loaded, rc, resourcesCfg, magdbCfg.toFile());
+            }
+            if (WorkflowType.DDA_MAG_OPENSEARCH.getAnalysisType().equals(workflow)) {
+                return validateMagOpenSearch((DDAMagOpenSearchParameters) loaded, rc, resourcesCfg, magdbCfg.toFile());
             }
 
             System.err.println("ERROR: workflow is registered but not supported by the headless CLI yet: " + workflow);
@@ -143,6 +155,25 @@ final class HpcStudyRunner {
                 return 0;
             }
 
+            if (WorkflowType.DIA_SEED.getAnalysisType().equals(workflow)) {
+                File diannExe = rc.resolveToolPath(ToolKey.DIANN, null).map(Path::toFile).orElse(null);
+                File pythonExe = rc.resolveToolPath(ToolKey.PYTHON, null).map(Path::toFile).orElse(null);
+                File funcDb = rc.resolveToolPath(ToolKey.FUNCDB, null).map(Path::toFile).orElse(null);
+                DiaSeedHeadlessRunner.run(
+                        DiaSeedHeadlessRunner.toRunParameters((MetaParameterDia) loaded),
+                        diannExe,
+                        magdbCfg.toFile(),
+                        cb,
+                        PythonEnvironmentResolver.inferCondaPrefixFromPython(pythonExe),
+                        funcDb,
+                        reportGenerationEnabled(rc),
+                        null,
+                        rc,
+                        exportMetaAtlasEnabled(rc));
+                logLine(log, "INFO ", "MetaPilot HPC run finished  workflow=" + workflow);
+                return 0;
+            }
+
             if (WorkflowType.DDA_MAG_FRAGPIPE.getAnalysisType().equals(workflow)) {
                 DDAMagFragPipeParameters params = (DDAMagFragPipeParameters) loaded;
                 if (fragpipeParallelTasksOverride > 0) {
@@ -152,6 +183,24 @@ final class HpcStudyRunner {
                 File funcDb = rc.resolveToolPath(ToolKey.FUNCDB, null).map(Path::toFile).orElse(null);
                 MagFragPipeHeadlessRunner.runWithInstalledDefaults(params, fragpipeExe, magdbCfg.toFile(),
                         funcDb, cb, reportGenerationEnabled(rc), null, rc, exportMetaAtlasEnabled(rc));
+                logLine(log, "INFO ", "MetaPilot HPC run finished  workflow=" + workflow);
+                return 0;
+            }
+
+            if (WorkflowType.DDA_MAG_OPENSEARCH.getAnalysisType().equals(workflow)) {
+                DDAMagOpenSearchParameters params = (DDAMagOpenSearchParameters) loaded;
+                MagDbItem mag = params.getMagDbItem();
+                if (mag == null) {
+                    mag = MagDbItemResolver.resolve(params.getMagDbCatalogueId(), params.getMagDbIdentifier(),
+                            params.getMagDbVersion(), magdbCfg.toFile());
+                    if (mag != null) {
+                        params.setMagDbItem(mag);
+                    }
+                }
+                MetaResourceParameters mrp = MagOpenSearchToolSetup.fromResourceConfig(rc);
+                MagOpenSearchToolSetup.Tools tools = MagOpenSearchToolSetup.prepare(params, mag, mrp);
+                MagOpenSearchHeadlessRunner.run(params, tools.msfraggerJar, tools.markerFasta, mag,
+                        tools.flashLfqExe, params.getThreadCount(), tools.funcDbFile, cb);
                 logLine(log, "INFO ", "MetaPilot HPC run finished  workflow=" + workflow);
                 return 0;
             }
@@ -223,6 +272,80 @@ final class HpcStudyRunner {
                     + ", min_marker_peptides=" + params.getRepresentativeMinMarkerPeptides()
                     + ", grouping_dry_run=" + params.isRepresentativeClusteringDryRun());
         }
+        return 0;
+    }
+
+    private static int validateDiaSeed(MetaParameterDia params, MetaPilotResourceConfig rc, Path resourcesCfg, File magdbCfg) {
+        File diannExe = rc.resolveToolPath(ToolKey.DIANN, null).map(Path::toFile).orElse(null);
+        if (diannExe == null || !diannExe.exists()) {
+            System.err.println("ERROR: DIANN is not set or does not exist in resources config: "
+                    + resourcesCfg.toAbsolutePath() + " (resolved path: " + describeFile(diannExe) + ")");
+            return 2;
+        }
+        if (params.getMetadata() == null || params.getMetadata().getRawFiles() == null
+                || params.getMetadata().getRawFiles().length == 0) {
+            System.err.println("ERROR: no raw files found in study parameters.");
+            return 2;
+        }
+        if (params.getResult() == null || params.getResult().isBlank()) {
+            System.err.println("ERROR: output_directory is required in study parameters.");
+            return 2;
+        }
+        if (params.getMagDbItem() == null) {
+            System.err.println("ERROR: MAG database in study parameters (mag_database) could not be resolved from site registry: "
+                    + magdbCfg.getAbsolutePath());
+            return 2;
+        }
+        DiaRefinementMode seedMode;
+        try {
+            MetaParameterDiaMarker runParams = DiaSeedHeadlessRunner.toRunParameters(params);
+            DiaSeedHeadlessRunner.resolveLibraries(runParams.getLibrary(), runParams.getMagDbItem());
+            seedMode = runParams.getMarkerRefinementMode();
+        } catch (IOException e) {
+            System.err.println("ERROR: " + e.getMessage());
+            return 2;
+        }
+        System.out.println("OK: DIA_SEED study parameters validated. seed_mode="
+                + seedMode.getPersistedValue() + " (" + seedMode.getDisplayLabel() + ")");
+        return 0;
+    }
+
+    private static int validateMagOpenSearch(DDAMagOpenSearchParameters params, MetaPilotResourceConfig rc,
+            Path resourcesCfg, File magdbCfg) {
+        if (params.getResult() == null || params.getResult().isBlank()) {
+            System.err.println("ERROR: output_directory is required in study parameters.");
+            return 2;
+        }
+        if (params.getExperimentData() == null || params.getExperimentData().isEmpty()) {
+            System.err.println("ERROR: no spectra files found in study parameters.");
+            return 2;
+        }
+        MagDbItem mag = params.getMagDbItem();
+        if (mag == null) {
+            mag = MagDbItemResolver.resolve(params.getMagDbCatalogueId(), params.getMagDbIdentifier(),
+                    params.getMagDbVersion(), magdbCfg);
+            if (mag != null) {
+                params.setMagDbItem(mag);
+            }
+        }
+        if (mag == null) {
+            System.err.println("ERROR: MAG database entry could not be resolved from site registry: "
+                    + magdbCfg.getAbsolutePath()
+                    + " (catalogue=" + String.valueOf(params.getMagDbCatalogueId())
+                    + ", identifier=" + params.getMagDbIdentifier()
+                    + ", version=" + String.valueOf(params.getMagDbVersion()) + ")");
+            return 2;
+        }
+        try {
+            MagOpenSearchToolSetup.prepare(params, mag, MagOpenSearchToolSetup.fromResourceConfig(rc));
+        } catch (IOException e) {
+            System.err.println("ERROR: " + e.getMessage());
+            System.err.println("  (resources config: " + resourcesCfg.toAbsolutePath() + ")");
+            return 2;
+        }
+        System.out.println("OK: DDA_MAG_OPENSEARCH study parameters validated. round1="
+                + params.getRound1SearchMode() + ", closed_stage=" + params.isClosedStageEnabled()
+                + ", engines=" + params.getSearchEngines());
         return 0;
     }
 
@@ -309,12 +432,16 @@ final class HpcStudyRunner {
     private static final SimpleDateFormat LOG_DATE = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 
     private static File resolveResultDir(Object loaded) {
-        if (loaded instanceof MetaParameterDiaMarker) {
-            String r = ((MetaParameterDiaMarker) loaded).getResult();
+        if (loaded instanceof MetaParameterDia) {
+            String r = ((MetaParameterDia) loaded).getResult();
             return (r != null && !r.isBlank()) ? new File(r) : null;
         }
         if (loaded instanceof DDAMagFragPipeParameters) {
             String r = ((DDAMagFragPipeParameters) loaded).getResult();
+            return (r != null && !r.isBlank()) ? new File(r) : null;
+        }
+        if (loaded instanceof DDAMagOpenSearchParameters) {
+            String r = ((DDAMagOpenSearchParameters) loaded).getResult();
             return (r != null && !r.isBlank()) ? new File(r) : null;
         }
         return null;

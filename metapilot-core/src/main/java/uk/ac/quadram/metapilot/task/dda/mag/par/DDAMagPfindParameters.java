@@ -5,6 +5,7 @@ import java.util.List;
 
 import uk.ac.quadram.metapilot.core.mod.IsobaricTag;
 import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantModification;
+import uk.ac.quadram.metapilot.dbSearch.pfind.PFindEnzymes;
 import uk.ac.quadram.metapilot.task.io.par.MetaOpenPar;
 import uk.ac.quadram.metapilot.task.par.IsobaricLabelSettings;
 import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
@@ -36,7 +37,7 @@ public class DDAMagPfindParameters extends MetaBaseParameter {
 	private MagDbItem magDbItem;
 
 	// Open search and taxonomic parameters
-	private MetaOpenPar osp = MetaOpenPar.getDefault();
+	private MetaOpenPar osp = closedSearchDefault();
 	private MetaPep2TaxaPar ptp = MetaPep2TaxaPar.getDefault();
 
 	// Isobaric labeling - now uses String[] arrays instead of JavaFX row objects
@@ -53,7 +54,10 @@ public class DDAMagPfindParameters extends MetaBaseParameter {
 	private String magDbCatalogueId = "";
 	private String magDbVersion = "";
 	private String genomeSelectorMode = MagDbItem.MARKER2;
-	private String genomeSelectionStrategy = "Focus";
+	private String genomeSelectionStrategy = uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut.STRATEGY_FOCUS;
+	private double genomeSelectionPsmCoverage = uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut.DEFAULT_PSM_COVERAGE;
+	private double genomeSelectionStepGuard = uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut.DEFAULT_STEP_GUARD;
+	private int genomeSelectionMaxGenomes = uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut.DEFAULT_MAX_GENOMES;
 
 	// Isotopic labeling
 	private List<String> lightLabels = new ArrayList<>();
@@ -76,7 +80,7 @@ public class DDAMagPfindParameters extends MetaBaseParameter {
 		super("DDA_MAG_PFIND", new MetaData(), "", "", false, "", MetaConstants.HCD_FTMS, 1, 1, true);
 
 		// Initialize pFind-specific defaults
-		setEnzyme("Trypsin_P");
+		setEnzyme(PFindEnzymes.DEFAULT_ENZYME);
 		setMissCleavages(2);
 		setDigestMode("Specific");
 		setMs2ScanMode(MetaConstants.HCD_FTMS);
@@ -95,7 +99,7 @@ public class DDAMagPfindParameters extends MetaBaseParameter {
 				true);
 
 		// Set pFind-specific defaults
-		setEnzyme("Trypsin_P");
+		setEnzyme(PFindEnzymes.DEFAULT_ENZYME);
 		setMissCleavages(2);
 		setDigestMode("Fully-Specific");
 		setQuantitativeMode(MetaConstants.labelFree);
@@ -246,11 +250,35 @@ public class DDAMagPfindParameters extends MetaBaseParameter {
 	}
 
 	public void setGenomeSelectionStrategy(String genomeSelectionStrategy) {
-		if (genomeSelectionStrategy == null || genomeSelectionStrategy.trim().isEmpty()) {
-			this.genomeSelectionStrategy = "Focus";
-		} else {
-			this.genomeSelectionStrategy = genomeSelectionStrategy.trim();
-		}
+		this.genomeSelectionStrategy = uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut
+				.requireStrategy(genomeSelectionStrategy);
+	}
+
+	public double getGenomeSelectionPsmCoverage() {
+		return genomeSelectionPsmCoverage;
+	}
+
+	public void setGenomeSelectionPsmCoverage(double genomeSelectionPsmCoverage) {
+		uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut.requireCoverage(genomeSelectionPsmCoverage);
+		this.genomeSelectionPsmCoverage = genomeSelectionPsmCoverage;
+	}
+
+	public double getGenomeSelectionStepGuard() {
+		return genomeSelectionStepGuard;
+	}
+
+	public void setGenomeSelectionStepGuard(double genomeSelectionStepGuard) {
+		uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut.requireStepGuard(genomeSelectionStepGuard);
+		this.genomeSelectionStepGuard = genomeSelectionStepGuard;
+	}
+
+	public int getGenomeSelectionMaxGenomes() {
+		return genomeSelectionMaxGenomes;
+	}
+
+	public void setGenomeSelectionMaxGenomes(int genomeSelectionMaxGenomes) {
+		uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut.requireMaxGenomes(genomeSelectionMaxGenomes);
+		this.genomeSelectionMaxGenomes = genomeSelectionMaxGenomes;
 	}
 
 	// Isotopic labeling getters and setters
@@ -276,6 +304,12 @@ public class DDAMagPfindParameters extends MetaBaseParameter {
 
 	public void setHeavyLabels(List<String> heavyLabels) {
 		this.heavyLabels = heavyLabels;
+	}
+
+	private static MetaOpenPar closedSearchDefault() {
+		MetaOpenPar mop = MetaOpenPar.getDefault();
+		mop.setOpenSearch(false);
+		return mop;
 	}
 
 	// Open search and taxonomic parameters

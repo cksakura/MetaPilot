@@ -26,7 +26,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * <h2>Usage</h2>
  * <pre>{@code
  *   // From command line:
- *   java -jar metapilot-web-1.1.1.jar
+ *   java -jar metapilot-web-1.2.0.jar
  *   
  *   // Access at: http://localhost:8080
  * }</pre>

@@ -23,6 +23,8 @@ import java.util.concurrent.TimeUnit;
  * Download strategy:
  * - Use FTP only for directory listing (species catalogue and genome IDs)
  * - Use HTTP for actual file downloads (supports resume)
+ * - Accept both uncompressed genome files (human-gut v2.x) and gzipped ones
+ *   (v3.0+); store uncompressed {@code .faa} / {@code _eggNOG.tsv} locally
  * - Generate Marker2.fasta and Marker4.fasta after download
  * - Optionally download and prepare the UHGP-100 protein catalogue (human-gut only)
  */
@@ -52,9 +54,9 @@ public final class MGYGMagDownloader {
 
     /**
      * @param proteinCatalogue     also download and prepare the UHGP-100 protein
-     *                             catalogue (human-gut only) for the pangenome
-     *                             variant check. A failure there is reported and
-     *                             leaves the MAG database usable.
+     *                             catalogue (human-gut v2.0.2 or v3.0) for the
+     *                             pangenome variant check. A failure there is
+     *                             reported and leaves the MAG database usable.
      * @param deleteProteinArchive delete {@code uhgp-100.tar.gz} once prepared
      */
     public static void downloadCatalogue(String catalogueId,
@@ -98,6 +100,10 @@ public final class MGYGMagDownloader {
 
         cb.onMessage("Genomes to download: " + genomeEntries.size());
 
+        String probe = genomeEntries.get(0);
+        boolean gzipped = MgnifyGenomeFiles.remoteFilesGzipped(
+                httpBase, parentFolder(probe), genomeId(probe), cb);
+
         ExecutorService exec = Executors.newFixedThreadPool(threads);
         List<Future<Boolean>> futures = new ArrayList<>();
 
@@ -105,19 +111,20 @@ public final class MGYGMagDownloader {
         File localMeta = new File(versionDir, META_FILE);
         futures.add(exec.submit(downloadJob(httpBase + "/" + META_FILE, localMeta, resume, cb)));
 
-        // 2) per-genome files
+        // 2) per-genome files (v3.0+ are gzipped remotely; stored uncompressed locally)
         for (String entry : genomeEntries) {
             if (Thread.currentThread().isInterrupted()) {
                 throw new IOException("Interrupted before scheduling downloads");
             }
             String parent = parentFolder(entry);
             String genomeId = genomeId(entry);
+            String faaUrl = MgnifyGenomeFiles.fileUrl(httpBase, parent, genomeId, MgnifyGenomeFiles.FAA);
+            String eggUrl = MgnifyGenomeFiles.fileUrl(httpBase, parent, genomeId, MgnifyGenomeFiles.EGGNOG);
 
-            String faaUrl = httpBase + "/species_catalogue/" + parent + "/" + genomeId + "/genome/" + genomeId + ".faa";
-            String eggUrl = httpBase + "/species_catalogue/" + parent + "/" + genomeId + "/genome/" + genomeId + "_eggNOG.tsv";
-
-            futures.add(exec.submit(downloadJob(faaUrl, new File(originalDbDir, genomeId + ".faa"), resume, cb)));
-            futures.add(exec.submit(downloadJob(eggUrl, new File(eggnogDir, genomeId + "_eggNOG.tsv"), resume, cb)));
+            futures.add(exec.submit(genomeFileJob(
+                    faaUrl, new File(originalDbDir, genomeId + ".faa"), gzipped, resume, cb)));
+            futures.add(exec.submit(genomeFileJob(
+                    eggUrl, new File(eggnogDir, genomeId + "_eggNOG.tsv"), gzipped, resume, cb)));
         }
 
         exec.shutdown();
@@ -209,6 +216,14 @@ public final class MGYGMagDownloader {
 
     private static Callable<Boolean> downloadJob(String url, File dest, boolean resume, ProgressCallback cb) {
         return () -> ResumableDownload.download(url, dest, resume, cb);
+    }
+
+    private static Callable<Boolean> genomeFileJob(String uncompressedUrl,
+                                                   File dest,
+                                                   boolean gzipped,
+                                                   boolean resume,
+                                                   ProgressCallback cb) {
+        return () -> MgnifyGenomeFiles.download(uncompressedUrl, dest, gzipped, resume, cb);
     }
 
     /**

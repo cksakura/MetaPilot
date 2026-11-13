@@ -26,7 +26,7 @@ import java.util.HashSet;
  * <li>DDA MAG headless runners after post-analysis abundance is available</li>
  * </ul>
  * Workflows that do not produce MAG genome abundance maps, such as DIA Target
- * and standalone Seed Direct runs, should not call this service.
+ * should not call this service. Seed Direct now supplies final MAG abundances.
  */
 public final class MagTaxonomyAnalysisService {
 
@@ -43,6 +43,12 @@ public final class MagTaxonomyAnalysisService {
 		public File rankedTsv;
 		public boolean generateFinalGenomeRanking;
 		public HashMap<String, double[]> genomeIntensityMap;
+		/**
+		 * Optional. Same genomes as {@link #genomeIntensityMap}, but intensity summed
+		 * only from peptides unique to that genome. When set, {@code Genome_unique_peptides.tsv}
+		 * is written beside {@code Genome.tsv}.
+		 */
+		public HashMap<String, double[]> genomeUniqueIntensityMap;
 		public HashMap<String, Double> genomeScoreMap;
 		public HashMap<String, double[]> genomeStats;
 		public DdaMagGenomeScoringService.DdaGenomeScoreRuninfo genomeScoreRuninfo;
@@ -74,6 +80,7 @@ public final class MagTaxonomyAnalysisService {
 		public File taxonomyAnalysisDir;
 		public File genomeHtml;
 		public File genomeTsv;
+		public File genomeUniquePeptidesTsv;
 		public File taxaTsv;
 		public File taxaReportTsv;
 		/** genome_rank_scores.tsv, or genome_scores.tsv for the open-search genome test. */
@@ -89,8 +96,13 @@ public final class MagTaxonomyAnalysisService {
 		ProgressCallback cb = request.progressCallback != null ? request.progressCallback : new ProgressCallback.NoOp();
 		request.taxonomyAnalysisDir.mkdirs();
 
-		File rankedTsv = request.generateFinalGenomeRanking ? null : request.rankedTsv;
-		if (request.generateFinalGenomeRanking) {
+		uk.ac.quadram.metapilot.core.mag.MagResultFinalisationService.Selection frozen =
+                request.genomeIntensityMap instanceof uk.ac.quadram.metapilot.core.mag.MagResultFinalisationService.FinalGenomeIntensityMap
+                ? ((uk.ac.quadram.metapilot.core.mag.MagResultFinalisationService.FinalGenomeIntensityMap) request.genomeIntensityMap).selection : null;
+        if (frozen != null) frozen.write(request.taxonomyAnalysisDir.getParentFile());
+        File rankedTsv = frozen != null ? new File(request.taxonomyAnalysisDir, "genome_final_ranked.tsv")
+                : request.generateFinalGenomeRanking ? null : request.rankedTsv;
+		if (request.generateFinalGenomeRanking && frozen == null) {
 			MagFinalGenomeRankingService.Request rankingRequest = new MagFinalGenomeRankingService.Request();
 			rankingRequest.taxonomyAnalysisDir = request.taxonomyAnalysisDir;
 			rankingRequest.genomeIntensityMap = request.genomeIntensityMap;
@@ -117,7 +129,7 @@ public final class MagTaxonomyAnalysisService {
 				rankedSelection.genomeSelectionLabel, request.totalPepCountMap, request.razorPepCountMap,
 				request.uniquePepCountMap, request.totalPepWithILMap, request.razorPepWithILMap,
 				request.uniquePepWithILMap, request.intensityTitles, request.genomeScoreRuninfo,
-				request.genomeEvidence, cb);
+				request.genomeEvidence, request.genomeUniqueIntensityMap, cb);
 
 		if (request.exportMetaAtlasParquet) {
 			try {
@@ -133,6 +145,8 @@ public final class MagTaxonomyAnalysisService {
 		result.taxonomyAnalysisDir = request.taxonomyAnalysisDir;
 		result.genomeHtml = new File(request.taxonomyAnalysisDir, "Genome.html");
 		result.genomeTsv = new File(request.taxonomyAnalysisDir, "Genome.tsv");
+		result.genomeUniquePeptidesTsv = new File(request.taxonomyAnalysisDir,
+				MagTaxonomyTsvExporter.GENOME_UNIQUE_PEPTIDES_TSV);
 		result.taxaTsv = new File(request.taxonomyAnalysisDir, "Taxa.tsv");
 		result.taxaReportTsv = new File(request.taxonomyAnalysisDir, "Taxa_report.tsv");
 		boolean evidence = request.genomeEvidence != null;

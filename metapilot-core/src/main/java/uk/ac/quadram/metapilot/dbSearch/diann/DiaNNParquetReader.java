@@ -258,12 +258,19 @@ public class DiaNNParquetReader {
 		ArrayList<DiaNNPrecursor> list = new ArrayList<DiaNNPrecursor>();
 		HashSet<Character> cutSet = new HashSet<Character>();
 		HashSet<Character> noCutSet = new HashSet<Character>();
+		HashSet<Character> cutBeforeSet = new HashSet<Character>();
 		String[] cuts = cut.split(",");
 		for (int i = 0; i < cuts.length; i++) {
-			if (cuts[i].startsWith("!*")) {
-				noCutSet.add(cuts[i].charAt(2));
+			String site = cuts[i].trim();
+			if (site.length() < 2) {
+				continue;
+			}
+			if (site.startsWith("!*")) {
+				noCutSet.add(site.charAt(2));
+			} else if (site.startsWith("*")) {
+				cutBeforeSet.add(site.charAt(1));
 			} else {
-				cutSet.add(cuts[i].charAt(0));
+				cutSet.add(site.charAt(0));
 			}
 		}
 
@@ -317,7 +324,7 @@ public class DiaNNParquetReader {
 					for (int j = 0; j < sequence.length() - 1; j++) {
 						char aa = sequence.charAt(j);
 						char bb = sequence.charAt(j + 1);
-						if (cutSet.contains(aa) && !noCutSet.contains(bb)) {
+						if ((cutSet.contains(aa) && !noCutSet.contains(bb)) || cutBeforeSet.contains(bb)) {
 							missCleavage++;
 						}
 					}

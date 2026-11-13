@@ -1,5 +1,6 @@
 package uk.ac.quadram.metapilot.task.dda.mag.par;
 
+import uk.ac.quadram.metapilot.core.fragpipe.FragpipeModifications;
 import uk.ac.quadram.metapilot.core.msfragger.MSFraggerHeadlessRunner;
 import java.util.ArrayList;
 import java.util.List;
@@ -58,6 +59,9 @@ public class DDAMagFragPipeParameters extends MetaBaseParameter {
     private String magDbVersion = "";
     private String genomeSelectorMode = MagDbItem.MARKER2;
     private String genomeSelectionStrategy = "Focus";
+    private double genomeSelectionPsmCoverage = uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut.DEFAULT_PSM_COVERAGE;
+    private double genomeSelectionStepGuard = uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut.DEFAULT_STEP_GUARD;
+    private int genomeSelectionMaxGenomes = uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut.DEFAULT_MAX_GENOMES;
     private int fragpipeParallelTasks = 0;
 
     // Search-mode configuration (Closed vs Open search). Closed is the default and
@@ -77,6 +81,13 @@ public class DDAMagFragPipeParameters extends MetaBaseParameter {
     private List<String> mediumLabels = new ArrayList<>();
     private List<String> heavyLabels = new ArrayList<>();
 
+    /**
+     * Whether the modifications are written into the FragPipe workflow. False only
+     * for parameter files saved before they were: those runs searched the
+     * workflow template's own modifications, and keep doing so.
+     */
+    private boolean applyModifications = true;
+
 	// Default constructor with sensible defaults for MAG FragPipe
 	public DDAMagFragPipeParameters() {
 		super("DDA_MAG_FRAGPIPE", new MetaData(), "", "", false, "", "HCD-FTMS",
@@ -85,16 +96,14 @@ public class DDAMagFragPipeParameters extends MetaBaseParameter {
 		// Initialize FragPipe-specific defaults
 		setEnzyme(MSFraggerHeadlessRunner.DEFAULT_ENZYME);
 		setMissCleavages(2);
-		setDigestMode("Specific");
+		setDigestMode(MSFraggerHeadlessRunner.DIGEST_SPECIFIC);
 		setMs2ScanMode(MetaConstants.HCD_FTMS);
 		setThreadCount(Runtime.getRuntime().availableProcessors());
 		setQuantitativeMode(MetaConstants.labelFree);
 		setReduceDb(true);
 		setSpectraCluster(false);
-
-		// Initialize with default modifications for FragPipe
-		setFixMods(new String[] { "Carbamidomethyl[C] 0" });
-		setVariMods(new String[] { "Acetyl[ProteinN-term] 0", "Oxidation[M] 0" });
+		setFixedModifications(FragpipeModifications.DEFAULT_FIXED);
+		setVariableModifications(FragpipeModifications.DEFAULT_VARIABLE);
 	}
 
 	// Constructor for creating from GUI parameters
@@ -106,11 +115,16 @@ public class DDAMagFragPipeParameters extends MetaBaseParameter {
 		// Set FragPipe-specific defaults
 		setEnzyme(MSFraggerHeadlessRunner.DEFAULT_ENZYME);
 		setMissCleavages(2);
-		setDigestMode("Specific");
+		setDigestMode(MSFraggerHeadlessRunner.DIGEST_SPECIFIC);
 		setQuantitativeMode(MetaConstants.labelFree);
 		setReduceDb(true);
 		setSpectraCluster(false);
+		setFixedModifications(FragpipeModifications.DEFAULT_FIXED);
+		setVariableModifications(FragpipeModifications.DEFAULT_VARIABLE);
 	}
+
+	public boolean isApplyModifications() { return applyModifications; }
+	public void setApplyModifications(boolean applyModifications) { this.applyModifications = applyModifications; }
     
     // Getters and setters for inherited functionality
     public List<String[]> getExperimentData() { return experimentData; }
@@ -249,11 +263,26 @@ public class DDAMagFragPipeParameters extends MetaBaseParameter {
 
     public String getGenomeSelectionStrategy() { return genomeSelectionStrategy; }
     public void setGenomeSelectionStrategy(String genomeSelectionStrategy) {
-        if (genomeSelectionStrategy == null || genomeSelectionStrategy.trim().isEmpty()) {
-            this.genomeSelectionStrategy = "Focus";
-        } else {
-            this.genomeSelectionStrategy = genomeSelectionStrategy.trim();
-        }
+        this.genomeSelectionStrategy = uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut
+                .requireStrategy(genomeSelectionStrategy);
+    }
+
+    public double getGenomeSelectionPsmCoverage() { return genomeSelectionPsmCoverage; }
+    public void setGenomeSelectionPsmCoverage(double genomeSelectionPsmCoverage) {
+        uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut.requireCoverage(genomeSelectionPsmCoverage);
+        this.genomeSelectionPsmCoverage = genomeSelectionPsmCoverage;
+    }
+
+    public double getGenomeSelectionStepGuard() { return genomeSelectionStepGuard; }
+    public void setGenomeSelectionStepGuard(double genomeSelectionStepGuard) {
+        uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut.requireStepGuard(genomeSelectionStepGuard);
+        this.genomeSelectionStepGuard = genomeSelectionStepGuard;
+    }
+
+    public int getGenomeSelectionMaxGenomes() { return genomeSelectionMaxGenomes; }
+    public void setGenomeSelectionMaxGenomes(int genomeSelectionMaxGenomes) {
+        uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut.requireMaxGenomes(genomeSelectionMaxGenomes);
+        this.genomeSelectionMaxGenomes = genomeSelectionMaxGenomes;
     }
 
     public int getFragpipeParallelTasks() { return fragpipeParallelTasks; }
@@ -277,18 +306,4 @@ public class DDAMagFragPipeParameters extends MetaBaseParameter {
         return null;
     }
 
-    /**
-     * Convert digestion mode string to integer representation
-     */
-    private int getDigestModeInt(String digestMode) {
-        switch (digestMode) {
-            case "Specific": return 1;
-            case "Semi free N-term": return 2;
-            case "Semi free C-term": return 3;
-            case "Semi specific": return 4;
-            case "Unspecific": return 5;
-            case "None": return 6;
-            default: return 1;
-        }
-    }
 }

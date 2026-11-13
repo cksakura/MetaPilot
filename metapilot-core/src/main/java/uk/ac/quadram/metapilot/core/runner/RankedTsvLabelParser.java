@@ -75,7 +75,7 @@ public final class RankedTsvLabelParser {
                     String reason = parts[reasonIdx].trim();
                     privilege = reason.startsWith("PRIVILEGE");
                     if (privilege) result.privilegeCount++;
-                    else if ("GREEDY".equals(reason)) result.greedyCount++;
+                    else if ("GREEDY".equals(reason) || "GREEDY_COVERAGE".equals(reason)) result.greedyCount++;
                 }
                 if (allowedGenomes != null && !allowedGenomes.contains(genome)) continue;
                 try {

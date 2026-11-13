@@ -67,6 +67,15 @@ public class MetaParameterDiaMarker extends MetaParameterDia {
 	private int representativeMinMarkerPeptides = 100;
 	private boolean representativeClusteringDryRun = false;
 
+	/**
+	 * Evaluation switch for Deep together only: each round also searches a shuffled
+	 * copy of that round's genomes. Off by default. Same processing as
+	 * {@code dia-marker-deep-entrapment}; results go to {@code marker_deep_entrapment/}.
+	 */
+	private boolean entrapmentEnabled = false;
+	private long entrapmentSeed = 1L;
+	private int entrapmentIdDigit = 8;
+
 	public MetaParameterDiaMarker() {
 		super();
 		this.setWorkflowType(uk.ac.quadram.metapilot.workflow.WorkflowType.DIA_MARKER.getAnalysisType());
@@ -280,6 +289,33 @@ public class MetaParameterDiaMarker extends MetaParameterDia {
 
 	public void setRepresentativeClusteringDryRun(boolean dryRun) {
 		this.representativeClusteringDryRun = dryRun;
+	}
+
+	public boolean isEntrapmentEnabled() {
+		return entrapmentEnabled;
+	}
+
+	public void setEntrapmentEnabled(boolean entrapmentEnabled) {
+		this.entrapmentEnabled = entrapmentEnabled;
+	}
+
+	public long getEntrapmentSeed() {
+		return entrapmentSeed;
+	}
+
+	public void setEntrapmentSeed(long entrapmentSeed) {
+		this.entrapmentSeed = entrapmentSeed;
+	}
+
+	public int getEntrapmentIdDigit() {
+		return entrapmentIdDigit;
+	}
+
+	public void setEntrapmentIdDigit(int entrapmentIdDigit) {
+		if (entrapmentIdDigit < 1 || entrapmentIdDigit > 9) {
+			throw new IllegalArgumentException("Entrapment ID digit must be 1-9");
+		}
+		this.entrapmentIdDigit = entrapmentIdDigit;
 	}
 }
 

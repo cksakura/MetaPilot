@@ -132,6 +132,23 @@ public final class MagPredictedPeptideProteinMapper {
 		return peptideProteins;
 	}
 
+    /** Final-export mapping retains the original decoy background and unmapped targets
+     * (with empty associations) for diagnostic exclusion. Upstream selection mapping is unchanged. */
+    public static DiaNNPrecursor[] mapForFinalisation(DiaNNPrecursor[] precursors, File predictedFolder,
+            Set<String> allowedGenomes) {
+        if (predictedFolder == null || !predictedFolder.isDirectory())
+            throw new IllegalStateException("Seed finalisation requires predicted mapping resources");
+        if (precursors == null) return new DiaNNPrecursor[0];
+        DiaNNPrecursor[] targets = Arrays.stream(precursors).filter(p -> p != null && !p.getIsDecoy())
+                .toArray(DiaNNPrecursor[]::new);
+        List<DiaNNPrecursor> mapped = mapPrecursorsToProteins(targets, predictedFolder, allowedGenomes);
+        if (mapped == null) throw new IllegalStateException("Seed finalisation mapping failed");
+        Set<DiaNNPrecursor> matched = Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        matched.addAll(mapped);
+        for (DiaNNPrecursor p : targets) if (!matched.contains(p)) p.setProGroups(new String[0]);
+        return precursors;
+    }
+
 	public static List<DiaNNPrecursor> mapPrecursorsToProteins(DiaNNPrecursor[] precursors, File predictedFolder) {
 		return mapPrecursorsToProteins(precursors, predictedFolder, null);
 	}

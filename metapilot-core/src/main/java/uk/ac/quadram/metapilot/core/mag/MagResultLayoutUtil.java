@@ -36,14 +36,15 @@ import org.apache.logging.log4j.Logger;
  *   combined/                            &lt;- FlashLFQ / quant combine output
  *   taxonomy_analysis/
  *   functional_annotation/
+ *   excluded_evidence/
  *   report/
  * </pre>
  *
  * <p>
- * All three DDA MAG engines have opted in: pFind ({@code DDAMagPfindTask}),
- * Sage ({@code DDAMagSageTask}), and FragPipe ({@code MagFragPipeHeadlessRunner},
- * which is also the single execution path used by {@code DDAMagFragPipeTask}
- * and every CLI/HPC FragPipe caller).
+ * All DDA MAG engines have opted in: pFind ({@code DDAMagPfindTask}),
+ * Sage ({@code DDAMagSageTask}), FragPipe ({@code MagFragPipeHeadlessRunner}),
+ * and open search ({@code MagOpenSearchHeadlessRunner} /
+ * {@code DDAMagOpenSearchTask}).
  *
  * <p>
  * <b>Wrapper folder name:</b> deliberately {@code search_results}, not
@@ -59,9 +60,29 @@ public final class MagResultLayoutUtil {
 
 	public static final String SEARCH_RESULTS_DIR_NAME = "search_results";
 
+	/**
+	 * pFind writes {@code ms2Count.txt} and {@code rt.txt} in the result's
+	 * {@code spectra/} folder. Open search and FragPipe do the same. This name
+	 * is only the earlier location under the engine root; a leftover copy is
+	 * still read, and it stays in {@link #FIXED_TOP_LEVEL_DIR_NAMES} so the
+	 * nested-layout migration does not hide it under {@code search_results/}.
+	 */
+	public static final String SPECTRA_SUMMARY_DIR_NAME = "spectra_summary";
+
+	/** {@code <result>/spectra}, where pFind keeps the count files. */
+	public static final String SPECTRA_DIR_NAME = "spectra";
+
+	/**
+	 * Peptides dropped after the genome set is frozen. Written beside
+	 * {@code taxonomy_analysis/} by every MAG workflow, and kept there so the
+	 * nested-layout migration does not treat it as a sample folder.
+	 */
+	public static final String EXCLUDED_EVIDENCE_DIR_NAME = "excluded_evidence";
+
 	private static final Set<String> FIXED_TOP_LEVEL_DIR_NAMES = Collections
 			.unmodifiableSet(new HashSet<>(Arrays.asList("combined", "taxonomy_analysis", "functional_annotation",
-					"report", "host", SEARCH_RESULTS_DIR_NAME)));
+					"report", "host", SEARCH_RESULTS_DIR_NAME, SPECTRA_SUMMARY_DIR_NAME,
+					EXCLUDED_EVIDENCE_DIR_NAME)));
 
 	private MagResultLayoutUtil() {
 	}
@@ -109,12 +130,13 @@ public final class MagResultLayoutUtil {
 	 * so a legacy flat-layout run interrupted between "search done" and
 	 * "quant done" must still be migrated, or those already-completed
 	 * per-sample steps would be silently re-run against an empty
-	 * {@code search_results/}. Safety instead comes from when this runs: it is
-	 * only ever called once, synchronously, from
-	 * {@code MetaPilotMagTask.createSeparateFolders()} at task construction -
-	 * before any search step starts - so there is no concurrent writer for
-	 * this task's own run to race. (Running two task instances against the
-	 * same result folder at once is unsupported regardless of this method.)
+	 * {@code search_results/}. FragPipe MAG still resolves this once at the
+	 * start of {@code runInternal()}. Open search calls it throughout the run
+	 * via {@code OpenSearchLayout.searchResultsRoot}, so names in
+	 * {@link #FIXED_TOP_LEVEL_DIR_NAMES} (including {@code spectra_summary/})
+	 * must stay here or they are moved as leftover sample folders. Running two
+	 * task instances against the same result folder at once is unsupported
+	 * regardless of this method.
 	 */
 	public static void migrateLegacyFlatLayoutIfNeeded(File resultRoot, File searchResultsDir) {
 		migrateLegacyFlatLayoutIfNeeded(resultRoot, searchResultsDir, Collections.emptySet());
@@ -172,4 +194,171 @@ public final class MagResultLayoutUtil {
 	public static Set<String> fixedTopLevelDirNames() {
 		return FIXED_TOP_LEVEL_DIR_NAMES;
 	}
+
+	/**
+	 * {@code <result>/spectra}, the parent of an engine folder such as
+	 * {@code opensearch_MAG_search}. This is {@code MetaBaseParameter.getSpectraFile()}.
+	 */
+	public static File spectraDir(File engineResultRoot) {
+		if (engineResultRoot == null) {
+			return null;
+		}
+		File result = engineResultRoot.getParentFile();
+		return new File(result == null ? engineResultRoot : result, SPECTRA_DIR_NAME);
+	}
+
+	/** Earlier location, {@code <engineResultRoot>/spectra_summary}. */
+	public static File spectraSummaryDir(File resultRoot) {
+		return new File(resultRoot, SPECTRA_SUMMARY_DIR_NAME);
+	}
+
+	public static boolean hasMs2Count(File dir) {
+		if (dir == null) {
+			return false;
+		}
+		File file = new File(dir, "ms2Count.txt");
+		return file.isFile() && file.length() > 0;
+	}
+
+	/**
+	 * {@code ms2Count.txt} for the identification rate. Checks the folder itself,
+	 * {@code spectra/} inside it, {@code spectra/} beside an engine folder
+	 * (pFind's place, and where new open-search and FragPipe runs write), then
+	 * a leftover {@code spectra_summary/} at the engine root or under
+	 * {@code search_results/}.
+	 */
+	public static File findMs2Count(File resultRoot) {
+		return locateMs2Count(resultRoot, null);
+	}
+
+	/**
+	 * Same search as {@link #findMs2Count(File)}, starting from the spectra
+	 * folder the caller already has and then the engine result folder.
+	 */
+	public static File locateMs2Count(File spectraDir, File engineResultDir) {
+		File found = countNear(spectraDir);
+		if (found != null) {
+			return found;
+		}
+		return countNear(engineResultDir);
+	}
+
+	private static File countNear(File dir) {
+		if (dir == null) {
+			return null;
+		}
+		File direct = countFile(dir);
+		if (direct != null) {
+			return direct;
+		}
+		File inside = countFile(new File(dir, SPECTRA_DIR_NAME));
+		if (inside != null) {
+			return inside;
+		}
+		File besideEngine = countFile(spectraDir(dir));
+		if (besideEngine != null) {
+			return besideEngine;
+		}
+		File legacy = countFile(spectraSummaryDir(dir));
+		if (legacy != null) {
+			return legacy;
+		}
+		if (SPECTRA_SUMMARY_DIR_NAME.equals(dir.getName()) && dir.getParentFile() != null) {
+			File parent = dir.getParentFile();
+			File engine = SEARCH_RESULTS_DIR_NAME.equals(parent.getName()) ? parent.getParentFile() : parent;
+			File fromSummaryParent = countNearEngineOnly(engine);
+			if (fromSummaryParent != null) {
+				return fromSummaryParent;
+			}
+		}
+		return countFile(new File(new File(dir, SEARCH_RESULTS_DIR_NAME), SPECTRA_SUMMARY_DIR_NAME));
+	}
+
+	/** Engine-root locations only, so a lookup that started in {@code spectra_summary/} cannot recurse. */
+	private static File countNearEngineOnly(File engine) {
+		if (engine == null) {
+			return null;
+		}
+		File beside = countFile(spectraDir(engine));
+		if (beside != null) {
+			return beside;
+		}
+		File legacy = countFile(spectraSummaryDir(engine));
+		if (legacy != null) {
+			return legacy;
+		}
+		return countFile(new File(new File(engine, SEARCH_RESULTS_DIR_NAME), SPECTRA_SUMMARY_DIR_NAME));
+	}
+
+	private static File countFile(File dir) {
+		if (!hasMs2Count(dir)) {
+			return null;
+		}
+		return new File(dir, "ms2Count.txt");
+	}
+
+	/**
+	 * The folder that should hold {@code ms2Count.txt} and {@code rt.txt}:
+	 * {@code <result>/spectra}, matching pFind. A copy already in
+	 * {@code spectra_summary/} (including one nested under {@code search_results/})
+	 * is moved there when {@code spectra/} does not have the count yet.
+	 */
+	public static File spectraCountDir(File engineResultRoot) {
+		File spectra = spectraDir(engineResultRoot);
+		if (spectra == null || hasMs2Count(spectra)) {
+			return spectra;
+		}
+		File legacy = legacyCountDir(engineResultRoot);
+		if (legacy == null) {
+			return spectra;
+		}
+		if (!spectra.isDirectory() && !spectra.mkdirs()) {
+			logger.warn("Could not create {}; using {}", spectra.getAbsolutePath(), legacy.getAbsolutePath());
+			return legacy;
+		}
+		boolean moved = moveCountFile(legacy, spectra, "ms2Count.txt") && moveCountFile(legacy, spectra, "rt.txt");
+		if (moved || hasMs2Count(spectra)) {
+			logger.info("Moved spectrum counts {} -> {}", legacy.getAbsolutePath(), spectra.getAbsolutePath());
+			return spectra;
+		}
+		return legacy;
+	}
+
+	private static File legacyCountDir(File engineResultRoot) {
+		if (engineResultRoot == null) {
+			return null;
+		}
+		File atRoot = spectraSummaryDir(engineResultRoot);
+		if (hasMs2Count(atRoot)) {
+			return atRoot;
+		}
+		File nested = new File(new File(engineResultRoot, SEARCH_RESULTS_DIR_NAME), SPECTRA_SUMMARY_DIR_NAME);
+		return hasMs2Count(nested) ? nested : null;
+	}
+
+	/** True when the file was absent at the source, or now sits in {@code destDir}. */
+	private static boolean moveCountFile(File fromDir, File destDir, String name) {
+		File from = new File(fromDir, name);
+		if (!from.isFile()) {
+			return true;
+		}
+		File dest = new File(destDir, name);
+		if (dest.isFile()) {
+			return true;
+		}
+		try {
+			Files.move(from.toPath(), dest.toPath(), StandardCopyOption.ATOMIC_MOVE);
+			return true;
+		} catch (IOException atomicMoveFailed) {
+			try {
+				Files.move(from.toPath(), dest.toPath());
+				return true;
+			} catch (IOException e2) {
+				logger.warn("Could not move {} -> {}: {}", from.getAbsolutePath(), dest.getAbsolutePath(),
+						e2.getMessage());
+				return false;
+			}
+		}
+	}
+
 }

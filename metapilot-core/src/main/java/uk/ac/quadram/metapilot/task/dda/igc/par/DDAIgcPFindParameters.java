@@ -5,6 +5,7 @@ import java.util.List;
 
 import uk.ac.quadram.metapilot.core.mod.IsobaricTag;
 import uk.ac.quadram.metapilot.dbSearch.MaxQuant.MaxquantModification;
+import uk.ac.quadram.metapilot.dbSearch.pfind.PFindEnzymes;
 import uk.ac.quadram.metapilot.task.io.par.MetaOpenPar;
 import uk.ac.quadram.metapilot.task.par.IsobaricLabelSettings;
 import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
@@ -56,7 +57,7 @@ public class DDAIgcPFindParameters extends MetaBaseParameter {
         super("DDA_IGC_PFIND", new MetaData(), "", "", false, "", MetaConstants.HCD_FTMS, 1, 1, true);
         
         // Initialize pFind-specific defaults
-        setEnzyme("Trypsin_P");
+        setEnzyme(PFindEnzymes.DEFAULT_ENZYME);
         setMissCleavages(2);
         setDigestMode("Fully-Specific");
         setMs2ScanMode(MetaConstants.HCD_FTMS);
@@ -76,7 +77,7 @@ public class DDAIgcPFindParameters extends MetaBaseParameter {
         super(analysisType, metadata, result, microDb, appendHostDb, hostDB, ms2ScanMode, threadCount, threadCount, true);
         
         // Set pFind-specific defaults
-        setEnzyme("Trypsin_P");
+        setEnzyme(PFindEnzymes.DEFAULT_ENZYME);
         setMissCleavages(2);
         setDigestMode("Fully-Specific");
         setQuantitativeMode(MetaConstants.labelFree);

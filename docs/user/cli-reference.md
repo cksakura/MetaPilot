@@ -1,6 +1,6 @@
 # MetaPilot CLI Reference
 
-This page describes the current headless CLI surface for MetaPilot `1.1.1`.
+This page describes the current headless CLI surface for MetaPilot `1.2.0`.
 
 The CLI module is intended for Linux/HPC operation, but only a subset of workflows has headless runners today. The Windows GUI remains the broadest workflow surface.
 
@@ -11,20 +11,20 @@ Use the CLI JAR included in the MetaPilot release ZIP. Public releases are distr
 Example release artifact:
 
 ```text
-MetaPilot-1.1.1-linux-cli.zip
+MetaPilot-1.2.0-linux-cli.zip
 ```
 
 Example extracted CLI JAR:
 
 ```text
-metapilot-cli-1.1.1-shaded.jar
+metapilot-cli-1.2.0-shaded.jar
 ```
 
 ## Commands
 
 ```bash
-java -jar metapilot-cli-1.1.1-shaded.jar --help
-java -jar metapilot-cli-1.1.1-shaded.jar --version
+java -jar metapilot-cli-1.2.0-shaded.jar --help
+java -jar metapilot-cli-1.2.0-shaded.jar --version
 ```
 
 Current commands:
@@ -41,6 +41,7 @@ Current commands:
 | `run` | Run a GUI-exported parameter JSON through the generic study runner. | Supported for `DIA_MARKER` and `DDA_MAG_FRAGPIPE` |
 | `dia-marker` | Direct headless runner for DIA Marker workflows. | Supported |
 | `mag-fragpipe` | Direct headless runner for DDA MAG FragPipe. | Supported |
+| `mag-opensearch-entrapment` | Evaluate closed/open/cascade/joint with shuffled proteins added to second-search databases. | CLI evaluation only |
 | `deepdetect-predict` | Run DeepDetect prediction for a FASTA. | Supported |
 | `deepdetect-magdb` | Prepare DeepDetect predictions for a MAG database. | Supported |
 
@@ -61,12 +62,60 @@ The GUI supports the wider workflow set:
 
 Seed Deep per file is exposed in the canonical mode model but is still blocked by GUI validation as unsupported.
 
+## Open-search entrapment evaluation
+
+```bash
+java -jar metapilot-cli-1.2.0-shaded.jar mag-opensearch-entrapment \
+  --params /path/mag_opensearch_analysis_parameters.json \
+  --resources /path/meta_resources.params \
+  --magdb /path/MAGDB_1_0.json \
+  --entrapment-seed 1 --entrapment-id-digit 8
+```
+
+This command uses the existing open-search parameter JSON and normal marker search/genome
+selection. Only after selection, each real protein in the sample-specific FASTA receives
+one shuffled partner, using the same `EntrapmentShuffle` implementation as DIA Deep
+entrapment. It preserves K/R cleavage segments, terminal residues, peptide composition
+and mass. Supported enzymes are Trypsin and Trypsin/P. The real protein IDs must be
+`MGYG0...`; a database already containing shadow/shuffled controls is rejected at this step.
+The default shuffled ID is `MGYG8...`, and the seed gives the same shuffled protein wherever
+the same source protein occurs across samples.
+
+The closed and open second searches use the **same augmented database**: N real proteins,
+N shuffled proteins, and 2N reversed `rev_` decoys (one per real or shuffled target).
+Shuffled proteins participate as targets during scoring and FDR filtering. Their identity
+is used only for evaluation afterward. The command enables the closed stage, joint
+integration and all comparison arms, overriding those three switches in the loaded JSON.
+Other search/scoring parameters come from that JSON.
+
+Outputs are isolated under
+`<output_directory>/opensearch_entrapment_MAG_search/<engine>/combined/`, including
+`validated_psms.tsv`, `scored_psms.tsv`, the compressed identification arm/peptide tables
+and `entrapment_summary.tsv`. Evaluation stops after identification, before FlashLFQ,
+genome inference, taxonomy and functional annotation, so controls remain in the scored
+and accepted identification tables. FlashLFQ is not required for this command.
+
+Each sample's `marker/<sample>.fasta.entrapment.tsv` records the seed, ID digit, population
+counts and SHA-256 hashes of the real-only, augmented and searched FASTAs. The original
+`<sample>_refined_targets.fasta` remains real-only. Resume verifies the hashes; a changed
+seed, namespace or database rebuilds the augmented FASTA and invalidates both second
+searches through their existing database dependencies. Normal open-search outputs and
+the GUI are unaffected.
+
+`entrapment_summary.tsv` is an **accession-based descriptive readout**, not an FDP estimate.
+It reports accepted PSMs and I/L-equivalent base peptides for each arm, distinguishing
+real-only, entrapment-only, shared reported accessions and decoys. Short/unshufflable
+segments and chance overlaps can yield peptides shared with real proteins, and the
+search-reported protein map is not exhaustive sequence remapping. Resolve those collisions
+before estimating identification error. The comparison arms also retain their own
+acceptance rules; these counts alone do not establish superiority at matched error.
+
 ## Site Configuration
 
 Initialize site configuration:
 
 ```bash
-java -jar metapilot-cli-1.1.1-shaded.jar init
+java -jar metapilot-cli-1.2.0-shaded.jar init
 ```
 
 Useful resource keys include:
@@ -83,7 +132,7 @@ Useful resource keys include:
 Set values:
 
 ```bash
-java -jar metapilot-cli-1.1.1-shaded.jar resources-set \
+java -jar metapilot-cli-1.2.0-shaded.jar resources-set \
   --set DIANN=/opt/tools/diann/diann-linux \
   --set FRAGPIPE=/opt/tools/fragpipe-24.0/bin/fragpipe \
   --set FRAGPIPE_TOOLS=/opt/tools/fragpipe-24.0/tools \
@@ -93,7 +142,7 @@ java -jar metapilot-cli-1.1.1-shaded.jar resources-set \
 Validate values:
 
 ```bash
-java -jar metapilot-cli-1.1.1-shaded.jar resources-check
+java -jar metapilot-cli-1.2.0-shaded.jar resources-check
 ```
 
 ## Running Parameter Files
@@ -101,21 +150,21 @@ java -jar metapilot-cli-1.1.1-shaded.jar resources-check
 Export a parameter JSON from the GUI, then validate it:
 
 ```bash
-java -jar metapilot-cli-1.1.1-shaded.jar params-validate \
+java -jar metapilot-cli-1.2.0-shaded.jar params-validate \
   --params /path/to/study_parameters.json
 ```
 
 Run it:
 
 ```bash
-java -jar metapilot-cli-1.1.1-shaded.jar run \
+java -jar metapilot-cli-1.2.0-shaded.jar run \
   --params /path/to/study_parameters.json
 ```
 
 Override resource or MAG database registry paths:
 
 ```bash
-java -jar metapilot-cli-1.1.1-shaded.jar run \
+java -jar metapilot-cli-1.2.0-shaded.jar run \
   --params /path/to/study_parameters.json \
   --resources /path/to/meta_resources.params \
   --magdb /path/to/MAGDB_1_0.json
@@ -126,7 +175,7 @@ The runner writes `logging.log` in the study output directory when it can resolv
 ## Direct DIA Marker Runner
 
 ```bash
-java -jar metapilot-cli-1.1.1-shaded.jar dia-marker \
+java -jar metapilot-cli-1.2.0-shaded.jar dia-marker \
   --params /path/to/dia_marker_parameters.json \
   --resources /path/to/meta_resources.params \
   --magdb /path/to/MAGDB_1_0.json
@@ -144,7 +193,7 @@ Supported marker modes are persisted as:
 ## Direct DDA MAG FragPipe Runner
 
 ```bash
-java -jar metapilot-cli-1.1.1-shaded.jar mag-fragpipe \
+java -jar metapilot-cli-1.2.0-shaded.jar mag-fragpipe \
   --params /path/to/dda_mag_fragpipe_parameters.json \
   --resources /path/to/meta_resources.params \
   --magdb /path/to/MAGDB_1_0.json
@@ -155,7 +204,7 @@ FragPipe must have the required installed workflows available under the configur
 MAG FragPipe per-sample searches default to memory-safe concurrency using a 60 GB per task estimate. Advanced users can override the concurrent task count:
 
 ```bash
-java -jar metapilot-cli-1.1.1-shaded.jar run \
+java -jar metapilot-cli-1.2.0-shaded.jar run \
   --params /path/to/dda_mag_fragpipe_parameters.json \
   --fragpipe-parallel-tasks 4
 ```
@@ -167,13 +216,13 @@ The same override is available on `mag-fragpipe`. If the requested value is abov
 List registered MAG databases:
 
 ```bash
-java -jar metapilot-cli-1.1.1-shaded.jar mag-list
+java -jar metapilot-cli-1.2.0-shaded.jar mag-list
 ```
 
 Download and prepare a supported MAG catalogue before registration:
 
 ```bash
-java -jar metapilot-cli-1.1.1-shaded.jar mag-download \
+java -jar metapilot-cli-1.2.0-shaded.jar mag-download \
   --catalogue human-gut \
   --version v2.0.2 \
   --out /data/metapilot/MAG \
@@ -183,7 +232,7 @@ java -jar metapilot-cli-1.1.1-shaded.jar mag-download \
 Register the downloaded or otherwise prepared local database:
 
 ```bash
-java -jar metapilot-cli-1.1.1-shaded.jar mag-register \
+java -jar metapilot-cli-1.2.0-shaded.jar mag-register \
   --catalogue human-gut \
   --version v2.0.2 \
   --identifier MGYG \

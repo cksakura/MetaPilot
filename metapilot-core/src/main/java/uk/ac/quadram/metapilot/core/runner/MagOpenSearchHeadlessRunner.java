@@ -1,7 +1,10 @@
 package uk.ac.quadram.metapilot.core.runner;
 
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
@@ -27,11 +30,18 @@ import uk.ac.quadram.metapilot.core.crystalc.CrystalCHeadlessRunner;
 import uk.ac.quadram.metapilot.core.mag.DdaMagProteinInferenceService;
 import uk.ac.quadram.metapilot.core.mag.GenomeEvidenceTest;
 import uk.ac.quadram.metapilot.core.mag.MagGenomeSelectionService;
+import uk.ac.quadram.metapilot.core.mag.MagResultLayoutUtil;
 import uk.ac.quadram.metapilot.core.msbooster.MSBoosterHeadlessRunner;
 import uk.ac.quadram.metapilot.core.msbooster.MSBoosterPin;
 import uk.ac.quadram.metapilot.core.opensearch.Stage1Rescorer;
 import uk.ac.quadram.metapilot.core.msfragger.MSFraggerHeadlessRunner;
 import uk.ac.quadram.metapilot.core.opensearch.ClosedOpenCascade;
+import uk.ac.quadram.metapilot.core.opensearch.IdentificationArms;
+import uk.ac.quadram.metapilot.core.opensearch.ShiftLocaliser;
+import uk.ac.quadram.metapilot.core.opensearch.XGBoostTreeClassifier;
+import uk.ac.quadram.metapilot.core.opensearch.JointCandidate;
+import uk.ac.quadram.metapilot.core.opensearch.JointIdentification;
+import uk.ac.quadram.metapilot.core.opensearch.PredictedSpectrumFeatures;
 import uk.ac.quadram.metapilot.core.opensearch.DeltaMassEvidenceGate;
 import uk.ac.quadram.metapilot.core.opensearch.SequenceVariantCaller;
 import uk.ac.quadram.metapilot.core.opensearch.SubstitutionReassigner;
@@ -42,9 +52,14 @@ import uk.ac.quadram.metapilot.core.opensearch.ModificationMassDatabase;
 import uk.ac.quadram.metapilot.core.opensearch.ModificationValidator;
 import uk.ac.quadram.metapilot.core.opensearch.OpenSearchFeatures;
 import uk.ac.quadram.metapilot.core.opensearch.OpenSearchLayout;
+import uk.ac.quadram.metapilot.core.opensearch.PeakFragmentTest;
+import uk.ac.quadram.metapilot.core.opensearch.PeakSiteShare;
+import uk.ac.quadram.metapilot.core.opensearch.OpenSearchSpectra;
+import uk.ac.quadram.metapilot.core.opensearch.OpenSearchEntrapment;
 import uk.ac.quadram.metapilot.core.opensearch.OpenSearchMetaPsm;
 import uk.ac.quadram.metapilot.core.opensearch.OpenSearchPepxmlReader;
 import uk.ac.quadram.metapilot.core.opensearch.OpenSearchPsm;
+import uk.ac.quadram.metapilot.core.opensearch.OpenSearchValidatedPsmReader;
 import uk.ac.quadram.metapilot.core.opensearch.SemiSupervisedPsmClassifier;
 import uk.ac.quadram.metapilot.core.opensearch.SpectrumLevelCollapse;
 import uk.ac.quadram.metapilot.core.opensearch.SubstitutionMassTable;
@@ -66,6 +81,7 @@ import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagOpenSearchParameterIO;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagOpenSearchParameters;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPSM;
 import uk.ac.quadram.metapilot.task.io.qpx.QpxPsmParquetWriter;
+import uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.par.MetaData;
@@ -92,16 +108,21 @@ import uk.ac.quadram.metapilot.task.par.MetaData;
  * {@code search_results/<sample>/marker/}. Closed by default (ppm window,
  * isotope errors 0/1/2, Met oxidation and protein N-terminal acetylation; see
  * {@link #round1Settings}); {@code round1_search_mode = open} restores the
- * open search with Crystal-C. Either way only the zero family and the
- * expected-shift allow-list are used downstream. All
+ * open search with Crystal-C. Either way only the zero family is used
+ * downstream, plus, in open mode, PSMs at UNIMOD masses that pass
+ * {@link ExpectedPeakSelector}'s criteria. All
  * samples share the database, so they go in one MSFragger invocation:
  * MSFragger reuses its fragment index across files in a single call, which a
  * per-sample loop would rebuild each time.</li>
  * <li><b>B</b> — select genomes from those unmodified PSMs and build the
- * sample-specific FASTA, exactly as the other MAG engines do.</li>
+ * sample-specific FASTA, exactly as the other MAG engines do. A sample with no
+ * usable stage-1 targets can be skipped here (see
+ * {@link PartialIdentificationHandler} / {@code --continue-with-successful-files})
+ * instead of failing the whole cohort; that sample then has no stage-2 search
+ * but still enters FlashLFQ with the others.</li>
  * <li><b>C</b> — sample-specific searches, per sample, into
  * {@code search_results/<sample>/sample_db/}. Batching is unavailable here
- * because each sample has its own database.</li>
+ * because each sample has its own database. Skipped stage-1 samples are omitted.</li>
  * <li><b>D</b> — pooled validation into {@code combined/}: delta-mass peak
  * fitting, one classifier over all PSMs, per-modification gate and local FDR.</li>
  * <li><b>F</b> — FlashLFQ quantification, a single combined run over the whole
@@ -140,10 +161,38 @@ public final class MagOpenSearchHeadlessRunner {
 	private MagOpenSearchHeadlessRunner() {
 	}
 
+	/**
+	 * Optional GUI/interactive decision when some samples have no stage-1
+	 * evidence for genome selection. Return {@code true} to continue stage-2
+	 * identification + pooled validation using only the successful samples, then
+	 * still quantify every raw file together in FlashLFQ; {@code false} to abort
+	 * so the user can replace the failing files.
+	 * <p>
+	 * Mirrors {@code DiaMarkerDeepPerFileHeadlessRunner.PartialMarkerResultHandler}.
+	 */
+	@FunctionalInterface
+	public interface PartialIdentificationHandler {
+		/**
+		 * @param skippedSampleNames display names of samples without a refined database
+		 * @param successfulSampleCount number of samples that completed genome selection
+		 * @return {@code true} to continue with successful samples; {@code false} to stop
+		 */
+		boolean continueWithSuccessfulFiles(List<String> skippedSampleNames, int successfulSampleCount)
+				throws InterruptedException;
+	}
+
+	/** Opt-in for headless runs (CLI {@code --continue-with-successful-files}); default off. */
+	public static final String CONTINUE_WITH_SUCCESSFUL_PROPERTY =
+			"metapilot.mag_opensearch.continue_with_successful";
+
+	static boolean continueWithSuccessfulRequested() {
+		return Boolean.getBoolean(CONTINUE_WITH_SUCCESSFUL_PROPERTY);
+	}
+
 	public static final class Result {
 		/** The engine search root, holding the shared {@code search_results/}. */
 		public final File resultRoot;
-		/** This engine configuration's folder: final tables, taxonomy, function, report. */
+		/** Same as {@link #resultRoot}: {@code opensearch_MAG_search/}. */
 		public final File modeRoot;
 		public final File validatedPsmsTsv;
 		public final File peakVerdictsTsv;
@@ -222,29 +271,121 @@ public final class MagOpenSearchHeadlessRunner {
 	 */
 	public static Result run(DDAMagOpenSearchParameters params, File msfraggerJar, File markerFasta, MagDbItem mag,
 			File flashLfqExe, int flashLfqThreads, File funcDbFile, ProgressCallback cb) throws Exception {
+		return run(params, msfraggerJar, markerFasta, mag, flashLfqExe, flashLfqThreads, funcDbFile, cb, null);
+	}
+
+	/**
+	 * Same as the 8-argument {@link #run}, with an optional
+	 * {@link PartialIdentificationHandler} so the GUI can offer
+	 * continue-with-successful when stage-1 evidence is empty for some samples.
+	 * Headless callers pass {@code null} and use
+	 * {@link #CONTINUE_WITH_SUCCESSFUL_PROPERTY} / CLI
+	 * {@code --continue-with-successful-files} instead.
+	 */
+	public static Result run(DDAMagOpenSearchParameters params, File msfraggerJar, File markerFasta, MagDbItem mag,
+			File flashLfqExe, int flashLfqThreads, File funcDbFile, ProgressCallback cb,
+			PartialIdentificationHandler partialIdentificationHandler) throws Exception {
+		if (params != null && params.isEntrapmentEnabled()) {
+			ProgressCallback callback = cb == null ? new ProgressCallback.NoOp() : cb;
+			callback.onMessage("Open search: paired-shuffle entrapment evaluation (seed "
+					+ params.getEntrapmentSeed() + ", ID digit " + params.getEntrapmentIdDigit() + ")");
+			return runEntrapment(params, msfraggerJar, markerFasta, mag, callback,
+					new OpenSearchEntrapment.Config(params.getEntrapmentSeed(), params.getEntrapmentIdDigit()));
+		}
+		return runInternal(params, msfraggerJar, markerFasta, mag, flashLfqExe, flashLfqThreads, funcDbFile, cb, null,
+				partialIdentificationHandler);
+	}
+
+	/**
+	 * Rebuild final tables, taxonomy and functional annotation from an already
+	 * finished search. Reads {@code validated_psms.tsv} and
+	 * {@code QuantifiedPeptides.tsv}; does not search, localise, classify or
+	 * quantify. The genome freeze ({@code MagResultFinalisationService}) and the
+	 * current export columns (shift explanation, spectrum count, mzML
+	 * identification rate) are applied to those tables.
+	 */
+	public static Result runPostAnalysisOnly(DDAMagOpenSearchParameters params, MagDbItem mag, File funcDbFile,
+			File validatedPsmsOverride, File quantifiedOverride, ProgressCallback cb) throws Exception {
+		if (cb == null) {
+			cb = new ProgressCallback.NoOp();
+		}
+		if (params == null) {
+			throw new IllegalArgumentException("params is null");
+		}
+		if (mag == null) {
+			throw new IllegalArgumentException("mag is null");
+		}
+		File userResult = new File(params.getResult());
+		if (!userResult.isDirectory()) {
+			throw new IOException("Result folder does not exist (pass --out if the parameter file still "
+					+ "points at the original HPC path): " + userResult.getAbsolutePath());
+		}
+		File resultRoot = OpenSearchLayout.engineSearchRoot(userResult);
+		File modeRoot = OpenSearchLayout.modeRoot(resultRoot, params.getSearchEngines());
+		params.setDbSearchResultFile(modeRoot);
+		List<String[]> experiments = params.getExperimentData();
+		if (experiments == null || experiments.isEmpty()) {
+			throw new IOException("No spectra files configured for the open-search workflow");
+		}
+		File validatedTsv = validatedPsmsOverride != null ? validatedPsmsOverride
+				: OpenSearchLayout.validatedPsms(resultRoot, params.getSearchEngines());
+		File quantifiedTsv = quantifiedOverride != null ? quantifiedOverride
+				: OpenSearchLayout.quantifiedPeptides(resultRoot, params.getSearchEngines());
+		if (quantifiedTsv == null || !quantifiedTsv.isFile() || quantifiedTsv.length() == 0) {
+			quantifiedTsv = null;
+		}
+		cb.onMessage("Resuming post-analysis from " + validatedTsv.getAbsolutePath()
+				+ (quantifiedTsv == null ? "" : ", " + quantifiedTsv.getAbsolutePath()));
+		OpenSearchValidatedPsmReader.Result loaded = OpenSearchValidatedPsmReader.read(validatedTsv);
+		int overlaid = OpenSearchValidatedPsmReader.overlayShifts(loaded.psms,
+				OpenSearchLayout.scoredPsms(resultRoot, params.getSearchEngines()));
+		if (overlaid > 0) {
+			cb.onMessage("Post-analysis: filled shift localisation on " + overlaid + " validated PSMs from "
+					+ OpenSearchLayout.scoredPsms(resultRoot, params.getSearchEngines()).getName());
+		}
+		writeValidatedPsms(loaded.psms, loaded.identificationOnly, validatedTsv);
+		MagResultCheckpoints.clearSource(modeRoot);
+		exportPostAnalysis(params, mag, resultRoot, modeRoot, experiments, loaded.psms, quantifiedTsv, funcDbFile, cb);
+		MagResultCheckpoints.recordSource(modeRoot, validatedTsv, quantifiedTsv);
+		cb.onMessage("Open-search post-analysis-only run completed.");
+		cb.onComplete(modeRoot.getAbsolutePath());
+		return new Result(resultRoot, modeRoot, validatedTsv, OpenSearchLayout.peakVerdicts(resultRoot,
+				params.getSearchEngines()), loaded.psms.size(), -1);
+	}
+
+	/** Evaluation: add paired shuffles only after genome selection and stop after identification. */
+	public static Result runEntrapment(DDAMagOpenSearchParameters params, File msfraggerJar, File markerFasta,
+			MagDbItem mag, ProgressCallback cb, OpenSearchEntrapment.Config entrapment) throws Exception {
+		if (entrapment == null) throw new IllegalArgumentException("Entrapment configuration is required");
+		if (!"Trypsin".equalsIgnoreCase(params.getEnzyme()) && !"Trypsin/P".equalsIgnoreCase(params.getEnzyme())) {
+			throw new IllegalArgumentException("Paired entrapment currently supports Trypsin or Trypsin/P");
+		}
+		params.setClosedStageEnabled(true);
+		params.setClosedOpenIntegration(DDAMagOpenSearchParameters.INTEGRATION_JOINT);
+		params.setJointCompareArms(true);
+		return runInternal(params, msfraggerJar, markerFasta, mag, null, 1, null, cb, entrapment, null);
+	}
+
+	private static Result runInternal(DDAMagOpenSearchParameters params, File msfraggerJar, File markerFasta,
+			MagDbItem mag, File flashLfqExe, int flashLfqThreads, File funcDbFile, ProgressCallback cb,
+			OpenSearchEntrapment.Config entrapment, PartialIdentificationHandler partialIdentificationHandler)
+			throws Exception {
 		if (cb == null) {
 			cb = new ProgressCallback.NoOp();
 		}
 		if (mag == null) {
 			throw new IOException("No MAG database supplied; genome discovery cannot run");
 		}
-		// Failing here is preferable to silently running one engine while the
-		// caller believes two ran, which would invalidate exactly the
-		// one-versus-two comparison the option exists to enable. The GUI now
-		// refuses the selection outright; this guards CLI and HPC entry points.
-		String engineProblem = DDAMagOpenSearchParameters.engineModeUnavailableReason(params.getSearchEngines());
-		if (engineProblem != null) {
-			throw new IOException(engineProblem);
-		}
-		// Everything lives inside an engine-named search folder under the user's
-		// result folder, as every other workflow does (fragpipe_MAG_search,
-		// pfind_mag_search, sage_mag_search). The per-sample searches under
-		// search_results/ are shared by the engine configurations; everything
-		// from Step D on goes to the configuration's own mode folder, so
-		// MSFragger-only and MSFragger+Sage results coexist. dbSearchResultFile
-		// is the mode folder because the shared report generator resolves
-		// report/ from there.
-		File resultRoot = OpenSearchLayout.engineSearchRoot(new File(params.getResult()));
+		params.setSearchEngines(DDAMagOpenSearchParameters.ENGINES_MSFRAGGER);
+		// Everything lives inside opensearch_MAG_search/ under the user's result
+		// folder, as every other MAG workflow does (fragpipe_MAG_search,
+		// pfind_MAG_search). Per-sample searches are in search_results/; combined/,
+		// final tables, taxonomy, function and report sit beside it. Closed and
+		// open MSFragger searches replaced a second engine, so there is no nested
+		// msfragger_only/. dbSearchResultFile is this folder because the shared
+		// report generator resolves report/ from there.
+		File resultRoot = entrapment == null ? OpenSearchLayout.engineSearchRoot(new File(params.getResult()))
+				: new File(params.getResult(), OpenSearchEntrapment.RESULT_FOLDER);
 		resultRoot.mkdirs();
 		OpenSearchLayout.searchResultsRoot(resultRoot).mkdirs();
 		File modeRoot = OpenSearchLayout.modeRoot(resultRoot, params.getSearchEngines());
@@ -290,7 +431,7 @@ public final class MagOpenSearchHeadlessRunner {
 				+ " marker searches (per sample) ...");
 		runMarkerSearches(params, msfraggerJar, markerTd, resultRoot, experiments, cb);
 		// Precursor refinement before genome selection reads a single delta mass.
-		// Stage 1 keeps only the zero family plus the expected-shift allow-list,
+		// Stage 1 keeps only the zero family (plus tested UNIMOD shifts in open mode),
 		// so a mis-picked precursor is not a small error here - it removes the PSM
 		// entirely. See runCrystalC for the measurement. A closed search has no
 		// delta-mass distribution to refine: isotope errors are searched
@@ -315,10 +456,37 @@ public final class MagOpenSearchHeadlessRunner {
 		// --- Step B: zero-peak extraction per sample -----------------------
 		cb.onProgress(STEP_B_START_PERCENT, 100);
 		cb.onMessage("Step B: selecting genomes and building sample-specific FASTAs ...");
+		// The host joins the stage-2 databases only. Entrapment databases pair every real protein
+		// with a shuffled MGYG one, which a host protein cannot have, so they stay genomes-only.
+		File host = null;
+		if (entrapment != null) {
+			if (params.isAppendHostDb()) {
+				cb.onMessage("Host database not added: entrapment databases hold the selected genomes only");
+			}
+		} else {
+			host = OpenSearchHostDatabase.resolve(params);
+			if (host != null) {
+				cb.onMessage("Host database appended to each sample-specific database: " + host.getAbsolutePath());
+			}
+		}
+		List<String[]> identificationExperiments = new ArrayList<>();
+		List<String> skippedIdentification = new ArrayList<>();
 		for (int i = 0; i < experiments.size(); i++) {
 			String sample = baseName(experiments.get(i)[0]);
 			cb.onMessage("Step B: sample " + (i + 1) + "/" + experiments.size() + " - " + sample);
-			extractUnmodified(params, resultRoot, experiments.get(i), mag, cb);
+			if (!extractUnmodified(params, resultRoot, experiments.get(i), mag, host, entrapment != null, cb)) {
+				skippedIdentification.add(sample);
+			} else {
+				identificationExperiments.add(experiments.get(i));
+				if (entrapment != null) {
+					File targets = refinedTargets(resultRoot, sample);
+					OpenSearchEntrapment.prepare(targets, OpenSearchLayout.refinedFasta(resultRoot, sample),
+							entrapment, params.sampleDecoyMethod());
+					cb.onMessage(sample + ": second-search database includes 1:1 paired shuffled proteins (seed "
+							+ entrapment.seed + ", MGYG" + entrapment.idDigit + "...) and "
+							+ params.sampleDecoyMethod().label + " decoys of both populations");
+				}
+			}
 			// Advance per sample, as the FragPipe runner does: without this the
 			// bar sits still for the whole step and a slow sample is
 			// indistinguishable from a hung one.
@@ -326,23 +494,31 @@ public final class MagOpenSearchHeadlessRunner {
 					+ (STEP_B_END_PERCENT - STEP_B_START_PERCENT) * (i + 1) / experiments.size();
 			cb.onProgress(pct, 100);
 		}
+		identificationExperiments = applyIdentificationGate(identificationExperiments, skippedIdentification,
+				partialIdentificationHandler, cb);
 
 		// --- Step C: stage-2 open search, per sample -----------------------
+		// Only samples that built a refined database. Skipped samples still stay
+		// in params.metadata for FlashLFQ (Step F), so match-between-runs can
+		// quantify them from peptides identified in the rest of the cohort.
 		cb.onProgress(45, 100);
 		cb.onMessage("Step C: running sample-specific searches (per sample) ...");
-		List<File> sampleDbPepXmls = runSampleDbSearches(params, msfraggerJar, resultRoot, experiments, cb);
+		List<File> sampleDbPepXmls = runSampleDbSearches(params, msfraggerJar, resultRoot, identificationExperiments,
+				cb);
 		// Precursor refinement, before anything reads a delta mass. Everything
 		// downstream consumes what this returns; see runCrystalC for why the step
 		// exists and what it changes.
-		sampleDbPepXmls = runCrystalC(params, resultRoot, experiments, sampleDbPepXmls,
+		sampleDbPepXmls = runCrystalC(params, resultRoot, identificationExperiments, sampleDbPepXmls,
 				OpenSearchLayout.SAMPLE_DB_SEARCH_DIR, null, cb);
 		// Sage joins round two only. Round one stays MSFragger-only so both engine
 		// configurations select the same genomes and build the same refined
 		// databases -- otherwise a difference in the final result could not be
 		// attributed to the second engine rather than to a different search space.
-		List<File> sageResults = runSageSampleDbSearches(params, resultRoot, experiments, cb);
+		List<File> sageResults = runSageSampleDbSearches(params, resultRoot, identificationExperiments, cb);
 		// Closed stage of the closed-then-open identification, on the same refined databases.
-		List<File> closedPepXmls = runSampleDbClosedSearches(params, msfraggerJar, resultRoot, experiments, cb);
+		List<File> closedPepXmls = runSampleDbClosedSearches(params, msfraggerJar, resultRoot,
+				identificationExperiments, cb);
+		cleanupDatabaseIndexes(resultRoot, identificationExperiments, cb);
 
 		// --- Step D: pooled validation -------------------------------------
 		cb.onProgress(70, 100);
@@ -379,7 +555,11 @@ public final class MagOpenSearchHeadlessRunner {
 		stage2.addAll(closedPepXmls);
 		// Switching the closed stage on or off changes no search output the open-only run read,
 		// so the switch itself is an input.
-		stage2.add(writeIdentificationModeStamp(params, resultRoot, engineMode));
+		List<File> runSpectra = new ArrayList<>(experiments.size());
+		for (String[] experiment : experiments) {
+			runSpectra.add(OpenSearchSpectra.readable(new File(experiment[0]), resultRoot));
+		}
+		stage2.add(writeIdentificationModeStamp(params, resultRoot, engineMode, runSpectra));
 		File[] stage2Inputs = stage2.toArray(new File[0]);
 		File quantifiedTsv = OpenSearchLayout.quantifiedPeptides(resultRoot, engineMode);
 		// Same helpers OpenSearchPostAnalysisTsvExporter.exportFinalTsvs and
@@ -389,6 +569,15 @@ public final class MagOpenSearchHeadlessRunner {
 		// drift from where those files are actually written or read.
 		File finalPeptidesTsv = OpenSearchLayout.finalPeptides(modeRoot);
 		File razorProteinsTsv = OpenSearchLayout.razorProteins(modeRoot);
+		if (entrapment != null && OpenSearchLayout.isSatisfied(validatedTsv, stage2Inputs)
+				&& OpenSearchLayout.isSatisfied(scoredTsv, stage2Inputs)
+				&& OpenSearchLayout.isSatisfied(OpenSearchLayout.identificationArms(resultRoot, engineMode), stage2Inputs)
+				&& OpenSearchLayout.isSatisfied(OpenSearchLayout.identificationArmPeptides(resultRoot, engineMode), stage2Inputs)) {
+			OpenSearchEntrapment.writeSummary(OpenSearchLayout.combinedDir(resultRoot, engineMode), entrapment);
+			cb.onMessage("Entrapment identification outputs are current; evaluation summary refreshed");
+			cb.onComplete(modeRoot.getAbsolutePath());
+			return new Result(resultRoot, modeRoot, validatedTsv, verdictsTsv, countLines(validatedTsv) - 1, -1);
+		}
 		boolean quantificationExpected = flashLfqExe != null;
 		boolean allPresent = OpenSearchLayout.isSatisfied(validatedTsv) && OpenSearchLayout.isSatisfied(scoredTsv)
 				&& OpenSearchLayout.isSatisfied(verdictsTsv) && OpenSearchLayout.isSatisfied(peakValidatedTsv)
@@ -415,6 +604,8 @@ public final class MagOpenSearchHeadlessRunner {
 			if (current && pangenomeCurrent) {
 				cb.onMessage("Validated PSMs, quantification and final reports already exist and are current, "
 						+ "skipping straight to completion: " + validatedTsv.getName());
+				quantifySubstitutionPsms(params, flashLfqExe, flashLfqThreads, resultRoot, engineMode,
+						readableSpectraDir(experiments, resultRoot), cb);
 				return new Result(resultRoot, modeRoot, validatedTsv, verdictsTsv, countLines(validatedTsv) - 1,
 						-1);
 			}
@@ -438,8 +629,20 @@ public final class MagOpenSearchHeadlessRunner {
 		MagResultCheckpoints.UnchangedRewrite validatedBefore = MagResultCheckpoints.UnchangedRewrite
 				.before(validatedTsv, stage2Inputs);
 		AtomicReference<SubstitutionReassigner.Result> substitutions = new AtomicReference<>();
+		List<File> spectraFiles = new ArrayList<>(experiments.size());
+		for (String[] experiment : experiments) {
+			spectraFiles.add(OpenSearchSpectra.readable(new File(experiment[0]), resultRoot));
+		}
 		ModificationValidator.Result validation = validatePepXmls(params, sampleDbPepXmls, sageResults, closedPepXmls,
-				resultRoot, cb, substitutions);
+				spectraFiles, resultRoot, cb, substitutions);
+		if (entrapment != null) {
+			OpenSearchEntrapment.writeSummary(OpenSearchLayout.combinedDir(resultRoot, engineMode), entrapment);
+			cb.onMessage("Entrapment evaluation completed at identification; controls retained in combined tables");
+			cb.onProgress(100, 100);
+			cb.onComplete(modeRoot.getAbsolutePath());
+			return new Result(resultRoot, modeRoot, validatedTsv, verdictsTsv, validation.validated.size(),
+					validation.acceptedPeakCount());
+		}
 		if (validatedBefore.restoreIfUnchanged()) {
 			cb.onMessage("Step D: " + validatedTsv.getName() + " is unchanged; kept its timestamp so the "
 					+ "quantification and reports derived from it stay current");
@@ -451,7 +654,8 @@ public final class MagOpenSearchHeadlessRunner {
 		cb.onProgress(88, 100);
 		cb.onMessage("Step F: FlashLFQ quantification ...");
 		quantifiedTsv = runFlashLfqQuantification(params, flashLfqExe, flashLfqThreads, resultRoot,
-				OpenSearchLayout.validatedPsms(resultRoot, engineMode), spectraDirOf(experiments), engineMode, cb);
+				OpenSearchLayout.validatedPsms(resultRoot, engineMode), readableSpectraDir(experiments, resultRoot), engineMode,
+				cb);
 
 		boolean functionExpected = funcDbFile != null && funcDbFile.isFile();
 		File stalePostAnalysis = MagResultCheckpoints.stalePostAnalysisOutput(modeRoot, functionExpected,
@@ -483,12 +687,14 @@ public final class MagOpenSearchHeadlessRunner {
 			// A parquet left from an earlier run would otherwise outlive a failed export.
 			MagResultCheckpoints.clearSource(modeRoot);
 			Files.deleteIfExists(qpxPsms.toPath());
-			exportPostAnalysis(params, mag, resultRoot, modeRoot, experiments, validation, quantifiedTsv,
+			exportPostAnalysis(params, mag, resultRoot, modeRoot, experiments, validation.validated, quantifiedTsv,
 					funcDbFile, cb);
 			MagResultCheckpoints.recordSource(modeRoot, validatedTsv, quantifiedTsv);
 		}
 
 		runPangenomeVariantCheck(params, mag, resultRoot, modeRoot, validation, substitutions.get(), cb);
+		quantifySubstitutionPsms(params, flashLfqExe, flashLfqThreads, resultRoot, engineMode,
+				readableSpectraDir(experiments, resultRoot), cb);
 
 		LOGGER.info("Open-search workflow complete: " + validation.validated.size() + " validated PSMs across "
 				+ validation.acceptedPeakCount() + " accepted delta-mass groups");
@@ -505,11 +711,12 @@ public final class MagOpenSearchHeadlessRunner {
 	 * unit because taxonomy and function read the in-memory result of the
 	 * export.
 	 *
-	 * @param resultRoot the engine search root, holding the shared searches
-	 * @param modeRoot   this engine configuration's folder; everything is written here
+	 * @param resultRoot the engine search root ({@code opensearch_MAG_search/})
+	 * @param modeRoot   same folder; kept as a separate argument for call sites
+	 *                   that still distinguish searches from deliverables
 	 */
 	private static void exportPostAnalysis(DDAMagOpenSearchParameters params, MagDbItem mag, File resultRoot,
-			File modeRoot, List<String[]> experiments, ModificationValidator.Result validation, File quantifiedTsv,
+			File modeRoot, List<String[]> experiments, List<OpenSearchPsm> validated, File quantifiedTsv,
 			File funcDbFile, ProgressCallback cb) throws Exception {
 		cb.onProgress(90, 100);
 		cb.onMessage("Step G: post-analysis + TSV export ...");
@@ -520,10 +727,12 @@ public final class MagOpenSearchHeadlessRunner {
 		for (String[] experiment : experiments) {
 			sampleNames.add(baseName(experiment[0]));
 		}
+		// Identification v2: RESET's estimating decoys count twice (C2), one-peptide protein filter (C5).
 		GenomeEvidenceTest.Result genomeEvidence = OpenSearchGenomeEvidence.run(resultRoot, params.getSearchEngines(),
-				sampleNames, cb);
+				sampleNames, cb, params.isIdentificationV2() ? 2.0 : 1.0, params.isIdentificationV2(),
+				mag.getIdentifier());
 		OpenSearchPostAnalysisTsvExporter.Result post = OpenSearchPostAnalysisTsvExporter.exportFinalTsvs(mag,
-				validation.validated, sampleNames, modeRoot, resultRoot, spectraDirOf(experiments),
+				validated, sampleNames, modeRoot, resultRoot, spectraSummaryDir(experiments, resultRoot, cb),
 				"DDA MAG open search", quantifiedTsv, genomeEvidence, cb);
 		cb.onMessage("Post-analysis: " + post.peptideCount + " peptides, " + post.proteinCount + " razor proteins, "
 				+ post.genomeScoreMap.size() + " genomes");
@@ -531,7 +740,7 @@ public final class MagOpenSearchHeadlessRunner {
 			cb.onMessage("Post-analysis: " + post.peptidesWithoutConfidentRazorProtein + " of " + post.peptideCount
 					+ " peptides have no confident genome/razor-protein attribution (every candidate genome is at "
 					+ "q_value > " + DdaMagProteinInferenceService.DEFAULT_GENOME_Q_VALUE_THRESHOLD + ") - still "
-					+ "reported in final_peptides.tsv with an empty Razor protein column, but excluded from every "
+					+ "recorded in excluded_evidence/peptides.tsv and excluded from every "
 					+ "genome- and protein-level statistic");
 		}
 
@@ -558,7 +767,7 @@ public final class MagOpenSearchHeadlessRunner {
 	/**
 	 * Pangenome variant check (UHGP-100), after taxonomy so the DETECTED species
 	 * scope can use {@code genome_final_selected.tsv}. Report-only: writes the
-	 * {@code variant_*.tsv} files beside the other combined outputs and
+	 * {@code variant_*.tsv} files in {@code sequence_variants/} and
 	 * changes nothing else. Off, or with
 	 * no resource present, it writes nothing; any failure is logged and the run
 	 * still completes.
@@ -584,7 +793,7 @@ public final class MagOpenSearchHeadlessRunner {
 			request.magVersionDir = mag == null ? null : mag.getCurrentFile();
 			request.taxonomyDir = new File(modeRoot, "taxonomy_analysis");
 			request.eggnogDir = mag == null ? null : mag.getOriginalFuncFolder();
-			request.outputDir = OpenSearchLayout.combinedDir(resultRoot, engineMode);
+			request.outputDir = OpenSearchLayout.sequenceVariantsDir(resultRoot, engineMode);
 			request.undecidableToleranceDa = params.getSubstitutionMassToleranceDa();
 			request.fixedCysteineModDa = SubstitutionMassTable.FIXED_CYSTEINE_MOD;
 			VariantFormRanking.Inputs ranking = new VariantFormRanking.Inputs();
@@ -595,7 +804,7 @@ public final class MagOpenSearchHeadlessRunner {
 			List<String[]> experiments = params.getExperimentData();
 			if (experiments != null) {
 				for (String[] experiment : experiments) {
-					ranking.spectraFiles.add(new File(experiment[0]));
+					ranking.spectraFiles.add(OpenSearchSpectra.readable(new File(experiment[0]), resultRoot));
 				}
 			}
 			request.ranking = ranking;
@@ -629,6 +838,7 @@ public final class MagOpenSearchHeadlessRunner {
 			return true;
 		}
 		String engineMode = params.getSearchEngines();
+		OpenSearchLayout.variantColumns(resultRoot, engineMode);
 		File candidates = OpenSearchLayout.variantCandidates(resultRoot, engineMode);
 		File sites = OpenSearchLayout.variantSites(resultRoot, engineMode);
 		File summary = OpenSearchLayout.variantPangenomeSummary(resultRoot, engineMode);
@@ -666,6 +876,7 @@ public final class MagOpenSearchHeadlessRunner {
 		request.gtdbNcbiMappingTsv = gtdbNcbi;
 		request.generateFinalGenomeRanking = true;
 		request.genomeIntensityMap = post.genomeIntensityMap;
+		request.genomeUniqueIntensityMap = post.genomeUniqueIntensityMap;
 		request.genomeScoreMap = post.genomeScoreMap;
 		request.genomeStats = post.genomeDiaStats;
 		request.genomeEvidence = post.genomeEvidence;
@@ -787,6 +998,18 @@ public final class MagOpenSearchHeadlessRunner {
 	public static ModificationValidator.Result validatePepXmls(DDAMagOpenSearchParameters params,
 			List<File> pepXmlFiles, List<File> sageResults, List<File> closedPepXmls, File resultRoot,
 			ProgressCallback cb, AtomicReference<SubstitutionReassigner.Result> substitutionsOut) throws Exception {
+		return validatePepXmls(params, pepXmlFiles, sageResults, closedPepXmls, null, resultRoot, cb, substitutionsOut);
+	}
+
+	/**
+	 * @param spectraFiles the runs' spectrum files; the joint identification reads the MS2 peaks
+	 *                     of {@code <sample>.mzML} for its predicted-spectrum features. Null or
+	 *                     empty turns those features off.
+	 */
+	public static ModificationValidator.Result validatePepXmls(DDAMagOpenSearchParameters params,
+			List<File> pepXmlFiles, List<File> sageResults, List<File> closedPepXmls, List<File> spectraFiles,
+			File resultRoot, ProgressCallback cb, AtomicReference<SubstitutionReassigner.Result> substitutionsOut)
+			throws Exception {
 		if (params == null) {
 			params = new DDAMagOpenSearchParameters();
 		}
@@ -853,10 +1076,12 @@ public final class MagOpenSearchHeadlessRunner {
 			}
 			OpenSearchPepxmlReader closedReader = new OpenSearchPepxmlReader(TargetDecoyFasta.DECOY_TAG);
 			closedReader.setClosedSearch(true);
-			closedReader.setMaxHitRank(1);
+			// Every closed candidate the search reported (top closed_stage_topn) is read, in every mode;
+			// the cascade's closed stage still keeps each spectrum's best-ranked one.
+			closedReader.setMaxHitRank(params.getClosedStageTopN());
 			closedPsms = closedReader.read(closedPepXmls, validationCb::onMessage);
 		}
-		ModificationValidator.Result validation = validate(params, psms, closedPsms, resultRoot, cb,
+		ModificationValidator.Result validation = validate(params, psms, closedPsms, spectraFiles, resultRoot, cb,
 				substitutionsOut);
 		// Must run before anything below reads getCanonicalModifiedSequence() on
 		// any of these PSMs (writeValidatedPsms's "Full Sequence" column, then
@@ -891,13 +1116,26 @@ public final class MagOpenSearchHeadlessRunner {
 		// from every searched database into protein sites and classes them by
 		// recurrence, codon reachability and whether the reference peptide is
 		// also seen. Changes no PSM, q-value or quantification input.
-		SequenceVariantCaller.Result variants = callSequenceVariants(params, resultRoot, validation.diagnostic, cb);
+		SequenceVariantCaller.Result variants = callSequenceVariants(params, resultRoot, validation.diagnostic,
+				unmodifiedIdentifications(validation), cb);
 		writeSubstitutionForms(validation.diagnostic, variants,
-				OpenSearchLayout.substitutionForms(resultRoot, params.getSearchEngines()));
+				OpenSearchLayout.substitutionFormsOutput(resultRoot, params.getSearchEngines()));
+		Map<OpenSearchPsm, String> variantIds = new IdentityHashMap<>();
+		if (variants != null) {
+			variants.byPsm.forEach((psm, v) -> variantIds.put(psm, v.id));
+		}
+		SubstitutionQuantification.writePsms(validation.diagnostic, validation.validated, variantIds,
+				OpenSearchLayout.substitutionQuantPsms(resultRoot, params.getSearchEngines()));
 		writeValidatedPsms(validation.peakValidated, identificationOnly,
 				OpenSearchLayout.peakValidatedPsms(resultRoot, params.getSearchEngines()));
 		writeValidatedPsms(validation.unexplainedIdentifications, identificationOnly,
 				OpenSearchLayout.unexplainedPsms(resultRoot, params.getSearchEngines()));
+		// The same PSMs per peptide and per genome: the levels the main result is read at.
+		int setAsidePeptides = SetAsideReport.write(validation.unexplainedIdentifications, validation.validated,
+				OpenSearchLayout.combinedDir(resultRoot, params.getSearchEngines()), TargetDecoyFasta.DECOY_TAG);
+		cb.onMessage("Set aside: " + validation.unexplainedIdentifications.size() + " PSMs that are not identifications, "
+				+ setAsidePeptides + " peptide rows in " + SetAsideReport.PEPTIDES_FILE + "; per genome in "
+				+ SetAsideReport.GENOMES_FILE);
 		writeVerdicts(validation, OpenSearchLayout.peakVerdicts(resultRoot, params.getSearchEngines()));
 		return validation;
 	}
@@ -922,6 +1160,14 @@ public final class MagOpenSearchHeadlessRunner {
 	private static void runMarkerSearches(DDAMagOpenSearchParameters params, File msfraggerJar, File markerTd,
 			File resultRoot, List<String[]> experiments, ProgressCallback cb) throws Exception {
 		MSFraggerHeadlessRunner.OpenSearchSettings settings = round1Settings(params, markerTd);
+		// .raw/.d inputs: the marker search also writes the mzML every later step reads
+		// (OpenSearchSpectra). A run whose mzML is missing searches again to write it.
+		List<File> inputs = new ArrayList<>(experiments.size());
+		for (String[] experiment : experiments) {
+			inputs.add(new File(experiment[0]));
+		}
+		boolean convert = OpenSearchSpectra.needsConversion(inputs);
+		settings.writeUncalibratedMzml = convert;
 		// Compared with the parameters each existing search was run with, so a
 		// change of round-1 settings (closed <-> open, tolerance, top N) re-runs
 		// the search instead of reusing a pepXML from the other configuration.
@@ -934,12 +1180,15 @@ public final class MagOpenSearchHeadlessRunner {
 			File existingParams = OpenSearchLayout.markerParams(resultRoot, sample);
 			boolean paramsUnchanged = existingParams.isFile()
 					&& wantedParams.trim().equals(readFileText(existingParams).trim());
-			if (paramsUnchanged && OpenSearchLayout.isSatisfied(sentinel)) {
+			boolean spectraReadable = OpenSearchSpectra.isReadable(new File(experiment[0]), resultRoot);
+			if (paramsUnchanged && OpenSearchLayout.isSatisfied(sentinel) && spectraReadable) {
 				cb.onMessage("Marker search already exists under the same configuration, skipping: " + sample);
 				continue;
 			}
 			if (OpenSearchLayout.isSatisfied(sentinel)) {
-				cb.onMessage("Marker search configuration changed, re-running: " + sample);
+				cb.onMessage(paramsUnchanged
+						? "Marker search re-running to write the mzML of a vendor-format input: " + sample
+						: "Marker search configuration changed, re-running: " + sample);
 			}
 			OpenSearchLayout.markerDir(resultRoot, sample).mkdirs();
 			pending.add(new File(experiment[0]));
@@ -990,14 +1239,26 @@ public final class MagOpenSearchHeadlessRunner {
 						OpenSearchLayout.markerPin(resultRoot, pendingSamples.get(i)).toPath(),
 						StandardCopyOption.REPLACE_EXISTING);
 			}
+			if (convert) {
+				File mzml = OpenSearchSpectra.collect(pending.get(i), resultRoot);
+				cb.onMessage("Spectra of " + pending.get(i).getName() + " for the rest of the workflow: " + mzml);
+			}
 			// Copied last, so a crash mid-search leaves the sentinel absent and
 			// the step correctly reruns rather than being falsely skipped.
 			Files.copy(produced.toPath(), sentinel.toPath(), StandardCopyOption.REPLACE_EXISTING);
 		}
 	}
 
-	private static void extractUnmodified(DDAMagOpenSearchParameters params, File resultRoot, String[] experiment,
-			MagDbItem mag, ProgressCallback cb) throws Exception {
+	/**
+	 * Builds the refined FASTA for one sample from stage-1 evidence.
+	 *
+	 * @return {@code true} when the sample has a refined database ready for
+	 *         stage-2 identification; {@code false} when stage-1 evidence is
+	 *         empty and identification should be skipped for this sample
+	 *         (quantification can still include it via FlashLFQ MBR)
+	 */
+	private static boolean extractUnmodified(DDAMagOpenSearchParameters params, File resultRoot, String[] experiment,
+			MagDbItem mag, File host, boolean entrapmentRun, ProgressCallback cb) throws Exception {
 		String sample = baseName(experiment[0]);
 		File refined = OpenSearchLayout.refinedFasta(resultRoot, sample);
 		// Staleness, not mere existence. The refined FASTA is derived from the
@@ -1024,11 +1285,27 @@ public final class MagOpenSearchHeadlessRunner {
 					+ " and re-run stage 1.");
 		}
 		File editedPin = OpenSearchLayout.markerEditedPin(resultRoot, sample);
-		if (OpenSearchLayout.isSatisfied(refined, markerPepXml, editedPin)) {
+		// The decoy method is checked too: a database whose decoys were made the other way is rebuilt
+		// (and with it every stage-2 search, which is older than the new database).
+		TargetDecoyFasta.DecoyMethod decoyMethod = params.sampleDecoyMethod();
+		boolean decoysCurrent = refined.isFile() && TargetDecoyFasta.decoysMadeBy(refined, decoyMethod);
+		if (OpenSearchLayout.isSatisfied(refined, markerPepXml, editedPin) && decoysCurrent) {
+			// Genome selection stands; the host setting may still have changed since the database was
+			// built. The genome-only targets beside it rebuild the database without repeating selection.
+			// Not for entrapment: its database is the paired one OpenSearchEntrapment keeps current.
+			File genomeTargets = refinedTargets(resultRoot, sample);
+			if (!entrapmentRun && genomeTargets.isFile() && TargetDecoyFasta
+					.ensure(OpenSearchHostDatabase.searchTargets(genomeTargets, host), refined, decoyMethod)) {
+				cb.onMessage(sample + ": refined database rebuilt from the selected genomes "
+						+ (host != null ? "with" : "without") + " the host proteins");
+			}
+			clearIdentificationSkipped(resultRoot, sample);
 			cb.onMessage("Refined database already exists, skipping genome discovery: " + sample);
-			return;
+			return true;
 		}
-		if (OpenSearchLayout.isSatisfied(refined)) {
+		if (OpenSearchLayout.isSatisfied(refined) && !decoysCurrent) {
+			cb.onMessage(sample + ": refined database decoys are not " + decoyMethod.label + "; rebuilding it");
+		} else if (OpenSearchLayout.isSatisfied(refined)) {
 			cb.onMessage(sample + ": refined database is older than "
 					+ OpenSearchLayout.newestInput(markerPepXml, editedPin).getName()
 					+ "; rebuilding it so genome selection uses the current stage-1 evidence");
@@ -1058,19 +1335,27 @@ public final class MagOpenSearchHeadlessRunner {
 		selection = UnmodifiedPsmSelector.select(psms, params.toFitterConfig(), UnmodifiedPsmSelector.DEFAULT_FDR,
 				readCb::onMessage);
 		if (selection.unmodified.isEmpty()) {
-			throw new IOException("Marker search produced no unmodified PSMs for " + sample
-					+ "; genome discovery cannot proceed. Check the zero peak was fitted.");
+			return markIdentificationSkipped(resultRoot, sample,
+					"Marker search produced no unmodified PSMs at q<=" + UnmodifiedPsmSelector.DEFAULT_FDR
+							+ "; genome discovery cannot proceed for this sample",
+					cb);
 		}
 		// Second stage-1 pass: admit PSMs on expected mass shifts. A peptide
 		// carrying a shift maps to the same genome as its unmodified form, so the
 		// modification state is irrelevant to genome selection - but only shifts
 		// that pass ExpectedPeakSelector's four criteria in THIS run are admitted,
-		// so this stays a test of an allow-list, not discovery.
-		ExpectedPeakSelector.Result expected = ExpectedPeakSelector.select(psms, selection,
-				params.toExpectedPeakConfig(), readCb::onMessage);
-		// Written after rescoring so the header can record what actually decided
-		// the cut. Before this, a fallback was invisible in the output.
-		writeExpectedPeakVerdicts(expected, OpenSearchLayout.expectedPeaks(resultRoot, sample));
+		// so this stays a test of UNIMOD masses, not discovery. Open marker search
+		// only: in the closed one there is no shifted peak to test (see the class).
+		ExpectedPeakSelector.Config expectedConfig = params.toExpectedPeakConfig();
+		ExpectedPeakSelector.Result expected = ExpectedPeakSelector.select(psms, selection, expectedConfig,
+				readCb::onMessage);
+		File expectedPeaksFile = OpenSearchLayout.expectedPeaks(resultRoot, sample);
+		if (expectedConfig.enabled) {
+			writeExpectedPeakVerdicts(expected, expectedPeaksFile);
+		} else {
+			// A file left by an earlier open-mode run would describe a step that did not run.
+			Files.deleteIfExists(expectedPeaksFile.toPath());
+		}
 		cb.onMessage(String.format(
 				"%s: zero-family PSM FDR (1:1 target-decoy, decoys/targets): before=%d targets/%d decoys; "
 						+ "accepted at q<=%.3f=%d targets/%d decoys; estimated FDR=%.6f; calibration offset=%.5f Da",
@@ -1113,9 +1398,15 @@ public final class MagOpenSearchHeadlessRunner {
 			}
 		}
 		if (forSelection.isEmpty()) {
-			throw new IOException("No target PSMs in the unmodified set for " + sample);
+			String detail = rescored != null
+					? ("Stage-1 rescoring accepted 0 targets at q<=" + UnmodifiedPsmSelector.DEFAULT_FDR
+							+ " (engine-score cut had " + selection.targetsAfterFdr + " targets)")
+					: ("No target PSMs in the unmodified set after the engine-score cut (accepted "
+							+ selection.targetsAfterFdr + " targets / " + selection.decoysAfterFdr + " decoys)");
+			return markIdentificationSkipped(resultRoot, sample, detail, cb);
 		}
-		cb.onMessage(sample + ": selecting genomes from " + forSelection.size() + " unmodified target PSMs ...");
+		cb.onMessage(sample + ": selecting genomes from " + forSelection.size() + " unmodified target PSMs ("
+				+ genomeSelectionSummary(params) + ")");
 
 		File markerDir = OpenSearchLayout.markerDir(resultRoot, sample);
 		String prefix = MagDbItem.MARKER4.equalsIgnoreCase(params.getGenomeSelectorMode()) ? "marker_genome"
@@ -1123,8 +1414,7 @@ public final class MagOpenSearchHeadlessRunner {
 
 		MagGenomeSelectionService.Request request = new MagGenomeSelectionService.Request();
 		request.magDb = mag;
-		request.genomeSelectorMode = params.getGenomeSelectorMode();
-		request.genomeSelectionStrategy = params.getGenomeSelectionStrategy();
+		copyGenomeSelection(request, params);
 		request.psms = forSelection;
 		request.evidenceFile = new File(markerDir, prefix + "_evidence.tsv");
 		request.rankedFile = new File(markerDir, prefix + "_ranked.tsv");
@@ -1141,11 +1431,86 @@ public final class MagOpenSearchHeadlessRunner {
 
 		HashSet<String> genomes = MagGenomeSelectionService.selectGenomes(request, cb);
 		if (genomes.isEmpty()) {
-			throw new IOException("Genome selection returned no genomes for " + sample);
+			return markIdentificationSkipped(resultRoot, sample,
+					"Genome selection returned no genomes from " + forSelection.size() + " unmodified target PSMs",
+					cb);
 		}
 		cb.onMessage(sample + ": " + genomes.size() + " genomes selected from unmodified PSMs");
 
-		buildRefinedFasta(mag, genomes, sample, markerDir, refined, cb);
+		buildRefinedFasta(mag, genomes, sample, markerDir, refined, params.sampleDecoyMethod(), host, cb);
+		clearIdentificationSkipped(resultRoot, sample);
+		return true;
+	}
+
+	/**
+	 * After stage-1 genome selection, drop samples that have no refined database
+	 * when the caller opts in; otherwise stop with the same fail-closed default
+	 * DIA Deep per-file uses.
+	 */
+	static List<String[]> applyIdentificationGate(List<String[]> successfulExperiments,
+			List<String> skippedSampleNames, PartialIdentificationHandler partialIdentificationHandler,
+			ProgressCallback cb) throws Exception {
+		if (skippedSampleNames == null || skippedSampleNames.isEmpty()) {
+			return successfulExperiments;
+		}
+		String missingList = String.join(", ", skippedSampleNames);
+		String detail = "Stage-1 identification skipped (no refined database) for: " + missingList;
+		LOGGER.warn(detail);
+		cb.onMessage(detail);
+
+		if (successfulExperiments == null || successfulExperiments.isEmpty()) {
+			throw new IOException("No samples have stage-1 genome selection results after marker search. "
+					+ detail + ". Replace these files and re-run.");
+		}
+
+		if (partialIdentificationHandler != null) {
+			cb.onMessage("Waiting for user decision on incomplete stage-1 results ("
+					+ skippedSampleNames.size() + " skipped, " + successfulExperiments.size() + " successful)");
+			boolean continueRun = partialIdentificationHandler.continueWithSuccessfulFiles(skippedSampleNames,
+					successfulExperiments.size());
+			if (!continueRun) {
+				throw new IOException("Stopped after incomplete stage-1 results. " + detail
+						+ ". Replace these files and re-run, or choose continue to identify only the "
+						+ successfulExperiments.size()
+						+ " successful sample(s) and still quantify every raw file together.");
+			}
+			cb.onMessage("Continuing identification with " + successfulExperiments.size()
+					+ " sample(s); skipped samples stay in FlashLFQ quantification only: " + missingList);
+			return successfulExperiments;
+		}
+
+		if (continueWithSuccessfulRequested()) {
+			cb.onMessage("Continuing identification with " + successfulExperiments.size()
+					+ " sample(s) (" + CONTINUE_WITH_SUCCESSFUL_PROPERTY
+					+ "); no stage-2 search for: " + missingList
+					+ "; all samples stay in FlashLFQ quantification");
+			return successfulExperiments;
+		}
+
+		throw new IOException("Incomplete stage-1 identification results. " + detail
+				+ ". Successful samples: " + successfulExperiments.size()
+				+ ". Replace the missing files and re-run, or run the CLI with --continue-with-successful-files"
+				+ " (GUI can offer continue-with-successful). Skipped samples then omit stage-2 identification"
+				+ " but still enter FlashLFQ quantification with the rest of the cohort.");
+	}
+
+	private static boolean markIdentificationSkipped(File resultRoot, String sample, String reason,
+			ProgressCallback cb) throws IOException {
+		File markerDir = OpenSearchLayout.markerDir(resultRoot, sample);
+		markerDir.mkdirs();
+		File skipFile = OpenSearchLayout.identificationSkipped(resultRoot, sample);
+		Files.writeString(skipFile.toPath(), reason == null ? "" : reason);
+		LOGGER.warn("{}: skipping stage-2 identification - {}", sample, reason);
+		cb.onMessage(sample + ": skipping stage-2 identification - " + reason
+				+ " (written " + skipFile.getName() + ")");
+		return false;
+	}
+
+	private static void clearIdentificationSkipped(File resultRoot, String sample) {
+		File skipFile = OpenSearchLayout.identificationSkipped(resultRoot, sample);
+		if (skipFile.isFile() && !skipFile.delete()) {
+			LOGGER.warn("{}: could not delete stale {}", sample, skipFile.getAbsolutePath());
+		}
 	}
 
 	/**
@@ -1241,7 +1606,8 @@ public final class MagOpenSearchHeadlessRunner {
 		// Every sample's copy is byte-identical; the first is as good as any.
 		settings.fraggerParams = fraggerParams;
 		settings.pinFiles = pins;
-		settings.mzmlDirectories = MSBoosterHeadlessRunner.listOf(spectraDirOf(params.getExperimentData()));
+		settings.mzmlDirectories = MSBoosterHeadlessRunner.listOf(readableSpectraDir(params.getExperimentData(),
+				resultRoot));
 
 		File msboosterParams = MSBoosterHeadlessRunner.writeParams(
 				OpenSearchLayout.searchResultsRoot(resultRoot), settings);
@@ -1362,13 +1728,13 @@ public final class MagOpenSearchHeadlessRunner {
 	 * downstream {@code decoys/targets} FDR estimator assumes.
 	 */
 	private static void buildRefinedFasta(MagDbItem mag, HashSet<String> genomes, String sample, File markerDir,
-			File refined, ProgressCallback cb) throws IOException {
+			File refined, TargetDecoyFasta.DecoyMethod decoyMethod, File host, ProgressCallback cb) throws IOException {
 		File originalDbFolder = mag.getOriginalDbFolder();
 		if (originalDbFolder == null || !originalDbFolder.exists()) {
 			throw new IOException("Original DB folder not found in MAG DB: " + originalDbFolder);
 		}
 
-		File targetsOnly = new File(markerDir, sample + "_refined_targets.fasta");
+		File targetsOnly = new File(markerDir, sample + REFINED_TARGETS_SUFFIX);
 		cb.onMessage(sample + ": writing refined database from " + genomes.size() + " genomes ...");
 		int written = 0;
 		int genomesDone = 0;
@@ -1397,8 +1763,18 @@ public final class MagOpenSearchHeadlessRunner {
 					+ genomes.size() + " selected genomes under " + originalDbFolder.getAbsolutePath());
 		}
 
-		TargetDecoyFasta.ensure(targetsOnly, refined);
-		cb.onMessage(sample + ": refined database built (" + written + " target sequences + 1:1 decoys)");
+		File searched = OpenSearchHostDatabase.searchTargets(targetsOnly, host);
+		TargetDecoyFasta.ensure(searched, refined, decoyMethod);
+		int hostProteins = searched == targetsOnly ? 0 : TargetDecoyFasta.count(refined).targets - written;
+		cb.onMessage(sample + ": refined database built (" + written + " genome target sequences"
+				+ (host != null ? " + " + hostProteins + " host" : "") + " + 1:1 " + decoyMethod.label + " decoys)");
+	}
+
+	static final String REFINED_TARGETS_SUFFIX = "_refined_targets.fasta";
+
+	/** The selected genomes' proteins, targets only, that a sample's refined database is built from. */
+	static File refinedTargets(File resultRoot, String sample) {
+		return new File(OpenSearchLayout.markerDir(resultRoot, sample), sample + REFINED_TARGETS_SUFFIX);
 	}
 
 	private static List<File> runSampleDbSearches(DDAMagOpenSearchParameters params, File msfraggerJar, File resultRoot,
@@ -1541,10 +1917,36 @@ public final class MagOpenSearchHeadlessRunner {
 	/** Writes {@link OpenSearchLayout#identificationMode} when its content changes, and returns it. */
 	static File writeIdentificationModeStamp(DDAMagOpenSearchParameters params, File resultRoot, String engineMode)
 			throws IOException {
+		return writeIdentificationModeStamp(params, resultRoot, engineMode, null);
+	}
+
+	/**
+	 * @param spectraFiles the runs' spectrum files, for recording which have an mzML the
+	 *                     predicted-spectrum features can read; null records none
+	 */
+	static File writeIdentificationModeStamp(DDAMagOpenSearchParameters params, File resultRoot, String engineMode,
+			List<File> spectraFiles) throws IOException {
 		File stamp = OpenSearchLayout.identificationMode(resultRoot, engineMode);
-		String mode = params.isClosedStageEnabled()
-				? "closed_then_open closed_stage_precursor_ppm=" + params.getClosedStagePrecursorPpm()
-				: "open_only";
+		String mode = !params.isClosedStageEnabled() ? "open_only"
+				: params.isJointIdentification()
+						? "joint_closed_open closed_stage_precursor_ppm=" + params.getClosedStagePrecursorPpm()
+								+ " closed_stage_topn=" + params.getClosedStageTopN() + " ms2_features="
+								+ params.isJointMs2Features() + ms2InputsStamp(params, spectraFiles)
+								+ " ms2_max_open_rank=" + params.getJointMs2MaxOpenRank()
+								+ " fragment_ppm=" + params.getJointFragmentTolerancePpm() + " accept_unexplained="
+								+ params.isJointAcceptUnexplained() + " compare_arms=" + params.isJointCompareArms()
+								+ " withheld=" + params.getJointWithheldFeatures()
+						: "closed_then_open closed_stage_precursor_ppm=" + params.getClosedStagePrecursorPpm();
+		if (params.isClosedStageEnabled() && (params.isCascadeMs2Features() || params.isCascadeClosedRerank())) {
+			// Only when on, so runs made before these options existed stay current.
+			mode += " cascade_closed_rerank=" + params.isCascadeClosedRerank() + " cascade_ms2_features="
+					+ params.isCascadeMs2Features()
+					+ (params.isCascadeMs2Features() ? cascadeMs2Stamp(params, spectraFiles) : "");
+		}
+		if (params.isClosedStageEnabled() && params.isJointIdentification() && params.isIdentificationV2()) {
+			mode += " identification_version=v2 model=" + identificationV2Model().describe()
+					+ " shift_localisation=" + new ShiftLocaliser(params.getJointFragmentTolerancePpm());
+		}
 		if (!stamp.isFile() || !mode.equals(readFileText(stamp).trim())) {
 			stamp.getParentFile().mkdirs();
 			Files.write(stamp.toPath(), (mode + System.lineSeparator()).getBytes(java.nio.charset.StandardCharsets.UTF_8));
@@ -1552,20 +1954,49 @@ public final class MagOpenSearchHeadlessRunner {
 		return stamp;
 	}
 
+	/**
+	 * What the predicted-spectrum features can actually use: whether the DIA-NN executable exists
+	 * and how many runs have an mzML. The features switch themselves off without them, so a run
+	 * made before DIA-NN was installed would otherwise count as current after it is.
+	 */
+	private static String ms2InputsStamp(DDAMagOpenSearchParameters params, List<File> spectraFiles) {
+		if (!params.isJointMs2Features()) {
+			return "";
+		}
+		return cascadeMs2Stamp(params, spectraFiles);
+	}
+
+	private static String cascadeMs2Stamp(DDAMagOpenSearchParameters params, List<File> spectraFiles) {
+		File diann = params.getDiannExecutable();
+		boolean diannReady = diann != null && diann.isFile();
+		int mzml = spectraFiles == null ? 0 : VariantFormRanking.mzmlBySample(spectraFiles).size();
+		return " ms2_inputs=" + (diannReady ? "diann:" + diann.getAbsolutePath() : "no_diann") + ",mzml_runs:" + mzml;
+	}
+
 	private static ModificationValidator.Result validate(DDAMagOpenSearchParameters params, List<OpenSearchPsm> psms,
-			List<OpenSearchPsm> closedPsms, File resultRoot, ProgressCallback cb,
+			List<OpenSearchPsm> closedPsms, List<File> spectraFiles, File resultRoot, ProgressCallback cb,
 			AtomicReference<SubstitutionReassigner.Result> substitutionsOut) throws Exception {
 		boolean cascade = closedPsms != null;
+		boolean joint = cascade && params.isJointIdentification();
+		// The cascade's closed stage and the open-only classifier are needed by the joint path only
+		// to write the comparison arms.
+		boolean compareArms = joint && params.isJointCompareArms();
 		SemiSupervisedPsmClassifier.Config classifierConfig = new SemiSupervisedPsmClassifier.Config();
 		classifierConfig.folds = params.getClassifierFolds();
 		classifierConfig.maxIterations = params.getClassifierMaxIterations();
 		classifierConfig.trainQValue = params.getClassifierTrainQValue();
 
 		ClosedOpenCascade.ClosedStage closed = null;
-		if (cascade) {
+		if (cascade && (!joint || compareArms)) {
 			cb.onMessage("Closed stage: scoring " + closedPsms.size() + " closed-search PSMs with a classifier "
 					+ "trained on them alone ...");
-			closed = ClosedOpenCascade.validateClosed(closedPsms, classifierConfig, CASCADE_FDR, cb::onMessage);
+			String[] closedExtra = new String[0];
+			if (params.isCascadeMs2Features()
+					&& attachCascadePredictions(params, closedPsms, spectraFiles, resultRoot, "closed", cb) > 0) {
+				closedExtra = PredictedSpectrumFeatures.PSM_FEATURES;
+			}
+			closed = ClosedOpenCascade.validateClosed(closedPsms, classifierConfig, CASCADE_FDR, cb::onMessage,
+					params.isCascadeClosedRerank(), closedExtra);
 			cb.onMessage(String.format(java.util.Locale.ROOT,
 					"Closed stage: %,d of %,d spectra accepted at %.0f%% FDR (%,d targets, %,d decoys); the open "
 							+ "search identifies only the rest",
@@ -1659,8 +2090,9 @@ public final class MagOpenSearchHeadlessRunner {
 		// peptide is itself a target - and survives the fragment-evidence test
 		// above, because a substituted residue really does shift part of the ion
 		// series. Only the substitution mass table plus the localization can see it.
+		TrypticPeptideIndex peptideIndex = buildPeptideIndex(params, resultRoot, cb);
 		SubstitutionReassigner.Result substitutions = SubstitutionReassigner.analyse(psms,
-				buildPeptideIndex(params, resultRoot, cb), params.toSubstitutionConfig(), fitCb::onMessage);
+				peptideIndex, params.toSubstitutionConfig(), fitCb::onMessage);
 		if (substitutionsOut != null) {
 			substitutionsOut.set(substitutions);
 		}
@@ -1673,19 +2105,20 @@ public final class MagOpenSearchHeadlessRunner {
 		// Withdrawn, not rejected: these peaks may pass the screen perfectly well;
 		// the point is that they are not modification hypotheses at all, so
 		// counting them as modifications would be wrong however clean they are.
-		// With the closed stage, an allow-list mass is a modification hypothesis stated in advance
-		// and goes through the known-shift screen even when its mass is also a substitution's, as
-		// the fragment-evidence gate already exempts it.
-		Set<Integer> allowListExempt = cascade
-				? allowListSubstitutionPeaks(substitutions, params.toValidatorConfig())
-				: Collections.emptySet();
-		Set<Integer> withdrawn = new HashSet<>(substitutions.substitutionPeakIds);
-		withdrawn.removeAll(allowListExempt);
-		gate = gate.withoutPeaks(withdrawn);
-		if (!allowListExempt.isEmpty()) {
-			cb.onMessage("Substitution analysis: " + allowListExempt.size() + " substitution-shaped peak(s) at an "
-					+ "allow-list mass kept as modification hypotheses: " + allowListExempt);
+		// A wrong peptide with a consistent offset passes the screen and entrapment
+		// alike; on 12mix the +/-14 peaks do, with 18-20% of PSMs outside the true genomes.
+		// Localisation decides: where the peak's localised PSMs sit (PeakSiteShare).
+		Set<Integer> screened = new HashSet<>(gate.acceptedPeakIds);
+		for (ModificationValidator.PeakVerdict verdict : gate.verdicts) {
+			if (verdict.massClass == ModificationValidator.MassClass.ZERO) {
+				screened.remove(verdict.peakId);
+			}
 		}
+		PeakSiteShare.Result siteShare = PeakSiteShare.measure(psms, screened,
+				new ShiftLocaliser(params.getJointFragmentTolerancePpm()), VariantFormRanking.mzmlBySample(spectraFiles),
+				new PeakSiteShare.Config(), fitCb::onMessage);
+		PeakSiteShare.write(siteShare, OpenSearchLayout.peakSiteShares(resultRoot, params.getSearchEngines()));
+		gate = gate.withoutPeaks(siteShare.withdrawnPeakIds());
 		if (!substitutions.peaks.isEmpty()) {
 			SubstitutionReassigner.writePeakReport(substitutions,
 					OpenSearchLayout.substitutionPeaks(resultRoot, params.getSearchEngines()));
@@ -1703,6 +2136,20 @@ public final class MagOpenSearchHeadlessRunner {
 		}
 
 		OpenSearchFeatures.computeAggregateCounts(psms);
+
+		if (joint && !compareArms) {
+			ModificationValidator.Result validation = runJoint(params, psms, closedPsms, gate, spectraFiles,
+					resultRoot, classifierConfig, cb, null);
+			alignSubstitutionVerdicts(params, validation, peptideIndex, cb);
+			writePotentialModifications(fit, substitutions, validation,
+					OpenSearchLayout.potentialModifications(resultRoot, params.getSearchEngines()));
+			return validation;
+		}
+
+		if (cascade && params.isCascadeMs2Features()) {
+			// The open classifier reads the block when it is there (CombinedPsmFeatures.PREDICTED).
+			attachCascadePredictions(params, psms, spectraFiles, resultRoot, "open", cb);
+		}
 
 		if (params.isRestrictPositivesToValidatedPeaks()) {
 			// Learn from PSMs that are both confident and explained. Scoring still
@@ -1803,8 +2250,30 @@ public final class MagOpenSearchHeadlessRunner {
 		LOGGER.info("Per-spectrum FDR: " + acceptedSpectra + " target spectra accepted at 1% of "
 				+ collapse.spectraCount + " spectra (scoring: " + engineDiagnostic + ")");
 
+		if (joint) {
+			// The comparison arms, each captured before the next step re-walks the same PSM objects:
+			// closed only, open only, the cascade. The joint identification then scores everything
+			// again on its own model and is what the workflow reports.
+			String engines = params.getSearchEngines();
+			IdentificationArms arms = new IdentificationArms(OpenSearchLayout.identificationArms(resultRoot, engines),
+					OpenSearchLayout.identificationArmPeptides(resultRoot, engines),
+					OpenSearchLayout.identificationArmsSummary(resultRoot, engines));
+			arms.captureClosedOnly(closed, CASCADE_FDR);
+			ModificationValidator.Result openOnly = ModificationValidator.validate(best, params.toValidatorConfig(),
+					gate);
+			arms.captureOpenOnly(best, openOnly, gate);
+			ModificationValidator.Result cascadeResult = validateOpenStage(params, psms, best, closed, gate,
+					substitutions, resultRoot, cb);
+			arms.captureCascade(closed, best, cascadeResult, gate);
+			ModificationValidator.Result validation = runJoint(params, psms, closedPsms, gate, spectraFiles,
+					resultRoot, classifierConfig, cb, arms);
+			alignSubstitutionVerdicts(params, validation, peptideIndex, cb);
+			writePotentialModifications(fit, substitutions, validation,
+					OpenSearchLayout.potentialModifications(resultRoot, params.getSearchEngines()));
+			return validation;
+		}
 		ModificationValidator.Result validation = cascade
-				? validateOpenStage(params, psms, best, closed, gate, substitutions, allowListExempt, resultRoot, cb)
+				? validateOpenStage(params, psms, best, closed, gate, substitutions, resultRoot, cb)
 				: ModificationValidator.validate(best, params.toValidatorConfig(), gate);
 		writeScoredPsms(psms, best, spectrumQValues, validation, closed,
 				OpenSearchLayout.scoredPsms(resultRoot, params.getSearchEngines()));
@@ -1813,20 +2282,243 @@ public final class MagOpenSearchHeadlessRunner {
 		return validation;
 	}
 
+	/**
+	 * DIA-NN predicted-spectrum and retention-time features for one search's PSMs, every reported
+	 * rank, as external features for the cascade's classifiers.
+	 *
+	 * @return PSMs given an entropy; 0 when DIA-NN or the spectra are unavailable (warned)
+	 */
+	private static int attachCascadePredictions(DDAMagOpenSearchParameters params, List<OpenSearchPsm> psms,
+			List<File> spectraFiles, File resultRoot, String search, ProgressCallback cb) {
+		PredictedSpectrumFeatures.Inputs ms2 = new PredictedSpectrumFeatures.Inputs();
+		ms2.diann = params.getDiannExecutable();
+		ms2.mzmlBySample = VariantFormRanking.mzmlBySample(spectraFiles);
+		ms2.threads = params.getThreadCount();
+		ms2.fragmentTolerancePpm = params.getJointFragmentTolerancePpm();
+		ms2.maxOpenRank = Integer.MAX_VALUE;
+		ms2.workDir = new File(OpenSearchLayout.jointPredictionDir(resultRoot, params.getSearchEngines()),
+				"cascade_" + search);
+		String label = "Cascade " + search + " predictions";
+		int n = PredictedSpectrumFeatures.attach(psms, ms2, label, cb::onMessage,
+				message -> cb.onMessage("WARNING: " + message));
+		cb.onMessage(String.format(java.util.Locale.ROOT, "%s: predicted-spectrum features for %,d of %,d PSMs", label,
+				n, psms.size()));
+		return n;
+	}
+
 	/** Spectrum- and peptide-level FDR of the closed-then-open identification. */
 	private static final double CASCADE_FDR = 0.01;
 
-	/** Substitution-shaped peaks whose centroid is an allow-list mass. */
-	private static Set<Integer> allowListSubstitutionPeaks(SubstitutionReassigner.Result substitutions,
-			ModificationValidator.Config cfg) {
-		Set<Integer> exempt = new TreeSet<>();
-		for (SubstitutionReassigner.PeakSummary peak : substitutions.peaks) {
-			if (substitutions.substitutionPeakIds.contains(peak.peakId) && ExpectedPeakSelector.matching(
-					peak.centroid, cfg.knownShifts, cfg.knownShiftToleranceDa) != null) {
-				exempt.add(peak.peakId);
+	/**
+	 * The joint closed+open identification ({@link JointIdentification}): writes its summary, its
+	 * feature report and its scored table, and the comparison arms when {@code arms} is given.
+	 *
+	 * @param psms the open candidates with peak context and the peak filter applied
+	 */
+	/** Score features the v2 tree model may only reward (a better match never scores lower). */
+	static final java.util.Set<String> V2_MONOTONE_FEATURES = java.util.Set.of("closed_hyperscore",
+			"closed_neg_log10_expect", "open_hyperscore", "open_neg_log10_expect", "sage_hyperscore",
+			"sage_neg_log10_expect", "hyperscore_margin", "ms2_entropy", "ms2_matched_fraction");
+
+	/**
+	 * The identification v2 joint model (design C3): monotone gradient-boosted trees, the audit
+	 * harness's settings, all cores.
+	 */
+	static SemiSupervisedPsmClassifier.ModelFactory identificationV2Model() {
+		return new SemiSupervisedPsmClassifier.ModelFactory() {
+			@Override
+			public weka.classifiers.Classifier create() {
+				XGBoostTreeClassifier model = new XGBoostTreeClassifier(V2_MONOTONE_FEATURES);
+				model.threads = Runtime.getRuntime().availableProcessors();
+				return model;
+			}
+
+			@Override
+			public String describe() {
+				return "XGBoost trees (depth 4, 200 rounds, eta 0.1, lambda 1, monotone score features)";
+			}
+		};
+	}
+
+	/**
+	 * Joint identification only: every reported PSM's substitution verdict becomes the identification's
+	 * own call ({@link SubstitutionReassigner#alignWithIdentification}), so the variant outputs and the
+	 * side quantification read the decision that kept the PSM out of the main result. Off with the
+	 * substitution analysis.
+	 */
+	private static void alignSubstitutionVerdicts(DDAMagOpenSearchParameters params,
+			ModificationValidator.Result validation, TrypticPeptideIndex peptideIndex, ProgressCallback cb) {
+		if (!params.isSubstitutionAnalysisEnabled()) {
+			return;
+		}
+		SubstitutionReassigner.Alignment a = SubstitutionReassigner.alignWithIdentification(reportedPsms(validation),
+				peptideIndex);
+		cb.onMessage(String.format(java.util.Locale.ROOT,
+				"Substitution verdicts follow the identification: %,d set-aside PSMs whose only explanation is a "
+						+ "substitution (%,d with the substituted peptide in the searched database); %,d peak-level "
+						+ "verdicts removed from PSMs the identification did not call a substitution",
+				a.called, a.inDatabase, a.cleared));
+	}
+
+	private static ModificationValidator.Result runJoint(DDAMagOpenSearchParameters params, List<OpenSearchPsm> psms,
+			List<OpenSearchPsm> closedPsms, ModificationValidator.Gate gate, List<File> spectraFiles, File resultRoot,
+			SemiSupervisedPsmClassifier.Config classifierConfig, ProgressCallback cb, IdentificationArms arms)
+			throws Exception {
+		String engines = params.getSearchEngines();
+		JointIdentification.Config cfg = new JointIdentification.Config();
+		cfg.fdr = CASCADE_FDR;
+		cfg.acceptUnexplained = params.isJointAcceptUnexplained();
+		cfg.withheldFeatures = params.jointWithheldFeatureSet();
+		cfg.classifier.folds = classifierConfig.folds;
+		cfg.classifier.maxIterations = classifierConfig.maxIterations;
+		cfg.classifier.trainQValue = classifierConfig.trainQValue;
+		if (params.isIdentificationV2()) {
+			// docs/developer/identification-v2-design.md: precursor queries (C1), RESET (C2), trees (C3).
+			cfg.precursorQueries = true;
+			cfg.reset = true;
+			cfg.classifier.modelFactory = identificationV2Model();
+			cfg.classifier.unclampedLogits = true;
+			// Section 7 of docs/developer/shift-localisation-explanation-design.md: localised-explained
+			// unexplained-shift winners form their own FDR group; the model is unchanged.
+			cfg.shiftLocaliser = new ShiftLocaliser(params.getJointFragmentTolerancePpm());
+			cfg.localisationSpectra = VariantFormRanking.mzmlBySample(spectraFiles);
+			cb.onMessage("Joint identification v2: precursor queries, RESET (decoy weight 2), "
+					+ cfg.classifier.modelFactory.describe() + ", shift localisation (" + cfg.shiftLocaliser + ")");
+		}
+		PredictedSpectrumFeatures.Inputs ms2 = null;
+		if (params.isJointMs2Features()) {
+			ms2 = new PredictedSpectrumFeatures.Inputs();
+			ms2.diann = params.getDiannExecutable();
+			ms2.mzmlBySample = VariantFormRanking.mzmlBySample(spectraFiles);
+			ms2.threads = params.getThreadCount();
+			ms2.fragmentTolerancePpm = params.getJointFragmentTolerancePpm();
+			ms2.maxOpenRank = params.getJointMs2MaxOpenRank();
+			ms2.workDir = OpenSearchLayout.jointPredictionDir(resultRoot, engines);
+		}
+		cb.onMessage("Joint identification: closed and open candidates in one pool, one model, FDR per evidence group"
+				+ (ms2 == null ? " (predicted-spectrum features off)" : ""));
+		JointIdentification.Result joint = JointIdentification.run(psms, closedPsms, gate, cfg, ms2, cb::onMessage,
+				message -> cb.onMessage("WARNING: " + message));
+
+		File summary = OpenSearchLayout.jointSummary(resultRoot, engines);
+		summary.getParentFile().mkdirs();
+		try (PrintWriter writer = new PrintWriter(summary, "UTF-8")) {
+			writer.println("# Joint closed+open identification (docs/developer/joint-closed-open-identification-plan.md).");
+			writer.println("# Counts in [targets, decoys]. Peptides: base peptide with I = L, each in the highest-priority");
+			writer.println("# group where it has an accepted PSM (exact > open_unmodified > open_accepted_shift).");
+			writer.println("name\tvalue");
+			for (String line : joint.summary) {
+				writer.println(line.contains("\t") ? line : "model\t" + line);
 			}
 		}
-		return exempt;
+		JointIdentification.writeFeatureReport(joint, OpenSearchLayout.jointFeatureReport(resultRoot, engines));
+		if (!joint.peakFragmentTests.isEmpty()) {
+			PeakFragmentTest.write(joint.peakFragmentTests, OpenSearchLayout.peakFragmentTest(resultRoot, engines));
+		}
+		writeJointScoredPsms(joint, OpenSearchLayout.scoredPsms(resultRoot, engines));
+		if (arms != null) {
+			arms.captureJoint(joint);
+			arms.finish();
+			cb.onMessage("Joint identification: comparison arms written to "
+					+ OpenSearchLayout.identificationArmsSummary(resultRoot, engines).getName());
+		}
+		cb.onMessage(String.format(java.util.Locale.ROOT,
+				"Joint identification: %,d identifications (%,d exact, %,d open) at %.0f%% FDR per group",
+				joint.validation.validated.size(),
+				joint.validation.validated.size() - joint.validation.peakValidated.size(),
+				joint.validation.peakValidated.size(), CASCADE_FDR * 100));
+		return joint.validation;
+	}
+
+	/**
+	 * Audit table of the joint identification: one row per candidate (spectrum, peptide), with the
+	 * searches that proposed it, each search's own scores, the joint score, the winner flag, the
+	 * group and both q-values. {@link OpenSearchGenomeEvidence} reads its winners.
+	 */
+	private static void writeJointScoredPsms(JointIdentification.Result joint, File out) throws IOException {
+		out.getParentFile().mkdirs();
+		String[] featureNames = joint.features.featureNames();
+		List<String> ms2Columns = new ArrayList<>();
+		for (String name : featureNames) {
+			if (name.startsWith("ms2_") || name.startsWith("rt_")) {
+				ms2Columns.add(name);
+			}
+		}
+		int[] ms2Index = new int[ms2Columns.size()];
+		for (int k = 0; k < ms2Index.length; k++) {
+			ms2Index[k] = Arrays.asList(featureNames).indexOf(ms2Columns.get(k));
+		}
+		try (PrintWriter writer = new PrintWriter(new java.io.BufferedWriter(
+				new java.io.OutputStreamWriter(new java.io.FileOutputStream(out), java.nio.charset.StandardCharsets.UTF_8),
+				1 << 20))) {
+			StringBuilder header = new StringBuilder("file\tscan\tpeptide\tprotein\tis_target\tcharge\t"
+					+ "precursor_neutral_mass\tretention_time_sec\tfound_by\tid_group\tclosed_hit_rank\t"
+					+ "open_hit_rank\tsage_hit_rank\tmass_diff\tnormalized_mass_diff\tpeak_id\t"
+					+ "peak_hypothesis_accepted\tclosed_hyperscore\tclosed_expect\topen_hyperscore\topen_expect\t"
+					+ "delta_mass_score_gain\tlocalized_sequence\tclass_score\tclass_logit\tis_spectrum_winner\t"
+					+ "spectrum_q_value\tpeptide_q_value\tvalidated\tstage");
+			boolean v2Columns = joint.trainingDecoy != null;
+			for (String name : ms2Columns) {
+				header.append('\t').append(name);
+			}
+			if (v2Columns) {
+				header.append("\tquery_reassigned\treset_role\tshift_state\tshift_site\tshift_site_probability"
+						+ "\tshift_support\tshift_explanation\tshift_class");
+			}
+			writer.println(header);
+			for (int i = 0; i < joint.candidates.size(); i++) {
+				JointCandidate c = joint.candidates.get(i);
+				OpenSearchPsm rep = c.representative();
+				OpenSearchPsm open = c.openPrimary();
+				StringBuilder row = new StringBuilder(256);
+				row.append(c.getFileName()).append('\t').append(c.getScan()).append('\t').append(c.getPeptide())
+						.append('\t').append(nullSafe(rep.getProtein())).append('\t').append(c.isTarget())
+						.append('\t').append(rep.getCharge()).append('\t').append(rep.getPrecursorNeutralMass())
+						.append('\t').append(rep.getRetentionTime()).append('\t').append(c.support()).append('\t')
+						.append(c.getGroup()).append('\t').append(c.closed() == null ? "" : c.closed().getHitRank())
+						.append('\t').append(c.fragger() == null ? "" : c.fragger().getHitRank()).append('\t')
+						.append(c.sage() == null ? "" : c.sage().getHitRank()).append('\t').append(rep.getMassDiff())
+						.append('\t').append(rep.getNormalizedMassDiff()).append('\t')
+						.append(open == null ? -1 : open.getPeakId()).append('\t')
+						.append(open != null && open.isInValidatedPeak()).append('\t')
+						.append(c.closed() == null ? "" : c.closed().getHyperscore()).append('\t')
+						.append(c.closed() == null ? "" : c.closed().getExpect()).append('\t')
+						.append(c.fragger() == null ? "" : c.fragger().getHyperscore()).append('\t')
+						.append(c.fragger() == null ? "" : c.fragger().getExpect()).append('\t')
+						.append(open == null ? "" : open.getDeltaMassScoreGain()).append('\t')
+						.append(open == null ? "" : nullSafe(open.getLocalizedSequence())).append('\t')
+						.append(joint.scores[i]).append('\t').append(joint.logits[i]).append('\t')
+						.append(joint.winner[i]).append('\t').append(valueOrBlank(nanToNull(joint.psmQ[i])))
+						.append('\t').append(valueOrBlank(nanToNull(joint.peptideQ[i]))).append('\t')
+						.append(joint.kept[i]).append('\t').append(rep.isClosedStage() ? "closed" : "open");
+				if (ms2Index.length > 0) {
+					double[] v = joint.features.values(i);
+					for (int k : ms2Index) {
+						row.append('\t').append(Double.isNaN(v[k]) ? "" : String.valueOf(v[k]));
+					}
+				}
+				if (v2Columns) {
+					row.append('\t').append(c.isReassigned()).append('\t').append(c.isTarget() ? "target"
+							: joint.trainingDecoy[i] ? "training_decoy" : "estimating_decoy");
+					// Shift localisation of unexplained-shift winners; the site is 1-based, as residues are named.
+					ShiftLocaliser.Result loc = c.getLocalisation();
+					if (loc == null) {
+						row.append("\t\t\t\t\t\t");
+					} else {
+						row.append('\t').append(loc.state.name().toLowerCase(java.util.Locale.ROOT)).append('\t')
+								.append(loc.site < 0 ? "" : String.valueOf(loc.site + 1)).append('\t')
+								.append(valueOrBlank(nanToNull(loc.siteProbability))).append('\t')
+								.append(valueOrBlank(nanToNull(loc.support))).append('\t')
+								.append(loc.explanationText()).append('\t').append(loc.explanationClassText());
+					}
+				}
+				writer.println(row);
+			}
+		}
+	}
+
+	private static Double nanToNull(double v) {
+		return Double.isNaN(v) ? null : v;
 	}
 
 	/**
@@ -1838,7 +2530,7 @@ public final class MagOpenSearchHeadlessRunner {
 	private static ModificationValidator.Result validateOpenStage(DDAMagOpenSearchParameters params,
 			List<OpenSearchPsm> candidates, List<OpenSearchPsm> best, ClosedOpenCascade.ClosedStage closed,
 			ModificationValidator.Gate gate, SubstitutionReassigner.Result substitutions,
-			Set<Integer> allowListExempt, File resultRoot, ProgressCallback cb) throws IOException {
+			File resultRoot, ProgressCallback cb) throws IOException {
 		List<OpenSearchPsm> remaining = new ArrayList<>();
 		int closedTargetSpectra = 0;
 		int openWinnerDiffers = 0;
@@ -1878,7 +2570,7 @@ public final class MagOpenSearchHeadlessRunner {
 			ModificationValidator.MassClass massClass = classes.get(psm.getPeakId());
 			ClosedOpenCascade.IdClass c = massClass == ModificationValidator.MassClass.ZERO
 					? ClosedOpenCascade.IdClass.OPEN_UNMODIFIED
-					: massClass == ModificationValidator.MassClass.KNOWN ? ClosedOpenCascade.IdClass.OPEN_KNOWN_SHIFT
+					: massClass == ModificationValidator.MassClass.ESTABLISHED ? ClosedOpenCascade.IdClass.OPEN_ACCEPTED_SHIFT
 							: null;
 			if (c == null) {
 				continue;
@@ -1924,7 +2616,7 @@ public final class MagOpenSearchHeadlessRunner {
 			}
 			writer.println("validated_closed\t" + closedKept);
 			writer.println("validated_open\t" + openKept.size());
-			writeSubstitutionAgreement(writer, candidates, closed, substitutions, allowListExempt);
+			writeSubstitutionAgreement(writer, candidates, closed, substitutions);
 		}
 		return new ModificationValidator.Result(validated, openKept, open.unexplainedIdentifications, open.verdicts,
 				open.diagnostic);
@@ -1935,8 +2627,7 @@ public final class MagOpenSearchHeadlessRunner {
 	 * target, agreeing (same base peptide) or contradicted. Reported only; decides nothing.
 	 */
 	private static void writeSubstitutionAgreement(PrintWriter writer, List<OpenSearchPsm> candidates,
-			ClosedOpenCascade.ClosedStage closed, SubstitutionReassigner.Result substitutions,
-			Set<Integer> allowListExempt) {
+			ClosedOpenCascade.ClosedStage closed, SubstitutionReassigner.Result substitutions) {
 		Map<Integer, int[]> counts = new TreeMap<>();
 		for (SubstitutionReassigner.PeakSummary peak : substitutions.peaks) {
 			if (peak.substitutionShaped) {
@@ -1962,8 +2653,8 @@ public final class MagOpenSearchHeadlessRunner {
 				continue;
 			}
 			writer.println(String.format(java.util.Locale.ROOT,
-					"substitution_peak_%d\tcentroid=%+.4f closed_agree=%d closed_contradicted=%d allow_list_exempt=%s",
-					peak.peakId, peak.centroid, c[0], c[1], allowListExempt.contains(peak.peakId)));
+					"substitution_peak_%d\tcentroid=%+.4f closed_agree=%d closed_contradicted=%d",
+					peak.peakId, peak.centroid, c[0], c[1]));
 		}
 	}
 
@@ -1994,8 +2685,8 @@ public final class MagOpenSearchHeadlessRunner {
 	 * peptide. What it does is move 271,402 correct PSMs and 16,644 peptides out
 	 * of spurious delta-mass peaks and into the zero peak, at unchanged PSM
 	 * purity. Everything this step buys comes from that relocation - which is why
-	 * it matters most at stage 1, whose admission rule is the zero family plus a
-	 * fixed allow-list, and nothing else.
+	 * it matters most at stage 1, whose admission rule is the zero family plus
+	 * tested UNIMOD shifts, and nothing else.
 	 * <p>
 	 * It is not free: decoys inside the rank-1 zero window rose from 1,192 to
 	 * 6,465 (0.38% to 1.10% of the window), so roughly 1.9% of what it relocates
@@ -2052,7 +2743,7 @@ public final class MagOpenSearchHeadlessRunner {
 					+ "deliberately - running without it reports precursor-assignment artifacts as "
 					+ "modifications.");
 		}
-		File spectraDir = spectraDirOf(experiments);
+		File spectraDir = readableSpectraDir(experiments, resultRoot);
 		if (spectraDir == null || !spectraDir.isDirectory()) {
 			throw new IOException("Crystal-C re-reads the MS1 scans, so it needs the folder holding the spectra; "
 					+ "resolved to " + spectraDir + ".");
@@ -2078,7 +2769,8 @@ public final class MagOpenSearchHeadlessRunner {
 
 			CrystalCHeadlessRunner.Settings settings = new CrystalCHeadlessRunner.Settings();
 			settings.rawFileLocation = spectraDir;
-			settings.rawFileExtension = extensionOf(experiments.get(i)[0]);
+			settings.rawFileExtension = extensionOf(
+					OpenSearchSpectra.readable(new File(experiments.get(i)[0]), resultRoot).getName());
 			settings.outputLocation = workDir;
 			// The database this search ran against. Crystal-C needs the sequences
 			// for its missed-cleavage artifact class and refuses an empty value
@@ -2183,15 +2875,37 @@ public final class MagOpenSearchHeadlessRunner {
 	 * always belongs to the run beside it. A failure here is logged and reported,
 	 * never fatal: the validated PSMs do not depend on it.
 	 */
+	/**
+	 * The identified PSMs exported as the unmodified peptide, closed and open alike: what the variant
+	 * caller reads to say a reference peptide is also observed. An accepted shift exported unmodified
+	 * for want of fragment support is left out, since its precursor does carry a shift. Null unless
+	 * the result separates identifications from the variant evidence (the joint identification), so
+	 * every other identification keeps the caller's own reading.
+	 */
+	private static List<OpenSearchPsm> unmodifiedIdentifications(ModificationValidator.Result validation) {
+		if (validation.diagnostic == validation.validated) {
+			return null;
+		}
+		List<OpenSearchPsm> out = new ArrayList<>();
+		for (OpenSearchPsm psm : validation.validated) {
+			if (psm != null && psm.getPeptide() != null && !psm.isShiftFoldedUnmodified()
+					&& psm.getPeptide().equals(OpenSearchPostAnalysisTsvExporter.canonicalModifiedSequenceOf(psm))) {
+				out.add(psm);
+			}
+		}
+		return out;
+	}
+
 	private static SequenceVariantCaller.Result callSequenceVariants(DDAMagOpenSearchParameters params,
-			File resultRoot, List<OpenSearchPsm> validated, ProgressCallback cb) {
+			File resultRoot, List<OpenSearchPsm> validated, List<OpenSearchPsm> references, ProgressCallback cb) {
 		File table = OpenSearchLayout.sequenceVariants(resultRoot, params.getSearchEngines());
 		File fasta = OpenSearchLayout.sequenceVariantsFasta(resultRoot, params.getSearchEngines());
 		SequenceVariantCaller.Config cfg = params.toSequenceVariantConfig();
 		cfg.decoyTag = TargetDecoyFasta.DECOY_TAG;
 		try {
 			List<File> fastas = refinedFastas(params, resultRoot);
-			SequenceVariantCaller.Result result = SequenceVariantCaller.call(validated, fastas, cfg, cb::onMessage);
+			SequenceVariantCaller.Result result = SequenceVariantCaller.call(validated, references, fastas, cfg,
+					cb::onMessage);
 			if (!cfg.enabled || result.variants.isEmpty()) {
 				Files.deleteIfExists(table.toPath());
 				Files.deleteIfExists(fasta.toPath());
@@ -2359,6 +3073,23 @@ public final class MagOpenSearchHeadlessRunner {
 		return settings;
 	}
 
+	/** Copies the GUI/CLI genome-stop fields onto the selector request. */
+	static void copyGenomeSelection(MagGenomeSelectionService.Request request, DDAMagOpenSearchParameters params) {
+		request.genomeSelectorMode = params.getGenomeSelectorMode();
+		request.genomeSelectionStrategy = params.getGenomeSelectionStrategy();
+		request.genomeSelectionPsmCoverage = params.getGenomeSelectionPsmCoverage();
+		request.genomeSelectionStepGuard = params.getGenomeSelectionStepGuard();
+		request.genomeSelectionMaxGenomes = params.getGenomeSelectionMaxGenomes();
+	}
+
+	static String genomeSelectionSummary(DDAMagOpenSearchParameters params) {
+		if (GenomeSelectionCut.isPsmCoverage(params.getGenomeSelectionStrategy())) {
+			return "PSM coverage, target " + params.getGenomeSelectionPsmCoverage() + ", step guard "
+					+ params.getGenomeSelectionStepGuard() + ", max genomes " + params.getGenomeSelectionMaxGenomes();
+		}
+		return params.getGenomeSelectionStrategy();
+	}
+
 	/**
 	 * Round-1 (marker) search settings. Closed by default: a ppm precursor window
 	 * with isotope errors 0/1/2 and variable Met oxidation and protein N-terminal
@@ -2391,12 +3122,12 @@ public final class MagOpenSearchHeadlessRunner {
 
 	/**
 	 * Closed-stage search of a sample's refined database: the round-1 closed settings
-	 * against {@code refined}, one candidate per spectrum.
+	 * against {@code refined}, {@code closed_stage_topn} candidates per spectrum in every mode.
 	 */
 	static MSFraggerHeadlessRunner.OpenSearchSettings closedStageSettings(DDAMagOpenSearchParameters params,
 			File refined) {
 		MSFraggerHeadlessRunner.OpenSearchSettings settings = baseSettings(params, refined);
-		settings.outputReportTopN = 1;
+		settings.outputReportTopN = params.getClosedStageTopN();
 		applyClosedSearch(settings, params.getClosedStagePrecursorPpm());
 		return settings;
 	}
@@ -2482,15 +3213,15 @@ public final class MagOpenSearchHeadlessRunner {
 	}
 
 	/**
-	 * The audit trail for stage 1's allow-list: every candidate shift, admitted or
-	 * not, with the numbers each criterion was judged on. Written even when
+	 * The audit trail for stage 1's expected shifts: every UNIMOD shift with PSMs in
+	 * its window, admitted or not, with the numbers each criterion was judged on. Written even when
 	 * nothing is admitted, because "nothing passed" is the answer that most needs
 	 * explaining.
 	 */
 	private static void writeExpectedPeakVerdicts(ExpectedPeakSelector.Result expected, File out) throws IOException {
 		out.getParentFile().mkdirs();
 		try (PrintWriter writer = new PrintWriter(out, "UTF-8")) {
-			writer.println("# stage-1 expected mass shifts. A shift is admitted only if it is on the allow-list, has "
+			writer.println("# stage-1 expected mass shifts. A shift is admitted only if it is a UNIMOD mass (isotopic labels excluded), has "
 					+ "enough target PSMs to test, is target-enriched before any cut, and enough of its accepted "
 					+ "peptides were also identified UNMODIFIED in this run. Each admitted shift gets its own "
 					+ "q-value cut, computed within that peak and never pooled.");
@@ -2603,7 +3334,8 @@ public final class MagOpenSearchHeadlessRunner {
 					+ "hit_rank\tengine\tengine_support\tlocalized_sequence\tdelegate_protein\tis_target\t"
 					+ "normalized_mass_diff\tobserved_peak_id\tpeak_id\tpeak_isotope_offset\thyperscore\texpect\t"
 					+ "delta_mass_score_gain\tlocalization_delta_score\tclass_score\tclass_logit\tq_value\t"
-					+ "q_value_scope\tvalidation_tier\tstage");
+					+ "q_value_scope\tvalidation_tier\tstage\tid_group\tshift_state\tshift_site\t"
+					+ "shift_site_probability\tshift_explanation\tshift_class");
 			for (OpenSearchPsm psm : psms) {
 				// Membership of the identification-only result, NOT peakId < 0: a PSM
 				// demoted from a rejected peak has a peak id and is still an
@@ -2638,13 +3370,44 @@ public final class MagOpenSearchHeadlessRunner {
 						+ "\t" + psm.getQValue() + "\t" + qValueScope(psm, unexplained)
 						+ "\t" + (psm.isClosedStage() ? "CLOSED_VALIDATED"
 								: unexplained ? "IDENTIFICATION_ONLY" : "PEAK_VALIDATED")
-						+ "\t" + (psm.isClosedStage() ? "closed" : "open"));
+						+ "\t" + (psm.isClosedStage() ? "closed" : "open") + "\t"
+						+ nullSafe(psm.getIdentificationGroup()) + "\t" + shiftColumns(psm));
 			}
 		}
 	}
 
+	/**
+	 * {@code shift_state}, {@code shift_site} (1-based), {@code shift_site_probability} and
+	 * {@code shift_explanation} (identification v2): this PSM's own fragment-supported localisation,
+	 * for localised and accepted-shift PSMs, and for exact-mass PSMs whose isotope offset was an
+	 * established shift. "Full Sequence" shows the site of its peptide's representative PSM.
+	 * {@code assigned}: the fragments do not place an accepted peak's shift, and the site and explanation
+	 * are the UNIMOD modification of the peak's mass on this peptide (no site probability). Empty for
+	 * every other PSM. Then {@code shift_class}: {@code modification}, {@code substitution} or
+	 * {@code modification_or_substitution} for an explained shift, by what fits its residue
+	 * ({@link ShiftLocaliser.Result#explanationClass()}); empty otherwise.
+	 */
+	static String shiftColumns(OpenSearchPsm psm) {
+		ShiftLocaliser.Result loc = psm.getShiftLocalisation();
+		if (loc == null || loc.site < 0) {
+			return "\t\t\t\t";
+		}
+		String state = loc.state.name().toLowerCase(java.util.Locale.ROOT);
+		int site = psm.getLocalisedShiftSite();
+		if (site < 0) {
+			return state + "\t\t\t\t";
+		}
+		return state + "\t" + (site + 1) + "\t"
+				+ (Double.isNaN(loc.siteProbability) ? "" : String.format(java.util.Locale.ROOT, "%.4f", loc.siteProbability))
+				+ "\t" + loc.explanationText() + "\t" + loc.explanationClassText();
+	}
+
 	/** Which walk produced a PSM's q-value. */
 	private static String qValueScope(OpenSearchPsm psm, boolean unexplained) {
+		if (psm.getIdentificationGroup() != null) {
+			// The joint identification walks each evidence group on its own.
+			return "JOINT_GROUP_" + psm.getIdentificationGroup();
+		}
 		if (psm.isClosedStage()) {
 			return "CLOSED_SPECTRUM";
 		}
@@ -2679,6 +3442,107 @@ public final class MagOpenSearchHeadlessRunner {
 			}
 		}
 		return nullSafe(psm.getProtein());
+	}
+
+	/**
+	 * Quantifies {@link OpenSearchLayout#substitutionQuantPsms} with FlashLFQ (see
+	 * {@link SubstitutionQuantification}): match-between-runs and normalisation off, the peptide and
+	 * peak tables kept in {@code sequence_variants/} under their own names, the peptide table annotated
+	 * with roles, variant ids, variant/reference ratios and shared main-run features. A missing
+	 * executable, an empty PSM file, or a FlashLFQ failure is reported and does not fail the workflow.
+	 * When validation did not run, or an older run wrote the PSM file without roles, it is rebuilt from
+	 * {@code substitution_forms.tsv}, {@code unexplained_psms.tsv} and {@code validated_psms.tsv}.
+	 */
+	static File quantifySubstitutionPsms(DDAMagOpenSearchParameters params, File flashLfqExe,
+			int flashLfqThreads, File resultRoot, String engineMode, File spectraDir, ProgressCallback cb) {
+		try {
+			return quantifySubstitutionPsmsOnce(params, flashLfqExe, flashLfqThreads, resultRoot, engineMode,
+					spectraDir, cb);
+		} catch (Exception e) {
+			LOGGER.warn("Substitution quantification failed; the main result is unchanged", e);
+			cb.onMessage("WARNING: substitution quantification failed (" + e.getMessage()
+					+ "); the main result is unchanged");
+			return null;
+		}
+	}
+
+	private static File quantifySubstitutionPsmsOnce(DDAMagOpenSearchParameters params, File flashLfqExe,
+			int flashLfqThreads, File resultRoot, String engineMode, File spectraDir, ProgressCallback cb)
+			throws IOException {
+		File psmFile = OpenSearchLayout.substitutionQuantPsms(resultRoot, engineMode);
+		File quantified = OpenSearchLayout.substitutionQuantifiedPeptides(resultRoot, engineMode);
+		File sidePeaks = OpenSearchLayout.substitutionQuantifiedPeaks(resultRoot, engineMode);
+		File mainPeaks = OpenSearchLayout.quantifiedPeaks(resultRoot, engineMode);
+		if (!SubstitutionQuantification.hasRoles(psmFile)) {
+			SubstitutionQuantification.writePsmsFromReports(OpenSearchLayout.substitutionForms(resultRoot, engineMode),
+					OpenSearchLayout.unexplainedPsms(resultRoot, engineMode),
+					OpenSearchLayout.validatedPsms(resultRoot, engineMode), psmFile);
+		}
+		int rows = SubstitutionQuantification.variantRows(psmFile);
+		if (rows == 0) {
+			Files.deleteIfExists(quantified.toPath());
+			Files.deleteIfExists(sidePeaks.toPath());
+			cb.onMessage("Substitution quantification: no target substitution PSMs outside validated_psms.tsv; "
+					+ "FlashLFQ not run");
+			return null;
+		}
+		if (flashLfqExe == null || !flashLfqExe.isFile()) {
+			cb.onMessage("Substitution quantification: " + rows + " PSMs in " + psmFile.getName()
+					+ "; no FlashLFQ executable supplied, so they were not quantified");
+			return null;
+		}
+		boolean current = mainPeaks.isFile() ? OpenSearchLayout.isSatisfied(quantified, psmFile, mainPeaks)
+				: OpenSearchLayout.isSatisfied(quantified, psmFile);
+		if (current) {
+			cb.onMessage("Substitution quantification: " + quantified.getName() + " is current, skipping FlashLFQ");
+			return quantified;
+		}
+		if (spectraDir == null || !spectraDir.isDirectory()) {
+			cb.onMessage("WARNING: substitution quantification skipped; the spectrum folder is not available ("
+					+ spectraDir + "). The main result is unchanged");
+			return null;
+		}
+		MetaData metadata = params.getMetadata();
+		if (metadata == null || metadata.getRawFileCount() == 0) {
+			cb.onMessage("WARNING: substitution quantification skipped; the parameters carry no raw-file metadata. "
+					+ "The main result is unchanged");
+			return null;
+		}
+		cb.onMessage("Substitution quantification: FlashLFQ over " + rows + " variant PSMs and their reference PSMs in "
+				+ psmFile.getName() + ", match-between-runs and normalisation off");
+		SubstitutionQuantification.SpectraFolderGuard guard = SubstitutionQuantification.SpectraFolderGuard
+				.take(spectraDir);
+		boolean ok;
+		try {
+			FlashLfqTask task = new FlashLfqTask(flashLfqExe.getAbsolutePath(), flashLfqThreads);
+			ok = task.run(metadata, psmFile.getAbsolutePath(), spectraDir.getAbsolutePath(), false, false);
+		} finally {
+			guard.restore();
+		}
+		File dir = psmFile.getParentFile();
+		File nativePeptides = new File(dir, "QuantifiedPeptides.tsv");
+		File nativePeaks = new File(dir, "QuantifiedPeaks.tsv");
+		// One UNASSIGNED protein: FlashLFQ's protein table says nothing here.
+		Files.deleteIfExists(new File(dir, "QuantifiedProteins.tsv").toPath());
+		if (!ok || !nativePeptides.isFile() || nativePeptides.length() == 0) {
+			Files.deleteIfExists(nativePeptides.toPath());
+			Files.deleteIfExists(nativePeaks.toPath());
+			cb.onMessage("WARNING: substitution quantification failed for " + psmFile.getName()
+					+ "; the main result is unchanged");
+			return null;
+		}
+		if (nativePeaks.isFile()) {
+			Files.move(nativePeaks.toPath(), sidePeaks.toPath(), StandardCopyOption.REPLACE_EXISTING);
+		} else {
+			Files.deleteIfExists(sidePeaks.toPath());
+		}
+		int sharing = SubstitutionQuantification.annotate(psmFile, nativePeptides, sidePeaks, mainPeaks);
+		Files.move(nativePeptides.toPath(), quantified.toPath(), StandardCopyOption.REPLACE_EXISTING);
+		cb.onMessage("Substitution quantification: " + quantified.getName() + " written; " + sharing
+				+ " variant peptide(s) share an MS1 feature with a main-run peptide (shares_main_feature)"
+				+ (mainPeaks.isFile() ? "" : ", not checked: no main-run QuantifiedPeaks.tsv")
+				+ "; final tables are unchanged");
+		return quantified;
 	}
 
 	/**
@@ -2802,10 +3666,12 @@ public final class MagOpenSearchHeadlessRunner {
 	private static void writeVerdicts(ModificationValidator.Result validation, File out) throws IOException {
 		out.getParentFile().mkdirs();
 		try (PrintWriter writer = new PrintWriter(out, "UTF-8")) {
-			writer.println("# mass_class: ZERO is the peak nearest 0 Da and is always accepted; KNOWN matches the");
-			writer.println("# allow-list and is accepted when decoy_upper_bound (Wilson 95% on the rank-1 decoy");
-			writer.println("# fraction) < background_decoy_fraction (all other non-zero peaks pooled); UNEXPLAINED");
-			writer.println("# is never accepted - its PSMs are identifications with no modification claim.");
+			writer.println("# mass_class: ZERO is the peak nearest 0 Da and is always accepted; ESTABLISHED passed the");
+			writer.println("# evidence rule on its rank-1 PSMs of 13+ residues: 50 or more of them, at most 5% decoys,");
+			writer.println("# and a long-peptide share of at least 0.75 of that of all other non-zero peaks;");
+			writer.println("# UNEXPLAINED failed it - its PSMs are identifications with no modification claim.");
+			writer.println("# A peak that passes but whose localised PSMs mostly sit where a substitution fits is");
+			writer.println("# withdrawn (accepted=false, see reason and peak_site_shares.tsv).");
 			writer.println("# fragment_supported is recorded from the delta-mass evidence gate, not used to accept.");
 			writer.println("# Decoy fractions are screening statistics, not calibrated: peaks are defined by fitting");
 			writer.println("# a target-dominated histogram. FDR control comes from the walks using 1:1 decoys.");
@@ -2815,15 +3681,17 @@ public final class MagOpenSearchHeadlessRunner {
 			writer.println("# psms_retained counts peak-validated PSMs only, so it is 0 for a rejected peak.");
 			writer.println("# identification_only_retained=" + validation.unexplainedIdentifications.size()
 					+ " (PSMs with no accepted mass explanation, retained by identification FDR)");
-			writer.println("peak_id\tcentroid_da\tmass_class\tknown_shift\ttargets\tdecoys\tdecoy_fraction\t"
+			writer.println("peak_id\tcentroid_da\tmass_class\ttargets\tdecoys\tdecoy_fraction\t"
 					+ "decoy_upper_bound\tbackground_decoy_fraction\tfragment_supported\taccepted\treason\t"
-					+ "psms_retained");
+					+ "psms_retained\tlong_peptide_psms\tlong_peptide_decoy_fraction\tlong_peptide_share_ratio");
 			for (ModificationValidator.PeakVerdict verdict : validation.verdicts) {
 				writer.println(verdict.peakId + "\t" + verdict.centroid + "\t" + verdict.massClass + "\t"
-						+ verdict.knownShift + "\t" + verdict.targets + "\t" + verdict.decoys + "\t"
+						+ verdict.targets + "\t" + verdict.decoys + "\t"
 						+ verdict.decoyFraction + "\t" + verdict.decoyUpperBound + "\t"
 						+ verdict.backgroundDecoyFraction + "\t" + verdict.fragmentSupported + "\t"
-						+ verdict.accepted + "\t" + verdict.reason + "\t" + verdict.psmsRetained);
+						+ verdict.accepted + "\t" + verdict.reason + "\t" + verdict.psmsRetained + "\t"
+						+ verdict.longPeptidePsms + "\t" + verdict.longPeptideDecoyFraction + "\t"
+						+ verdict.longPeptideShareRatio);
 			}
 		}
 	}
@@ -2995,6 +3863,61 @@ public final class MagOpenSearchHeadlessRunner {
 		}
 	}
 
+	/**
+	 * FragPipe MAG equivalent of {@code cleanupMarkerSearchIntermediates}: after
+	 * every search has written its pepXML, drop MSFragger {@code .pepindex} files
+	 * under {@code search_results/} and any fallback marker index beside
+	 * {@code marker_target_decoy.fasta} in the engine folder. They sit beside the
+	 * FASTA MSFragger searched; resume still skips from the pepXML. Paths are
+	 * resolved without {@link OpenSearchLayout#searchResultsRoot} so this step
+	 * does not migrate folders. The shared MAG-database {@code Marker4_td.fasta}
+	 * index is outside this tree and is left in place.
+	 */
+	static void cleanupDatabaseIndexes(File resultRoot, List<String[]> experiments, ProgressCallback cb) {
+		if (resultRoot == null || cb == null) {
+			return;
+		}
+		deletePepindexFiles(resultRoot, cb);
+		deletePepindexTree(new File(resultRoot, OpenSearchLayout.SEARCH_RESULTS_DIR), cb);
+	}
+
+	private static void deletePepindexTree(File directory, ProgressCallback cb) {
+		if (directory == null || !directory.isDirectory()) {
+			return;
+		}
+		deletePepindexFiles(directory, cb);
+		File[] children = directory.listFiles(File::isDirectory);
+		if (children == null) {
+			return;
+		}
+		for (File child : children) {
+			deletePepindexTree(child, cb);
+		}
+	}
+
+	private static void deletePepindexFiles(File directory, ProgressCallback cb) {
+		if (directory == null || !directory.isDirectory()) {
+			return;
+		}
+		File[] files = directory.listFiles(File::isFile);
+		if (files == null) {
+			return;
+		}
+		for (File file : files) {
+			if (!file.getName().toLowerCase(java.util.Locale.ROOT).endsWith(".pepindex")) {
+				continue;
+			}
+			try {
+				if (Files.deleteIfExists(file.toPath())) {
+					cb.onMessage("Deleted MSFragger database index: " + file.getAbsolutePath());
+				}
+			} catch (IOException e) {
+				cb.onMessage("WARNING: could not delete MSFragger database index " + file.getAbsolutePath()
+						+ ": " + e.getMessage());
+			}
+		}
+	}
+
 	private static String baseName(String path) {
 		String name = new File(path).getName();
 		int dot = name.lastIndexOf('.');
@@ -3006,11 +3929,78 @@ public final class MagOpenSearchHeadlessRunner {
 	 * writer to report per-file scan counts. Null when it cannot be determined,
 	 * which the writer tolerates.
 	 */
+	/**
+	 * The folder the spectrum-reading tools (MSBooster, Crystal-C, FlashLFQ) are pointed at: the
+	 * inputs' folder for mzML inputs, {@code spectra_mzml/} for .raw and .d inputs
+	 * ({@link OpenSearchSpectra}).
+	 */
+	static File readableSpectraDir(List<String[]> experiments, File resultRoot) throws IOException {
+		if (experiments == null || experiments.isEmpty()) {
+			return null;
+		}
+		List<File> inputs = new ArrayList<>(experiments.size());
+		for (String[] experiment : experiments) {
+			inputs.add(new File(experiment[0]));
+		}
+		return OpenSearchSpectra.spectraDir(inputs, resultRoot);
+	}
+
 	private static File spectraDirOf(List<String[]> experiments) {
 		if (experiments == null || experiments.isEmpty()) {
 			return null;
 		}
 		File first = new File(experiments.get(0)[0]);
 		return first.getParentFile();
+	}
+
+	/** Under the result root: {@code ms2Count.txt} and {@code rt.txt} written from the input mzML files. */
+	static final String SPECTRA_SUMMARY_DIR = MagResultLayoutUtil.SPECTRA_SUMMARY_DIR_NAME;
+
+	/**
+	 * The folder holding {@code ms2Count.txt} (MS2 scans per run) for {@code final_summary.tsv}'s
+	 * identification rate. pFind writes it in the result's {@code spectra/} folder. A run started
+	 * from mzML converts nothing, so the same two files are written there rather than beside the
+	 * inputs. An existing count, including one left in {@code spectra_summary/}, is used as it is.
+	 * Falls back to the input folder when the inputs are not all mzML or cannot be read.
+	 */
+	static File spectraSummaryDir(List<String[]> experiments, File resultRoot, ProgressCallback cb) {
+		File inputDir = spectraDirOf(experiments);
+		if (MagResultLayoutUtil.hasMs2Count(inputDir)) {
+			return inputDir;
+		}
+		if (experiments == null || experiments.isEmpty() || resultRoot == null) {
+			return inputDir;
+		}
+		String[] files = new String[experiments.size()];
+		for (int i = 0; i < files.length; i++) {
+			files[i] = OpenSearchSpectra.readable(new File(experiments.get(i)[0]), resultRoot).getPath();
+		}
+		if (!MzmlSummaryFileWriter.allMzml(files)) {
+			cb.onMessage("Spectra summary: inputs are not all mzML; final_summary.tsv uses identified PSMs as the "
+					+ "MS/MS count");
+			return inputDir;
+		}
+		File dir = MagResultLayoutUtil.spectraCountDir(resultRoot);
+		if (MagResultLayoutUtil.hasMs2Count(dir)) {
+			cb.onMessage("Spectra summary: using " + dir.getAbsolutePath());
+			return dir;
+		}
+		try {
+			if (MzmlSummaryFileWriter.ensure(dir, files)) {
+				cb.onMessage("Spectra summary: ms2Count.txt and rt.txt in " + dir.getAbsolutePath());
+				return dir;
+			}
+			// A partial file would be read as complete next time.
+			new File(dir, "ms2Count.txt").delete();
+			new File(dir, "rt.txt").delete();
+			cb.onMessage("WARNING: Spectra summary: an mzML file is missing or empty; final_summary.tsv uses "
+					+ "identified PSMs as the MS/MS count");
+		} catch (IOException e) {
+			new File(dir, "ms2Count.txt").delete();
+			new File(dir, "rt.txt").delete();
+			cb.onMessage("WARNING: Spectra summary could not be written (" + e.getMessage()
+					+ "); final_summary.tsv uses identified PSMs as the MS/MS count");
+		}
+		return inputDir;
 	}
 }

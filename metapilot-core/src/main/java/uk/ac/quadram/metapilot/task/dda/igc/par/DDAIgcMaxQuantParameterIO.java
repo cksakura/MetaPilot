@@ -10,6 +10,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import uk.ac.quadram.metapilot.task.par.MetaData;
+import uk.ac.quadram.metapilot.task.par.SampleMetadata;
 import uk.ac.quadram.metapilot.task.par.BaseParameterIO;
 
 /**
@@ -340,6 +341,7 @@ public class DDAIgcMaxQuantParameterIO extends BaseParameterIO {
 					metadataTableData.add(metadataRow);
 				}
 				parameters.setMetadataTableData(metadataTableData);
+				SampleMetadata.apply(parameters.getMetadata(), metadataTableData);
 			}
 
 			LOGGER.info("Successfully loaded parameters from {}", paramFile.getAbsolutePath());

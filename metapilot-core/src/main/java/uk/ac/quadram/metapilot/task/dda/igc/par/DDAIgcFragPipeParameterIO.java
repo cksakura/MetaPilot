@@ -14,6 +14,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import uk.ac.quadram.metapilot.task.par.BaseParameterIO;
+import uk.ac.quadram.metapilot.task.par.SampleMetadata;
 
 /**
  * Parameter IO Handler for DDA IGC FragPipe Workflow
@@ -345,6 +346,7 @@ public class DDAIgcFragPipeParameterIO extends BaseParameterIO {
                     metadataData.add(row);
                 }
                 params.setMetadataTableData(metadataData);
+                SampleMetadata.apply(params.getMetadata(), metadataData);
             }
             
         } catch (Exception e) {
@@ -360,7 +362,7 @@ public class DDAIgcFragPipeParameterIO extends BaseParameterIO {
     public JSONObject createJsonHeader(String description) {
         JSONObject json = new JSONObject();
         json.put("workflow", getWorkflowType());
-        json.put("version", "1.1.1");
+        json.put("version", "1.2.0");
         json.put("description", description);
         json.put("created", new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()));
         json.put("parameter_type", "DDAIgcFragPipeParameters");

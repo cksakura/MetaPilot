@@ -166,7 +166,7 @@ public class DDAIgcPFindTask extends MetaPilotIgcTask {
 	@Override
 	protected String getVersion() {
 		// TODO Auto-generated method stub
-		return "1.1.1";
+		return "1.2.0";
 	}
 
 	@Override

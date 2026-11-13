@@ -101,6 +101,7 @@ public final class DdaMagPostAnalysisService {
 	}
 
 	public static final class Result {
+		public MagResultFinalisationService.Selection finalSelection;
 		public final HashMap<String, MetaPSM> psmMap;
 		public final HashMap<String, int[]> pepPsmCountMap;
 		public final HashMap<String, int[]> pepChargeMap;
@@ -113,7 +114,9 @@ public final class DdaMagPostAnalysisService {
 		public final HashMap<String, Double> genomeScoreMap;
 		public final HashMap<String, double[]> genomeDiaStats;
 		public final String[] razorProteins;
-		public final HashMap<String, double[]> genomeIntensityMap;
+		public HashMap<String, double[]> genomeIntensityMap;
+		/** Intensity summed from peptides that map to exactly one confident genome. */
+		public HashMap<String, double[]> genomeUniqueIntensityMap = new HashMap<>();
 		public final HashMap<String, double[]> proteinIntensityMap;
 		public final HashMap<String, Double> proteinTotalIntenMap;
 		public final HashMap<String, double[]> allProteinIntensityMap;
@@ -133,17 +136,7 @@ public final class DdaMagPostAnalysisService {
 		public final HashMap<String, Integer> proteinIdMap;
 		public final HashMap<String, Integer> razorPsmCountMap;
 		public final MetaProtein[] metaProteins;
-		/**
-		 * Validated, quantified peptides in {@link #peptideList} whose every
-		 * candidate protein belongs to a genome that did not clear the
-		 * confident-genome q-value gate ({@link DdaMagProteinInferenceService#confidentGenomes}),
-		 * so no razor protein could be assigned. Not a data-quality problem with
-		 * the peptide itself - it is still in {@link #peptideList} with an empty
-		 * razor protein (see {@code DdaMagReportExportService.resolveRazorProtein})
-		 * and contributes to no razor/genome/protein-intensity map - only a count
-		 * of how many identifications carry no confident genome attribution, so a
-		 * caller can report it instead of it being invisible.
-		 */
+		/** Diagnostic count; excluded evidence never enters final peptideList. */
 		public final int peptidesWithoutConfidentRazorProtein;
 
 		private Result(HashMap<String, MetaPSM> psmMap, HashMap<String, int[]> pepPsmCountMap,
@@ -243,14 +236,18 @@ public final class DdaMagPostAnalysisService {
 			if (isValidFileId(fileId, fileCount)) {
 				int[] psmCount = pepPsmCountMap.computeIfAbsent(modseq, k -> new int[fileCount]);
 				psmCount[fileId]++;
-				filePsmCount[fileId]++;
-				fileScanSets[fileId].add(psm.getScan());
-				String sequence = psm.getBaseSequence();
-				if (sequence == null) {
-					sequence = psm.getSequence();
-				}
-				if (sequence != null) {
-					fileSequenceSets[fileId].add(sequence);
+				// Decoy PSMs stay in the protein/genome counts (needed for genome FDR) but are not
+				// identifications, so they are left out of the per-file summary counts.
+				if (!mapsOnlyToDecoys(psm.getProteins(), decoySymbol)) {
+					filePsmCount[fileId]++;
+					fileScanSets[fileId].add(psm.getScan());
+					String sequence = psm.getBaseSequence();
+					if (sequence == null) {
+						sequence = psm.getSequence();
+					}
+					if (sequence != null) {
+						fileSequenceSets[fileId].add(sequence);
+					}
 				}
 
 				double[] expect = pepExpectMap.computeIfAbsent(modseq, k -> {
@@ -299,9 +296,9 @@ public final class DdaMagPostAnalysisService {
 			for (HashSet<String> fileSequenceSet : fileSequenceSets) {
 				fileSequenceSet.clear();
 			}
-			applyPeptideMs2Counts(peptides, pepPsmCountMap, filePsmCount, fileSequenceSets, fileCount);
+			applyPeptideMs2Counts(peptides, pepPsmCountMap, filePsmCount, fileSequenceSets, fileCount, decoySymbol);
 		} else if (input.preferPeptideMs2Counts && sum(filePsmCount) == 0) {
-			applyPeptideMs2Counts(peptides, pepPsmCountMap, filePsmCount, fileSequenceSets, fileCount);
+			applyPeptideMs2Counts(peptides, pepPsmCountMap, filePsmCount, fileSequenceSets, fileCount, decoySymbol);
 		}
 
 		for (MetaPeptide peptide : peptides) {
@@ -325,9 +322,29 @@ public final class DdaMagPostAnalysisService {
 				: MagPostAnalysisScoringService.scoreDda(peptides, psms,
 						concat(peptides, input.genomeBackgroundPeptides, MetaPeptide[]::new),
 						concat(psms, input.genomeBackgroundPsms, MetaPSM[]::new), decoySymbol, magIdentifier);
-		return buildResult(peptides, decoySymbol, magIdentifier, psmMap, pepPsmCountMap, pepChargeMap, pepExpectMap,
+		Result result = buildResult(peptides, decoySymbol, magIdentifier, psmMap, pepPsmCountMap, pepChargeMap, pepExpectMap,
 				psmCountMap, filePsmCount, fileSequenceSets, scoring.genomeScoring, scoring.confidentGenomeScoreMap,
 				scoring.proteinInference, scoring.proteinScoreMap);
+        if (!input.preferPeptideMs2Counts) {
+            Set<String> retainedKeys = new HashSet<>();
+            for (MetaPeptide p : result.peptideList) retainedKeys.add(p.getModSeq());
+            Arrays.fill(result.filePsmCount, 0);
+            for (int i = 0; i < fileCount; i++) { fileScanSets[i].clear(); result.fileSequenceSets[i].clear(); }
+            int[] rawCounts = new int[fileCount];
+            for (MetaPSM psm : psms) {
+                if (psm == null || !retainedKeys.contains(psm.getModSeq()) || mapsOnlyToDecoys(psm.getProteins(), decoySymbol)) continue;
+                int file = resolveFileIndex(psm.getFileName(), fileIdMap, fileList, input.fileIndexResolver);
+                if (!isValidFileId(file, fileCount)) continue;
+                rawCounts[file]++;
+                fileScanSets[file].add(psm.getScan());
+                String seq = psm.getBaseSequence() != null ? psm.getBaseSequence() : psm.getSequence();
+                if (seq != null) result.fileSequenceSets[file].add(seq);
+            }
+            for (int i = 0; i < fileCount; i++) result.filePsmCount[i] = fileScanSets[i].size() == 1 && rawCounts[i] > 1
+                    ? rawCounts[i] : fileScanSets[i].size();
+        }
+        return result;
+
 	}
 
 	/**
@@ -455,9 +472,73 @@ public final class DdaMagPostAnalysisService {
 			HashMap<String, Integer> psmCountMap, int[] filePsmCount, HashSet<String>[] fileSequenceSets,
 			DdaMagGenomeScoringService.Result genomeScoring, HashMap<String, Double> confidentGenomeScoreMap,
 			DdaMagProteinInferenceService.Result proteinRefinement, HashMap<String, double[]> allProteinScoreMap) {
+        Map<MetaPeptide, String[]> originalMappings = new java.util.IdentityHashMap<>();
+        for (MetaPeptide p : peptides) {
+            if (p == null) continue;
+            originalMappings.put(p, p.getProteins());
+            p.setProteins(MagResultFinalisationService.retainedProteins(p.getProteins(), magIdentifier,
+                    decoySymbol, confidentGenomeScoreMap.keySet()));
+        }
+        DdaMagProteinInferenceService.Result gatedRefinement = DdaMagProteinInferenceService.refineProteins(
+                peptides, confidentGenomeScoreMap, null, magIdentifier, decoySymbol);
+        Result provisional = buildProvisionalResult(peptides, decoySymbol, magIdentifier, psmMap,
+                pepPsmCountMap, pepChargeMap, pepExpectMap, psmCountMap, filePsmCount, fileSequenceSets,
+                genomeScoring, confidentGenomeScoreMap, gatedRefinement, allProteinScoreMap);
+        for (Map.Entry<MetaPeptide, String[]> e : originalMappings.entrySet()) e.getKey().setProteins(e.getValue());
+        MagResultFinalisationService.Selection selection = MagResultFinalisationService.select(
+                provisional.genomeIntensityMap, genomeScoring.diaStyleGenomeStats,
+                confidentGenomeScoreMap.keySet(), psmCountMap, provisional.totalPepCountMap,
+                provisional.razorPepCountMap, provisional.uniquePepCountMap);
+        MetaPeptide[] retained = MagResultFinalisationService.prune(peptides, magIdentifier, decoySymbol, selection);
+        HashMap<String, Double> frozenScores = new HashMap<>(confidentGenomeScoreMap);
+        frozenScores.keySet().retainAll(selection.genomes);
+        DdaMagProteinInferenceService.Result refined = DdaMagProteinInferenceService.refineProteins(
+                retained, frozenScores, null, magIdentifier, decoySymbol);
+        Arrays.fill(filePsmCount, 0);
+        for (HashSet<String> seqs : fileSequenceSets) seqs.clear();
+        psmCountMap.clear();
+        for (MetaPeptide p : retained) {
+            if (p == null) continue;
+            int[] counts = pepPsmCountMap.get(p.getModSeq());
+            double[] intensity = p.getIntensity();
+            for (int i = 0; i < filePsmCount.length; i++) {
+                if (counts != null && i < counts.length) filePsmCount[i] += counts[i];
+                // "Peptide Sequences Identified" per file: MS/MS identifications only. A peptide quantified
+                // in a file by match-between-runs is not identified there. Intensity stands in only when
+                // the input carries no MS2 counts at all (peptide-table workflows).
+                boolean identified = counts != null
+                        ? i < counts.length && counts[i] > 0
+                        : intensity != null && i < intensity.length && intensity[i] > 0;
+                if (identified) fileSequenceSets[i].add(p.getSequence());
+            }
+            int n = counts == null ? 0 : Arrays.stream(counts).sum();
+            Set<String> gs = new HashSet<>();
+            for (String pro : p.getProteins()) {
+                psmCountMap.merge(pro, n, Integer::sum);
+                if (isMagProtein(pro, magIdentifier)) gs.add(genomeOf(pro));
+            }
+            for (String g : gs) psmCountMap.merge(g, n, Integer::sum);
+        }
+        Result result = buildProvisionalResult(retained, decoySymbol, magIdentifier, psmMap,
+                pepPsmCountMap, pepChargeMap, pepExpectMap, psmCountMap, filePsmCount, fileSequenceSets,
+                genomeScoring, frozenScores, refined, allProteinScoreMap);
+        result.finalSelection = selection;
+        result.genomeIntensityMap = new MagResultFinalisationService.FinalGenomeIntensityMap(result.genomeIntensityMap, selection);
+        result.genomeUniqueIntensityMap = new MagResultFinalisationService.FinalGenomeIntensityMap(
+                result.genomeUniqueIntensityMap, selection);
+        return result;
+    }
+
+	private static Result buildProvisionalResult(MetaPeptide[] peptides, String decoySymbol, String magIdentifier,
+			HashMap<String, MetaPSM> psmMap, HashMap<String, int[]> pepPsmCountMap,
+			HashMap<String, int[]> pepChargeMap, HashMap<String, double[]> pepExpectMap,
+			HashMap<String, Integer> psmCountMap, int[] filePsmCount, HashSet<String>[] fileSequenceSets,
+			DdaMagGenomeScoringService.Result genomeScoring, HashMap<String, Double> confidentGenomeScoreMap,
+			DdaMagProteinInferenceService.Result proteinRefinement, HashMap<String, double[]> allProteinScoreMap) {
 		HashMap<String, Double> genomeScoreMap = confidentGenomeScoreMap;
 		String[] razorProteins = proteinRefinement.razorProteins;
 		HashMap<String, double[]> genomeIntensityMap = new HashMap<>();
+		HashMap<String, double[]> genomeUniqueIntensityMap = new HashMap<>();
 		HashMap<String, double[]> proteinIntensityMap = new HashMap<>();
 		HashMap<String, Double> proteinTotalIntenMap = new HashMap<>();
 		HashMap<String, double[]> allProteinIntensityMap = new HashMap<>();
@@ -472,34 +553,7 @@ public final class DdaMagPostAnalysisService {
 		HashMap<String, HashSet<String>> uniquePepWithILMap = new HashMap<>();
 		ArrayList<MetaPeptide> peptideList = new ArrayList<>();
 
-		// A peptide with no razor protein (razorProteins[i] == null) is one whose
-		// every candidate protein belongs to a genome that did not clear the
-		// confident-genome q-value gate (DdaMagProteinInferenceService.confidentGenomes,
-		// q <= DEFAULT_GENOME_Q_VALUE_THRESHOLD). That is a statement about GENOME
-		// identity confidence, not about whether this peptide was validly
-		// identified and quantified. This loop used to `continue` before adding
-		// such a peptide to peptideList, so it silently vanished from
-		// final_peptides.tsv/razor_proteins.tsv/all_proteins.tsv - undercounting
-		// real, validated, quantified identifications with no trace anywhere.
-		// Measured on the 12mix 2026-09-18 MSFragger-only open-search run: 78.3%
-		// of validated distinct peptides (84,374 of 107,797) were dropped this
-		// way, because their only candidate genomes failed the genome q-value
-		// gate - not because the peptides themselves were unreliable. The genome
-		// failures were not a matter of identification depth: on the 2026-10-08
-		// IPX0003851001 MSFragger-only run the same pattern (2 of 32 genomes,
-		// 76% of peptides unattributed) came from genome scoring receiving
-		// PerEngineClassifier's calibrated score, capped at 12 for most accepted
-		// PSMs, in place of the classifier logit (see OpenSearchMetaPsm), scored
-		// against a null of target peptides that also map to a rev_ protein
-		// rather than the validated decoys (see OpenSearchPostAnalysisTsvExporter).
-		//
-		// The peptide is now always added to peptideList (so it is always
-		// reported, with an empty Razor protein column - see
-		// DdaMagReportExportService.resolveRazorProtein). It still contributes to
-		// no razor/genome/protein-intensity map when it has no razor protein, so
-		// every genome- and protein-level statistic below is computed exactly as
-		// before this change - only whether the peptide ITSELF is reported at all
-		// has changed.
+		// Final tables require a retained razor protein; excluded evidence is exported separately.
 		int peptidesWithoutConfidentRazorProtein = 0;
 		for (int i = 0; i < peptides.length; i++) {
 			if (peptides[i] == null) {
@@ -509,11 +563,14 @@ public final class DdaMagPostAnalysisService {
 			if (sequence == null) {
 				continue;
 			}
-			peptideList.add(peptides[i]);
+			if (mapsOnlyToDecoys(peptides[i], decoySymbol)) {
+				continue;
+			}
 			if (i >= razorProteins.length || razorProteins[i] == null) {
 				peptidesWithoutConfidentRazorProtein++;
 				continue;
 			}
+			peptideList.add(peptides[i]);
 			boolean hasIorL = hasIorL(sequence);
 			razorPepCountMap.computeIfAbsent(razorProteins[i], k -> new HashSet<>()).add(sequence);
 			if (isMagProtein(razorProteins[i], magIdentifier)) {
@@ -545,6 +602,26 @@ public final class DdaMagPostAnalysisService {
 			}
 			addAllProteinEvidence(peptide, decoySymbol, allProteinIntensityMap, allProteinTotalIntenMap,
 					allProteinPepCountMap, allProteinPsmCountMap, pepPsmCountMap);
+            // Support counts follow every retained association, including proteins
+            // represented only in all_proteins.tsv. Allocation still follows the
+            // established razor-bearing-protein policy below.
+            Set<String> mappedGenomes = new HashSet<>();
+            boolean hasNonMag = false;
+            for (String protein : proteins) {
+                if (protein == null || isDecoyProtein(protein, decoySymbol)) continue;
+                totalPepCountMap.computeIfAbsent(protein, k -> new HashSet<>()).add(sequence);
+                if (isMagProtein(protein, magIdentifier) && genomeScoreMap.containsKey(genomeOf(protein))) {
+                    String genome = genomeOf(protein);
+                    mappedGenomes.add(genome);
+                    totalPepCountMap.computeIfAbsent(genome, k -> new HashSet<>()).add(sequence);
+                    if (hasIorL(sequence)) totalPepWithILMap.computeIfAbsent(genome, k -> new HashSet<>()).add(sequence);
+                } else hasNonMag = true;
+            }
+            if (!hasNonMag && mappedGenomes.size() == 1) {
+                String genome = mappedGenomes.iterator().next();
+                uniquePepCountMap.computeIfAbsent(genome, k -> new HashSet<>()).add(sequence);
+                if (hasIorL(sequence)) uniquePepWithILMap.computeIfAbsent(genome, k -> new HashSet<>()).add(sequence);
+            }
 			boolean hasIorL = hasIorL(sequence);
 			String uniqueGenome = null;
 			boolean uniqueToOneGenome = true;
@@ -566,6 +643,9 @@ public final class DdaMagPostAnalysisService {
 			double[] intensity = peptide.getIntensity();
 			if (intensity == null) {
 				intensity = new double[filePsmCount.length];
+			}
+			if (!hasNonMag && mappedGenomes.size() == 1) {
+				addIntensity(genomeUniqueIntensityMap, mappedGenomes.iterator().next(), intensity);
 			}
 			double[] sharedIntensity = new double[intensity.length];
 			for (int i = 0; i < sharedIntensity.length; i++) {
@@ -615,13 +695,15 @@ public final class DdaMagPostAnalysisService {
 		MetaProtein[] metaProteins = buildMetaProteins(proteins, proteinIntensityMap, razorPsmCountMap,
 				razorPepCountMap);
 
-		return new Result(psmMap, pepPsmCountMap, pepChargeMap, pepExpectMap, psmCountMap, filePsmCount,
+		Result result = new Result(psmMap, pepPsmCountMap, pepChargeMap, pepExpectMap, psmCountMap, filePsmCount,
 				fileSequenceSets, genomeScoring, genomeScoreMap, proteinRefinement, genomeIntensityMap,
 				proteinIntensityMap, proteinTotalIntenMap, allProteinIntensityMap, allProteinTotalIntenMap,
 				allProteinPepCountMap, allProteinPsmCountMap, allProteinScoreMap, totalPepCountMap,
 				razorPepCountMap, uniquePepCountMap, totalPepWithILMap, razorPepWithILMap, uniquePepWithILMap,
 				peptideList, proteins, allProteins,
 				proteinIdMap, razorPsmCountMap, metaProteins, peptidesWithoutConfidentRazorProtein);
+		result.genomeUniqueIntensityMap = genomeUniqueIntensityMap;
+		return result;
 	}
 
 	private static void addAllProteinEvidence(MetaPeptide peptide, String decoySymbol,
@@ -661,7 +743,7 @@ public final class DdaMagPostAnalysisService {
 	}
 
 	private static void applyPeptideMs2Counts(MetaPeptide[] peptides, HashMap<String, int[]> pepPsmCountMap,
-			int[] filePsmCount, HashSet<String>[] fileSequenceSets, int fileCount) {
+			int[] filePsmCount, HashSet<String>[] fileSequenceSets, int fileCount, String decoySymbol) {
 		for (MetaPeptide peptide : peptides) {
 			if (peptide == null || peptide.getModSeq() == null) {
 				continue;
@@ -671,8 +753,12 @@ public final class DdaMagPostAnalysisService {
 			if (ms2Counts == null) {
 				continue;
 			}
+			boolean decoy = mapsOnlyToDecoys(peptide, decoySymbol);
 			for (int i = 0; i < Math.min(ms2Counts.length, counts.length); i++) {
 				counts[i] = ms2Counts[i];
+				if (decoy) {
+					continue;
+				}
 				filePsmCount[i] += ms2Counts[i];
 				if (ms2Counts[i] > 0 && peptide.getSequence() != null) {
 					fileSequenceSets[i].add(peptide.getSequence());
@@ -806,6 +892,25 @@ public final class DdaMagPostAnalysisService {
 
 	private static boolean isDecoyProtein(String protein, String decoySymbol) {
 		return protein == null || (decoySymbol != null && !decoySymbol.isEmpty() && protein.startsWith(decoySymbol));
+	}
+
+	private static boolean mapsOnlyToDecoys(MetaPeptide peptide, String decoySymbol) {
+		return mapsOnlyToDecoys(peptide.getProteins(), decoySymbol);
+	}
+
+	private static boolean mapsOnlyToDecoys(String[] proteins, String decoySymbol) {
+		if (decoySymbol == null || decoySymbol.isEmpty()) {
+			return false;
+		}
+		if (proteins == null || proteins.length == 0) {
+			return false;
+		}
+		for (String protein : proteins) {
+			if (!isDecoyProtein(protein, decoySymbol)) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	private static boolean isMagProtein(String protein, String magIdentifier) {

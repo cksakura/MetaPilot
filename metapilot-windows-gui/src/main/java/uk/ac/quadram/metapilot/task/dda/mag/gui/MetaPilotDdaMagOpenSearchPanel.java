@@ -27,9 +27,7 @@ import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
-import javafx.scene.control.ListCell;
 import javafx.scene.control.Spinner;
-import javafx.scene.control.SpinnerValueFactory;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TitledPane;
@@ -49,10 +47,12 @@ import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
 import uk.ac.quadram.metapilot.task.common.gui.MagDatabaseSettingsPanel;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
 import uk.ac.quadram.metapilot.task.common.gui.MetadataConfigurationPanel;
+import uk.ac.quadram.metapilot.task.common.gui.ParameterSection;
 import uk.ac.quadram.metapilot.task.common.gui.ModificationsPanel;
 import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagOpenSearchParameterIO;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagOpenSearchParameters;
+import uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagVersion;
 import uk.ac.quadram.metapilot.task.par.MetaData;
@@ -67,9 +67,10 @@ import uk.ac.quadram.metapilot.task.par.MetaData;
  * persistence, console wiring and the auto-save-on-Console-tab behaviour
  * consistent with pFind, FragPipe and Sage.
  * <p>
- * Note the Parameters tab has no Closed/Open selector: both search rounds are
- * open searches by construction, with round one consuming only its unmodified
- * PSMs for genome discovery. That is the design, not a setting.
+ * Note the Parameters tab has no search-engine selector, Closed/Open selector
+ * and no rank-depth, peak-fitting or local-FDR knobs: those are locked to the
+ * tested defaults. The engine is MSFragger. Round one is a closed marker
+ * search; identification is joint closed+open.
  */
 public class MetaPilotDdaMagOpenSearchPanel extends AbstractWorkflowPanel<DDAMagOpenSearchParameters> {
 
@@ -84,37 +85,16 @@ public class MetaPilotDdaMagOpenSearchPanel extends AbstractWorkflowPanel<DDAMag
 
 	private final MetaResourceParameters resourceParams;
 
-	// Workflow-specific controls (Parameters tab)
-	private ComboBox<String> engineComboBox;
-	private Label engineHintLabel;
+	// Workflow-specific controls (Parameters tab). Rank depth, the open
+	// precursor window, round-1 mode, the closed stage, and peak-fitting /
+	// local-FDR internals are locked to the tested defaults and are not shown.
 	private ComboBox<String> enzymeComboBox;
 	private Spinner<Integer> missedCleavagesSpinner;
 	private ComboBox<String> genomeSelectorComboBox;
-	private ComboBox<String> genomeSelectionStrategyComboBox;
+	private GenomeStopControls genomeStopControls;
 	private ComboBox<Integer> threadsComboBox;
-	private Spinner<Double> precursorLowerSpinner;
-	private Spinner<Double> precursorUpperSpinner;
-	private Spinner<Integer> topNSpinner;
-	private Spinner<Integer> round1TopNSpinner;
-	private Spinner<Integer> round2TopNSpinner;
-	private ComboBox<String> round1SearchModeComboBox;
-	private CheckBox closedStageCheckBox;
 	private ComboBox<String> heapComboBox;
-
-	// Validation (advanced)
-	private Spinner<Double> localFdrSpinner;
-	private Spinner<Integer> classifierFoldsSpinner;
-	private Spinner<Double> zeroPeakSigmasSpinner;
-	private Spinner<Double> peakMinR2Spinner;
-	private Spinner<Double> membershipFloorSpinner;
-	private Spinner<Integer> peakMinAreaSpinner;
-	private Spinner<Integer> maxPeaksToFitSpinner;
-	private Spinner<Integer> maxFitIterationsSpinner;
-	private Spinner<Integer> peakMinFitBinsSpinner;
-	private Spinner<Double> peakMinSigmaBinsSpinner;
-	private Spinner<Double> peakMinSnrSpinner;
-	private Spinner<Double> peakMinSeparationBinsSpinner;
-	private Spinner<Double> peakMinSeparationSigmasSpinner;
+	private CheckBox entrapmentCheckBox;
 
 	public MetaPilotDdaMagOpenSearchPanel(MagDbItem[] magDbItems, MetaResourceParameters resourceParams) {
 		super();
@@ -140,7 +120,7 @@ public class MetaPilotDdaMagOpenSearchPanel extends AbstractWorkflowPanel<DDAMag
 		setPrefHeight(900);
 
 		consolePanel = new ConsolePanel();
-		metadataPanel = new MetadataConfigurationPanel();
+		metadataPanel = new MetadataConfigurationPanel(true);
 		magDatabasePanel = new MagDatabaseSettingsPanel();
 
 		metadataPanel.setParameterUpdateCallback(this::updateParameterView);
@@ -217,16 +197,12 @@ public class MetaPilotDdaMagOpenSearchPanel extends AbstractWorkflowPanel<DDAMag
 	}
 
 	/**
-	 * False until a {@code mag-opensearch} subcommand exists in
-	 * {@code MetaPilotCliApp}. The workflow logic already lives in
-	 * {@code MagOpenSearchHeadlessRunner} so it is CLI-ready, but exporting HPC
-	 * parameters for a command that cannot yet be invoked would hand the user a
-	 * file nothing consumes. The base class shows an explanatory message in
-	 * place of the button.
+	 * Enabled now that {@code mag-opensearch} (and {@code run} for
+	 * {@code DDA_MAG_OPENSEARCH}) exist in the headless CLI.
 	 */
 	@Override
 	protected boolean isHpcExportSupported() {
-		return false;
+		return true;
 	}
 
 	public void setAvailableMagDatabases(MagDbItem[] magDbItems) {
@@ -246,15 +222,12 @@ public class MetaPilotDdaMagOpenSearchPanel extends AbstractWorkflowPanel<DDAMag
 		VBox tabContent = new VBox(10);
 		tabContent.setPadding(new Insets(10));
 		tabContent.setMinWidth(960);
-		tabContent.setMinHeight(760);
 
 		GridPane mainGrid = new GridPane();
 		mainGrid.setHgap(15);
 		mainGrid.setVgap(15);
 		mainGrid.setPadding(new Insets(10));
 		mainGrid.setMinWidth(940);
-		mainGrid.setMinHeight(740);
-		VBox.setVgrow(mainGrid, Priority.ALWAYS);
 
 		ColumnConstraints col1 = new ColumnConstraints();
 		col1.setPercentWidth(50);
@@ -269,8 +242,7 @@ public class MetaPilotDdaMagOpenSearchPanel extends AbstractWorkflowPanel<DDAMag
 		VBox leftColumn = new VBox(15);
 		leftColumn.setMinWidth(430);
 		modificationsPanel = new ModificationsPanel(this::updateParameterView);
-		leftColumn.getChildren().addAll(createSearchSection(), createGenomeSection(), createValidationSection(),
-				modificationsPanel);
+		leftColumn.getChildren().addAll(createSearchSection(), createGenomeSection(), modificationsPanel);
 		GridPane.setVgrow(leftColumn, Priority.ALWAYS);
 
 		VBox rightColumn = new VBox(15);
@@ -281,7 +253,7 @@ public class MetaPilotDdaMagOpenSearchPanel extends AbstractWorkflowPanel<DDAMag
 		mainGrid.add(leftColumn, 0, 0);
 		mainGrid.add(rightColumn, 1, 0);
 
-		tabContent.getChildren().add(mainGrid);
+		tabContent.getChildren().add(ParameterSection.createViewport(mainGrid));
 		return tabContent;
 	}
 
@@ -318,54 +290,6 @@ public class MetaPilotDdaMagOpenSearchPanel extends AbstractWorkflowPanel<DDAMag
 		GridPane grid = paramGrid();
 		int row = 0;
 
-		grid.add(new Label("Search engine(s):"), 0, row);
-		engineComboBox = new ComboBox<>();
-		engineComboBox.getItems().addAll(DDAMagOpenSearchParameters.ENGINES_MSFRAGGER,
-				DDAMagOpenSearchParameters.ENGINES_MSFRAGGER_AND_SAGE);
-		engineComboBox.getSelectionModel().select(DDAMagOpenSearchParameters.ENGINES_MSFRAGGER);
-		engineComboBox.setMaxWidth(Double.MAX_VALUE);
-		engineComboBox.setTooltip(new Tooltip("Whether a second engine improves coverage enough to justify its "
-				+ "cost is an open question against a refined genome-specific database. The option exists so it "
-				+ "can be measured rather than assumed."));
-
-		// Unimplemented modes are shown greyed and cannot be picked, rather than
-		// being selectable and rejected after the user has configured a whole run.
-		// The item stays visible because its absence would hide the roadmap; it is
-		// simply inert.
-		engineComboBox.setCellFactory(list -> new ListCell<String>() {
-			@Override
-			protected void updateItem(String item, boolean empty) {
-				super.updateItem(item, empty);
-				setText(empty || item == null ? null : item);
-				boolean unavailable = item != null && !DDAMagOpenSearchParameters.isEngineModeAvailable(item);
-				setDisable(unavailable);
-				setStyle(unavailable ? "-fx-text-fill: #9a9a9a;" : "");
-			}
-		});
-		// Defence in depth: a disabled cell cannot be clicked, but the value can
-		// still be set programmatically (loading a saved parameter file), so revert
-		// rather than trust the cell factory alone.
-		engineComboBox.valueProperty().addListener((obs, old, value) -> {
-			if (value != null && !DDAMagOpenSearchParameters.isEngineModeAvailable(value)) {
-				Platform.runLater(() -> engineComboBox.getSelectionModel()
-						.select(DDAMagOpenSearchParameters.ENGINES_MSFRAGGER));
-				return;
-			}
-			updateEngineHint(value);
-		});
-		grid.add(engineComboBox, 1, row++);
-
-		engineHintLabel = new Label();
-		engineHintLabel.setWrapText(true);
-		engineHintLabel.setMaxWidth(Double.MAX_VALUE);
-		// GridPane sizes a wrapping, column-spanning Label's row using its
-		// pre-wrap preferred height unless min height is pinned to the
-		// (post-wrap) preferred height - without this the row stays one line
-		// tall and the rest of the text is clipped with an ellipsis.
-		engineHintLabel.setMinHeight(Region.USE_PREF_SIZE);
-		grid.add(engineHintLabel, 0, row++, 2, 1);
-		updateEngineHint(engineComboBox.getValue());
-
 		grid.add(new Label("Enzyme:"), 0, row);
 		enzymeComboBox = new ComboBox<>(enzymes);
 		if (!enzymes.isEmpty()) {
@@ -378,46 +302,6 @@ public class MetaPilotDdaMagOpenSearchPanel extends AbstractWorkflowPanel<DDAMag
 		missedCleavagesSpinner = new Spinner<>(0, 5, 2);
 		missedCleavagesSpinner.setMaxWidth(Double.MAX_VALUE);
 		grid.add(missedCleavagesSpinner, 1, row++);
-
-		grid.add(new Label("Precursor window lower (Da):"), 0, row);
-		precursorLowerSpinner = doubleSpinner(-1000, 0, -150, 10);
-		grid.add(precursorLowerSpinner, 1, row++);
-
-		grid.add(new Label("Precursor window upper (Da):"), 0, row);
-		precursorUpperSpinner = doubleSpinner(0, 2000, 500, 10);
-		grid.add(precursorUpperSpinner, 1, row++);
-
-		Label windowHint = new Label("The wide window is what diverts modified spectra out of the zero peak, "
-				+ "which is what makes the unmodified set usable for genome discovery.");
-		windowHint.setWrapText(true);
-		windowHint.setMaxWidth(Double.MAX_VALUE);
-		windowHint.setMinHeight(Region.USE_PREF_SIZE);
-		windowHint.setStyle("-fx-font-size: 11px; -fx-text-fill: #666;");
-		grid.add(windowHint, 0, row++, 2, 1);
-
-		grid.add(new Label("Candidates per spectrum:"), 0, row);
-		topNSpinner = new Spinner<>(1, 20, 5);
-		topNSpinner.setMaxWidth(Double.MAX_VALUE);
-		topNSpinner.setTooltip(new Tooltip("MSFragger reports only the top hit by default; reporting more lets "
-				+ "the classifier choose between candidates rather than the engine."));
-		grid.add(topNSpinner, 1, row++);
-
-		grid.add(new Label("Round 2 candidates per spectrum:"), 0, row);
-		round2TopNSpinner = new Spinner<>(1, 20, 5);
-		round2TopNSpinner.setMaxWidth(Double.MAX_VALUE);
-		round2TopNSpinner.setTooltip(new Tooltip("Per-sample refined-database search (round two). Measured: "
-				+ "raising this from 1 to 5 gains +15.3% PSMs and +5.4% peptides at the same FDR, since the extra "
-				+ "ranks feed the peak-discovery votes and the classifier's negatives. Default 5."));
-		grid.add(round2TopNSpinner, 1, row++);
-
-		closedStageCheckBox = new CheckBox("Closed search first, open search on the remaining spectra");
-		closedStageCheckBox.setSelected(true);
-		closedStageCheckBox.setTooltip(new Tooltip("Each sample's refined database is also searched closed "
-				+ "(+-20 ppm, isotope errors 0/1/2, M oxidation, protein N-terminal acetyl). Closed PSMs "
-				+ "accepted at 1% FDR are identifications; the open search then identifies only the spectra "
-				+ "they leave, as unmodified or allow-list modified peptides. Unexplained mass shifts are "
-				+ "reported in unexplained_psms.tsv but are not identifications. Off: open search only."));
-		grid.add(closedStageCheckBox, 0, row++, 2, 1);
 
 		grid.add(new Label("Threads:"), 0, row);
 		threadsComboBox = new ComboBox<>();
@@ -437,198 +321,51 @@ public class MetaPilotDdaMagOpenSearchPanel extends AbstractWorkflowPanel<DDAMag
 		heapComboBox.setTooltip(new Tooltip("Java -Xmx value. Open searches are memory hungry."));
 		grid.add(heapComboBox, 1, row++);
 
-		TitledPane pane = new TitledPane("Search", grid);
-		pane.setCollapsible(false);
-		return pane;
+		Label methodHint = new Label("Search method is fixed to the tested defaults: closed marker search "
+				+ "(one candidate per spectrum), then joint closed+open identification of the selected genomes "
+				+ "(three candidates per spectrum). Rank depth, precursor window, peak fitting and FDR internals "
+				+ "are not shown; they can still be set in the parameter JSON for CLI and HPC.");
+		methodHint.setWrapText(true);
+		methodHint.setMaxWidth(Double.MAX_VALUE);
+		methodHint.setMinHeight(Region.USE_PREF_SIZE);
+		methodHint.setStyle("-fx-font-size: 11px; -fx-text-fill: #666;");
+		grid.add(methodHint, 0, row++, 2, 1);
+
+		entrapmentCheckBox = new CheckBox("Paired-shuffle entrapment (evaluation)");
+		entrapmentCheckBox.setWrapText(true);
+		entrapmentCheckBox.setTooltip(new Tooltip(
+				"Same processing as mag-opensearch-entrapment: after genome selection, each sample database also contains a shuffled copy of the selected proteins.\n"
+						+ "Results go to opensearch_entrapment_MAG_search/ and stop after identification.\n"
+						+ "Requires Trypsin or Trypsin/P. Off by default."));
+		entrapmentCheckBox.setOnAction(e -> updateParameterView());
+		grid.add(entrapmentCheckBox, 0, row++, 2, 1);
+
+		return ParameterSection.create("Search", grid);
 	}
 
 	private TitledPane createGenomeSection() {
 		GridPane grid = paramGrid();
 		int row = 0;
 
-		grid.add(new Label("Genome selector:"), 0, row);
+		grid.add(new Label("Marker set"), 0, row);
 		genomeSelectorComboBox = new ComboBox<>();
 		genomeSelectorComboBox.getItems().addAll(MagDbItem.MARKER2, MagDbItem.MARKER4);
-		genomeSelectorComboBox.getSelectionModel().select(MagDbItem.MARKER2);
+		genomeSelectorComboBox.getSelectionModel().select(MagDbItem.MARKER4);
 		genomeSelectorComboBox.setMaxWidth(Double.MAX_VALUE);
+		genomeSelectorComboBox.setOnAction(e -> updateParameterView());
 		grid.add(genomeSelectorComboBox, 1, row++);
 
-		grid.add(new Label("Selection strategy:"), 0, row);
-		genomeSelectionStrategyComboBox = new ComboBox<>();
-		genomeSelectionStrategyComboBox.getItems().addAll("Focus", "Comprehensive");
-		genomeSelectionStrategyComboBox.getSelectionModel().select("Focus");
-		genomeSelectionStrategyComboBox.setMaxWidth(Double.MAX_VALUE);
-		grid.add(genomeSelectionStrategyComboBox, 1, row++);
+		genomeStopControls = new GenomeStopControls(this::updateParameterView);
+		grid.add(genomeStopControls, 0, row++, 2, 1);
 
-		grid.add(new Label("Round 1 candidates per spectrum:"), 0, row);
-		round1TopNSpinner = new Spinner<>(1, 20, 1);
-		round1TopNSpinner.setMaxWidth(Double.MAX_VALUE);
-		round1TopNSpinner.setTooltip(new Tooltip("Round one has no classifier, so nothing can promote a "
-				+ "lower-ranked candidate: rank 1 is argmax(hyperscore) for 99.999% of spectra, and even a "
-				+ "perfect oracle rescorer could add at most 4.95% true-genome hits. Stays at 1 by default."));
-		grid.add(round1TopNSpinner, 1, row++);
-
-		grid.add(new Label("Round 1 marker search:"), 0, row);
-		round1SearchModeComboBox = new ComboBox<>();
-		round1SearchModeComboBox.getItems().addAll(DDAMagOpenSearchParameters.ROUND1_SEARCH_CLOSED,
-				DDAMagOpenSearchParameters.ROUND1_SEARCH_OPEN);
-		round1SearchModeComboBox.getSelectionModel().select(DDAMagOpenSearchParameters.ROUND1_SEARCH_CLOSED);
-		round1SearchModeComboBox.setMaxWidth(Double.MAX_VALUE);
-		round1SearchModeComboBox.setTooltip(new Tooltip("closed: +-20 ppm with isotope errors 0/1/2 and "
-				+ "variable M oxidation / protein N-terminal acetyl; about five times faster and selects the "
-				+ "same genomes as open. open: the round-two precursor window, with Crystal-C."));
-		grid.add(round1SearchModeComboBox, 1, row++);
-
-		grid.add(new Label("Gaussian membership (sigmas):"), 0, row);
-		zeroPeakSigmasSpinner = doubleSpinner(1, 6, 3, 0.5);
-		zeroPeakSigmasSpinner.setTooltip(new Tooltip(
-				"Membership width used only by the legacy Gaussian discovery option. "
-						+ "The default KDE strategy uses empirical density-valley boundaries."));
-		grid.add(zeroPeakSigmasSpinner, 1, row++);
-
-		Label stageHint = new Label("Only round one's unmodified zero family is used to map genomes. PSMs "
-				+ "near +/-1.00335 Da multiples are normalized onto the zero mode rather than treated as "
-				+ "separate modifications.");
-		stageHint.setWrapText(true);
-		stageHint.setMaxWidth(Double.MAX_VALUE);
-		stageHint.setMinHeight(Region.USE_PREF_SIZE);
-		stageHint.setStyle("-fx-font-size: 11px; -fx-text-fill: #666;");
-		grid.add(stageHint, 0, row++, 2, 1);
-
-		TitledPane pane = new TitledPane("Genome discovery (round one)", grid);
-		pane.setCollapsible(false);
-		return pane;
-	}
-
-	private TitledPane createValidationSection() {
-		GridPane grid = paramGrid();
-		int row = 0;
-
-		grid.add(new Label("Local FDR:"), 0, row);
-		localFdrSpinner = doubleSpinner(0.001, 0.2, 0.01, 0.005);
-		grid.add(localFdrSpinner, 1, row);
-
-		grid.add(new Label("Classifier folds:"), 2, row);
-		classifierFoldsSpinner = new Spinner<>(2, 10, 3);
-		classifierFoldsSpinner.setMaxWidth(Double.MAX_VALUE);
-		grid.add(classifierFoldsSpinner, 3, row++);
-
-		grid.add(new Label("Peak min R-squared:"), 0, row);
-		peakMinR2Spinner = doubleSpinner(0.5, 0.99, 0.9, 0.05);
-		grid.add(peakMinR2Spinner, 1, row);
-
-		grid.add(new Label("Membership floor (Da):"), 2, row);
-		membershipFloorSpinner = doubleSpinner(0.0, 0.1, 0.010, 0.005);
-		membershipFloorSpinner.setTooltip(new Tooltip(
-				"Absolute lower bound on peak membership half-width.\n\n"
-						+ "A PSM joins a peak when it is within max(3 sigma, this). Delta-mass peaks have a sharp "
-						+ "core (~3 mDa FWHM) and heavy tails, so a pure 3-sigma rule cuts at ~3 mDa and discards "
-						+ "real members measured with slightly worse mass accuracy.\n\n"
-						+ "Set this to your instrument mass accuracy, not the fitted core width. 0 disables it."));
-		grid.add(membershipFloorSpinner, 3, row++);
-
-		grid.add(new Label("Peak min PSMs:"), 0, row);
-		peakMinAreaSpinner = new Spinner<>(1, 1000, 15);
-		peakMinAreaSpinner.setMaxWidth(Double.MAX_VALUE);
-		peakMinAreaSpinner.setTooltip(new Tooltip(
-				"Minimum PSMs in a delta-mass peak before a Gaussian is fitted to it.\n\n"
-						+ "With 1:1 target:decoy a peak of n PSMs has a best-case binomial p of 0.5^n - the p-value "
-						+ "it gets if EVERY PSM in it is a target. At n=3 that is 0.125, at n=7 it is 0.0078, so "
-						+ "smaller peaks cannot reach significance however clean they are.\n\n"
-						+ "Fitting them is not just slow: each one raises the multiple-testing burden applied to "
-						+ "the real peaks. Lower this only if you expect very low-abundance modifications and "
-						+ "accept the loss of power elsewhere."));
-		grid.add(peakMinAreaSpinner, 1, row++);
-
-		grid.add(new Label("Max peaks to fit:"), 0, row);
-		maxPeaksToFitSpinner = new Spinner<>(0, 100000, 500);
-		maxPeaksToFitSpinner.setMaxWidth(Double.MAX_VALUE);
-		maxPeaksToFitSpinner.setTooltip(new Tooltip(
-				"Hard cap on Gaussian fits per run; the largest peaks are kept. 0 means no cap.\n\n"
-						+ "Bounds the worst case so this step cannot run for an unknown length of time on an "
-						+ "unusual histogram."));
-		grid.add(maxPeaksToFitSpinner, 1, row);
-
-		grid.add(new Label("Max fit iterations:"), 2, row);
-		maxFitIterationsSpinner = new Spinner<>(20, 5000, 200);
-		maxFitIterationsSpinner.setMaxWidth(Double.MAX_VALUE);
-		maxFitIterationsSpinner.setTooltip(new Tooltip(
-				"Iteration ceiling for a single Gaussian fit.\n\n"
-						+ "A genuinely peak-shaped segment converges quickly; one that is not runs to the limit "
-						+ "and is discarded anyway."));
-		grid.add(maxFitIterationsSpinner, 3, row++);
-
-		grid.add(new Label("Peak min fit bins:"), 0, row);
-		peakMinFitBinsSpinner = new Spinner<>(4, 101, 7);
-		peakMinFitBinsSpinner.setMaxWidth(Double.MAX_VALUE);
-		peakMinFitBinsSpinner.setTooltip(new Tooltip(
-				"Minimum raw histogram bins used by a peak fit. Seven prevents a four-parameter fit from being "
-						+ "accepted with no meaningful residual degrees of freedom."));
-		grid.add(peakMinFitBinsSpinner, 1, row);
-
-		grid.add(new Label("Peak min sigma (bins):"), 2, row);
-		peakMinSigmaBinsSpinner = doubleSpinner(0.0, 10.0, 0.5, 0.1);
-		peakMinSigmaBinsSpinner.setTooltip(new Tooltip(
-				"Reject fitted widths below the histogram''s resolving power. A 0.5-bin default means a 0.5 mDa "
-						+ "minimum sigma with the standard 1 mDa bins."));
-		grid.add(peakMinSigmaBinsSpinner, 3, row++);
-
-		grid.add(new Label("Peak min SNR:"), 0, row);
-		peakMinSnrSpinner = doubleSpinner(0.0, 1000.0, 5.0, 0.5);
-		peakMinSnrSpinner.setTooltip(new Tooltip(
-				"Minimum fitted height divided by sqrt(local background + 1). Rejects fluctuations that fit well "
-						+ "geometrically but do not rise meaningfully above the continuum."));
-		grid.add(peakMinSnrSpinner, 1, row);
-
-		grid.add(new Label("Min separation (bins):"), 2, row);
-		peakMinSeparationBinsSpinner = doubleSpinner(0.0, 20.0, 2.0, 0.5);
-		grid.add(peakMinSeparationBinsSpinner, 3, row++);
-
-		grid.add(new Label("Min separation (sigma):"), 0, row);
-		peakMinSeparationSigmasSpinner = doubleSpinner(0.0, 20.0, 3.0, 0.5);
-		peakMinSeparationSigmasSpinner.setTooltip(new Tooltip(
-				"Alternative fits closer than max(the bin floor, this many combined fitted sigmas) are unresolved; "
-						+ "only the stronger fit is retained."));
-		grid.add(peakMinSeparationSigmasSpinner, 1, row++);
-
-		TitledPane pane = new TitledPane("Validation (round two)", grid);
-		pane.setCollapsible(true);
-		pane.setExpanded(false);
-		return pane;
-	}
-
-	private void updateEngineHint(String value) {
-		if (engineHintLabel == null) {
-			return;
-		}
-		if (DDAMagOpenSearchParameters.ENGINES_MSFRAGGER_AND_SAGE.equals(value)) {
-			engineHintLabel.setText("Sage joins round two only, against the same refined database, so genome "
-					+ "selection stays identical and any difference is attributable to the second engine. Each "
-					+ "engine is scored by its own classifier - Sage cannot supply the delta-mass localization "
-					+ "features - then calibrated to a common scale before pooling. Results go to "
-					+ "opensearch_MAG_search/msfragger_sage/, leaving a MSFragger-only result in "
-					+ "msfragger_only/ intact; both reuse the searches in search_results/.");
-			engineHintLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: #666;");
-		} else {
-			engineHintLabel.setText("MSFragger invoked directly - no FragPipe, no Philosopher.");
-			engineHintLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: #666;");
-		}
+		return ParameterSection.create("Genome discovery", grid);
 	}
 
 	private static GridPane paramGrid() {
 		GridPane grid = new GridPane();
 		grid.setHgap(10);
 		grid.setVgap(8);
-		grid.setPadding(new Insets(10));
 		return grid;
-	}
-
-	private static Spinner<Double> doubleSpinner(double min, double max, double initial, double step) {
-		Spinner<Double> spinner = new Spinner<>();
-		spinner.setValueFactory(new SpinnerValueFactory.DoubleSpinnerValueFactory(min, max, initial, step));
-		spinner.setEditable(true);
-		spinner.setMaxWidth(Double.MAX_VALUE);
-		return spinner;
 	}
 
 	private Label createSectionTitle(String title) {
@@ -742,36 +479,24 @@ public class MetaPilotDdaMagOpenSearchPanel extends AbstractWorkflowPanel<DDAMag
 				metadataArrays.add(row.toArray());
 			}
 			params.setMetadataTableData(metadataArrays);
+			metadataPanel.applyTo(params.getMetadata());
 		}
 
-		params.setSearchEngines(engineComboBox.getValue());
 		params.setEnzyme(enzymeComboBox.getValue());
 		params.setMissCleavages(missedCleavagesSpinner.getValue());
 		params.setGenomeSelectorMode(genomeSelectorComboBox.getValue());
-		params.setGenomeSelectionStrategy(genomeSelectionStrategyComboBox.getValue());
+		if (genomeStopControls != null) {
+			params.setGenomeSelectionStrategy(genomeStopControls.strategy());
+			params.setGenomeSelectionPsmCoverage(genomeStopControls.psmCoverage());
+			params.setGenomeSelectionStepGuard(genomeStopControls.stepGuard());
+			params.setGenomeSelectionMaxGenomes(genomeStopControls.maxGenomes());
+		}
 		params.setThreadCount(threadsComboBox.getValue() == null ? 1 : threadsComboBox.getValue());
-		params.setPrecursorMassLower(precursorLowerSpinner.getValue());
-		params.setPrecursorMassUpper(precursorUpperSpinner.getValue());
-		params.setOutputReportTopN(topNSpinner.getValue());
-		params.setRound1OutputReportTopN(round1TopNSpinner.getValue());
-		params.setRound2OutputReportTopN(round2TopNSpinner.getValue());
-		params.setRound1SearchMode(round1SearchModeComboBox.getValue());
-		params.setClosedStageEnabled(closedStageCheckBox.isSelected());
-		params.setMsfraggerMaxHeap(heapComboBox.getValue());
-
-		params.setLocalFdr(localFdrSpinner.getValue());
-		params.setClassifierFolds(classifierFoldsSpinner.getValue());
-		params.setZeroPeakSigmas(zeroPeakSigmasSpinner.getValue());
-		params.setPeakMinR2(peakMinR2Spinner.getValue());
-		params.setMembershipFloorDa(membershipFloorSpinner.getValue());
-		params.setPeakMinArea(peakMinAreaSpinner.getValue());
-		params.setMaxPeaksToFit(maxPeaksToFitSpinner.getValue());
-		params.setMaxFitIterations(maxFitIterationsSpinner.getValue());
-		params.setPeakMinFitBins(peakMinFitBinsSpinner.getValue());
-		params.setPeakMinSigmaBins(peakMinSigmaBinsSpinner.getValue());
-		params.setPeakMinSnr(peakMinSnrSpinner.getValue());
-		params.setPeakMinSeparationBins(peakMinSeparationBinsSpinner.getValue());
-		params.setPeakMinSeparationSigmas(peakMinSeparationSigmasSpinner.getValue());
+		params.setMsfraggerMaxHeap(heapValue());
+		// Rank depth, precursor window, round-1 mode, closed stage and
+		// peak-fitting internals are not GUI settings.
+		params.applyGuiLockedDefaults();
+		params.setEntrapmentEnabled(entrapmentCheckBox != null && entrapmentCheckBox.isSelected());
 
 		currentAnalysisParams = params;
 		return params;
@@ -841,16 +566,6 @@ public class MetaPilotDdaMagOpenSearchPanel extends AbstractWorkflowPanel<DDAMag
 			}
 		}
 
-		// Saved files may name a mode that was selectable when written, or was
-		// hand-edited. Coerce instead of restoring an unrunnable selection.
-		String loadedEngine = DDAMagOpenSearchParameters.coerceEngineMode(params.getSearchEngines());
-		if (!loadedEngine.equals(params.getSearchEngines())) {
-			LOGGER.warn("Saved engine mode '{}' is not implemented; falling back to {}",
-					params.getSearchEngines(), loadedEngine);
-			params.setSearchEngines(loadedEngine);
-		}
-		engineComboBox.getSelectionModel().select(loadedEngine);
-		updateEngineHint(loadedEngine);
 		if (params.getEnzyme() != null) {
 			enzymeComboBox.getSelectionModel().select(params.getEnzyme());
 		}
@@ -858,34 +573,23 @@ public class MetaPilotDdaMagOpenSearchPanel extends AbstractWorkflowPanel<DDAMag
 		if (params.getGenomeSelectorMode() != null) {
 			genomeSelectorComboBox.getSelectionModel().select(params.getGenomeSelectorMode());
 		}
-		if (params.getGenomeSelectionStrategy() != null) {
-			genomeSelectionStrategyComboBox.getSelectionModel().select(params.getGenomeSelectionStrategy());
+		if (genomeStopControls != null) {
+			genomeStopControls.apply(params.getGenomeSelectionStrategy(), params.getGenomeSelectionPsmCoverage(),
+					params.getGenomeSelectionStepGuard(), params.getGenomeSelectionMaxGenomes());
+			String warning = GenomeSelectionCut.unusedCoverageKeysWarning(params.getGenomeSelectionStrategy(),
+					params.getGenomeSelectionPsmCoverage(), params.getGenomeSelectionStepGuard(),
+					params.getGenomeSelectionMaxGenomes());
+			if (warning != null && consolePanel != null) {
+				consolePanel.appendConsoleText("WARNING: " + warning + "\n");
+			}
 		}
 		if (params.getThreadCount() > 0 && threadsComboBox.getItems().contains(params.getThreadCount())) {
 			threadsComboBox.getSelectionModel().select(Integer.valueOf(params.getThreadCount()));
 		}
-		precursorLowerSpinner.getValueFactory().setValue(params.getPrecursorMassLower());
-		precursorUpperSpinner.getValueFactory().setValue(params.getPrecursorMassUpper());
-		topNSpinner.getValueFactory().setValue(params.getOutputReportTopN());
-		round1TopNSpinner.getValueFactory().setValue(params.getRound1OutputReportTopN());
-		round2TopNSpinner.getValueFactory().setValue(params.getRound2OutputReportTopN());
-		round1SearchModeComboBox.getSelectionModel().select(params.getRound1SearchMode());
-		closedStageCheckBox.setSelected(params.isClosedStageEnabled());
 		heapComboBox.getSelectionModel().select(params.getMsfraggerMaxHeap());
-
-		localFdrSpinner.getValueFactory().setValue(params.getLocalFdr());
-		classifierFoldsSpinner.getValueFactory().setValue(params.getClassifierFolds());
-		zeroPeakSigmasSpinner.getValueFactory().setValue(params.getZeroPeakSigmas());
-		peakMinR2Spinner.getValueFactory().setValue(params.getPeakMinR2());
-		membershipFloorSpinner.getValueFactory().setValue(params.getMembershipFloorDa());
-		peakMinAreaSpinner.getValueFactory().setValue(params.getPeakMinArea());
-		maxPeaksToFitSpinner.getValueFactory().setValue(params.getMaxPeaksToFit());
-		maxFitIterationsSpinner.getValueFactory().setValue(params.getMaxFitIterations());
-		peakMinFitBinsSpinner.getValueFactory().setValue(params.getPeakMinFitBins());
-		peakMinSigmaBinsSpinner.getValueFactory().setValue(params.getPeakMinSigmaBins());
-		peakMinSnrSpinner.getValueFactory().setValue(params.getPeakMinSnr());
-		peakMinSeparationBinsSpinner.getValueFactory().setValue(params.getPeakMinSeparationBins());
-		peakMinSeparationSigmasSpinner.getValueFactory().setValue(params.getPeakMinSeparationSigmas());
+		if (entrapmentCheckBox != null) {
+			entrapmentCheckBox.setSelected(params.isEntrapmentEnabled());
+		}
 
 		// Metadata rows: restored so a reopened panel shows the same table it
 		// was saved with, rather than silently regenerating it from the IO panel.
@@ -1080,6 +784,20 @@ public class MetaPilotDdaMagOpenSearchPanel extends AbstractWorkflowPanel<DDAMag
 			}
 		}
 
+		if (params.isEntrapmentEnabled()) {
+			String enzyme = params.getEnzyme();
+			if (!"Trypsin".equalsIgnoreCase(enzyme) && !"Trypsin/P".equalsIgnoreCase(enzyme)) {
+				warn("Entrapment needs trypsin",
+						"Paired-shuffle entrapment currently supports Trypsin or Trypsin/P. "
+								+ "Change the enzyme, or turn the evaluation switch off.");
+				return false;
+			}
+			consolePanel.appendConsoleText("Evaluation: paired-shuffle entrapment -> "
+					+ new File(params.getResult(),
+							uk.ac.quadram.metapilot.core.opensearch.OpenSearchEntrapment.RESULT_FOLDER)
+									.getAbsolutePath()
+					+ "\n");
+		}
 		if (params.getMagDbItem() == null) {
 			warn("No MAG database", "Select a MAG database on the Input/Output tab.");
 			return false;
@@ -1091,23 +809,6 @@ public class MetaPilotDdaMagOpenSearchPanel extends AbstractWorkflowPanel<DDAMag
 			warn("No spectra files", "No raw files were collected from the Input/Output tab. Add spectra files "
 					+ "there before running.");
 			return false;
-		}
-		// Should be unreachable now the combo refuses the selection, but kept as
-		// the last line of defence for any path that sets parameters directly.
-		String engineProblem = DDAMagOpenSearchParameters.engineModeUnavailableReason(params.getSearchEngines());
-		if (engineProblem != null) {
-			warn("Engine mode not implemented", engineProblem);
-			return false;
-		}
-		if (params.usesSage()) {
-			String sagePath = resourceParams == null ? null
-					: resourceParams.getToolPath(MetaResourceParameters.ToolType.SAGE);
-			if (sagePath == null || sagePath.isBlank() || !new File(sagePath).exists()) {
-				warn("Sage not found", "This mode runs Sage as a second engine in round two, but no Sage "
-						+ "executable is configured. Set Resources > Sage, or choose \""
-						+ DDAMagOpenSearchParameters.ENGINES_MSFRAGGER + "\".");
-				return false;
-			}
 		}
 		File msfraggerJar = resourceParams == null ? null : resourceParams.resolveMsfraggerJar();
 		if (msfraggerJar == null) {
@@ -1200,6 +901,19 @@ public class MetaPilotDdaMagOpenSearchPanel extends AbstractWorkflowPanel<DDAMag
 		}
 	}
 
+	private String heapValue() {
+		if (heapComboBox == null) {
+			return "32g";
+		}
+		if (heapComboBox.isEditable() && heapComboBox.getEditor() != null) {
+			String typed = heapComboBox.getEditor().getText();
+			if (typed != null && !typed.isBlank()) {
+				return typed.trim();
+			}
+		}
+		return heapComboBox.getValue() == null || heapComboBox.getValue().isBlank() ? "32g" : heapComboBox.getValue();
+	}
+
 	private String getParameterDisplay() {
 		StringBuilder sb = new StringBuilder();
 		sb.append("=== DDA MAG Open Search ===\n");
@@ -1211,29 +925,20 @@ public class MetaPilotDdaMagOpenSearchPanel extends AbstractWorkflowPanel<DDAMag
 			sb.append("MAG database: ").append(magDatabasePanel.getSelectedMagDatabase().getCatalogueID())
 					.append("\n");
 		}
-		if (engineComboBox != null) {
-			sb.append("Engine(s): ").append(engineComboBox.getValue()).append("\n");
+		if (enzymeComboBox != null) {
+			sb.append("Search engine: MSFragger (closed marker, then joint closed+open)\n");
 			sb.append("Enzyme: ").append(enzymeComboBox.getValue()).append(", missed cleavages ")
 					.append(missedCleavagesSpinner.getValue()).append("\n");
-			sb.append("Precursor window: ").append(precursorLowerSpinner.getValue()).append(" to ")
-					.append(precursorUpperSpinner.getValue()).append(" Da\n");
-			sb.append("Candidates per spectrum: ").append(topNSpinner.getValue()).append("\n");
-			sb.append("Round 1 candidates per spectrum: ").append(round1TopNSpinner.getValue()).append("\n");
-			sb.append("Round 2 candidates per spectrum: ").append(round2TopNSpinner.getValue()).append("\n");
-			sb.append("Genome selector: ").append(genomeSelectorComboBox.getValue()).append(" (")
-					.append(genomeSelectionStrategyComboBox.getValue()).append(")\n");
-			sb.append("Round 1 marker search: ").append(round1SearchModeComboBox.getValue()).append("\n");
-			sb.append("Round-one unmodified selection: constrained isotope-folded KDE\n");
-			if (closedStageCheckBox.isSelected()) {
-				sb.append("Identification: closed search first (1% FDR), open search on the remaining spectra; "
-						+ "unmodified and allow-list shifts identified, other masses reported only\n");
-			} else {
-				sb.append("Identification: open search only\n");
+			sb.append("Marker set: ").append(genomeSelectorComboBox.getValue()).append("\n");
+			if (genomeStopControls != null) {
+				sb.append("When to stop adding genomes: ").append(genomeStopControls.summary()).append("\n");
 			}
-			sb.append("Peak screen: zero family accepted; allow-list shifts accepted when target-enriched; "
-					+ "other masses " + (closedStageCheckBox.isSelected() ? "not identified" : "identification-only")
-					+ "\n");
-			sb.append("Local FDR: ").append(localFdrSpinner.getValue()).append("\n");
+			sb.append("Search method: tested defaults (closed marker search, then joint closed+open identification)\n");
+			sb.append("Threads: ").append(threadsComboBox.getValue()).append(", MSFragger memory ")
+					.append(heapValue()).append("\n");
+			if (entrapmentCheckBox != null) {
+				sb.append("Paired-shuffle entrapment: ").append(entrapmentCheckBox.isSelected()).append("\n");
+			}
 		}
 		return sb.toString();
 	}

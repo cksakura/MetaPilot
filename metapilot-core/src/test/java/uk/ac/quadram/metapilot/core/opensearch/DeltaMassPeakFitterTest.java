@@ -563,4 +563,70 @@ class DeltaMassPeakFitterTest {
 				"the sigma-nearest broad peak is outside membership, but the narrow peak contains the PSM");
 		assertEquals(1.029663 - 1.020338, distance[0], 1e-12);
 	}
+
+	/**
+	 * Zero peak; carbamyl with its real +1 and +2 isotope satellites; acetyl 0.9953 Da below it, as on
+	 * PXD013427; and a uniform background.
+	 */
+	private static double[] acetylCarbamylDeltaMasses() {
+		Random rng = new Random(SEED);
+		double step = AminoAcidProperty.isotope_deltaM;
+		int zeroN = 40000, carbamylN = 27000, plusOneN = 4000, plusTwoN = 1200, acetylN = 19000, bgN = 30000;
+		double[] out = new double[zeroN + carbamylN + plusOneN + plusTwoN + acetylN + bgN];
+		int k = 0;
+		for (int i = 0; i < zeroN; i++) {
+			out[k++] = rng.nextGaussian() * 0.0015;
+		}
+		for (int i = 0; i < carbamylN; i++) {
+			out[k++] = 43.005814 + rng.nextGaussian() * 0.0015;
+		}
+		for (int i = 0; i < plusOneN; i++) {
+			out[k++] = 43.005814 + step + rng.nextGaussian() * 0.0015;
+		}
+		for (int i = 0; i < plusTwoN; i++) {
+			out[k++] = 43.005814 + 2 * step + rng.nextGaussian() * 0.0015;
+		}
+		for (int i = 0; i < acetylN; i++) {
+			out[k++] = 42.010565 + rng.nextGaussian() * 0.0015;
+		}
+		for (int i = 0; i < bgN; i++) {
+			out[k++] = -150.0 + rng.nextDouble() * 650.0;
+		}
+		return out;
+	}
+
+	@Test
+	@DisplayName("Acetyl is not linked as an isotope of carbamyl; without the guard it was")
+	void acetylIsNotAnIsotopeOfCarbamyl() {
+		DeltaMassPeakFitter.Result result = DeltaMassPeakFitter.fit(acetylCarbamylDeltaMasses(),
+				new DeltaMassPeakFitter.Config());
+		DeltaMassPeakFitter.Peak acetyl = nearest(result, 42.010565);
+		DeltaMassPeakFitter.Peak carbamyl = nearest(result, 43.005814);
+		assertNotNull(acetyl);
+		assertNotNull(carbamyl);
+		assertEquals(0, acetyl.isotopeOffset, "acetyl is its own modification");
+		assertEquals(0, carbamyl.isotopeOffset, "carbamyl is its own modification");
+		assertEquals(1, nearest(result, 43.005814 + AminoAcidProperty.isotope_deltaM).isotopeOffset,
+				"carbamyl keeps its real +1 satellite");
+
+		DeltaMassPeakFitter.Config unguarded = new DeltaMassPeakFitter.Config();
+		unguarded.isotopeNamedMatchDa = 0;
+		DeltaMassPeakFitter.Result before = DeltaMassPeakFitter.fit(acetylCarbamylDeltaMasses(), unguarded);
+		assertEquals(-1, nearest(before, 42.010565).isotopeOffset, "the width rule alone links them");
+	}
+
+	@Test
+	@DisplayName("The named-modification guard leaves real isotope spacings alone")
+	void namedGuardKeepsRealIsotopes() {
+		DeltaMassPeakFitter.Config cfg = new DeltaMassPeakFitter.Config();
+		double step = AminoAcidProperty.isotope_deltaM;
+		// Acetyl as the -1 of carbamyl: 7.6 mDa off the isotope step, 0.04 mDa from acetyl.
+		assertTrue(DeltaMassPeakFitter.isNamedRatherThanIsotope(42.0105, Math.abs(42.0105 - (43.0058 - step)), 1,
+				cfg));
+		// A real +1 of the zero peak, and a +1 of oxidation landing within 1 mDa of the spacing.
+		assertFalse(DeltaMassPeakFitter.isNamedRatherThanIsotope(step + 0.0003, 0.0003, 1, cfg));
+		assertFalse(DeltaMassPeakFitter.isNamedRatherThanIsotope(15.9949 + step, 0.0008, 1, cfg));
+		// A mass named nowhere is never blocked, however far off.
+		assertFalse(DeltaMassPeakFitter.isNamedRatherThanIsotope(123.4567, 0.009, 1, cfg));
+	}
 }

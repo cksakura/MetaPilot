@@ -32,22 +32,22 @@ import javax.xml.stream.XMLStreamReader;
  * uncompressed or zlib; a numpress-encoded spectrum is skipped and counted,
  * not guessed at.
  */
-final class MzmlScanReader {
+public final class MzmlScanReader {
 
 	private static final Pattern SCAN = Pattern.compile("scan=(\\d+)");
 
 	/** One centroided spectrum, sorted by m/z. */
-	static final class Peaks {
-		final double[] mz;
-		final float[] intensity;
+	public static final class Peaks {
+		public final double[] mz;
+		public final float[] intensity;
 
-		Peaks(double[] mz, float[] intensity) {
+		public Peaks(double[] mz, float[] intensity) {
 			this.mz = mz;
 			this.intensity = intensity;
 		}
 
 		/** Highest intensity within {@code [lo, hi]}, or 0. */
-		float maxIntensity(double lo, double hi) {
+		public float maxIntensity(double lo, double hi) {
 			int i = Arrays.binarySearch(mz, lo);
 			if (i < 0) {
 				i = -i - 1;
@@ -60,15 +60,15 @@ final class MzmlScanReader {
 		}
 	}
 
-	static final class Result {
-		final Map<Integer, Peaks> scans = new HashMap<>();
-		int unsupportedEncoding;
+	public static final class Result {
+		public final Map<Integer, Peaks> scans = new HashMap<>();
+		public int unsupportedEncoding;
 	}
 
 	private MzmlScanReader() {
 	}
 
-	static Result read(File mzml, Set<Integer> wanted) throws IOException {
+	public static Result read(File mzml, Set<Integer> wanted) throws IOException {
 		Result result = new Result();
 		XMLInputFactory factory = XMLInputFactory.newInstance();
 		factory.setProperty(XMLInputFactory.SUPPORT_DTD, false);

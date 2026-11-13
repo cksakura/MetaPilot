@@ -15,6 +15,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import uk.ac.quadram.metapilot.core.aminoacid.AminoAcidProperty;
+import uk.ac.quadram.metapilot.task.io.qpx.UnimodCatalog;
 
 /**
  * Discovers modes in the delta-mass distribution of an open search.
@@ -253,12 +254,48 @@ public final class DeltaMassPeakFitter {
 		 * inter-peak continuum.
 		 */
 		public double membershipFloorDa = 0.010;
-		/** Tolerance for matching a peak to an isotope of another peak (Da). */
+		/**
+		 * Tolerance for matching a peak to an isotope of another peak (Da); the cap on
+		 * {@link #isotopeSigmaMultiplier} x combined width, which at typical widths (about 1.9 mDa) decides.
+		 * <p>
+		 * Measured on 1,939 links in eight runs (2026-11-08): zero-family links, the unmodified peptides'
+		 * isotopes, miss the 13C step by -0.2 to -2.1 mDa per step (an unresolved +1 peak sits just below
+		 * 13C), at most 5.1 mDa in total (+3). Links in modified families scatter to the cap, and no
+		 * physical tolerance (1.5 mDa per step plus four centroid errors) separates them: it broke half of
+		 * them and two real zero-family links. 10 mDa is about twice the largest real isotope miss and
+		 * half of deamidation's 19.3 mDa distance from the +1 step, so 0.984 never links; the zero family
+		 * links identically anywhere from about 6 to 10 mDa.
+		 */
 		public double isotopeTolerance = 0.01;
 		/** Minimum isotope-link tolerance after scaling by fitted peak widths (Da). */
 		public double isotopeToleranceFloorDa = 0.001;
 		/** Number of combined fitted sigmas allowed for an isotope link. */
 		public double isotopeSigmaMultiplier = 4.0;
+		/**
+		 * UNIMOD guard on isotope links (Da). A peak within this of a UNIMOD mass is not linked as an
+		 * isotope satellite when the link misses by more than {@link #isotopeSpacingSpreadDa} per step
+		 * and by more than twice the UNIMOD match: the mass fits a recorded modification better than it
+		 * fits the isotope spacing, so it stays a peak of its own and is judged like any other. This
+		 * claims nothing about what the peak is. 0 switches the guard off.
+		 * <p>
+		 * On PXD013427, an acetylome, the width rule linked acetyl (42.0105) as the -1 satellite of
+		 * carbamyl (43.0058). Their spacing, 0.9953 Da, misses an isotope step by 7.6 mDa, inside four
+		 * combined widths (8.0 mDa), and acetyl-K left the modification table. Replayed on the 1,443
+		 * links of seven earlier runs, the guard broke 75, none of them in the zero family.
+		 * <p>
+		 * Isotopic labels are not UNIMOD masses for this guard (2026-11-08): in a label-free sample
+		 * a peak at a label mass is an isotope peak or a wrong precursor mass, and labels alone kept
+		 * +4/+5 Da artefact peaks out of isotope families (12mix +4.0104 at Label:18O(2), faecal
+		 * +4.0023 at Label:13C(2)15N(2), +5.0303 at Label:2H(4)13C(1)).
+		 */
+		public double isotopeNamedMatchDa = 0.002;
+		/**
+		 * Largest departure, per isotope step, of a real satellite from
+		 * {@code AminoAcidProperty.isotope_deltaM} that the UNIMOD guard tolerates (Da).
+		 * An unresolved +1 peak sits between 15N (0.99703) and 13C (1.00336) by composition, about
+		 * 1.0024-1.0034 for peptides; 1.5 mDa leaves a threefold margin.
+		 */
+		public double isotopeSpacingSpreadDa = 0.0015;
 		/** Half-width of the window used for the local-density feature (Da). */
 		public double densityWindow = 0.05;
 		/** Highest isotope offset considered (+1, +2, ...). */
@@ -859,6 +896,8 @@ public final class DeltaMassPeakFitter {
 		copy.isotopeTolerance = source.isotopeTolerance;
 		copy.isotopeToleranceFloorDa = source.isotopeToleranceFloorDa;
 		copy.isotopeSigmaMultiplier = source.isotopeSigmaMultiplier;
+		copy.isotopeNamedMatchDa = source.isotopeNamedMatchDa;
+		copy.isotopeSpacingSpreadDa = source.isotopeSpacingSpreadDa;
 		copy.densityWindow = source.densityWindow;
 		copy.maxIsotopeOffset = source.maxIsotopeOffset;
 		// Must be carried: both stage-1 fold loops read it off this copy.
@@ -1523,7 +1562,7 @@ public final class DeltaMassPeakFitter {
 			double expected = root.centroid + offset * AminoAcidProperty.isotope_deltaM;
 			int match = index.findNearestWithin(expected, cfg.isotopeTolerance, root.id);
 			if (match < 0 || assigned[match]
-					|| !isPlausibleIsotopeLink(root, peaks.get(match), expected, cfg)) {
+					|| !isPlausibleIsotopeLink(root, peaks.get(match), expected, magnitude, cfg)) {
 				break;
 			}
 			double strength = isotopeRootStrength(peaks.get(match));
@@ -1535,11 +1574,27 @@ public final class DeltaMassPeakFitter {
 		}
 	}
 
-	private static boolean isPlausibleIsotopeLink(Peak first, Peak second, double expected, Config cfg) {
+	static boolean isPlausibleIsotopeLink(Peak first, Peak second, double expected, int magnitude, Config cfg) {
 		double combinedSigma = Math.hypot(first.sigma, second.sigma);
 		double widthScaled = cfg.isotopeSigmaMultiplier * combinedSigma;
 		double allowed = Math.min(cfg.isotopeTolerance, Math.max(cfg.isotopeToleranceFloorDa, widthScaled));
-		return Math.abs(second.centroid - expected) <= allowed;
+		double miss = Math.abs(second.centroid - expected);
+		if (miss > allowed) {
+			return false;
+		}
+		return !isNamedRatherThanIsotope(second.centroid, miss, magnitude, cfg);
+	}
+
+	/**
+	 * Whether a candidate satellite at {@code centroid} fits a UNIMOD mass better than an isotope
+	 * missing by {@code miss}; see {@link Config#isotopeNamedMatchDa}.
+	 */
+	static boolean isNamedRatherThanIsotope(double centroid, double miss, int magnitude, Config cfg) {
+		if (cfg.isotopeNamedMatchDa <= 0 || miss <= cfg.isotopeSpacingSpreadDa * magnitude) {
+			return false;
+		}
+		double match = UnimodCatalog.get().distanceToNearestMass(centroid);
+		return match <= cfg.isotopeNamedMatchDa && miss > 2 * match;
 	}
 
 	private static final class IsotopeEdge {

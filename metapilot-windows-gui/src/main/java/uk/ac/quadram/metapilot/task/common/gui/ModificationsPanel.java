@@ -1,17 +1,14 @@
 package uk.ac.quadram.metapilot.task.common.gui;
 
-import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
-import javafx.scene.text.Font;
-import javafx.scene.text.FontWeight;
-import javafx.scene.paint.Color;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.scene.control.cell.CheckBoxTableCell;
+import javafx.util.converter.DefaultStringConverter;
 import javafx.util.converter.DoubleStringConverter;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
@@ -51,8 +48,7 @@ public class ModificationsPanel extends HBox {
 	}
 
 	private void initializeUI() {
-		setSpacing(10);
-		setMinHeight(200);
+		VBox.setVgrow(this, Priority.ALWAYS);
 		HBox.setHgrow(this, Priority.ALWAYS);
 
 		// Fixed modifications section (narrow - only 2 columns)
@@ -65,17 +61,20 @@ public class ModificationsPanel extends HBox {
 		VBox variableModSection = createVariableModificationsSection();
 		HBox.setHgrow(variableModSection, Priority.ALWAYS);
 
-		getChildren().addAll(fixedModSection, variableModSection);
+		HBox tables = new HBox(15, fixedModSection, variableModSection);
+		TitledPane section = ParameterSection.create("Modifications", tables);
+		section.setMaxWidth(Double.MAX_VALUE);
+		HBox.setHgrow(section, Priority.ALWAYS);
+		getChildren().add(section);
 	}
 
 	private VBox createFixedModificationsSection() {
 		VBox section = new VBox(10);
-		section.setPadding(new Insets(10));
-		section.setStyle("-fx-background-color: #fff8dc; -fx-background-radius: 5;");
 		section.setMinHeight(200);
 		VBox.setVgrow(section, Priority.ALWAYS);
 
-		Label titleLabel = createSectionTitle("Fixed Modifications");
+		Label titleLabel = new Label("Fixed Modifications");
+		titleLabel.setStyle("-fx-font-weight: bold;");
 
 		// Create table - narrower since only 2 columns
 		fixedModTable = new TableView<>(fixedModData);
@@ -123,12 +122,11 @@ public class ModificationsPanel extends HBox {
 
 	private VBox createVariableModificationsSection() {
 		VBox section = new VBox(10);
-		section.setPadding(new Insets(10));
-		section.setStyle("-fx-background-color: #f0fff0; -fx-background-radius: 5;");
 		section.setMinHeight(200);
 		VBox.setVgrow(section, Priority.ALWAYS);
 
-		Label titleLabel = createSectionTitle("Variable Modifications");
+		Label titleLabel = new Label("Variable Modifications");
+		titleLabel.setStyle("-fx-font-weight: bold;");
 
 		// Create table
 		variableModTable = new TableView<>(variableModData);
@@ -153,14 +151,18 @@ public class ModificationsPanel extends HBox {
 		useCol.setSortable(false);
 		useCol.setEditable(true);
 
-		// Mod Name column (editable only for User Mod rows) - adjusted width
+		// Mod Name / Sites / Mass: editable only on user-defined slots. Gate on the
+		// row's userDefined flag, not the name prefix - renaming "User Mod 1" used
+		// to make the cell permanently read-only because startEdit checked
+		// startsWith("User Mod").
 		TableColumn<VariableModificationRow, String> modNameCol = new TableColumn<>("Modification");
 		modNameCol.setCellValueFactory(new PropertyValueFactory<>("modName"));
-		modNameCol.setCellFactory(column -> new TextFieldTableCell<VariableModificationRow, String>() {
+		modNameCol.setCellFactory(column -> new TextFieldTableCell<VariableModificationRow, String>(
+				new DefaultStringConverter()) {
 			@Override
 			public void startEdit() {
-				VariableModificationRow row = getTableRow().getItem();
-				if (row != null && row.getModName().startsWith("User Mod")) {
+				VariableModificationRow row = getTableRow() != null ? getTableRow().getItem() : null;
+				if (row != null && row.isUserDefined()) {
 					super.startEdit();
 				}
 			}
@@ -175,14 +177,14 @@ public class ModificationsPanel extends HBox {
 		modNameCol.setSortable(false);
 		modNameCol.setEditable(true);
 
-		// Sites column (editable only for User Mod rows) - smaller
 		TableColumn<VariableModificationRow, String> sitesCol = new TableColumn<>("Sites");
 		sitesCol.setCellValueFactory(new PropertyValueFactory<>("sites"));
-		sitesCol.setCellFactory(column -> new TextFieldTableCell<VariableModificationRow, String>() {
+		sitesCol.setCellFactory(column -> new TextFieldTableCell<VariableModificationRow, String>(
+				new DefaultStringConverter()) {
 			@Override
 			public void startEdit() {
-				VariableModificationRow row = getTableRow().getItem();
-				if (row != null && row.getModName().startsWith("User Mod")) {
+				VariableModificationRow row = getTableRow() != null ? getTableRow().getItem() : null;
+				if (row != null && row.isUserDefined()) {
 					super.startEdit();
 				}
 			}
@@ -197,15 +199,14 @@ public class ModificationsPanel extends HBox {
 		sitesCol.setSortable(false);
 		sitesCol.setEditable(true);
 
-		// Delta Mass column (editable only for User Mod rows) - adjusted width
 		TableColumn<VariableModificationRow, Double> deltaMassCol = new TableColumn<>("Delta Mass");
 		deltaMassCol.setCellValueFactory(new PropertyValueFactory<>("deltaMass"));
 		deltaMassCol.setCellFactory(
 				column -> new TextFieldTableCell<VariableModificationRow, Double>(new DoubleStringConverter()) {
 					@Override
 					public void startEdit() {
-						VariableModificationRow row = getTableRow().getItem();
-						if (row != null && row.getModName().startsWith("User Mod")) {
+						VariableModificationRow row = getTableRow() != null ? getTableRow().getItem() : null;
+						if (row != null && row.isUserDefined()) {
 							super.startEdit();
 						}
 					}
@@ -244,13 +245,6 @@ public class ModificationsPanel extends HBox {
 		}
 	}
 
-	private Label createSectionTitle(String title) {
-		Label label = new Label(title);
-		label.setFont(Font.font("System", FontWeight.BOLD, 14));
-		label.setTextFill(Color.DARKBLUE);
-		return label;
-	}
-
 	private void initializeModificationData() {
 		// Clear existing data first to prevent duplicates
 		fixedModData.clear();
@@ -267,23 +261,116 @@ public class ModificationsPanel extends HBox {
 
 		// Initialize variable modifications (15 rows)
 		variableModData.addAll(
-				// Common modifications
-				new VariableModificationRow(false, "Oxidation", "M", 15.9949),
-				new VariableModificationRow(false, "Phosphorylation", "STY", 79.9663),
-				new VariableModificationRow(false, "Acetylation", "protein n-term", 42.0106),
-				new VariableModificationRow(false, "Deamidation", "NQ", 0.9840),
-				new VariableModificationRow(false, "Methylation", "KR", 14.0157),
-				new VariableModificationRow(false, "Ubiquitination", "K", 114.0429),
-				new VariableModificationRow(false, "Nitrosylation", "C", 28.9898),
-				new VariableModificationRow(false, "Citrullination", "R", 0.9840),
-				// User-defined slots
-				new VariableModificationRow(false, "User Mod 1", "", 0.0),
-				new VariableModificationRow(false, "User Mod 2", "", 0.0),
-				new VariableModificationRow(false, "User Mod 3", "", 0.0),
-				new VariableModificationRow(false, "User Mod 4", "", 0.0),
-				new VariableModificationRow(false, "User Mod 5", "", 0.0),
-				new VariableModificationRow(false, "User Mod 6", "", 0.0),
-				new VariableModificationRow(false, "User Mod 7", "", 0.0));
+				// Common modifications (name/sites/mass locked)
+				new VariableModificationRow(false, "Oxidation", "M", 15.9949, false),
+				new VariableModificationRow(false, "Phosphorylation", "STY", 79.9663, false),
+				new VariableModificationRow(false, "Acetylation", "protein n-term", 42.0106, false),
+				new VariableModificationRow(false, "Deamidation", "NQ", 0.9840, false),
+				new VariableModificationRow(false, "Methylation", "KR", 14.0157, false),
+				new VariableModificationRow(false, "Ubiquitination", "K", 114.0429, false),
+				new VariableModificationRow(false, "Nitrosylation", "C", 28.9898, false),
+				new VariableModificationRow(false, "Citrullination", "R", 0.9840, false),
+				// User-defined slots (name/sites/mass editable for the life of the row)
+				new VariableModificationRow(false, "User Mod 1", "", 0.0, true),
+				new VariableModificationRow(false, "User Mod 2", "", 0.0, true),
+				new VariableModificationRow(false, "User Mod 3", "", 0.0, true),
+				new VariableModificationRow(false, "User Mod 4", "", 0.0, true),
+				new VariableModificationRow(false, "User Mod 5", "", 0.0, true),
+				new VariableModificationRow(false, "User Mod 6", "", 0.0, true),
+				new VariableModificationRow(false, "User Mod 7", "", 0.0, true));
+	}
+
+	/** Non-zero fixed modifications as {@code site:mass}. */
+	public java.util.List<String> getFixedModifications() {
+		java.util.List<String> mods = new java.util.ArrayList<>();
+		for (FixedModificationRow row : fixedModData) {
+			if (row.getDeltaMass() != 0.0) {
+				mods.add(row.getSite() + ":" + row.getDeltaMass());
+			}
+		}
+		return mods;
+	}
+
+	/** Ticked variable modifications as {@code name:sites:mass}. */
+	public java.util.List<String> getVariableModifications() {
+		java.util.List<String> mods = new java.util.ArrayList<>();
+		for (VariableModificationRow row : variableModData) {
+			if (row.getUse()) {
+				mods.add(row.getModName() + ":" + row.getSites() + ":" + row.getDeltaMass());
+			}
+		}
+		return mods;
+	}
+
+	/**
+	 * Shows exactly the given modifications: fixed sites not listed get 0 and
+	 * variable rows not listed are unticked. A variable modification with no
+	 * preset row of its name takes the first free user-defined slot.
+	 */
+	public void setModifications(java.util.List<String> fixed, java.util.List<String> variable) {
+		for (FixedModificationRow row : fixedModData) {
+			row.setDeltaMass(0.0);
+		}
+		for (String mod : fixed) {
+			int colon = mod.lastIndexOf(':');
+			if (colon < 1) {
+				continue;
+			}
+			String site = mod.substring(0, colon).trim();
+			double mass = Double.parseDouble(mod.substring(colon + 1).trim());
+			for (FixedModificationRow row : fixedModData) {
+				if (row.getSite().equalsIgnoreCase(site)) {
+					row.setDeltaMass(mass);
+				}
+			}
+		}
+		int userSlot = 0;
+		for (VariableModificationRow row : variableModData) {
+			row.setUse(false);
+			if (row.isUserDefined()) {
+				userSlot++;
+				// Reset free slots so a previous custom name does not block matching.
+				row.setModName("User Mod " + userSlot);
+				row.setSites("");
+				row.setDeltaMass(0.0);
+			}
+		}
+		for (String mod : variable) {
+			int massColon = mod.lastIndexOf(':');
+			int siteColon = massColon < 0 ? -1 : mod.lastIndexOf(':', massColon - 1);
+			if (siteColon < 0) {
+				continue;
+			}
+			String name = mod.substring(0, siteColon);
+			String sites = mod.substring(siteColon + 1, massColon);
+			double mass = Double.parseDouble(mod.substring(massColon + 1).trim());
+			VariableModificationRow target = null;
+			for (VariableModificationRow row : variableModData) {
+				if (!row.isUserDefined() && row.getModName().equals(name)) {
+					target = row;
+					break;
+				}
+			}
+			if (target == null) {
+				for (VariableModificationRow row : variableModData) {
+					if (row.isUserDefined() && !row.getUse()) {
+						target = row;
+						break;
+					}
+				}
+			}
+			if (target != null) {
+				if (target.isUserDefined()) {
+					target.setModName(name);
+				}
+				target.setUse(true);
+				target.setSites(sites);
+				target.setDeltaMass(mass);
+			}
+		}
+		fixedModTable.refresh();
+		variableModTable.refresh();
+		updateParameterView();
 	}
 
 	// Getters for the modification data
@@ -341,12 +428,24 @@ public class ModificationsPanel extends HBox {
 		private final SimpleStringProperty modName;
 		private final SimpleStringProperty sites;
 		private final SimpleDoubleProperty deltaMass;
+		/** True for the free slots the user may rename; false for preset mods. */
+		private final boolean userDefined;
 
 		public VariableModificationRow(boolean use, String modName, String sites, double deltaMass) {
+			this(use, modName, sites, deltaMass, modName != null && modName.startsWith("User Mod"));
+		}
+
+		public VariableModificationRow(boolean use, String modName, String sites, double deltaMass,
+				boolean userDefined) {
 			this.use = new SimpleBooleanProperty(use);
 			this.modName = new SimpleStringProperty(modName);
 			this.sites = new SimpleStringProperty(sites);
 			this.deltaMass = new SimpleDoubleProperty(deltaMass);
+			this.userDefined = userDefined;
+		}
+
+		public boolean isUserDefined() {
+			return userDefined;
 		}
 
 		public boolean getUse() {

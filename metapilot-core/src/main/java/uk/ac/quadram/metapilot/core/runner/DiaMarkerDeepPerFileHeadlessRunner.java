@@ -27,6 +27,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import uk.ac.quadram.metapilot.core.dia.DiaDeepProteinMappingService;
+import uk.ac.quadram.metapilot.core.dia.DiaHostLibrarySupport;
 import uk.ac.quadram.metapilot.core.diann.DiaNNHeadlessRunner;
 import uk.ac.quadram.metapilot.core.mag.MagGenomeSelectionService;
 import uk.ac.quadram.metapilot.core.report.MetaPilotHtmlReportService;
@@ -263,8 +264,8 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
         MagDbItem magDb = DiaMarkerHeadlessRunner.resolveMagDb(params, magDbConfigJson);
         if (magDb == null) throw new IOException("MAG DB could not be resolved from params + magdb config");
 
-        // Ensure Marker4 FASTA, genomes-taxa.tsv and Marker4.speclib exist (shared across all per-file workers).
-        DiaMarkerHeadlessRunner.ensureMarker4Files(magDb, diannExe, params, cb);
+        // Ensure Marker4 FASTA/highpep, genomes-taxa.tsv and Marker4.speclib exist (shared across all per-file workers).
+        DiaMarkerHeadlessRunner.ensureMarker4Files(magDb, diannExe, params, cb, reportResourceConfig);
         cb.onMessage(TASK_NAME + ": preparing Marker4 library");
         DiaMarkerHeadlessRunner.ensureMarker4Library(magDb, diannExe, params, cb, condaPrefix);
         reportProgress(cb, PROGRESS_SETUP_END);
@@ -379,8 +380,10 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
         File prMatrix = new File(combinedDir, "combined.pr_matrix.tsv");
         File pgMatrix = new File(combinedDir, "combined.pg_matrix.tsv");
 
+        List<File> hostParquets = DiaMarkerHeadlessRunner.resolveHostParquets(params, new File(markerDeepDir, "host_library"),
+                diannExe, cb, condaPrefix);
         if (!runGlobalCombinedFromPerFileRounds(diaFiles, perFileDirs, orderedLastRound,
-                combinedDir, combinedFasta, combinedSpeclib, combinedParquet,
+                combinedDir, combinedFasta, combinedSpeclib, combinedParquet, hostParquets,
                 diannExe, params, condaPrefix, representativeClustering, cb)) {
             throw new IOException(TASK_NAME + ": global combined search failed");
         }
@@ -388,9 +391,6 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
         if (!combinedParquet.exists()) throw new IOException("Combined quant did not produce: " + combinedParquet.getAbsolutePath());
         if (!prMatrix.exists()) throw new IOException("Combined quant did not produce: " + prMatrix.getAbsolutePath());
         if (!pgMatrix.exists()) throw new IOException("Combined quant did not produce: " + pgMatrix.getAbsolutePath());
-
-        DiaMarkerHeadlessRunner.runHostSearchIfRequested(markerDeepDir, diannExe, params,
-                params.getMetadata() != null ? params.getMetadata().getRawFiles() : null, cb, condaPrefix);
 
         // TSV/report exports go under marker_deep/, matching the Windows task layout.
         if (exportPostAnalysis) {
@@ -441,7 +441,8 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
                 params != null ? params.getThreadCount() : 1,
                 reportPythonHint,
                 reportResourceConfig,
-                cb
+                cb,
+                params != null ? params.getMetadata() : null
         );
         if (!report.warnings.isEmpty()) {
             cb.onMessage("WARNING: HTML report generation completed with warnings: "
@@ -654,6 +655,8 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
                 return false;
             }
             if (!markerParquet.exists()) {
+                uk.ac.quadram.metapilot.core.dia.Marker4LibrarySupport.logLibraryInUse(
+                        magDb.getMarker4FastaForLibrary(), cb, LOGGER);
                 cb.onMessage(TASK_NAME + ": marker no-quant search for " + perFileDir.getName());
                 DiaNNNoQuantLibrarySearchService.run(diannExe, params, new String[] { raw }, markerLib,
                         markerParquet, perTaskThreads, true, false, cb, condaPrefix, LOGGER, TASK_NAME);
@@ -837,9 +840,26 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
             return successful.toArray(new String[0]);
         }
 
+        if (continueWithSuccessfulRequested()) {
+            // Headless equivalent of the GUI's "continue with successful files": the missing files skip the
+            // per-file rounds, but stay in the final combined search (it searches all DIA files).
+            cb.onMessage(TASK_NAME + ": continuing with " + successful.size()
+                    + " file(s) that have genome selection results (" + CONTINUE_WITH_SUCCESSFUL_PROPERTY
+                    + "); no per-file rounds for: " + missingList + "; all files stay in the final combined search");
+            return successful.toArray(new String[0]);
+        }
+
         throw new IOException(TASK_NAME + ": incomplete marker/genome selection results. " + detail
                 + ". Successful files: " + successful.size()
-                + ". Replace the missing files and re-run (GUI can offer continue-with-successful).");
+                + ". Replace the missing files and re-run, or run the CLI with --continue-with-successful-files"
+                + " (GUI can offer continue-with-successful).");
+    }
+
+    /** Opt-in for headless runs (CLI --continue-with-successful-files); default off, so the run stops as before. */
+    public static final String CONTINUE_WITH_SUCCESSFUL_PROPERTY = "metapilot.deep_per_file.continue_with_successful";
+
+    static boolean continueWithSuccessfulRequested() {
+        return Boolean.getBoolean(CONTINUE_WITH_SUCCESSFUL_PROPERTY);
     }
 
     static boolean hasGenomeSelectionResults(File perFileDir) {
@@ -1037,7 +1057,7 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
 
     private static boolean runGlobalCombinedFromPerFileRounds(String[] diaFiles,
             LinkedHashMap<String, File> perFileDirs, LinkedHashMap<String, Integer> perFileLastRound,
-            File combinedDir, File combinedFasta, File combinedSpeclib, File combinedParquet,
+            File combinedDir, File combinedFasta, File combinedSpeclib, File combinedParquet, List<File> hostParquets,
             File diannExe, MetaParameterDiaMarker params, File condaPrefix,
             boolean includeInitialMarkerEvidence, ProgressCallback cb) {
 
@@ -1057,14 +1077,25 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
         }
 
         if (includeInitialMarkerEvidence) {
+            // Files with rounds already carry their marker evidence, restricted to the genomes searched in their rounds
+            // (DiaDeepProteinMappingService). Files without rounds of their own (BALANCED clustering) add theirs here,
+            // restricted to the genomes searched in all rounds (their representative's rounds are among them): the
+            // marker search covers the whole catalogue.
             int before = pepProMap.size();
+            HashSet<String> searchedInAllRounds = DiaDeepProteinMappingService.genomesOf(pepProMap);
             for (Map.Entry<String, File> entry : perFileDirs.entrySet()) {
                 File perFileDir = entry.getValue();
-                if (perFileDir == null) continue;
-                mergePeptideProteinMapFromParquet(new File(perFileDir, "marker.parquet"), pepProMap);
+                Integer lastRound = perFileLastRound.get(entry.getKey());
+                if (perFileDir == null || (lastRound != null && lastRound > 0)) continue;
+                HashMap<String, HashSet<String>> marker = DiaDeepProteinMappingService.markerEvidence(perFileDir,
+                        searchedInAllRounds, DiaDeepProteinMappingService.Request.deepTogether(perFileDir, 0, null, "KR"),
+                        LOGGER, TASK_NAME);
+                for (Map.Entry<String, HashSet<String>> e : marker.entrySet()) {
+                    pepProMap.computeIfAbsent(e.getKey(), k -> new HashSet<>()).addAll(e.getValue());
+                }
             }
-            LOGGER.info("{}: added initial marker evidence to global combined FASTA input ({} -> {} peptides)",
-                    TASK_NAME, before, pepProMap.size());
+            LOGGER.info("{}: added initial marker evidence of files without rounds to global combined FASTA input "
+                    + "({} -> {} peptides)", TASK_NAME, before, pepProMap.size());
         }
 
         if (pepProMap.isEmpty()) {
@@ -1086,6 +1117,8 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
                 DiannParameter diannPar = DiaMarkerHeadlessRunner.buildDiannPar(params);
                 diannPar.setThreads(params.getThreadCount());
                 diannPar.setExportDecoy(true);
+                // combined.fasta holds one entry per round peptide: no protein N-terminal rules
+                uk.ac.quadram.metapilot.core.dia.PeptideListLibrarySupport.applyPeptideEntryRules(diannPar);
                 String cmd = diannPar.generateFasta(combinedFasta.getAbsolutePath(), combinedSpeclib.getAbsolutePath(), false);
                 int exit = DiaNNHeadlessRunner.run(diannExe, cmd, combinedDir, cb, condaPrefix);
                 if (exit != 0) LOGGER.warn("{}: DIA-NN combined library build exit code {}", TASK_NAME, exit);
@@ -1101,7 +1134,15 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
         }
         reportProgress(cb, PROGRESS_COMBINED_SPECLIB);
 
-        // 4) Final quantifying search across ALL DIA files
+        // 4) Final quantifying search across ALL DIA files (with the host library, if any: DiaHostLibrarySupport)
+        final String[] finalLibs;
+        try {
+            finalLibs = DiaHostLibrarySupport.finalSearchLibraries(combinedSpeclib, hostParquets, combinedDir,
+                    DiaMarkerHeadlessRunner.libraryBuildPar(params), diannExe, cb, condaPrefix);
+        } catch (Exception e) {
+            LOGGER.error("{}: preparing the combined search libraries failed", TASK_NAME, e);
+            return false;
+        }
         boolean ok = DeepIterativeCommonSupport.ensureCombinedParquet(combinedParquet, () -> {
             try {
                 DiannParameter diannPar = DiaMarkerHeadlessRunner.buildDiannPar(params);
@@ -1117,8 +1158,7 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
                 libSearchPar.setThreadCount(params.getThreadCount());
                 libSearchPar.setqValue(0.01);
 
-                String cmd = diannPar.generateLibSearch(libSearchPar, combinedParquet.getAbsolutePath(),
-                        combinedSpeclib.getAbsolutePath());
+                String cmd = diannPar.generateLibSearch(libSearchPar, combinedParquet.getAbsolutePath(), finalLibs);
                 cmd = cmd + DiaMarkerHeadlessRunner.buildFArgs(diaFiles);
                 int exit = DiaNNHeadlessRunner.run(diannExe, cmd, combinedDir, cb, condaPrefix);
                 if (exit != 0) LOGGER.warn("{}: DIA-NN combined quant exit code {}", TASK_NAME, exit);
@@ -1138,35 +1178,6 @@ public final class DiaMarkerDeepPerFileHeadlessRunner {
         return DiaDeepProteinMappingService.buildPeptideProteinMap(
                 DiaDeepProteinMappingService.Request.deepTogether(perFileDir, lastRound, null, "KR"),
                 LOGGER, TASK_NAME);
-    }
-
-    private static void mergePeptideProteinMapFromParquet(File parquet, HashMap<String, HashSet<String>> target) {
-        if (parquet == null || !parquet.isFile() || parquet.length() <= 0 || target == null) {
-            return;
-        }
-        try {
-            DiaNNParquetReader reader = new DiaNNParquetReader(parquet.getAbsolutePath(), "KR");
-            DiaNNPrecursor[] precursors = reader.getDiaNNPrecursors(0.01);
-            if (precursors == null) return;
-            for (DiaNNPrecursor p : precursors) {
-                if (p == null || p.getIsDecoy()) continue;
-                String seq = p.getSeqString();
-                if (seq == null || seq.isEmpty()) continue;
-                String[] proteins = p.getProGroups();
-                if (proteins == null || proteins.length == 0) continue;
-                HashSet<String> set = target.computeIfAbsent(seq, k -> new HashSet<>());
-                for (String protein : proteins) {
-                    if (protein == null || protein.isEmpty()) continue;
-                    if (protein.startsWith("REV_") || protein.startsWith("rev_")
-                            || protein.startsWith("DECOY_") || protein.startsWith("decoy_")) {
-                        continue;
-                    }
-                    set.add(protein);
-                }
-            }
-        } catch (Exception e) {
-            LOGGER.warn("{}: failed to merge initial marker parquet {}", TASK_NAME, parquet.getAbsolutePath(), e);
-        }
     }
 
     // ----------------------- per-round FASTA helpers -----------------------

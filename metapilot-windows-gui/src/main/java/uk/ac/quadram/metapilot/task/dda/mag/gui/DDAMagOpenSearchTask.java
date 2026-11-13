@@ -1,15 +1,28 @@
 package uk.ac.quadram.metapilot.task.dda.mag.gui;
 
 import java.io.File;
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.logging.log4j.Logger;
 
 import javafx.application.Platform;
+import javafx.scene.control.Alert;
+import javafx.scene.control.Alert.AlertType;
+import javafx.scene.control.ButtonBar;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.Label;
 import javafx.scene.control.ProgressBar;
+import javafx.scene.control.TextArea;
+import javafx.scene.layout.GridPane;
+import javafx.scene.layout.Priority;
 
+import uk.ac.quadram.metapilot.core.opensearch.OpenSearchEntrapment;
 import uk.ac.quadram.metapilot.core.opensearch.OpenSearchLayout;
 import uk.ac.quadram.metapilot.core.runner.MagOpenSearchHeadlessRunner;
+import uk.ac.quadram.metapilot.core.runner.MagOpenSearchToolSetup;
 import uk.ac.quadram.metapilot.core.workflow.ProgressCallback;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagOpenSearchParameters;
@@ -25,7 +38,7 @@ import uk.ac.quadram.metapilot.task.mag.MetaPilotMagTask;
  * <ul>
  * <li><b>Per-run log file.</b> {@code MetaPilotTask}'s constructor calls
  * {@code configLog(taskLogDir())}, which creates {@code logging.log} - here in
- * the engine configuration's folder - with its own non-additive appender
+ * {@code opensearch_MAG_search/} - with its own non-additive appender
  * and tears it down on completion. An earlier version of this class extended
  * {@code Task} directly and silently wrote no log file at all.</li>
  * <li><b>Progress bar wiring</b> — the {@code progressProperty()} listener that
@@ -70,8 +83,8 @@ public class DDAMagOpenSearchTask extends MetaPilotMagTask {
 			// Must precede createSeparateFolders(): it dereferences
 			// getDbSearchResultFile() unguarded. The other MAG tasks set their
 			// engine search folder here for the same reason; this workflow sets
-			// the engine configuration's own folder, where its final tables and
-			// report go, as MagOpenSearchHeadlessRunner.run() does again.
+			// opensearch_MAG_search/, where its final tables and report go, as
+			// MagOpenSearchHeadlessRunner.run() does again.
 			File modeRoot = modeRoot(params);
 			if (!modeRoot.exists() && !modeRoot.mkdirs()) {
 				throw new IllegalStateException("Could not create result folder: " + modeRoot.getAbsolutePath());
@@ -95,24 +108,31 @@ public class DDAMagOpenSearchTask extends MetaPilotMagTask {
 	}
 
 	/**
-	 * The per-sample searches are shared by the engine configurations, so they
-	 * sit under the engine search root rather than under the mode folder that
-	 * {@code dbSearchResultFile} names.
+	 * Per-sample searches live under {@code opensearch_MAG_search/search_results/}
+	 * (or {@code opensearch_entrapment_MAG_search/search_results/} for evaluation),
+	 * the same nested layout FragPipe MAG and pFind MAG use.
 	 */
 	@Override
 	protected File sampleFoldersRoot() {
-		return OpenSearchLayout.searchResultsRoot(OpenSearchLayout.engineSearchRoot(new File(metaPar.getResult())));
+		return OpenSearchLayout.searchResultsRoot(searchRoot((DDAMagOpenSearchParameters) metaPar));
 	}
 
-	/** The run's log belongs to the engine configuration it describes. */
+	/** The run's log belongs in the engine folder, with the tables. */
 	@Override
 	protected File taskLogDir() {
 		return modeRoot((DDAMagOpenSearchParameters) metaPar);
 	}
 
+	private static File searchRoot(DDAMagOpenSearchParameters params) {
+		File result = new File(params.getResult());
+		if (params.isEntrapmentEnabled()) {
+			return new File(result, OpenSearchEntrapment.RESULT_FOLDER);
+		}
+		return OpenSearchLayout.engineSearchRoot(result);
+	}
+
 	private static File modeRoot(DDAMagOpenSearchParameters params) {
-		return OpenSearchLayout.modeRoot(OpenSearchLayout.engineSearchRoot(new File(params.getResult())),
-				params.getSearchEngines());
+		return OpenSearchLayout.modeRoot(searchRoot(params), params.getSearchEngines());
 	}
 
 	@Override
@@ -136,6 +156,60 @@ public class DDAMagOpenSearchTask extends MetaPilotMagTask {
 		this.cancel(true);
 	}
 
+	/**
+	 * GUI decision after stage-1 when some samples have no refined database
+	 * (empty unmodified/rescored set). Mirrors DIA Deep per-file's partial-marker
+	 * dialog: continue identifies only successful samples, but FlashLFQ still
+	 * quantifies every raw file together.
+	 */
+	private boolean askContinueWithPartialIdentification(List<String> skippedSampleNames, int successfulSampleCount)
+			throws InterruptedException {
+		CountDownLatch latch = new CountDownLatch(1);
+		AtomicBoolean continueRun = new AtomicBoolean(false);
+		Platform.runLater(() -> {
+			try {
+				ButtonType continueButton = new ButtonType("Continue with successful samples",
+						ButtonBar.ButtonData.OK_DONE);
+				ButtonType stopButton = new ButtonType("Stop", ButtonBar.ButtonData.CANCEL_CLOSE);
+				Alert alert = new Alert(AlertType.CONFIRMATION);
+				alert.setTitle("Incomplete stage-1 results");
+				alert.setHeaderText("Some samples have no stage-1 genome selection result");
+				alert.setContentText(
+						"Marker search finished, but " + skippedSampleNames.size()
+								+ " sample(s) have too few unmodified targets for genome selection.\n\n"
+								+ successfulSampleCount
+								+ " sample(s) have complete stage-1 results.\n\n"
+								+ "Stop now if you want to replace the failing files, or continue: stage-2 "
+								+ "identification uses only the successful samples, and FlashLFQ still "
+								+ "quantifies every raw file together (match-between-runs).");
+
+				TextArea details = new TextArea(String.join("\n", skippedSampleNames));
+				details.setEditable(false);
+				details.setWrapText(true);
+				details.setMaxWidth(Double.MAX_VALUE);
+				details.setMaxHeight(Double.MAX_VALUE);
+				GridPane.setVgrow(details, Priority.ALWAYS);
+				GridPane.setHgrow(details, Priority.ALWAYS);
+				GridPane expandable = new GridPane();
+				expandable.setMaxWidth(Double.MAX_VALUE);
+				expandable.add(details, 0, 0);
+				alert.getDialogPane().setExpandableContent(expandable);
+				alert.getDialogPane().setExpanded(true);
+				alert.getButtonTypes().setAll(continueButton, stopButton);
+
+				Optional<ButtonType> answer = alert.showAndWait();
+				continueRun.set(answer.isPresent() && answer.get() == continueButton);
+			} finally {
+				latch.countDown();
+			}
+		});
+		latch.await();
+		boolean chosen = continueRun.get();
+		logger.info("{}: partial stage-1 decision -> {} (skipped={}, successful={})", getTaskName(),
+				chosen ? "continue" : "stop", skippedSampleNames.size(), successfulSampleCount);
+		return chosen;
+	}
+
 	@Override
 	protected Boolean call() throws Exception {
 		updateMessage(getTaskName());
@@ -143,134 +217,44 @@ public class DDAMagOpenSearchTask extends MetaPilotMagTask {
 		setSecondBarBusy(true);
 
 		try {
-			File msfraggerJar = mrp == null ? null : mrp.resolveMsfraggerJar();
-			if (msfraggerJar == null || !msfraggerJar.exists()) {
-				throw new IllegalStateException("MSFragger.jar not found inside the configured FragPipe installation. "
-						+ "Set Resources > FragPipe to its bin/fragpipe launcher so the bundled jar can be detected.");
+			// Same tool resolution the CLI / HPC entry points use
+			// ({@link MagOpenSearchToolSetup}), so a missing Crystal-C / MSBooster /
+			// FlashLFQ fails here for the same reason on every surface.
+			MagOpenSearchToolSetup.Tools tools = openSearchParams.isEntrapmentEnabled()
+					? MagOpenSearchToolSetup.prepareIdentification(openSearchParams, magDb, mrp)
+					: MagOpenSearchToolSetup.prepare(openSearchParams, magDb, mrp);
+			logger.info("{}: using MSFragger jar {}", getTaskName(), tools.msfraggerJar.getAbsolutePath());
+			logger.info("{}: marker FASTA {}", getTaskName(), tools.markerFasta.getAbsolutePath());
+			if (tools.flashLfqExe != null) {
+				logger.info("{}: using FlashLFQ {}", getTaskName(), tools.flashLfqExe.getAbsolutePath());
 			}
-			logger.info("{}: using MSFragger jar {}", getTaskName(), msfraggerJar.getAbsolutePath());
-
-			// Resolved here rather than inside the runner so GUI, CLI and HPC all
-			// take the executable from the same configured resource.
-			if (openSearchParams.usesSage()) {
-				String sagePath = mrp == null ? null
-						: mrp.getToolPath(uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType.SAGE);
-				if (sagePath == null || sagePath.isBlank() || !new java.io.File(sagePath).exists()) {
-					throw new IllegalStateException("Sage executable not configured or missing. Set Resources > Sage, "
-							+ "or select \"" + DDAMagOpenSearchParameters.ENGINES_MSFRAGGER + "\".");
-				}
-				openSearchParams.setSageExecutable(sagePath);
-				logger.info("{}: using Sage {}", getTaskName(), sagePath);
+			if (openSearchParams.getSageExecutable() != null && !openSearchParams.getSageExecutable().isBlank()) {
+				logger.info("{}: using Sage {}", getTaskName(), openSearchParams.getSageExecutable());
 			}
-
-			// Stage-1 rescoring tools, resolved from the same Resources entries the
-			// rest of MetaPilot uses: MSBooster ships inside the configured
-			// FragPipe installation, and DIA-NN is its prediction backend and is
-			// already a configured resource for the DIA workflows. Resolved here,
-			// at task setup, so "enabled but the tools are missing" is reported
-			// before the search starts rather than after it - and it is reported,
-			// not worked around: see MagOpenSearchHeadlessRunner.runStage1MsBooster.
-			if (openSearchParams.isStage1RescoringEnabled() && openSearchParams.isStage1MsboosterEnabled()) {
-				java.io.File msbooster = mrp == null ? null : mrp.resolveMsboosterJar();
-				java.io.File unimod = mrp == null ? null : mrp.resolveUnimodObo();
-				// FragPipe's bundled DIA-NN first. MSBooster needs the 1.8.x
-				// prediction interface; the standalone DIA-NN configured for the DIA
-				// workflows is typically 2.x and will fail.
-				// FragPipe's bundled DIA-NN and nothing else. The standalone DIA-NN
-				// configured for the DIA workflows is typically 2.x, which MSBooster
-				// cannot drive: it was pointed at a 2.5.1 on 2026-09-10 and every
-				// one of nine runs produced no predictions while reporting success.
-				// There is no fallback here for that reason.
-				java.io.File diann = mrp == null ? null : mrp.resolveMsboosterDiann();
-				if (msbooster == null || diann == null || !diann.isFile()) {
-					throw new IllegalStateException("Stage-1 MSBooster rescoring is enabled but "
-							+ (msbooster == null ? "MSBooster.jar was not found in the configured FragPipe "
-									+ "installation's tools folder"
-									: "FragPipe bundles no DIA-NN 1.8.x under tools/diann/ - MSBooster drives "
-											+ "DIA-NN through the 1.8.x prediction interface and a 2.x build "
-											+ "silently predicts nothing")
-							+ ". Set Resources > FragPipe to the installation that bundles both, or switch "
-							+ "stage-1 MSBooster off deliberately.");
-				}
-				openSearchParams.setMsboosterJarPath(msbooster.getAbsolutePath());
-				openSearchParams.setDiannExecutablePath(diann.getAbsolutePath());
-				if (unimod != null) {
-					openSearchParams.setUnimodOboPath(unimod.getAbsolutePath());
-				}
+			if (openSearchParams.getMsboosterJarPath() != null) {
 				logger.info("{}: stage-1 rescoring with MSBooster {} and DIA-NN {}", getTaskName(),
-						msbooster.getAbsolutePath(), diann.getAbsolutePath());
+						openSearchParams.getMsboosterJarPath(), openSearchParams.getDiannExecutablePath());
 			}
-
-			// Crystal-C, resolved from the same FragPipe installation. It refines
-			// the round-two precursor masses before any delta mass is read;
-			// without it the workflow reports isotope-selection and co-isolation
-			// artifacts as modifications (measured on 12mix: 316,120 of 785,180
-			// validated target PSMs sat at 0.05-5.5 Da, and 335 of 500 fitted
-			// peaks lay inside +/-5.5 Da). Resolved here, at task setup, so
-			// "enabled but the tool is missing" is reported before the search
-			// starts rather than after it.
-			if (openSearchParams.isCrystalcEnabled()) {
-				java.io.File crystalc = mrp == null ? null : mrp.resolveCrystalcJar();
-				if (crystalc == null) {
-					throw new IllegalStateException("Crystal-C precursor refinement is enabled but no "
-							+ "original-crystalc-*.jar was found in the configured FragPipe installation's "
-							+ "tools folder. Set Resources > FragPipe to an installation that bundles it, or "
-							+ "switch the step off deliberately.");
-				}
-				openSearchParams.setCrystalcJarPath(crystalc.getAbsolutePath());
+			if (openSearchParams.getCrystalcJarPath() != null) {
 				logger.info("{}: Crystal-C precursor refinement with {}", getTaskName(),
-						crystalc.getAbsolutePath());
+						openSearchParams.getCrystalcJarPath());
 			}
-
-			// Used only when Thermo .raw files are loaded; the runner converts them
-			// to mzML first and reports a missing msconvert itself.
-			String msconvertPath = mrp == null ? null
-					: mrp.getToolPath(uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType.MSCONVERT);
-			if (msconvertPath != null && !msconvertPath.isBlank()) {
-				openSearchParams.setMsconvertExecutable(msconvertPath);
-				logger.info("{}: msconvert for .raw input {}", getTaskName(), msconvertPath);
+			if (openSearchParams.getMsconvertExecutable() != null
+					&& !openSearchParams.getMsconvertExecutable().isBlank()) {
+				logger.info("{}: msconvert for .raw input {}", getTaskName(),
+						openSearchParams.getMsconvertExecutable());
 			}
-
-			File markerFasta = magDb.getHapFastaFile(openSearchParams.getGenomeSelectorMode());
-			if (markerFasta == null || !markerFasta.exists()) {
-				throw new IllegalStateException("MAG marker FASTA not found for genome selector mode "
-						+ openSearchParams.getGenomeSelectorMode());
-			}
-			logger.info("{}: marker FASTA {}", getTaskName(), markerFasta.getAbsolutePath());
-
-			// Resolved here, at task setup, for the same reason as every other tool
-			// above: "enabled but missing" must be reported before the search
-			// starts, not after Steps A-D have already run. Same resource entry and
-			// getToolPath() call DDAMagPfindTask.lfQuant() uses
-			// (mrp.getToolPath(ToolType.FLASHLFQ)), so both workflows' FlashLFQ step
-			// is configured from the one place a person would look to fix it.
-			String flashLfqPath = mrp == null ? null
-					: mrp.getToolPath(uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType.FLASHLFQ);
-			File flashLfqExe = flashLfqPath == null || flashLfqPath.isBlank() ? null : new File(flashLfqPath);
-			if (flashLfqExe == null || !flashLfqExe.exists()) {
-				throw new IllegalStateException(
-						"FlashLFQ executable not configured or missing. Set Resources > FlashLFQ.");
-			}
-			logger.info("{}: using FlashLFQ {}", getTaskName(), flashLfqExe.getAbsolutePath());
-
-			// Same resource entry and getToolPath() call DDAMagFragPipeTask's own
-			// resolveGuiToolFile(ToolType.FUNCDB) uses. Optional - a missing/blank
-			// path resolves to null, and MagOpenSearchHeadlessRunner.run() already
-			// skips functional annotation gracefully (with a log message) when
-			// funcDbFile is null, exactly as MagFragPipeHeadlessRunner does.
-			String funcDbPath = mrp == null ? null
-					: mrp.getToolPath(uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType.FUNCDB);
-			File funcDbFile = funcDbPath == null || funcDbPath.isBlank() ? null : new File(funcDbPath);
-			if (funcDbFile != null && funcDbFile.isFile()) {
+			if (tools.funcDbFile != null) {
 				logger.info("{}: using functional annotation database {}", getTaskName(),
-						funcDbFile.getAbsolutePath());
+						tools.funcDbFile.getAbsolutePath());
 			} else {
 				logger.info("{}: functional annotation database not configured - skipping Step I", getTaskName());
 			}
 
 			MagOpenSearchHeadlessRunner.Result result = MagOpenSearchHeadlessRunner.run(openSearchParams,
-					msfraggerJar, markerFasta, magDb, flashLfqExe, openSearchParams.getThreadCount(),
-					funcDbFile, createProgressCallback());
+					tools.msfraggerJar, tools.markerFasta, magDb, tools.flashLfqExe,
+					openSearchParams.getThreadCount(), tools.funcDbFile, createProgressCallback(),
+					this::askContinueWithPartialIdentification);
 
 			logger.info("{}: {} validated PSMs across {} accepted delta-mass groups", getTaskName(),
 					result.validatedPsmCount, result.acceptedModificationCount);
@@ -280,6 +264,16 @@ public class DDAMagOpenSearchTask extends MetaPilotMagTask {
 			this.combinedFile = OpenSearchLayout.combinedDir(result.modeRoot);
 			this.final_pep_txt = OpenSearchLayout.finalPeptides(result.modeRoot);
 			this.final_pro_txt = OpenSearchLayout.razorProteins(result.modeRoot);
+
+			if (openSearchParams.isEntrapmentEnabled()) {
+				logger.info("{}: entrapment evaluation stops after identification; skipping visual reports",
+						getTaskName());
+				updateProgress(100, 100);
+				setSecondBarBusy(false);
+				updateMessage(getTaskName() + ": Entrapment evaluation completed");
+				setStatus(getTaskName() + ": Entrapment evaluation completed");
+				return true;
+			}
 
 			updateProgress(80, 100);
 			updateMessage(getTaskName() + ": Generating visual reports...");

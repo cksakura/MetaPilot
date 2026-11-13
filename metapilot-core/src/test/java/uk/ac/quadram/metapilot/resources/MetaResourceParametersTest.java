@@ -52,6 +52,47 @@ class MetaResourceParametersTest {
 		assertFalse(params.isToolAvailable(ToolType.MSFRAGGER));
 	}
 
+	@Test
+	void resolvesVersionedLinuxDiannBinaryForMsbooster() throws Exception {
+		Path root = tempDir.resolve("FragPipe-24.0");
+		Path launcher = Files.createDirectories(root.resolve("bin")).resolve("fragpipe");
+		Files.createFile(launcher);
+		Path linux = Files.createDirectories(root.resolve("tools").resolve("diann").resolve("1.8.2_beta_8").resolve("linux"));
+		Files.createFile(linux.resolve("libtorch.so"));
+		Files.createFile(linux.resolve("unimod.obo"));
+		Path binary = Files.createFile(linux.resolve("diann-1.8.1.8"));
+
+		MetaResourceParameters params = new MetaResourceParameters(tempDir.resolve("resources").toString());
+		params.setToolPath(ToolType.FRAGPIPE, launcher.toString());
+
+		assertEquals(binary.toFile().getCanonicalFile(), params.resolveMsboosterDiann().getCanonicalFile());
+	}
+
+	@Test
+	void prefersPlainDiannOverVersionedName() throws Exception {
+		Path root = tempDir.resolve("FragPipe-24.0");
+		Path launcher = Files.createDirectories(root.resolve("bin")).resolve("fragpipe");
+		Files.createFile(launcher);
+		Path linux = Files.createDirectories(root.resolve("tools").resolve("diann").resolve("1.8.2_beta_8").resolve("linux"));
+		Files.createFile(linux.resolve("diann-1.8.1.8"));
+		Path plain = Files.createFile(linux.resolve("diann"));
+
+		MetaResourceParameters params = new MetaResourceParameters(tempDir.resolve("resources").toString());
+		params.setToolPath(ToolType.FRAGPIPE, launcher.toString());
+
+		assertEquals(plain.toFile().getCanonicalFile(), params.resolveMsboosterDiann().getCanonicalFile());
+	}
+
+	@Test
+	void diannBinaryNameMatcherAcceptsFragpipeLinuxLayout() {
+		assertTrue(MetaResourceParameters.isMsboosterDiannBinaryName("diann-1.8.1.8"));
+		assertTrue(MetaResourceParameters.isMsboosterDiannBinaryName("diann"));
+		assertTrue(MetaResourceParameters.isMsboosterDiannBinaryName("diann.exe"));
+		assertTrue(MetaResourceParameters.isMsboosterDiannBinaryName("diann-linux"));
+		assertFalse(MetaResourceParameters.isMsboosterDiannBinaryName("libtorch.so"));
+		assertFalse(MetaResourceParameters.isMsboosterDiannBinaryName("unimod.obo"));
+	}
+
 	private static Path createMsfraggerJar(Path fragpipeRoot, String version) throws Exception {
 		Path directory = Files.createDirectories(fragpipeRoot.resolve("tools").resolve("MSFragger-" + version));
 		return Files.createFile(directory.resolve("MSFragger-" + version + ".jar"));

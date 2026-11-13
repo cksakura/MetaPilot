@@ -2,6 +2,7 @@ package uk.ac.quadram.metapilot.core.runner;
 
 import uk.ac.quadram.metapilot.core.msfragger.MSFraggerHeadlessRunner;
 import uk.ac.quadram.metapilot.core.fragpipe.FragPipeHeadlessRunner;
+import uk.ac.quadram.metapilot.core.fragpipe.FragpipeModifications;
 import uk.ac.quadram.metapilot.core.fragpipe.FragpipeWorkflowFile;
 import uk.ac.quadram.metapilot.core.mag.MagGenomeSelectionService;
 import uk.ac.quadram.metapilot.core.mag.MagResultLayoutUtil;
@@ -58,9 +59,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * - resolved once via {@code MagResultLayoutUtil.resolveSearchResultsRoot()}
  * near the top of {@code runInternal()}, before Step A's parallel execution
  * starts, so the one-time legacy-folder migration never races a parallel
- * worker thread. {@code combined/}, {@code taxonomy_analysis/},
- * {@code functional_annotation/}, and {@code report/} remain siblings of
- * {@code search_results/}, unaffected.
+ * worker thread. {@code combined/}, the result's {@code spectra/},
+ * {@code taxonomy_analysis/}, {@code functional_annotation/}, and
+ * {@code report/} remain siblings of {@code search_results/}, unaffected.
  */
 public final class MagFragPipeHeadlessRunner {
 
@@ -290,17 +291,7 @@ public final class MagFragPipeHeadlessRunner {
 
 		String[] rawFiles = md.getRawFiles();
 		String[] expNames = md.getExpNames();
-		File spectraDirForSummary = null;
-		if (MzmlSummaryFileWriter.allMzml(rawFiles)) {
-			spectraDirForSummary = params.getSpectraFile();
-			if (MzmlSummaryFileWriter.ensure(spectraDirForSummary, rawFiles)) {
-				cb.onMessage("Prepared mzML summary files: " + spectraDirForSummary.getAbsolutePath());
-			} else {
-				cb.onMessage(
-						"mzML summary files could not be prepared; final_summary.tsv will use identification fallback");
-				spectraDirForSummary = null;
-			}
-		}
+		File spectraDirForSummary = prepareSpectraSummaryDir(resultRoot, params.getSpectraFile(), rawFiles, cb);
 		int threads = Math.max(1, params.getThreadCount());
 		int requestedParallelTasks = Math.max(0, params.getFragpipeParallelTasks());
 		ParallelTaskPlan parallelPlan = determineFragpipeParallelTaskPlan(rawFiles.length, threads, requestedParallelTasks);
@@ -428,7 +419,7 @@ public final class MagFragPipeHeadlessRunner {
 				fastaMap.putAll(readFastaSequences(proteinFas));
 			}
 
-			String cleavage = getCleavageResiduesOrDefault(FragpipeWorkflowFile.parse(basicWorkflowTemplate.toPath()));
+			String cleavage = cleavageResidues(params);
 			try (PrintWriter writer = new PrintWriter(combinedFasta)) {
 				for (String proName : fastaMap.keySet()) {
 					String seq = fastaMap.get(proName);
@@ -543,7 +534,8 @@ public final class MagFragPipeHeadlessRunner {
 				params != null ? params.getThreadCount() : 1,
 				reportPythonHint,
 				reportResourceConfig,
-				cb);
+				cb,
+				params != null ? params.getMetadata() : null);
 		if (!report.warnings.isEmpty()) {
 			cb.onMessage("WARNING: HTML report generation completed with warnings: "
 					+ String.join("; ", report.warnings));
@@ -1088,16 +1080,23 @@ public final class MagFragPipeHeadlessRunner {
 		// correction this used to carry a second, independently-drifting copy of.
 		String[] enzyme = MSFraggerHeadlessRunner.enzymeInfo(params.getEnzyme());
 		int missedCleavages = Math.max(0, params.getMissCleavages());
-		// Structural overlay only: enzyme/missed-cleavages come from the UI/CLI params
-		// regardless of search mode. Precursor/fragment tolerance, localize_delta_mass,
+		// Structural overlay only: enzyme, digestion, missed cleavages and modifications
+		// come from the UI/CLI params regardless of search mode. Precursor/fragment tolerance, localize_delta_mass,
 		// crystalc, percolator/peptide-prophet, and ptmshepherd are intentionally left
 		// untouched here - those are search-mode-specific and must come from whichever
 		// template got resolved (Basic-Search/LFQ-MBR for Closed, Open/hybrid for Open,
         // or the user's own file for Custom), not be forced by MetaPilot.
+		int termini = MSFraggerHeadlessRunner.enzymeTermini(params.getDigestModeString(), params.getEnzyme());
 		workflow.set("msfragger.misc.fragger.enzyme-dropdown-1", enzyme[0])
 				.set("msfragger.search_enzyme_name_1", enzyme[0]).set("msfragger.search_enzyme_cut_1", enzyme[1])
-				.set("msfragger.search_enzyme_nocut_1", enzyme[2]).set("msfragger.num_enzyme_termini", "2")
+				.set("msfragger.search_enzyme_nocut_1", enzyme[2])
+				.set("msfragger.search_enzyme_sense_1", MSFraggerHeadlessRunner.enzymeSense(params.getEnzyme()))
+				.set("msfragger.num_enzyme_termini", String.valueOf(termini))
 				.set("msfragger.allowed_missed_cleavage_1", String.valueOf(missedCleavages));
+
+		if (params.isApplyModifications()) {
+			FragpipeModifications.apply(workflow, params.getFixedModifications(), params.getVariableModifications());
+		}
 
 		boolean ionMobility = params.getMs2ScanMode() != null
 				&& params.getMs2ScanMode().toUpperCase().contains("IM-MS");
@@ -1123,6 +1122,9 @@ public final class MagFragPipeHeadlessRunner {
 		request.magDb = mag;
 		request.genomeSelectorMode = params.getGenomeSelectorMode();
 		request.genomeSelectionStrategy = params.getGenomeSelectionStrategy();
+		request.genomeSelectionPsmCoverage = params.getGenomeSelectionPsmCoverage();
+		request.genomeSelectionStepGuard = params.getGenomeSelectionStepGuard();
+		request.genomeSelectionMaxGenomes = params.getGenomeSelectionMaxGenomes();
 		request.psms = new ArrayList<MetaPSM>(psmList);
 		request.evidenceFile = evidenceFile;
 		request.rankedFile = rankedFile;
@@ -1168,15 +1170,10 @@ public final class MagFragPipeHeadlessRunner {
 		}
 	}
 
-	private static String getCleavageResiduesOrDefault(FragpipeWorkflowFile wf) {
-		try {
-			String cut = wf.get("msfragger.search_enzyme_cut_1");
-			if (cut != null && !cut.trim().isEmpty()) {
-				return cut.trim();
-			}
-		} catch (Exception ignored) {
-		}
-		return "KR";
+	/** Residues the shuffled decoys keep in place: the selected enzyme's, as searched. */
+	private static String cleavageResidues(DDAMagFragPipeParameters params) {
+		String cut = MSFraggerHeadlessRunner.enzymeInfo(params.getEnzyme())[1];
+		return cut == null || cut.isBlank() ? "KR" : cut;
 	}
 
 	/**
@@ -1474,6 +1471,7 @@ public final class MagFragPipeHeadlessRunner {
 		request.gtdbNcbiMappingTsv = gtdbNcbi;
 		request.generateFinalGenomeRanking = true;
 		request.genomeIntensityMap = post.genomeIntensityMap;
+		request.genomeUniqueIntensityMap = post.genomeUniqueIntensityMap;
 		request.genomeScoreMap = post.genomeScoreMap;
 		request.genomeStats = post.genomeDiaStats;
 		request.psmCountMap = post.psmCountMap;
@@ -1487,6 +1485,41 @@ public final class MagFragPipeHeadlessRunner {
 		request.progressCallback = cb;
 		request.exportMetaAtlasParquet = exportMetaAtlasParquet;
 		MagTaxonomyAnalysisService.run(request);
+	}
+
+	/**
+	 * Folder holding {@code ms2Count.txt} for {@code final_summary.tsv}. The GUI
+	 * conversion folder is {@code <result>/spectra}, the same place pFind uses.
+	 * An HPC run that starts from mzML has no converted files, so the counts
+	 * are written into that spectra folder rather than a separate one.
+	 */
+	static File prepareSpectraSummaryDir(File resultRoot, File conversionDir, String[] rawFiles,
+			ProgressCallback cb) throws IOException {
+		if (MagResultLayoutUtil.hasMs2Count(conversionDir)) {
+			return conversionDir;
+		}
+		if (!MzmlSummaryFileWriter.allMzml(rawFiles) || resultRoot == null) {
+			return conversionDir;
+		}
+		File dir = conversionDir != null ? conversionDir : MagResultLayoutUtil.spectraCountDir(resultRoot);
+		if (conversionDir != null) {
+			File adopted = MagResultLayoutUtil.spectraCountDir(resultRoot);
+			if (MagResultLayoutUtil.hasMs2Count(adopted)) {
+				dir = adopted;
+			}
+		}
+		if (MagResultLayoutUtil.hasMs2Count(dir)) {
+			cb.onMessage("Prepared mzML summary files: " + dir.getAbsolutePath());
+			return dir;
+		}
+		if (MzmlSummaryFileWriter.ensure(dir, rawFiles)) {
+			cb.onMessage("Prepared mzML summary files: " + dir.getAbsolutePath());
+			return dir;
+		}
+		cb.onMessage("mzML summary files could not be prepared; final_summary.tsv will use identification fallback");
+		new File(dir, "ms2Count.txt").delete();
+		new File(dir, "rt.txt").delete();
+		return conversionDir;
 	}
 
 }

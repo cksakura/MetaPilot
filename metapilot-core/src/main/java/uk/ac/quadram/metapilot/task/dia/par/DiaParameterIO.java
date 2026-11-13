@@ -8,6 +8,7 @@ import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.LogManager;
 
 import uk.ac.quadram.metapilot.task.par.MetaData;
+import uk.ac.quadram.metapilot.task.par.SampleMetadata;
 import uk.ac.quadram.metapilot.task.par.BaseParameterIO;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.MagDbConfigIO;
@@ -141,6 +142,11 @@ public class DiaParameterIO extends BaseParameterIO {
         return (newFile.exists() && newFile.length() > 0) || (legacyFile.exists() && legacyFile.length() > 0);
     }
 
+    public MetaParameterDia loadParameters(File inputFile) {
+        Object o = loadParametersFromFile(inputFile);
+        return (o instanceof MetaParameterDia) ? (MetaParameterDia) o : null;
+    }
+
     @Override
     protected boolean saveParametersToFile(Object parameters, File outputFile, String description) {
         if (!(parameters instanceof MetaParameterDia)) {
@@ -241,20 +247,7 @@ public class DiaParameterIO extends BaseParameterIO {
             basicParams.put("meta_workflow", params.isMetaWorkflow());
             json.put("basic_parameters", basicParams);
 
-            // Metadata
-            JSONArray metadata = new JSONArray();
-            if (metaData != null && metaData.getMetaInfo() != null) {
-                String[][] metaInfo = metaData.getMetaInfo();
-                for (int i = 0; i < metaInfo.length; i++) {
-                    JSONObject meta = new JSONObject();
-                    meta.put("sample_index", i);
-                    if (metaInfo[i].length > 0) meta.put("age", metaInfo[i][0]);
-                    if (metaInfo[i].length > 1) meta.put("gender", metaInfo[i][1]);
-                    if (metaInfo[i].length > 2) meta.put("condition", metaInfo[i][2]);
-                    metadata.put(meta);
-                }
-            }
-            json.put("metadata", metadata);
+            json.put(SampleMetadata.JSON_KEY, SampleMetadata.toJson(metaData));
 
             // Write formatted JSON
             return writeJsonToFile(json, outputFile);
@@ -291,6 +284,7 @@ public class DiaParameterIO extends BaseParameterIO {
 
                 metadata = new MetaData(rawFiles, expNames, fractions, replicates);
             }
+            SampleMetadata.apply(metadata, SampleMetadata.fromJson(json));
 
             // Create MetaBaseParameter first
             uk.ac.quadram.metapilot.task.par.MetaBaseParameter metaBasePar = new uk.ac.quadram.metapilot.task.par.MetaBaseParameter(
@@ -369,6 +363,15 @@ public class DiaParameterIO extends BaseParameterIO {
                         }
                     } catch (Exception e) {
                         LOGGER.warn("Failed to load MAG database from config: " + e.getMessage());
+                    }
+                    if (magDbItem == null) {
+                        // Site MAG registry (CLI / HPC), as DiaMarkerParameterIO does.
+                        try {
+                            magDbItem = uk.ac.quadram.metapilot.task.mag.MagDbItemResolver.resolve(
+                                    catalogueId, identifier, catalogueVersion, null);
+                        } catch (Exception e) {
+                            LOGGER.warn("Failed to resolve MAG database from registry: " + e.getMessage());
+                        }
                     }
                 }
             }

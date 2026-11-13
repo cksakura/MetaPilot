@@ -1,8 +1,14 @@
 package uk.ac.quadram.metapilot.core.opensearch;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.Arrays;
 import java.util.List;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import uk.ac.quadram.metapilot.core.mag.MagResultLayoutUtil;
 import uk.ac.quadram.metapilot.core.crystalc.CrystalCHeadlessRunner;
@@ -40,31 +46,37 @@ public final class OpenSearchLayout {
 	public static final String PARAMETER_FILE = "mag_opensearch_analysis_parameters.json";
 
 	/**
-	 * Folder names are the ones the existing DDA MAG workflows already use, not
-	 * workflow-specific inventions: pFind, FragPipe and Sage all write
-	 * {@code search_results/<sample>/marker/} and
-	 * {@code search_results/<sample>/sample_db/}, and pooled cross-sample output
-	 * goes in {@code combined/}. Matching them means result folders look the
-	 * same whichever engine produced them, and the cleaner's existing top-level
-	 * rules ({@code MagResultLayoutUtil.fixedTopLevelDirNames()}) apply without
-	 * special cases.
-	 * <p>
-	 * The two searches map onto those names naturally: round one is the marker
-	 * search (against the marker/HAP database) and round two is the
-	 * sample-specific search (against the refined per-sample database). They
-	 * differ from the other engines only in being open rather than closed.
-	 */
-	/**
 	 * Engine-named search folder directly under the user's result folder, the
 	 * same convention every other workflow uses ({@code fragpipe_MAG_search},
-	 * {@code pfind_mag_search}, {@code sage_mag_search}). Everything this
-	 * workflow writes lives inside it: the shared per-sample searches under
-	 * {@code search_results/}, and one {@link #modeRoot} per engine
-	 * configuration. {@code MetaBaseParameter.setDbSearchResultFile(...)} is set
-	 * to the mode root, which is where the shared report generator puts
-	 * {@code report/}.
+	 * {@code pfind_MAG_search}, {@code sage_MAG_search}):
+	 *
+	 * <pre>
+	 * opensearch_MAG_search/
+	 *   search_results/&lt;sample&gt;/marker|sample_db|sample_db_closed/
+	 *   combined/
+	 *   sequence_variants/
+	 *   taxonomy_analysis/
+	 *   functional_annotation/
+	 *   excluded_evidence/
+	 *   report/
+	 * </pre>
+	 *
+	 * Closed and open MSFragger searches of the refined database replace a
+	 * second engine, so there is no nested {@code msfragger_only/} or
+	 * {@code msfragger_sage/}. {@code MetaBaseParameter.setDbSearchResultFile}
+	 * is this folder, where the shared report generator puts {@code report/}.
 	 */
 	public static final String ENGINE_SEARCH_DIR = "opensearch_MAG_search";
+
+	/**
+	 * Pre-flatten layout: pooled validation lived in
+	 * {@code opensearch_MAG_search/msfragger_only/} so MSFragger-only and
+	 * MSFragger+Sage results could coexist. Kept so leftover folders are not
+	 * treated as sample directories, and so {@link #migrateLegacyModeRoot}
+	 * can lift that tree to the engine root.
+	 */
+	public static final String LEGACY_MSFRAGGER_ONLY_DIR = "msfragger_only";
+	public static final String LEGACY_MSFRAGGER_SAGE_DIR = "msfragger_sage";
 
 	/** Lower-case form used by the cleaner's directory matching. */
 	public static final String ENGINE_SEARCH_DIR_KEY = "opensearch_mag_search";
@@ -78,6 +90,12 @@ public final class OpenSearchLayout {
 	public static final String SAMPLE_DB_CLOSED_SEARCH_DIR = "sample_db_closed";
 	/** Pooled, cross-sample validation output. */
 	public static final String COMBINED_DIR = "combined";
+	/**
+	 * Sequence-variant calls and the UHGP-100 check of those substitutions.
+	 * Beside {@code combined/}, not inside it: the identification tables stay
+	 * where the other MAG workflows put them.
+	 */
+	public static final String SEQUENCE_VARIANTS_DIR = "sequence_variants";
 
 	/**
 	 * MSFragger parameter file, written into the same folder as the pepXML it
@@ -91,6 +109,8 @@ public final class OpenSearchLayout {
 	 * silently applying to only the steps that reran.
 	 */
 	public static final String SEARCH_PARAMS_FILE = "fragger_open.params";
+
+	private static final Logger LOGGER = LogManager.getLogger(OpenSearchLayout.class);
 
 	private OpenSearchLayout() {
 	}
@@ -109,6 +129,7 @@ public final class OpenSearchLayout {
 	 * same legacy-flat-layout migration the other MAG engines get.
 	 */
 	public static File searchResultsRoot(File resultRoot) {
+		migrateLegacyModeRoot(resultRoot);
 		return MagResultLayoutUtil.resolveSearchResultsRoot(resultRoot, workflowDirNames());
 	}
 
@@ -118,7 +139,11 @@ public final class OpenSearchLayout {
 	 * {@code combined_msfragger_sage/} that way in earlier result folders.
 	 */
 	static java.util.Set<String> workflowDirNames() {
-		return new java.util.HashSet<>(modeFolderNames());
+		java.util.Set<String> names = new java.util.HashSet<>(modeFolderNames());
+		names.add(SEQUENCE_VARIANTS_DIR);
+		names.add(MagResultLayoutUtil.SPECTRA_SUMMARY_DIR_NAME);
+		names.add(OpenSearchSpectra.CONVERTED_DIR);
+		return names;
 	}
 
 	public static File sampleDir(File resultRoot, String sampleBaseName) {
@@ -141,44 +166,75 @@ public final class OpenSearchLayout {
 	}
 
 	/**
-	 * One engine configuration's own folder under the engine search root, e.g.
-	 * {@code opensearch_MAG_search/msfragger_sage/}: everything from pooled
-	 * validation on - {@code combined/}, the final tables, the QPX parquet,
-	 * {@code taxonomy_analysis/}, {@code functional_annotation/},
-	 * {@code report/}, the run's parameters and log.
-	 *
-	 * <h2>Why the engine belongs in the path</h2>
-	 * The per-sample searches under {@link #searchResultsRoot} are shared
-	 * across engine configurations - the MSFragger pepXML for a sample is the
-	 * same file whether or not Sage also ran - but nothing derived from pooled
-	 * validation is. Adding a second engine changes the candidate set, so the
-	 * classifier retrains, peaks are refitted and FDR is recomputed over
-	 * different data, and every table, taxonomy and report built on that
-	 * follows. The results are alternatives, not increments, and must coexist
-	 * for comparison: in one shared folder a second run would either be skipped
-	 * by the resume sentinels, silently returning the first run's numbers, or
-	 * overwrite them.
-	 *
-	 * @param engineMode a {@code DDAMagOpenSearchParameters.ENGINES_*} value;
-	 *                   null or blank is the default, MSFragger only.
+	 * Deliverable root: {@code combined/}, final tables, taxonomy, function,
+	 * report, parameters and log. Same folder as {@code resultRoot} (the
+	 * {@code opensearch_MAG_search} engine directory), matching FragPipe MAG.
+	 * {@code engineMode} is ignored; closed+open MSFragger is the only mode.
 	 */
 	public static File modeRoot(File resultRoot, String engineMode) {
-		String mode = engineMode == null || engineMode.isBlank()
-				? uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagOpenSearchParameters.ENGINES_MSFRAGGER
-				: engineMode;
-		return new File(resultRoot, engineKey(mode));
-	}
-
-	/** Folder names {@link #modeRoot} can produce, for the cleaner. */
-	public static List<String> modeFolderNames() {
-		return Arrays.asList(
-				engineKey(uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagOpenSearchParameters.ENGINES_MSFRAGGER),
-				engineKey(uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagOpenSearchParameters.ENGINES_MSFRAGGER_AND_SAGE));
+		migrateLegacyModeRoot(resultRoot);
+		return resultRoot;
 	}
 
 	/**
-	 * Engine-scoped pooled validation output: {@code combined/} inside the
-	 * engine configuration's {@link #modeRoot}.
+	 * Legacy nested engine-mode folders. The cleaner still treats files inside
+	 * them as final deliverables, and {@link MagResultLayoutUtil} does not
+	 * migrate them into {@code search_results/} as if they were samples.
+	 */
+	public static List<String> modeFolderNames() {
+		return Arrays.asList(LEGACY_MSFRAGGER_ONLY_DIR, LEGACY_MSFRAGGER_SAGE_DIR);
+	}
+
+	/**
+	 * Lifts {@code msfragger_only/} up into the engine root when this folder is
+	 * still on the pre-flatten layout. No-op when {@code combined/validated_psms.tsv}
+	 * already exists here, or when there is no legacy folder. A leftover
+	 * {@code msfragger_sage/} is not moved.
+	 */
+	public static void migrateLegacyModeRoot(File resultRoot) {
+		if (resultRoot == null) {
+			return;
+		}
+		File legacy = new File(resultRoot, LEGACY_MSFRAGGER_ONLY_DIR);
+		if (!legacy.isDirectory()) {
+			return;
+		}
+		if (isSatisfied(validatedPsms(resultRoot))) {
+			return;
+		}
+		File[] children = legacy.listFiles();
+		if (children == null) {
+			return;
+		}
+		for (File child : children) {
+			File dest = new File(resultRoot, child.getName());
+			if (dest.exists()) {
+				LOGGER.warn("Legacy lift skipped for {} - {} already exists", child.getAbsolutePath(),
+						dest.getAbsolutePath());
+				continue;
+			}
+			try {
+				Files.move(child.toPath(), dest.toPath(), StandardCopyOption.ATOMIC_MOVE);
+				LOGGER.info("Lifted open-search result {} -> {}", child.getAbsolutePath(), dest.getAbsolutePath());
+			} catch (IOException atomicMoveFailed) {
+				try {
+					Files.move(child.toPath(), dest.toPath());
+					LOGGER.info("Lifted open-search result {} -> {} (non-atomic fallback)", child.getAbsolutePath(),
+							dest.getAbsolutePath());
+				} catch (IOException e2) {
+					LOGGER.error("Failed to lift {} -> {}: {}", child.getAbsolutePath(), dest.getAbsolutePath(),
+							e2.getMessage(), e2);
+				}
+			}
+		}
+		String[] leftover = legacy.list();
+		if (leftover != null && leftover.length == 0 && !legacy.delete()) {
+			LOGGER.warn("Could not remove empty leftover {}", legacy.getAbsolutePath());
+		}
+	}
+
+	/**
+	 * Pooled validation output: {@code combined/} inside {@link #modeRoot}.
 	 */
 	public static File combinedDir(File resultRoot, String engineMode) {
 		return combinedDir(modeRoot(resultRoot, engineMode));
@@ -263,6 +319,16 @@ public final class OpenSearchLayout {
 	}
 
 	/**
+	 * Written when stage-1 evidence is too thin to build a refined database for
+	 * this sample. The sample then skips stage-2 identification but can still
+	 * enter FlashLFQ quantification (match-between-runs) with the rest of the
+	 * cohort, matching DIA Deep per-file's continue-with-successful gate.
+	 */
+	public static File identificationSkipped(File resultRoot, String sampleBaseName) {
+		return new File(markerDir(resultRoot, sampleBaseName), "identification_skipped.txt");
+	}
+
+	/**
 	 * The {@code .pin} MSFragger writes beside the marker pepXML, and the file
 	 * handed to MSBooster unchanged.
 	 * <p>
@@ -320,8 +386,8 @@ public final class OpenSearchLayout {
 
 
 	/**
-	 * Stage-1 allow-list audit: every expected mass shift considered for this
-	 * sample, admitted or not, with the numbers behind each decision. Beside the
+	 * Stage-1 expected-shift audit (open marker search only): every UNIMOD shift with
+	 * PSMs in its window for this sample, admitted or not, with the numbers behind each decision. Beside the
 	 * PSM file it explains, so a marker folder stays self-describing.
 	 */
 	public static File expectedPeaks(File resultRoot, String sampleBaseName) {
@@ -369,6 +435,44 @@ public final class OpenSearchLayout {
 		return new File(combinedDir(resultRoot, engineMode), CLOSED_OPEN_SUMMARY_FILE);
 	}
 
+	/** Joint closed+open identification: group counts, peptide walks, model coefficients. */
+	public static File jointSummary(File resultRoot, String engineMode) {
+		return new File(combinedDir(resultRoot, engineMode), "joint_identification_summary.tsv");
+	}
+
+	/** Joint identification: the per-peak fragment test ({@link PeakFragmentTest}), one row per established peak. */
+	public static File peakFragmentTest(File resultRoot, String engineMode) {
+		return new File(combinedDir(resultRoot, engineMode), "peak_fragment_test.tsv");
+	}
+
+	/** Joint identification: target/decoy AUC of every feature, per FDR group. */
+	public static File jointFeatureReport(File resultRoot, String engineMode) {
+		return new File(combinedDir(resultRoot, engineMode), "joint_feature_report.tsv");
+	}
+
+	/** Joint identification: DIA-NN prediction inputs and outputs, per run. */
+	public static File jointPredictionDir(File resultRoot, String engineMode) {
+		return new File(combinedDir(resultRoot, engineMode), "joint_predictions");
+	}
+
+	/**
+	 * Closed-only, open-only, cascade and joint identifications of the same spectra, one row per
+	 * spectrum winner with q &lt;= 0.05 per method, for comparing the methods at matched error.
+	 */
+	public static File identificationArms(File resultRoot, String engineMode) {
+		return new File(combinedDir(resultRoot, engineMode), "identification_arms.tsv.gz");
+	}
+
+	/** Proteins of every peptide in {@link #identificationArms}. */
+	public static File identificationArmPeptides(File resultRoot, String engineMode) {
+		return new File(combinedDir(resultRoot, engineMode), "identification_arm_peptides.tsv.gz");
+	}
+
+	/** Decoy-estimated counts per method at 1%. */
+	public static File identificationArmsSummary(File resultRoot, String engineMode) {
+		return new File(combinedDir(resultRoot, engineMode), "identification_arms_summary.tsv");
+	}
+
 	/**
 	 * Which identification scheme the validation outputs beside it were produced under (open only,
 	 * or closed then open). Rewritten only when the scheme changes, so it is an input of pooled
@@ -385,7 +489,7 @@ public final class OpenSearchLayout {
 	 * Round one after Crystal-C: the precursor-refined marker pepXML, and the
 	 * sentinel for the stage-1 refinement step.
 	 * <p>
-	 * Stage 1 admits only the zero family plus the expected-shift allow-list, so
+	 * Stage 1 admits only the zero family plus tested UNIMOD shifts, so
 	 * it is the step the refinement helps most: a PSM whose precursor was
 	 * mis-picked sits a few Da off zero and is discarded, however good the match
 	 * is. Measured on 12mix (2026-09-14) at the stage-2 stage, where the same
@@ -431,13 +535,18 @@ public final class OpenSearchLayout {
 				"crystalc-" + sampleDbPepXml(resultRoot, sampleBaseName).getName() + ".params");
 	}
 
+	/** Where each screened peak's localised PSMs sit; see {@code PeakSiteShare}. */
+	public static File peakSiteShares(File resultRoot, String engineMode) {
+		return new File(combinedDir(resultRoot, engineMode), "peak_site_shares.tsv");
+	}
+
 	/**
 	 * Per-peak audit of the substitution analysis: which fitted peaks sit at a
 	 * single amino-acid substitution mass, and how many of their PSMs the
 	 * localization evidence actually agrees with.
 	 */
 	public static File substitutionPeaks(File resultRoot, String engineMode) {
-		return new File(combinedDir(resultRoot, engineMode), "substitution_peaks.tsv");
+		return inSequenceVariants(resultRoot, engineMode, "substitution_peaks.tsv");
 	}
 
 	/**
@@ -451,7 +560,7 @@ public final class OpenSearchLayout {
 	 * them and only a search against these generated sequences can.
 	 */
 	public static File substitutionCandidates(File resultRoot, String engineMode) {
-		return new File(combinedDir(resultRoot, engineMode), "substitution_candidates.fasta");
+		return inSequenceVariants(resultRoot, engineMode, "substitution_candidates.fasta");
 	}
 
 	/**
@@ -462,7 +571,7 @@ public final class OpenSearchLayout {
 	 * {@link #substitutionForms(File, String)}'s {@code variant_id} column.
 	 */
 	public static File sequenceVariants(File resultRoot, String engineMode) {
-		return new File(combinedDir(resultRoot, engineMode), "sequence_variants.tsv");
+		return inSequenceVariants(resultRoot, engineMode, "sequence_variants.tsv");
 	}
 
 	/**
@@ -471,7 +580,80 @@ public final class OpenSearchLayout {
 	 * peptides as ordinary unmodified peptides.
 	 */
 	public static File sequenceVariantsFasta(File resultRoot, String engineMode) {
-		return new File(combinedDir(resultRoot, engineMode), "sequence_variants.fasta");
+		return inSequenceVariants(resultRoot, engineMode, "sequence_variants.fasta");
+	}
+
+	/** {@code sequence_variants/} under the engine result root. */
+	public static File sequenceVariantsDir(File resultRoot, String engineMode) {
+		return new File(modeRoot(resultRoot, engineMode), SEQUENCE_VARIANTS_DIR);
+	}
+
+	/**
+	 * FlashLFQ identification input for substitution PSMs that are not in
+	 * {@code validated_psms.tsv}, plus the validated unmodified PSMs of the same base
+	 * peptides as references ({@code quant_role}). Match-between-runs and
+	 * normalisation are off for the run that reads it, and nothing outside
+	 * {@code sequence_variants/} reads the result.
+	 */
+	public static final String SUBSTITUTION_QUANT_PSMS_FILE = "substitution_psms.tsv";
+
+	/**
+	 * FlashLFQ's peptide table from {@link #substitutionQuantPsms}, under its own name,
+	 * with role, variant ids, variant/reference ratios and shared main-run features appended.
+	 */
+	public static final String SUBSTITUTION_QUANTIFIED_PEPTIDES_FILE = "substitution_quantified_peptides.tsv";
+
+	/** FlashLFQ's peak table from the same run, under its own name. */
+	public static final String SUBSTITUTION_QUANTIFIED_PEAKS_FILE = "substitution_quantified_peaks.tsv";
+
+	public static File substitutionQuantPsms(File resultRoot, String engineMode) {
+		return inSequenceVariants(resultRoot, engineMode, SUBSTITUTION_QUANT_PSMS_FILE);
+	}
+
+	public static File substitutionQuantifiedPeptides(File resultRoot, String engineMode) {
+		return inSequenceVariants(resultRoot, engineMode, SUBSTITUTION_QUANTIFIED_PEPTIDES_FILE);
+	}
+
+	public static File substitutionQuantifiedPeaks(File resultRoot, String engineMode) {
+		return inSequenceVariants(resultRoot, engineMode, SUBSTITUTION_QUANTIFIED_PEAKS_FILE);
+	}
+
+	/** FlashLFQ's peak table from quantifying {@code validated_psms.tsv}. */
+	public static File quantifiedPeaks(File resultRoot, String engineMode) {
+		return new File(combinedDir(resultRoot, engineMode), "QuantifiedPeaks.tsv");
+	}
+
+	/**
+	 * A file in {@link #SEQUENCE_VARIANTS_DIR}. A copy left in {@code combined/}
+	 * by an earlier run is moved here when this path is still empty, so a
+	 * finished result is not treated as missing.
+	 */
+	private static File inSequenceVariants(File resultRoot, String engineMode, String name) {
+		File current = new File(sequenceVariantsDir(resultRoot, engineMode), name);
+		File legacy = new File(combinedDir(resultRoot, engineMode), name);
+		if (current.isFile() || !legacy.isFile()) {
+			return current;
+		}
+		File dir = current.getParentFile();
+		if (dir != null && (dir.isDirectory() || dir.mkdirs())) {
+			try {
+				Files.move(legacy.toPath(), current.toPath(), StandardCopyOption.ATOMIC_MOVE);
+				LOGGER.info("Moved open-search variant output {} -> {}", legacy.getAbsolutePath(),
+						current.getAbsolutePath());
+				return current;
+			} catch (IOException atomicMoveFailed) {
+				try {
+					Files.move(legacy.toPath(), current.toPath());
+					LOGGER.info("Moved open-search variant output {} -> {} (non-atomic fallback)",
+							legacy.getAbsolutePath(), current.getAbsolutePath());
+					return current;
+				} catch (IOException e2) {
+					LOGGER.warn("Could not move {} into {}: {}", legacy.getAbsolutePath(),
+							current.getAbsolutePath(), e2.getMessage());
+				}
+			}
+		}
+		return legacy;
 	}
 
 	/** Fitted delta-mass peaks; a diagnostic artifact worth keeping. */
@@ -514,21 +696,39 @@ public final class OpenSearchLayout {
 		return new File(combinedDir(resultRoot, engineMode), "peak_validated_psms.tsv");
 	}
 
+	/** {@code substitution_forms.tsv}: one row per flagged PSM and its candidate form. */
+	public static final String SUBSTITUTION_FORMS_FILE = "substitution_forms.tsv";
+
 	/**
 	 * The substitution-candidate relations for {@code validated_psms.tsv}: one row
 	 * per PSM that {@link uk.ac.quadram.metapilot.core.opensearch.SubstitutionReassigner}
 	 * flagged, carrying every candidate form and the verdict. Kept out of
 	 * {@code validated_psms.tsv} itself so that file holds exactly one row per PSM
-	 * and can be handed to FlashLFQ unmodified - a PSM's substitution history is a
-	 * side fact about it, not part of its quantification identity.
+	 * and can be handed to FlashLFQ unmodified.
+	 * <p>
+	 * New runs write this under {@code sequence_variants/}. A copy already in
+	 * {@code combined/} is used as it stands and is not moved.
 	 */
 	public static File substitutionForms(File resultRoot) {
-		return new File(combinedDir(resultRoot), "substitution_forms.tsv");
+		return substitutionForms(resultRoot, null);
 	}
 
-	/** Engine-scoped; see {@link #combinedDir(File, String)}. */
+	/** See {@link #substitutionForms(File)}. */
 	public static File substitutionForms(File resultRoot, String engineMode) {
-		return new File(combinedDir(resultRoot, engineMode), "substitution_forms.tsv");
+		File current = substitutionFormsOutput(resultRoot, engineMode);
+		if (current.isFile() && current.length() > 0) {
+			return current;
+		}
+		File legacy = new File(combinedDir(resultRoot, engineMode), SUBSTITUTION_FORMS_FILE);
+		if (legacy.isFile() && legacy.length() > 0) {
+			return legacy;
+		}
+		return current;
+	}
+
+	/** Where a new run writes {@code substitution_forms.tsv}. */
+	public static File substitutionFormsOutput(File resultRoot, String engineMode) {
+		return new File(sequenceVariantsDir(resultRoot, engineMode), SUBSTITUTION_FORMS_FILE);
 	}
 
 	/**
@@ -595,26 +795,32 @@ public final class OpenSearchLayout {
 	 * see {@code uk.ac.quadram.metapilot.core.variant.PangenomeVariantCheck}.
 	 */
 	public static File variantCandidates(File resultRoot, String engineMode) {
-		return new File(combinedDir(resultRoot, engineMode),
+		return inSequenceVariants(resultRoot, engineMode,
 				uk.ac.quadram.metapilot.core.variant.PangenomeVariantCheck.CANDIDATES_FILE);
 	}
 
 	/** {@link #variantCandidates} rolled up to one row per protein site and substitution. */
 	public static File variantSites(File resultRoot, String engineMode) {
-		return new File(combinedDir(resultRoot, engineMode),
+		return inSequenceVariants(resultRoot, engineMode,
 				uk.ac.quadram.metapilot.core.variant.PangenomeVariantCheck.SITES_FILE);
 	}
 
 	/** Per-substitution / per-peak summary of {@link #variantCandidates}, against matched random-substitution controls. */
 	public static File variantPangenomeSummary(File resultRoot, String engineMode) {
-		return new File(combinedDir(resultRoot, engineMode),
+		return inSequenceVariants(resultRoot, engineMode,
 				uk.ac.quadram.metapilot.core.variant.PangenomeVariantCheck.SUMMARY_FILE);
 	}
 
 	/** Per-species rollup of {@link #variantCandidates}, written last by the add-on. */
 	public static File variantSpeciesSummary(File resultRoot, String engineMode) {
-		return new File(combinedDir(resultRoot, engineMode),
+		return inSequenceVariants(resultRoot, engineMode,
 				uk.ac.quadram.metapilot.core.variant.PangenomeVariantCheck.SPECIES_FILE);
+	}
+
+	/** Column dictionary written beside the other UHGP tables. */
+	public static File variantColumns(File resultRoot, String engineMode) {
+		return inSequenceVariants(resultRoot, engineMode,
+				uk.ac.quadram.metapilot.core.variant.PangenomeVariantCheck.COLUMNS_FILE);
 	}
 
 	// --- deliverables -----------------------------------------------------
@@ -668,7 +874,9 @@ public final class OpenSearchLayout {
 				uk.ac.quadram.metapilot.core.variant.PangenomeVariantCheck.SITES_FILE,
 				uk.ac.quadram.metapilot.core.variant.PangenomeVariantCheck.SUMMARY_FILE,
 				uk.ac.quadram.metapilot.core.variant.PangenomeVariantCheck.SPECIES_FILE,
-				uk.ac.quadram.metapilot.core.variant.PangenomeVariantCheck.COLUMNS_FILE);
+				uk.ac.quadram.metapilot.core.variant.PangenomeVariantCheck.COLUMNS_FILE,
+				SUBSTITUTION_QUANT_PSMS_FILE, SUBSTITUTION_QUANTIFIED_PEPTIDES_FILE, SUBSTITUTION_QUANTIFIED_PEAKS_FILE,
+				SUBSTITUTION_FORMS_FILE);
 	}
 
 	/** True when a sentinel counts as satisfied. */

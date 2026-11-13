@@ -8,9 +8,11 @@ import java.util.List;
 
 import javafx.scene.control.ProgressBar;
 
+import uk.ac.quadram.metapilot.core.dia.DiaHostLibrarySupport;
 import uk.ac.quadram.metapilot.core.dia.MagPredictedPeptideProteinMapper;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNPrecursor;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
+import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaTg;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagPepLib;
@@ -21,7 +23,8 @@ import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagPepLib;
  * <ul>
  *   <li>All Standalone: search with all libraries, then stop after identification (no export - no MAG info).</li>
  *   <li>All Microbiome: search with all libraries and run full workflow (iden -> export report, etc.).</li>
- *   <li>Mixed: search microbiome libraries first with --out-lib; full workflow continues (next step TBD by user).</li>
+ *   <li>Mixed: one search with the microbiome and the standalone (host) libraries together, then the full workflow;
+ *   the export removes host peptides (host takes shared peptides), as in every DIA workflow (DiaHostLibrarySupport).</li>
  * </ul>
  */
 public class DiaSeedDirectTask extends MetaDiaTask {
@@ -170,15 +173,9 @@ public class DiaSeedDirectTask extends MetaDiaTask {
 		}
 		File predictedFolder = new File(magDb.getCurrentFile(), "predicted");
 		if (!predictedFolder.isDirectory()) {
-			logger.warn(getTaskName() + ": predicted folder not found at " + predictedFolder.getAbsolutePath() + ", skipping peptide-to-genome mapping");
-			return precursors;
+			throw new IllegalStateException("Seed Direct requires predicted mapping resources: " + predictedFolder);
 		}
-		List<DiaNNPrecursor> mapped = MagPredictedPeptideProteinMapper.mapPrecursorsToProteins(precursors, predictedFolder);
-		if (mapped == null || mapped.isEmpty()) {
-			logger.warn(getTaskName() + ": no precursors mapped to MAG proteins, using empty set");
-			return new DiaNNPrecursor[0];
-		}
-		return mapped.toArray(new DiaNNPrecursor[0]);
+        return MagPredictedPeptideProteinMapper.mapForFinalisation(precursors, predictedFolder, null);
 	}
 
 	/** Delegate downstream report generation to the same implementation as DiaMarkerCoreTask. */
@@ -277,19 +274,37 @@ public class DiaSeedDirectTask extends MetaDiaTask {
 					diaNNTask.run(diaFiles.length * 12);
 					stopAfterIden = false;
 				} else {
-					// Mixed: search microbiome libraries only with --out-lib
-					List<String> microPaths = new ArrayList<>();
+					// Mixed: Direct has one search, which is the final combined search, so the standalone (host)
+					// libraries are searched together with the microbiome libraries (all as .parquet).
+					List<File> microLibs = new ArrayList<>();
+					List<File> hostLibs = new ArrayList<>();
 					for (int i = 0; i < usedLibs.length; i++) {
+						File lib = DiaHostLibrarySupport.parquetInLibraryFolder(new File(libPath[i]));
 						if (matchToMag[i]) {
-							microPaths.add(libPath[i]);
+							microLibs.add(lib);
+						} else if (!lib.getName().toLowerCase().endsWith(".parquet")) {
+							logger.error(getTaskName() + ": standalone (host) libraries must be .parquet libraries: {}",
+									libPath[i]);
+							return false;
+						} else {
+							hostLibs.add(lib);
 						}
 					}
-					String[] microPathArr = microPaths.toArray(new String[0]);
-					diaNNTask.addTask(diannPar, diaLibSearchPar, combineParquetFile.getAbsolutePath(),
-							false, true, true, microPathArr);
+					String[] mixedLibs;
+					try {
+						File diannExe = MetaDiaMarkerCoreRunnerBridge.resolveGuiToolFile(mrp, ToolType.DIANN);
+						mixedLibs = DiaHostLibrarySupport.finalSearchLibraries(microLibs, hostLibs, combinedFile,
+								diannPar, diannExe, null, MetaDiaMarkerCoreRunnerBridge.inferCondaPrefixFromPython(
+										MetaDiaMarkerCoreRunnerBridge.resolveGuiToolFile(mrp, ToolType.PYTHON)));
+					} catch (Exception e) {
+						logger.error(getTaskName() + ": preparing the combined search libraries failed", e);
+						return false;
+					}
+					diaNNTask.addTask(diannPar, diaLibSearchPar, combineParquetFile.getAbsolutePath(), mixedLibs);
 					diaNNTask.run(diaFiles.length * 12);
 					stopAfterIden = false;
-					logger.info(getTaskName() + ": mixed libraries - searched microbiome libraries with --out-lib.");
+					logger.info(getTaskName() + ": mixed libraries - microbiome and {} host libraries searched together.",
+							hostLibs.size());
 				}
 			}
 		}

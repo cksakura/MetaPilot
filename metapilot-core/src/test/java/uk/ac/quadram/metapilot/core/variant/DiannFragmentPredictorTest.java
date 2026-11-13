@@ -11,7 +11,9 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -72,6 +74,43 @@ class DiannFragmentPredictorTest {
 		assertFalse(first.yIon[1]);
 		assertEquals(2, first.charge[1]);
 		assertEquals(0, p.get(1).size());
+	}
+
+	/** A launcher for {@link FakeDiann}, as DIA-NN is launched: one executable plus its arguments. */
+	private File fakeDiann() throws IOException {
+		String java = new File(System.getProperty("java.home"), "bin/java").getAbsolutePath();
+		String cp = System.getProperty("java.class.path");
+		String main = FakeDiann.class.getName();
+		boolean windows = System.getProperty("os.name").toLowerCase().contains("win");
+		File launcher = new File(tmp, windows ? "diann.cmd" : "diann.sh");
+		String text = windows ? "@\"" + java + "\" -cp \"" + cp + "\" " + main + " %*\r\n"
+				: "#!/bin/sh\nexec '" + java + "' -cp '" + cp + "' " + main + " \"$@\"\n";
+		Files.writeString(launcher.toPath(), text, StandardCharsets.UTF_8);
+		assertTrue(launcher.setExecutable(true));
+		return launcher;
+	}
+
+	@Test
+	@DisplayName("Prediction runs in single-threaded slices, joined in input order whatever the thread count")
+	void slicedSingleThreaded() throws IOException {
+		int n = 2 * DiannFragmentPredictor.SLICE + 7;
+		List<String> peptides = new ArrayList<>(n);
+		List<Integer> charges = new ArrayList<>(n);
+		for (int i = 0; i < n; i++) {
+			peptides.add("PEP" + i);
+			charges.add(2);
+		}
+		File diann = fakeDiann();
+		for (int threads : new int[] { 1, 8 }) {
+			Map<String, DiannFragmentPredictor.Prediction> p = DiannFragmentPredictor.predict(diann, peptides, charges,
+					false, new File(tmp, "work" + threads), threads, s -> {
+					});
+			assertEquals(n, p.size());
+			for (int i = 0; i < n; i++) {
+				assertEquals(i, p.get(DiannFragmentPredictor.key("PEP" + i, 2)).iRT, 0f,
+						"row " + i + " with " + threads + " threads (-1: DIA-NN not asked for one thread)");
+			}
+		}
 	}
 
 	@Test

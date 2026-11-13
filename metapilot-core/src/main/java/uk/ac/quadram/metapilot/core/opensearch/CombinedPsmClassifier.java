@@ -125,7 +125,25 @@ public final class CombinedPsmClassifier {
 		// A feature that also decides the training label is withheld from the model.
 		String[] featureNames = OpenSearchFeatures.withoutLabelDefiningFeatures(CombinedPsmFeatures.FEATURE_NAMES,
 				cfg.positiveFilter != null);
-		if (featureNames.length != CombinedPsmFeatures.FEATURE_NAMES.length) {
+		boolean predicted = false;
+		for (CombinedPsmCandidate candidate : candidates) {
+			if (candidate.primary().getExternalFeature(PredictedSpectrumFeatures.ENTROPY) != null) {
+				predicted = true;
+				break;
+			}
+		}
+		if (!predicted) {
+			// Without predictions the block is all missing; leave it out, so the model is the one
+			// it was before the block existed.
+			java.util.List<String> kept = new java.util.ArrayList<>(java.util.Arrays.asList(featureNames));
+			kept.removeAll(java.util.Arrays.asList(CombinedPsmFeatures.PREDICTED));
+			featureNames = kept.toArray(new String[0]);
+		} else {
+			report(progress, "Combined classifier: using the predicted-spectrum features "
+					+ String.join(", ", CombinedPsmFeatures.PREDICTED));
+		}
+		int withheld = CombinedPsmFeatures.FEATURE_NAMES.length - (predicted ? 0 : CombinedPsmFeatures.PREDICTED.length);
+		if (featureNames.length != withheld) {
 			report(progress, "Combined classifier: withholding " + OpenSearchFeatures.LABEL_DEFINING_FEATURE
 					+ " - it selects the training positives, so using it as an input as well collapses the model"
 					+ " onto that one column");

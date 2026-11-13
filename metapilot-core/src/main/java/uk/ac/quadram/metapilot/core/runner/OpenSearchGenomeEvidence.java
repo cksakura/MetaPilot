@@ -23,10 +23,10 @@ import java.util.Set;
  * winners of {@code scored_psms.tsv} (one per spectrum, every class and score,
  * decoys included) and the database each run's stage 2 searched
  * ({@link OpenSearchLayout#refinedFasta}: the selected genomes' full proteomes
- * plus one {@code rev_} decoy per target).
+ * plus one {@code rev_} decoy per target, and the host proteins when the run appended them).
  * <p>
  * Classes: unmodified when the mass difference is within
- * {@link #UNMODIFIED_TOLERANCE_DA} of 0, +1 or +2 isotope spacings; known shift
+ * {@link #UNMODIFIED_TOLERANCE_DA} of 0, +1 or +2 isotope spacings; accepted shift
  * when the PSM sits on an accepted delta-mass peak; otherwise unexplained.
  * With the closed-then-open identification, closed-stage winners are the closed
  * class, and the open winner of a spectrum the closed stage accepted is in no
@@ -48,12 +48,35 @@ public final class OpenSearchGenomeEvidence {
 	 */
 	public static GenomeEvidenceTest.Result run(File resultRoot, String engineMode, List<String> samples,
 			ProgressCallback cb) throws IOException {
+		return run(resultRoot, engineMode, samples, cb, 1.0, false);
+	}
+
+	/**
+	 * @param decoyWeight   {@link GenomeEvidenceTest.Settings#decoyWeight}: 2 when the identification used
+	 *                      RESET (training decoys are not spectrum winners in the table, so only the
+	 *                      estimating decoys reach the test)
+	 * @param proteinFilter {@link GenomeEvidenceTest.Settings#proteinFilter}
+	 */
+	public static GenomeEvidenceTest.Result run(File resultRoot, String engineMode, List<String> samples,
+			ProgressCallback cb, double decoyWeight, boolean proteinFilter) throws IOException {
+		return run(resultRoot, engineMode, samples, cb, decoyWeight, proteinFilter, null);
+	}
+
+	/**
+	 * @param genomePrefix {@link GenomeEvidenceTest.Settings#genomePrefix}: the MAG accession prefix,
+	 *                     so appended host proteins are neither candidate genomes nor genome evidence
+	 */
+	public static GenomeEvidenceTest.Result run(File resultRoot, String engineMode, List<String> samples,
+			ProgressCallback cb, double decoyWeight, boolean proteinFilter, String genomePrefix) throws IOException {
 		Map<String, File> databases = new LinkedHashMap<>();
 		for (String sample : samples) {
 			databases.put(sample, OpenSearchLayout.refinedFasta(resultRoot, sample));
 		}
 		GenomeEvidenceTest.Settings settings = new GenomeEvidenceTest.Settings();
 		settings.decoyPrefix = TargetDecoyFasta.DECOY_TAG;
+		settings.decoyWeight = decoyWeight;
+		settings.proteinFilter = proteinFilter;
+		settings.genomePrefix = genomePrefix == null || genomePrefix.isEmpty() ? null : genomePrefix;
 		return run(OpenSearchLayout.scoredPsms(resultRoot, engineMode), databases, settings, cb);
 	}
 
@@ -72,7 +95,7 @@ public final class OpenSearchGenomeEvidence {
 						+ (fasta == null ? "not a sample of this analysis" : fasta.getAbsolutePath() + " missing")
 						+ "); peptide uniqueness is decided against each run's own database");
 			}
-			runGenomes.put(run, genomesOf(fasta, settings.decoyPrefix));
+			runGenomes.put(run, genomesOf(fasta, settings.decoyPrefix, settings.genomePrefix));
 		}
 		List<File> fastas = new ArrayList<>();
 		Set<String> candidates = new HashSet<>();
@@ -113,8 +136,10 @@ public final class OpenSearchGenomeEvidence {
 			// Written by the closed-then-open identification only.
 			int stage = col.getOrDefault("stage", -1);
 			int closedAccepted = col.getOrDefault("closed_accepted", -1);
+			// Written by the joint closed+open identification only: the FDR group of each candidate.
+			int group = col.getOrDefault("id_group", -1);
 			int last = Math.max(Math.max(Math.max(file, peptide), Math.max(target, massDiff)),
-					Math.max(Math.max(logit, winner), Math.max(peak, Math.max(stage, closedAccepted))));
+					Math.max(Math.max(logit, winner), Math.max(Math.max(peak, group), Math.max(stage, closedAccepted))));
 			String line;
 			while ((line = br.readLine()) != null) {
 				String[] cs = line.split("\t", -1);
@@ -127,7 +152,9 @@ public final class OpenSearchGenomeEvidence {
 							+ " (" + cs[file] + ", " + cs[peptide] + "); the test needs one score scale");
 				}
 				boolean isTarget = "true".equalsIgnoreCase(cs[target]);
-				if (stage >= 0 && "closed".equals(cs[stage])) {
+				if (group >= 0 && !cs[group].isEmpty()) {
+					addJointHit(hits, cs[file], cs[peptide], isTarget, cs[group], score);
+				} else if (stage >= 0 && "closed".equals(cs[stage])) {
 					hits.add(cs[file], cs[peptide], isTarget, GenomeEvidenceTest.PeptideClass.CLOSED, score);
 				} else if (closedAccepted >= 0 && "true".equalsIgnoreCase(cs[closedAccepted])) {
 					// The closed stage identified this spectrum; its open winner is no identification,
@@ -144,6 +171,31 @@ public final class OpenSearchGenomeEvidence {
 		return hits;
 	}
 
+	/**
+	 * A joint-identification winner. Every winner is on the joint model's one score scale, so an
+	 * exact-mass decoy belongs to the {@code pi_g} window like an open one; the exact group is the
+	 * closed class otherwise (its own peptide walk, evidence for the genome test).
+	 */
+	static void addJointHit(GenomeEvidenceTest.Hits hits, String run, String peptide, boolean isTarget, String group,
+			double score) {
+		switch (group) {
+		case "EXACT":
+			hits.add(run, peptide, isTarget, GenomeEvidenceTest.PeptideClass.CLOSED, score);
+			if (!isTarget) {
+				hits.addWindowDecoy(run, peptide, score);
+			}
+			break;
+		case "OPEN_UNMODIFIED":
+			hits.add(run, peptide, isTarget, GenomeEvidenceTest.PeptideClass.UNMODIFIED, score);
+			break;
+		case "OPEN_ACCEPTED_SHIFT":
+			hits.add(run, peptide, isTarget, GenomeEvidenceTest.PeptideClass.ACCEPTED_SHIFT, score);
+			break;
+		default:
+			hits.add(run, peptide, isTarget, GenomeEvidenceTest.PeptideClass.UNEXPLAINED, score);
+		}
+	}
+
 	static GenomeEvidenceTest.PeptideClass classify(double massDiff, boolean onAcceptedPeak) {
 		if (Double.isFinite(massDiff)) {
 			long k = Math.round(massDiff / ISOTOPE_SPACING);
@@ -152,18 +204,20 @@ public final class OpenSearchGenomeEvidence {
 				return GenomeEvidenceTest.PeptideClass.UNMODIFIED;
 			}
 		}
-		return onAcceptedPeak ? GenomeEvidenceTest.PeptideClass.KNOWN_SHIFT
+		return onAcceptedPeak ? GenomeEvidenceTest.PeptideClass.ACCEPTED_SHIFT
 				: GenomeEvidenceTest.PeptideClass.UNEXPLAINED;
 	}
 
-	private static Set<String> genomesOf(File fasta, String decoyPrefix) throws IOException {
+	/** Genomes of a run's database; with {@code genomePrefix}, proteins without it (the host) are left out. */
+	static Set<String> genomesOf(File fasta, String decoyPrefix, String genomePrefix) throws IOException {
 		Set<String> genomes = new HashSet<>();
 		try (BufferedReader br = Files.newBufferedReader(fasta.toPath(), StandardCharsets.UTF_8)) {
 			String line;
 			while ((line = br.readLine()) != null) {
 				if (line.startsWith(">")) {
 					String accession = accession(line);
-					if (!accession.startsWith(decoyPrefix)) {
+					if (!accession.startsWith(decoyPrefix)
+							&& (genomePrefix == null || accession.startsWith(genomePrefix))) {
 						int idx = accession.indexOf('_');
 						genomes.add(idx > 0 ? accession.substring(0, idx) : accession);
 					}

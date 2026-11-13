@@ -630,7 +630,15 @@ public class MetaResourceParameters {
 		return best;
 	}
 
-	/** Any DIA-NN executable at most two levels below {@code versionDir}. */
+	/**
+	 * Any DIA-NN executable at most two levels below {@code versionDir}.
+	 * <p>
+	 * FragPipe Linux ships the binary as a versioned name such as
+	 * {@code diann-1.8.1.8} under {@code tools/diann/<version>/linux/}, not as a
+	 * plain {@code diann} or {@code diann-linux}. Accept those plus the common
+	 * Windows/Linux names; ignore shared libraries and data files that also sit
+	 * in the same folder ({@code .so}, {@code .obo}, …).
+	 */
 	private static File findDiannExecutable(File versionDir) {
 		java.util.List<File> candidates = new java.util.ArrayList<>();
 		candidates.add(versionDir);
@@ -638,16 +646,50 @@ public class MetaResourceParameters {
 		if (osDirs != null) {
 			candidates.addAll(java.util.Arrays.asList(osDirs));
 		}
+		File best = null;
+		int bestRank = Integer.MAX_VALUE;
 		for (File dir : candidates) {
-			File[] files = dir.listFiles(f -> {
-				String n = f.getName().toLowerCase(java.util.Locale.ROOT);
-				return f.isFile() && (n.equals("diann.exe") || n.equals("diann") || n.startsWith("diann-linux"));
-			});
-			if (files != null && files.length > 0) {
-				return files[0];
+			File[] files = dir.listFiles(File::isFile);
+			if (files == null) {
+				continue;
+			}
+			for (File f : files) {
+				if (!isMsboosterDiannBinaryName(f.getName())) {
+					continue;
+				}
+				int rank = diannBinaryPreference(f.getName());
+				if (rank < bestRank) {
+					bestRank = rank;
+					best = f;
+				}
 			}
 		}
-		return null;
+		return best;
+	}
+
+	/** True for FragPipe-bundled DIA-NN binaries usable by MSBooster. */
+	static boolean isMsboosterDiannBinaryName(String fileName) {
+		if (fileName == null || fileName.isBlank()) {
+			return false;
+		}
+		String n = fileName.toLowerCase(java.util.Locale.ROOT);
+		if (n.endsWith(".so") || n.endsWith(".dll") || n.endsWith(".obo") || n.endsWith(".jar")
+				|| n.endsWith(".txt") || n.endsWith(".md") || n.endsWith(".params")) {
+			return false;
+		}
+		return n.equals("diann") || n.equals("diann.exe") || n.startsWith("diann-");
+	}
+
+	/** Lower is better: plain {@code diann} / {@code diann-linux*} over versioned names. */
+	static int diannBinaryPreference(String fileName) {
+		String n = fileName.toLowerCase(java.util.Locale.ROOT);
+		if (n.equals("diann") || n.equals("diann.exe")) {
+			return 0;
+		}
+		if (n.startsWith("diann-linux")) {
+			return 1;
+		}
+		return 2;
 	}
 
 	/**

@@ -1040,6 +1040,18 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			HashMap<String, HashSet<String>> totalPepWithILMap, HashMap<String, HashSet<String>> razorPepWithILMap,
 			HashMap<String, HashSet<String>> uniquePepWithILMap,
 			String[] intensityTitle, String taskName) {
+		return performTaxonomyAnalysis(genomeIntensityMap, genomeScoreMap, psmCountMap, totalPepCountMap,
+				razorPepCountMap, uniquePepCountMap, totalPepWithILMap, razorPepWithILMap, uniquePepWithILMap,
+				intensityTitle, taskName, null);
+	}
+
+	protected boolean performTaxonomyAnalysis(HashMap<String, double[]> genomeIntensityMap,
+			HashMap<String, Double> genomeScoreMap, HashMap<String, Integer> psmCountMap,
+			HashMap<String, HashSet<String>> totalPepCountMap, HashMap<String, HashSet<String>> razorPepCountMap,
+			HashMap<String, HashSet<String>> uniquePepCountMap,
+			HashMap<String, HashSet<String>> totalPepWithILMap, HashMap<String, HashSet<String>> razorPepWithILMap,
+			HashMap<String, HashSet<String>> uniquePepWithILMap,
+			String[] intensityTitle, String taskName, HashMap<String, double[]> genomeUniqueIntensityMap) {
 
 		logger.info(taskName + ": taxonomy analysis started");
 		System.out.println(format.format(new Date()) + "\t" + taskName + ": taxonomy analysis started");
@@ -1050,6 +1062,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 		request.magDb = magDb;
 		request.generateFinalGenomeRanking = true;
 		request.genomeIntensityMap = genomeIntensityMap;
+		request.genomeUniqueIntensityMap = genomeUniqueIntensityMap;
 		request.genomeScoreMap = genomeScoreMap;
 		request.genomeStats = lastDiaStyleGenomeStats;
 		request.genomeScoreRuninfo = lastDiaStyleRuninfo;
@@ -1574,6 +1587,10 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			DdaMagPostAnalysisService.Result analysis = DdaMagPostAnalysisService.analyze(
 					new DdaMagPostAnalysisService.Input(quanPeps, psms, fileIdMap, fileList, decoySymbol,
 							parentTask.magDb.getIdentifier()));
+            analysis.finalSelection.write(parentTask.metaPar.getDbSearchResultFile());
+            uk.ac.quadram.metapilot.core.mag.MagResultFinalisationService.writeCatalogueContext(
+                    parentTask.metaPar.getDbSearchResultFile(), parentTask.magDb);
+
 			parentTask.lastDiaStyleGenomeStats = analysis.genomeDiaStats;
 			parentTask.lastDiaStyleRuninfo = analysis.genomeScoring.diaStyleRuninfo;
 
@@ -1656,7 +1673,7 @@ public abstract class MetaPilotMagTask extends MetaPilotTask {
 			updateProgress(0.90, 1.0);
 			if (!parentTask.performTaxonomyAnalysis(genomeIntensityMap, genomeScoreMap, psmCountMap, totalPepCountMap,
 					razorPepCountMap, uniquePepCountMap, totalPepWithILMap, razorPepWithILMap, uniquePepWithILMap,
-					intensityTitle, taskName)) {
+					intensityTitle, taskName, analysis.genomeUniqueIntensityMap)) {
 				return false;
 			}
 

@@ -75,6 +75,12 @@ public final class VariantCandidate {
 	 * substitution-shaped. Null for pFind, which has no peaks.
 	 */
 	public Boolean peakSubstitutionShaped;
+	/**
+	 * Open search, identification v2: the fragment-supported localisation behind this candidate
+	 * ({@code ShiftLocaliser}); NaN when the candidate came from the reassigner's peak proposals alone.
+	 */
+	public double localisationSiteProbability = Double.NaN;
+	public double localisationSupport = Double.NaN;
 	public boolean ms2Decidable = true;
 	/** Same-residue modifications of equal mass, or pFind's own isobaric alias. */
 	public final Set<String> isobaricModifications = new TreeSet<>();

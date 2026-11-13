@@ -45,6 +45,18 @@ public final class DdaMagProteinInferenceService {
 
 	public static Result refineProteins(MetaPeptide[] quanPeps, Map<String, Double> genomeScoreMap,
 			Map<String, double[]> genomeStats, String magIdentifier, String decoySymbol, double qValueThreshold) {
+		return refineProteins(quanPeps, genomeScoreMap, genomeStats, magIdentifier, decoySymbol, qValueThreshold, null);
+	}
+
+	/**
+	 * @param allowedProteins MAG proteins a peptide may be assigned to (the protein filter of
+	 *                        identification v2, {@code GenomeEvidenceTest.Result#passingProteins}); null:
+	 *                        every protein of a confident genome. A peptide left with no protein is counted
+	 *                        as without a confident razor protein, as one without a confident genome.
+	 */
+	public static Result refineProteins(MetaPeptide[] quanPeps, Map<String, Double> genomeScoreMap,
+			Map<String, double[]> genomeStats, String magIdentifier, String decoySymbol, double qValueThreshold,
+			Set<String> allowedProteins) {
 		if (quanPeps == null) {
 			return new Result(new String[0], new HashMap<>(), 0);
 		}
@@ -75,7 +87,7 @@ public final class DdaMagProteinInferenceService {
 				}
 				if (isMagProtein(protein, magIdentifier)) {
 					String genome = genomeOf(protein);
-					if (confidentGenomes.contains(genome)) {
+					if (confidentGenomes.contains(genome) && (allowedProteins == null || allowedProteins.contains(protein))) {
 						count++;
 					}
 				} else {
@@ -91,7 +103,7 @@ public final class DdaMagProteinInferenceService {
 					}
 					if (isMagProtein(protein, magIdentifier)) {
 						String genome = genomeOf(protein);
-						if (confidentGenomes.contains(genome)) {
+						if (confidentGenomes.contains(genome) && (allowedProteins == null || allowedProteins.contains(protein))) {
 							addIntensity(proteinIntensityMap, protein, intensity);
 							addIntensity(genomeIntensityMap, genome, intensity);
 						}
@@ -119,7 +131,7 @@ public final class DdaMagProteinInferenceService {
 				}
 				if (isMagProtein(protein, magIdentifier)) {
 					String genome = genomeOf(protein);
-					if (confidentGenomes.contains(genome)) {
+					if (confidentGenomes.contains(genome) && (allowedProteins == null || allowedProteins.contains(protein))) {
 						Double currentProteinIntensity = proteinIntensityMap.get(protein);
 						if (currentProteinIntensity == null) {
 							continue;

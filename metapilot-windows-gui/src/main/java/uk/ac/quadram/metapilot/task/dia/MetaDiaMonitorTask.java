@@ -97,6 +97,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 
 		this.diannPar = new DiannParameter();
 		this.diannPar.setThreads(metaPar.getThreadCount());
+		applyModifications(metaPar, this.diannPar);
 
 		setTaskCount();
 		
@@ -643,6 +644,7 @@ public class MetaDiaMonitorTask extends MetaDiaTask {
 		DiannParameter buildPar = new DiannParameter();
 		buildPar.setThreads(Math.max(1, threadCount));
 		buildPar.setExportDecoy(true);
+		applyModifications(metaPar, buildPar);
 		diaNNTask.addTask(buildPar, fastaFile.getAbsolutePath(), speclibFile.getAbsolutePath(), false);
 		diaNNTask.run(12);
 		if (!speclibFile.exists() && predictedLib.exists()) {

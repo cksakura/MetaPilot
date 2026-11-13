@@ -1,5 +1,7 @@
 package uk.ac.quadram.metapilot.task.dia;
 
+import uk.ac.quadram.metapilot.core.dia.PeptideListLibrarySupport;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
@@ -25,6 +27,7 @@ import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNPrecursor;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaMarker;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
+import uk.ac.quadram.metapilot.task.mag.MarkerGenomeSelector;
 
 /**
  * DIA "Seed deep" workflow task for the <b>seed strategy</b>.
@@ -117,19 +120,22 @@ public class DiaSeedDeepPerFileTask extends DiaSeedCoreTask {
 		return base != null ? new File(base, SEED_FOLDER) : new File(SEED_FOLDER);
 	}
 
-	/** Deep Comprehensive uses all user-selected libraries for the first search; no fallback to direct-only. */
+	/**
+	 * Deep: microbiome libraries for the first search; standalone (host) libraries only in the final combined search,
+	 * as in every DIA workflow (DiaHostLibrarySupport). No fallback to direct-only.
+	 */
 	@Override
 	protected boolean classifyLibraries() {
-		String[] libPath = resolveLibraryPaths();
-		if (libPath == null || libPath.length == 0) {
-			logger.error(getTaskName() + ": No libraries resolved (MetaParameterDia and MAG required)");
+		if (!super.classifyLibraries()) {
 			return false;
 		}
-		initialSearchLibPaths = libPath;
-		fallbackDirectSearch = false;
-		addOutLibForInitialSearch = false;
-		standaloneSearchLibPaths = null;
-		logger.info(getTaskName() + ": using all {} user-selected libraries for first search", libPath.length);
+		if (fallbackDirectSearch) {
+			logger.error(getTaskName() + ": Deep needs a microbiome (seed) library; only standalone libraries selected");
+			return false;
+		}
+		logger.info(getTaskName() + ": {} microbiome libraries for the first search, {} standalone (host) libraries"
+				+ " for the final combined search", initialSearchLibPaths.length,
+				standaloneSearchLibPaths == null ? 0 : standaloneSearchLibPaths.length);
 		return true;
 	}
 
@@ -195,6 +201,17 @@ public class DiaSeedDeepPerFileTask extends DiaSeedCoreTask {
 			return false;
 		}
 
+		// As DiaSeedCoreTask: if marker peptides are < 5% of total identified peptides, use all peptides for genome selection (greedy only)
+		MarkerGenomeSelector.MarkerPeptideRatioResult ratioResult = MarkerGenomeSelector.computeMarkerPeptideRatio(precursorsWithPro, markerFasta);
+		File effectiveMarkerFasta = markerFasta;
+		if (ratioResult.ratio < MarkerGenomeSelector.MARKER_PEPTIDE_RATIO_THRESHOLD) {
+			effectiveMarkerFasta = null;
+			logger.info("Marker peptides ({}) are {}% of total identified peptides ({}); using all peptides for genome selection (greedy only, no PRIVILEGE/representative)",
+					ratioResult.markerUniquePeptides, String.format("%.1f", ratioResult.ratio * 100), ratioResult.totalUniquePeptides);
+		} else {
+			logger.info("Marker peptide ratio: {} / {} = {}% (using marker-based genome selection)", ratioResult.markerUniquePeptides, ratioResult.totalUniquePeptides, String.format("%.1f", ratioResult.ratio * 100));
+		}
+
 		updateMessage(getTaskName() + ": genome ranking for deep seed workflow...");
 		File evidenceFile = new File(seedFolder, "genome_evidence.tsv");
 		File rankedFile = new File(seedFolder, "genome_ranked.tsv");
@@ -205,7 +222,8 @@ public class DiaSeedDeepPerFileTask extends DiaSeedCoreTask {
 		selectionRequest.genomeSelectorMode = MagDbItem.MARKER4;
 		selectionRequest.genomeSelectionStrategy = MagGenomeSelectionService.SELECTION_STRATEGY_COMPREHENSIVE;
 		selectionRequest.diaPrecursors = withProArray;
-		selectionRequest.markerFasta = markerFasta;
+		selectionRequest.markerFasta = effectiveMarkerFasta;
+		selectionRequest.disableMarkerFasta = effectiveMarkerFasta == null;
 		selectionRequest.genomesTaxaTsv = genomesTaxaTsv;
 		selectionRequest.evidenceFile = evidenceFile;
 		selectionRequest.rankedFile = rankedFile;
@@ -430,13 +448,20 @@ public class DiaSeedDeepPerFileTask extends DiaSeedCoreTask {
 				diannPar.setThreads(threadCount);
 				diannPar.setExportDecoy(true);
 				// DIA-NN call purpose: build post-round library for final quantifying search.
-				diaNNTask.addTask(diannPar, combinedFasta.getAbsolutePath(), combinedSpeclib.getAbsolutePath(), false);
-				diaNNTask.run(12);
+				// combined.fasta holds one entry per round peptide: no protein N-terminal rules
+				PeptideListLibrarySupport.runWithPeptideEntryRules(diannPar, () -> {
+					diaNNTask.addTask(diannPar, combinedFasta.getAbsolutePath(), combinedSpeclib.getAbsolutePath(), false);
+					diaNNTask.run(12);
+				});
 			}, logger, getTaskName())) {
 			logger.error(getTaskName() + ": failed to generate combined.speclib at " + combinedSpeclib.getAbsolutePath());
 			return false;
 		}
 		String[] finalSearchFiles = initialSearchSeparate && goodDiaFiles != null ? goodDiaFiles : diaFiles;
+		final String[] finalLibs = finalSearchLibraries(combinedSpeclib, combinedDir);
+		if (finalLibs == null) {
+			return false;
+		}
 		boolean combinedOk = DeepIterativeCommonSupport.ensureCombinedParquet(combinedParquet, () -> {
 			diaLibSearchPar.setMbr(true);
 			diaLibSearchPar.setDiaFiles(finalSearchFiles);
@@ -447,8 +472,7 @@ public class DiaSeedDeepPerFileTask extends DiaSeedCoreTask {
 			diannPar.setRelaxed_prot_inf(true);
 			diannPar.setReanalyse(true);
 			diannPar.setExportDecoy(true);
-			diaNNTask.addTask(diannPar, diaLibSearchPar, combinedParquet.getAbsolutePath(),
-					new String[] { combinedSpeclib.getAbsolutePath() });
+			diaNNTask.addTask(diannPar, diaLibSearchPar, combinedParquet.getAbsolutePath(), finalLibs);
 			diaNNTask.run(finalSearchFiles.length * 12);
 		});
 		if (!combinedOk) {
@@ -542,8 +566,11 @@ public class DiaSeedDeepPerFileTask extends DiaSeedCoreTask {
 			if (!DeepIterativeCommonSupport.ensureCombinedSpeclib(roundDir, combinedSpeclib, () -> {
 				diannPar.setThreads(threadCount);
 				diannPar.setExportDecoy(true);
-				diaNNTask.addTask(diannPar, combinedFasta.getAbsolutePath(), combinedSpeclib.getAbsolutePath(), false);
-				diaNNTask.run(12);
+				// peptide-based round: one entry per predicted peptide, no protein N-terminal rules
+				PeptideListLibrarySupport.runWithPeptideEntryRules(diannPar, () -> {
+					diaNNTask.addTask(diannPar, combinedFasta.getAbsolutePath(), combinedSpeclib.getAbsolutePath(), false);
+					diaNNTask.run(12);
+				});
 			}, logger, getTaskName())) {
 				return new DeepIterativeCommonSupport.IterativeRoundLoopResult(-1, prevPeptideCount, roundsRecord,
 						peptidesInRoundRecord, incrementsPerRound, cumulativeRecord, "round_failed", lastStopRuleResult);

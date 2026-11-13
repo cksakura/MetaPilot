@@ -885,6 +885,9 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 				request.magDb = magDb;
 				request.genomeSelectorMode = magPfindParams.getGenomeSelectorMode();
 				request.genomeSelectionStrategy = magPfindParams.getGenomeSelectionStrategy();
+				request.genomeSelectionPsmCoverage = magPfindParams.getGenomeSelectionPsmCoverage();
+				request.genomeSelectionStepGuard = magPfindParams.getGenomeSelectionStepGuard();
+				request.genomeSelectionMaxGenomes = magPfindParams.getGenomeSelectionMaxGenomes();
 				request.psms = psms == null ? java.util.Collections.emptyList() : java.util.Arrays.asList(psms);
 				request.evidenceFile = evidenceFile;
 				request.rankedFile = rankedFile;
@@ -934,6 +937,14 @@ public class DDAMagPfindTask extends MetaPilotMagTask {
 				logger.error("Error writing sample-specific database to {}", dbFile.getAbsolutePath(), e);
 				return false;
 			}
+		}
+
+		try {
+			uk.ac.quadram.metapilot.task.mag.GenomeSelectionSummary.combine(separateResultFolders, MARKER_SEARCH_DIR,
+					new File(magPfindParams.getDbSearchResultFile(),
+							uk.ac.quadram.metapilot.task.mag.GenomeSelectionSummary.FILE_NAME));
+		} catch (Exception e) {
+			logger.warn("Could not write genome_selection_summary.tsv: {}", e.getMessage());
 		}
 
 		return true;

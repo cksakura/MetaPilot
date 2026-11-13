@@ -204,7 +204,7 @@ public final class VariantFormRanking {
 	}
 
 	/** Sample base name to its mzML; open-search PSMs carry the base name of the spectrum file. */
-	static Map<String, File> mzmlBySample(List<File> spectraFiles) {
+	public static Map<String, File> mzmlBySample(List<File> spectraFiles) {
 		Map<String, File> out = new LinkedHashMap<>();
 		if (spectraFiles == null) {
 			return out;

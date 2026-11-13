@@ -16,6 +16,7 @@ import org.json.JSONObject;
 import uk.ac.quadram.metapilot.core.mod.IsobaricTag;
 import uk.ac.quadram.metapilot.task.par.IsobaricLabelSettings;
 import uk.ac.quadram.metapilot.task.par.BaseParameterIO;
+import uk.ac.quadram.metapilot.task.par.SampleMetadata;
 
 /**
  * Parameter IO Handler for DDA IGC pFind Workflow
@@ -318,6 +319,7 @@ public class DDAIgcPFindParameterIO extends BaseParameterIO {
                     metadataTableData.add(metadataRow);
                 }
                 parameters.setMetadataTableData(metadataTableData);
+                SampleMetadata.apply(parameters.getMetadata(), metadataTableData);
             }
             
             LOGGER.info("Successfully loaded pFind parameters from {}", paramFile.getAbsolutePath());

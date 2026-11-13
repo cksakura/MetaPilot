@@ -13,6 +13,7 @@ import java.util.HashSet;
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.Logger;
 
+import uk.ac.quadram.metapilot.core.dia.PeptideListLibrarySupport;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNParquetReader;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiaNNTask;
 import uk.ac.quadram.metapilot.dbSearch.diann.DiannParameter;
@@ -47,6 +48,8 @@ public class DiaLibCreateTask extends MetaAbstractTask {
 
 	private boolean matchToMag = true;
 	private String lastFailureReason;
+	/** fromPeptide only: what went into the library, written to _info.txt. */
+	private java.util.List<String> peptideLibraryInfo;
 
 	public DiaLibCreateTask(MetaParameterDia metaPar, MetaResourceParameters mrp, ProgressBar progressBar,
 			String filePath, ArrayList<String> pathList, int buildType, Logger logger) {
@@ -132,68 +135,24 @@ public class DiaLibCreateTask extends MetaAbstractTask {
 			}
 		} else if (taskType == fromPeptide) {
 
+			// Peptide entries: no protein N-terminal rules, missed cleavages that keep the peptides intact, sorted FASTA
+			// (see PeptideListLibrarySupport).
 			File pepDbFile = new File(libFile, libName + ".fasta");
-			if (!pepDbFile.exists()) {
-				HashSet<String> pepSet = new HashSet<String>();
-				try (BufferedReader reader = new BufferedReader(new FileReader(filePath))) {
-					String pline = reader.readLine();
-					String[] title = pline.split("\t");
-					int seqid = -1;
-					for (int i = 0; i < title.length; i++) {
-						if (title[i].equals("Sequence")) {
-							seqid = i;
-						} else if (title[i].equals("Base sequence")) {
-							seqid = i;
-						}
-					}
-
-					if (seqid == -1) {
-						return fail("Input peptide table has no \"Sequence\" or \"Base sequence\" column: " + filePath,
-								null);
-					}
-
-					while ((pline = reader.readLine()) != null) {
-						String[] cs = pline.split("\t");
-						int c1 = 0;
-						int c2 = 0;
-						boolean start = true;
-						StringBuilder sb = new StringBuilder();
-						for (int i = 0; i < cs[seqid].length(); i++) {
-							char aa = cs[seqid].charAt(i);
-							if (aa == '(' || aa == '[') {
-								start = false;
-								c1++;
-							} else if (aa == ')' || aa == ']') {
-								start = true;
-								c2++;
-							} else {
-								if (start && aa >= 'A' && aa <= 'Z') {
-									sb.append(aa);
-								}
-							}
-						}
-
-						if (c1 == c2) {
-							String seq = sb.toString();
-							pepSet.add(seq);
-						}
-					}
-					reader.close();
-				} catch (IOException e) {
-					return fail("Error reading peptide input file: " + filePath, e);
+			PeptideListLibrarySupport.PeptideList peptideList;
+			try {
+				if (!pepDbFile.exists()) {
+					peptideList = PeptideListLibrarySupport.readPeptideTable(new File(filePath));
+					PeptideListLibrarySupport.writePeptideFasta(peptideList, pepDbFile);
+				} else {
+					peptideList = PeptideListLibrarySupport.readPeptideFasta(pepDbFile);
 				}
-
-				String[] sortedPeps = pepSet.toArray(String[]::new);
-
-				try (PrintWriter writer = new PrintWriter(pepDbFile)) {
-					for (int i = 0; i < sortedPeps.length; i++) {
-						writer.println(">pro" + i + " pro" + i);
-						writer.println(sortedPeps[i]);
-					}
-					writer.close();
-				} catch (IOException e) {
-					return fail("Error writing peptide FASTA file: " + pepDbFile.getAbsolutePath(), e);
-				}
+			} catch (IOException e) {
+				return fail("Error reading the peptide list or writing the peptide FASTA: " + filePath, e);
+			}
+			miss = PeptideListLibrarySupport.configureForPeptideLibrary(diannPar, miss, peptideList);
+			peptideLibraryInfo = PeptideListLibrarySupport.describe(peptideList, diannPar);
+			for (String line : peptideLibraryInfo) {
+				logger.info(taskName + ": " + line.replace('\t', ' '));
 			}
 
 			if (!destLibFile.exists()) {
@@ -234,6 +193,11 @@ public class DiaLibCreateTask extends MetaAbstractTask {
 			writer.println("Enzyme:\t" + enzyme);
 			writer.println("Miss cleavages:\t" + miss);
 			writer.println("MatchToMag:\t" + matchToMag);
+			if (peptideLibraryInfo != null) {
+				for (String line : peptideLibraryInfo) {
+					writer.println(line);
+				}
+			}
 			writer.close();
 		} catch (Exception e) {
 			// TODO Auto-generated catch block

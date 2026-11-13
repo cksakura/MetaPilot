@@ -1,5 +1,6 @@
 package uk.ac.quadram.metapilot.core.runner;
 
+import uk.ac.quadram.metapilot.core.mag.MagResultLayoutUtil;
 import uk.ac.quadram.metapilot.core.tools.FormatTool;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPSM;
 import uk.ac.quadram.metapilot.task.io.pep.MetaPeptide;
@@ -38,6 +39,23 @@ public final class DdaMagReportExportService {
 	public static void writeIdentificationSummary(File combinedDir, File resultDir, File spectraDir,
 			HashMap<String, Integer> fileIdMap, int[] filePsmCount, HashSet<String>[] fileSequenceSets,
 			Map<String, String> expNameMap) throws IOException {
+		writeIdentificationSummary(combinedDir, resultDir, spectraDir, fileIdMap, filePsmCount, null, fileSequenceSets,
+				expNameMap);
+	}
+
+	/**
+	 * As above, with {@code fileSpectrumCount}: distinct identified spectra per file. A workflow
+	 * that reports one identification per spectrum passes null, and the spectrum count is the PSM
+	 * count. The open search under identification v2 can report two identifications for one scan
+	 * (one per precursor), so its counts differ.
+	 * <p>
+	 * {@code final_summary.tsv}: "MS/MS Identified" and its rate count spectra, each scan once,
+	 * against "MS/MS" (the MS2 scans in {@code ms2Count.txt}, or the identified spectra when there
+	 * is no such file); "PSMs" counts every identification.
+	 */
+	public static void writeIdentificationSummary(File combinedDir, File resultDir, File spectraDir,
+			HashMap<String, Integer> fileIdMap, int[] filePsmCount, int[] fileSpectrumCount,
+			HashSet<String>[] fileSequenceSets, Map<String, String> expNameMap) throws IOException {
 		if (combinedDir == null)
 			throw new IOException("combinedDir is null");
 		if (resultDir == null)
@@ -47,7 +65,7 @@ public final class DdaMagReportExportService {
 
 		File idTsv = new File(combinedDir, "id.tsv");
 		try (PrintWriter idWriter = new PrintWriter(idTsv)) {
-			idWriter.println("Raw file\tUnique peptide count\tPSM count");
+			idWriter.println("Raw file\tUnique peptide count\tPSM count\tSpectrum count");
 			String[] rawNames = fileIdMap.keySet().toArray(new String[0]);
 			Arrays.sort(rawNames, Comparator.comparingInt(fileIdMap::get));
 			for (String rawName : rawNames) {
@@ -56,22 +74,34 @@ public final class DdaMagReportExportService {
 						? fileSequenceSets[idx].size()
 						: 0;
 				int psm = idx >= 0 && idx < filePsmCount.length ? filePsmCount[idx] : 0;
-				idWriter.println(rawName + "\t" + unique + "\t" + psm);
+				int spectra = fileSpectrumCount == null ? psm
+						: idx >= 0 && idx < fileSpectrumCount.length ? fileSpectrumCount[idx] : 0;
+				idWriter.println(rawName + "\t" + unique + "\t" + psm + "\t" + spectra);
 			}
 		}
 
 		File finalSummary = new File(resultDir, "final_summary.tsv");
 		try (PrintWriter writer = new PrintWriter(finalSummary)) {
-			writer.println(
-					"Raw file\tExperiment\tMS/MS\tMS/MS Identified\tMS/MS Identified [%]\tPeptide Sequences Identified");
+			writer.println("Raw file\tExperiment\tMS/MS\tMS/MS Identified\tMS/MS Identified [%]\t"
+					+ "Peptide Sequences Identified\tPSMs");
 			HashMap<String, int[]> idMap = readIdMap(idTsv);
-			File ms2CountFile = spectraDir != null ? new File(spectraDir, "ms2Count.txt") : null;
-			if (ms2CountFile != null && ms2CountFile.exists()) {
+			File ms2CountFile = resolveMs2CountFile(spectraDir, resultDir);
+			if (ms2CountFile != null) {
 				writeSummaryFromMs2Count(writer, ms2CountFile, idMap, expNameMap);
 			} else {
 				writeSummaryFromIdentifications(writer, idMap, expNameMap);
 			}
 		}
+	}
+
+	/**
+	 * {@code ms2Count.txt} for the identification rate. Looks in the folder the
+	 * caller passed (the result's {@code spectra/} folder, as in pFind), then at
+	 * a leftover {@code spectra_summary/} under the engine root or
+	 * {@code search_results/}. {@code resultDir} is the engine folder.
+	 */
+	static File resolveMs2CountFile(File spectraDir, File resultDir) {
+		return MagResultLayoutUtil.locateMs2Count(spectraDir, resultDir);
 	}
 
 	public static void writePeptideReport(File out, ArrayList<MetaPeptide> peptideList, HashMap<String, MetaPSM> psmMap,
@@ -87,6 +117,24 @@ public final class DdaMagReportExportService {
 			HashMap<String, Integer> proteinIdMap, ArrayList<String> fileList, String quanMode, String[] intensityTitle,
 			HashMap<String, String> razorProteinMap)
 			throws IOException {
+		writePeptideReport(out, peptideList, psmMap, pepPsmCountMap, pepChargeMap, proteinIdMap, fileList, quanMode,
+				intensityTitle, razorProteinMap, null, null);
+	}
+
+	/**
+	 * As above, with one optional trailing column: {@code extraTitle}, valued per row from
+	 * {@code extraByModSeq} by the peptide's modified sequence (empty when absent). Null leaves the
+	 * table exactly as before. The open search uses it for the localised shift's explanation. A title
+	 * and values holding tabs make several columns.
+	 */
+	public static void writePeptideReport(File out, ArrayList<MetaPeptide> peptideList, HashMap<String, MetaPSM> psmMap,
+			HashMap<String, int[]> pepPsmCountMap, HashMap<String, int[]> pepChargeMap,
+			HashMap<String, Integer> proteinIdMap, ArrayList<String> fileList, String quanMode, String[] intensityTitle,
+			HashMap<String, String> razorProteinMap, String extraTitle, Map<String, String> extraByModSeq)
+			throws IOException {
+		boolean extra = extraTitle != null && extraByModSeq != null;
+		// A title holding tabs is several columns; a row without a value gets as many empty cells.
+		String emptyExtra = extra ? "\t".repeat((int) extraTitle.chars().filter(ch -> ch == '\t').count()) : "";
 		if (peptideList == null)
 			peptideList = new ArrayList<>();
 		if (psmMap == null)
@@ -131,6 +179,9 @@ public final class DdaMagReportExportService {
 				valuesPerFile = isobaricValuesPerFile(fileList, intensityTitle);
 			}
 			titlesb.append("Reverse\tPotential contaminant\tid\tProtein group IDs\tMS/MS Count");
+			if (extra) {
+				titlesb.append('\t').append(extraTitle);
+			}
 			writer.println(titlesb);
 
 			int[] writtenIds = computeWrittenPeptideIds(peptideList, psmMap);
@@ -210,6 +261,9 @@ public final class DdaMagReportExportService {
 					removeTrailingSemicolon(sb);
 				}
 				sb.append("\t").append(totalMsCount);
+				if (extra) {
+					sb.append('\t').append(extraByModSeq.getOrDefault(fullSeq, emptyExtra));
+				}
 				writer.println(sb);
 			}
 		}
@@ -513,7 +567,10 @@ public final class DdaMagReportExportService {
 			while ((line = reader.readLine()) != null) {
 				String[] cs = line.split("\t");
 				if (cs.length >= 3) {
-					idMap.put(cs[0], new int[] { Integer.parseInt(cs[1]), Integer.parseInt(cs[2]) });
+					int psm = Integer.parseInt(cs[2]);
+					// {unique peptides, PSMs, spectra}; an id.tsv from before the spectrum column counts PSMs
+					idMap.put(cs[0], new int[] { Integer.parseInt(cs[1]), psm,
+							cs.length >= 4 ? Integer.parseInt(cs[3]) : psm });
 				}
 			}
 		}
@@ -524,21 +581,54 @@ public final class DdaMagReportExportService {
 			Map<String, String> expNameMap) throws IOException {
 		HashMap<String, Integer> ms2CountMap = readMs2CountMap(ms2CountFile);
 		int totalMs2Count = 0;
+		int totalSpectra = 0;
 		int totalPsmCount = 0;
 		int totalUniquePepCount = 0;
 		for (Map.Entry<String, int[]> entry : idMap.entrySet()) {
 			String rawName = entry.getKey();
 			int[] idCounts = entry.getValue();
-			Integer ms2Count = ms2CountMap.get(normalizeSampleName(rawName));
+			Integer ms2Count = ms2CountOf(ms2CountMap, rawName);
 			if (ms2Count == null) {
-				ms2Count = idCounts[1];
+				ms2Count = idCounts[2];
 			}
-			writer.println(summaryLine(rawName, expNameMap, ms2Count, idCounts[1], idCounts[0]));
+			writer.println(summaryLine(rawName, expNameMap, ms2Count, idCounts[2], idCounts[0], idCounts[1]));
 			totalMs2Count += ms2Count;
+			totalSpectra += idCounts[2];
 			totalPsmCount += idCounts[1];
 			totalUniquePepCount += idCounts[0];
 		}
-		writer.print(summaryLine("Total", null, totalMs2Count, totalPsmCount, totalUniquePepCount));
+		writer.print(summaryLine("Total", null, totalMs2Count, totalSpectra, totalUniquePepCount, totalPsmCount));
+	}
+
+	/**
+	 * The MS2 count of one run. {@code ms2Count.txt} names runs after their spectrum files
+	 * ({@code Qiao-FB1-DDA-1}); FragPipe renames them for its own tables, replacing characters
+	 * other than letters and digits with '_' and appending the fraction ({@code Qiao_FB1_DDA_1_1}).
+	 * Without this match the closed-search summary fell back to the identified spectra and
+	 * reported 100%.
+	 */
+	static Integer ms2CountOf(Map<String, Integer> ms2CountMap, String rawName) {
+		Integer exact = ms2CountMap.get(normalizeSampleName(rawName));
+		if (exact != null) {
+			return exact;
+		}
+		String key = fragpipeKey(normalizeSampleName(rawName));
+		String withoutFraction = key.replaceFirst("_\\d+$", "");
+		Integer found = null;
+		for (Map.Entry<String, Integer> e : ms2CountMap.entrySet()) {
+			String candidate = fragpipeKey(e.getKey());
+			if (candidate.equals(key)) {
+				return e.getValue();
+			}
+			if (candidate.equals(withoutFraction)) {
+				found = e.getValue();
+			}
+		}
+		return found;
+	}
+
+	private static String fragpipeKey(String name) {
+		return name.replaceAll("[^A-Za-z0-9]", "_");
 	}
 
 	private static HashMap<String, Integer> readMs2CountMap(File ms2CountFile) throws IOException {
@@ -562,24 +652,27 @@ public final class DdaMagReportExportService {
 
 	private static void writeSummaryFromIdentifications(PrintWriter writer, Map<String, int[]> idMap,
 			Map<String, String> expNameMap) {
+		int totalSpectra = 0;
 		int totalPsmCount = 0;
 		int totalUniquePepCount = 0;
 		for (Map.Entry<String, int[]> entry : idMap.entrySet()) {
 			String rawName = entry.getKey();
 			int[] idCounts = entry.getValue();
-			writer.println(summaryLine(rawName, expNameMap, idCounts[1], idCounts[1], idCounts[0]));
+			writer.println(summaryLine(rawName, expNameMap, idCounts[2], idCounts[2], idCounts[0], idCounts[1]));
+			totalSpectra += idCounts[2];
 			totalPsmCount += idCounts[1];
 			totalUniquePepCount += idCounts[0];
 		}
-		writer.print(summaryLine("Total", null, totalPsmCount, totalPsmCount, totalUniquePepCount));
+		writer.print(summaryLine("Total", null, totalSpectra, totalSpectra, totalUniquePepCount, totalPsmCount));
 	}
 
-	private static String summaryLine(String rawName, Map<String, String> expNameMap, int ms2Count, int psmCount,
-			int uniquePepCount) {
+	/** One final_summary.tsv row: the rate is identified spectra over MS2 spectra; PSMs come last. */
+	private static String summaryLine(String rawName, Map<String, String> expNameMap, int ms2Count,
+			int identifiedSpectra, int uniquePepCount, int psmCount) {
 		String expName = resolveExperimentName(rawName, expNameMap);
-		double ratio = ms2Count > 0 ? (double) psmCount / (double) ms2Count * 100.0 : 0;
-		return rawName + "\t" + expName + "\t" + ms2Count + "\t" + psmCount + "\t" + FormatTool.getDF2().format(ratio)
-				+ "\t" + uniquePepCount;
+		double ratio = ms2Count > 0 ? (double) identifiedSpectra / (double) ms2Count * 100.0 : 0;
+		return rawName + "\t" + expName + "\t" + ms2Count + "\t" + identifiedSpectra + "\t"
+				+ FormatTool.getDF2().format(ratio) + "\t" + uniquePepCount + "\t" + psmCount;
 	}
 
 	private static String resolveExperimentName(String rawName, Map<String, String> expNameMap) {

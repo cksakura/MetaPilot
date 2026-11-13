@@ -109,7 +109,7 @@ class ValidationStatisticsTest {
 	}
 
 	@Test
-	@DisplayName("A 20%-decoy known-shift peak is rejected, and its PSMs are demoted rather than deleted")
+	@DisplayName("A 20%-decoy accepted-shift peak is rejected, and its PSMs are demoted rather than deleted")
 	void decoyRichPeakIsRejected() {
 		List<OpenSearchPsm> psms = new ArrayList<>();
 		for (int i = 0; i < 4; i++) {

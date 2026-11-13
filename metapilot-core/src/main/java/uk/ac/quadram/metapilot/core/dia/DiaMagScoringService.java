@@ -65,9 +65,7 @@ public final class DiaMagScoringService {
      *
      * <p>The filtering strategy is:
      * <ol>
-     *   <li>Compute genome empirical p-values on the input precursor set.</li>
-     *   <li>Remove target proteins from genomes with {@code p_emp == 1}, while
-     *       keeping decoy proteins.</li>
+     *   <li>Keep candidate associations for the shared final confidence gate and ranking.</li>
      *   <li>Keep only precursors with {@code Global.Q.Value < 0.01} and at least
      *       one remaining protein.</li>
      *   <li>Recompute genome/protein score maps on the retained precursor set.</li>
@@ -81,12 +79,6 @@ public final class DiaMagScoringService {
      */
     public static FilteredScoringResult filterAndScorePrecursors(DiaNNPrecursor[] precursors) {
         if (precursors == null) precursors = new DiaNNPrecursor[0];
-
-        HashMap<String, double[]> genomeScoreMapForFilter = computeGenomeScoreMap(precursors, true);
-        HashSet<String> genomesPempOne = new HashSet<>();
-        for (String g : genomeScoreMapForFilter.keySet()) {
-            if (genomeScoreMapForFilter.get(g)[IDX_P_EMP] >= 1.0 - 1e-9) genomesPempOne.add(g);
-        }
 
         ArrayList<DiaNNPrecursor> retained = new ArrayList<>();
         for (DiaNNPrecursor pp : precursors) {
@@ -104,7 +96,7 @@ public final class DiaMagScoringService {
                 }
                 String[] parts = pro.split("_");
                 String genome = parts.length > 0 ? parts[0] : null;
-                if (genome != null && !genomesPempOne.contains(genome)) kept.add(pro);
+                if (genome != null) kept.add(pro);
             }
 
             if (!kept.isEmpty()) {

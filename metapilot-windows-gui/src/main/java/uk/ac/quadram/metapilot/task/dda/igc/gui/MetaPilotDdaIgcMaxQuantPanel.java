@@ -7,9 +7,6 @@ import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
-import javafx.scene.text.Font;
-import javafx.scene.text.FontWeight;
-import javafx.scene.paint.Color;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.util.converter.DefaultStringConverter;
@@ -17,6 +14,7 @@ import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
 import javafx.scene.control.Alert.AlertType;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
+import uk.ac.quadram.metapilot.task.common.gui.ParameterSection;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX.ExperimentRow;
 import uk.ac.quadram.metapilot.task.common.gui.DdaIgcInputOutputPanel;
 import uk.ac.quadram.metapilot.task.par.MetaData;
@@ -28,6 +26,7 @@ import uk.ac.quadram.metapilot.task.dda.igc.DDAIgcMaxQuantTask;
 import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcMaxQuantParameters;
 import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcMaxQuantParameterIO;
 import uk.ac.quadram.metapilot.task.common.gui.AbstractWorkflowPanel;
+import uk.ac.quadram.metapilot.task.common.gui.MetadataConfigurationPanel;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -187,7 +186,6 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
         VBox tabContent = new VBox(10);
         tabContent.setPadding(new Insets(10));
         tabContent.setMinWidth(960);
-        tabContent.setMinHeight(760);
         
         // Initialize data
         enzymes = FXCollections.observableArrayList();
@@ -208,8 +206,6 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
         mainGrid.setVgap(15);
         mainGrid.setPadding(new Insets(10));
         mainGrid.setMinWidth(940);
-        mainGrid.setMinHeight(740);
-        VBox.setVgrow(mainGrid, Priority.ALWAYS);
         
         // Column constraints for 2-column layout (50% + 50%) with minimum widths
         ColumnConstraints col1 = new ColumnConstraints();
@@ -225,23 +221,22 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
         // Row constraints for proper height distribution
         RowConstraints row1 = new RowConstraints();
         row1.setVgrow(Priority.ALWAYS);
-        row1.setMinHeight(400);
         mainGrid.getRowConstraints().add(row1);
         
         // Left column: Enzyme Settings, Additional Parameters, Taxonomic Analysis, Modifications (stacked)
         VBox leftColumn = new VBox(15);
         leftColumn.setMinWidth(430);
-        VBox enzymeSection = createEnzymeSection();
-        VBox additionalParamsSection = createAdditionalParametersSection();
-        VBox modificationsSection = createModificationsSection();
+        TitledPane enzymeSection = createEnzymeSection();
+        TitledPane additionalParamsSection = createAdditionalParametersSection();
+        TitledPane modificationsSection = createModificationsSection();
         leftColumn.getChildren().addAll(enzymeSection, additionalParamsSection, modificationsSection);
         GridPane.setVgrow(leftColumn, Priority.ALWAYS);
         
         // Right column: Quantitative Mode and Metadata Configuration (stacked)
         VBox rightColumn = new VBox(15);
         rightColumn.setMinWidth(430);
-        VBox quantModeSection = createQuantitativeModeSection();
-        VBox metadataSection = createMetadataConfigurationSection();
+        TitledPane quantModeSection = createQuantitativeModeSection();
+        TitledPane metadataSection = createMetadataConfigurationSection();
         rightColumn.getChildren().addAll(quantModeSection, metadataSection);
         GridPane.setVgrow(rightColumn, Priority.ALWAYS);
         
@@ -249,17 +244,13 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
         mainGrid.add(leftColumn, 0, 0);
         mainGrid.add(rightColumn, 1, 0);
         
-        tabContent.getChildren().add(mainGrid);
+        tabContent.getChildren().add(ParameterSection.createViewport(mainGrid));
         return tabContent;
     }
     
-    private VBox createEnzymeSection() {
+    private TitledPane createEnzymeSection() {
         VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #f5f5f5; -fx-background-radius: 5;");
-        
-        Label titleLabel = createSectionTitle("Enzyme Settings");
-        
+
         // All enzyme parameters in one horizontal line with responsive sizing
         HBox enzymeParamsBox = new HBox(15);
         enzymeParamsBox.setAlignment(Pos.CENTER_LEFT);
@@ -317,17 +308,13 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
         digestionModeBox.getChildren().add(digestionModeComboBox);
         
         enzymeParamsBox.getChildren().addAll(enzymeBox, missedCleavagesBox, digestionModeBox);
-        section.getChildren().addAll(titleLabel, enzymeParamsBox);
-        return section;
+        section.getChildren().addAll(enzymeParamsBox);
+        return ParameterSection.create("Enzyme Settings", section);
     }
     
-    private VBox createAdditionalParametersSection() {
+    private TitledPane createAdditionalParametersSection() {
         VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #f0f8ff; -fx-background-radius: 5;");
-        
-        Label titleLabel = createSectionTitle("Additional Parameters");
-        
+
         // Create a grid for better organization and responsive layout
         GridPane paramGrid = new GridPane();
         paramGrid.setHgap(15);
@@ -392,18 +379,13 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
         
         checkBoxContainer.getChildren().addAll(generateSampleSpecificDBCheckBox, spectraClusteringCheckBox);
         
-        section.getChildren().addAll(titleLabel, paramGrid, checkBoxContainer);
-        return section;
+        section.getChildren().addAll(paramGrid, checkBoxContainer);
+        return ParameterSection.create("Additional Parameters", section);
     }
     
-    private VBox createQuantitativeModeSection() {
+    private TitledPane createQuantitativeModeSection() {
         VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #f5f5f5; -fx-background-radius: 5;");
-        section.setMinHeight(300);
-        VBox.setVgrow(section, Priority.ALWAYS);
         
-        Label titleLabel = createSectionTitle("Quantitative Mode");
         quantModeGroup = new ToggleGroup();
         
         // Radio buttons for quantitative modes
@@ -423,7 +405,6 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
         
         // StackPane for overlapping panels - both panels must occupy same space
         StackPane labelingStackPane = new StackPane();
-        labelingStackPane.setMinHeight(200);
         labelingStackPane.setMaxHeight(Double.MAX_VALUE);
         VBox.setVgrow(labelingStackPane, Priority.ALWAYS);
         
@@ -476,14 +457,13 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
             updateMetadataTable();
         });
         
-        section.getChildren().addAll(titleLabel, radioBox, labelingStackPane);
-        return section;
+        section.getChildren().addAll(radioBox, labelingStackPane);
+        return ParameterSection.create("Quantitative Mode", section);
     }
     
     private VBox createCompactIsotopicLabelingPanel() {
         VBox panel = new VBox(8);
         panel.setPadding(new Insets(8));
-        panel.setStyle("-fx-background-color: #e8f4f8; -fx-background-radius: 5;");
         
         // Label selection row
         HBox labelSelectionBox = new HBox(8);
@@ -597,7 +577,6 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
     private VBox createCompactIsobaricLabelingPanel() {
         VBox panel = new VBox(8);
         panel.setPadding(new Insets(8));
-        panel.setStyle("-fx-background-color: #f8e8f4; -fx-background-radius: 5;");
         // Remove fixed height constraint to allow filling
         
         // Isobaric type selection
@@ -667,15 +646,9 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
     
 
     
-    private VBox createMetadataConfigurationSection() {
+    private TitledPane createMetadataConfigurationSection() {
         VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #fff8f0; -fx-background-radius: 5;");
-        section.setMinHeight(200);
-        VBox.setVgrow(section, Priority.ALWAYS);
-        
-        Label titleLabel = createSectionTitle("Metadata Configuration");
-        
+
         // Dynamic content based on quantitative mode
         Label infoLabel = new Label("Metadata will be configured based on selected quantitative mode");
         infoLabel.setStyle("-fx-font-style: italic; -fx-text-fill: #666666;");
@@ -749,12 +722,15 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
         
         controlBox.getChildren().addAll(metadataColumnComboBox, customColumnTextField, addMetadataColumnButton, removeMetadataColumnButton, resetMetadataButton);
         
-        section.getChildren().addAll(titleLabel, infoLabel, metadataTable, controlBox);
+        section.getChildren().addAll(infoLabel, metadataTable, controlBox);
         
         // Update metadata table when quantitative mode changes
         updateMetadataTable();
         
-        return section;
+        TitledPane pane = ParameterSection.create("Metadata Configuration", section);
+        pane.setMinHeight(200);
+        VBox.setVgrow(pane, Priority.ALWAYS);
+        return pane;
     }
     
     private void createMetadataTableColumns() {
@@ -902,15 +878,9 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
         updateParameterView();
     }
     
-    private VBox createModificationsSection() {
+    private TitledPane createModificationsSection() {
         VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #f5f5f5; -fx-background-radius: 5;");
-        section.setMinHeight(250);
-        VBox.setVgrow(section, Priority.ALWAYS);
-        
-        Label titleLabel = createSectionTitle("Modifications");
-        
+
         GridPane modGrid = new GridPane();
         modGrid.setHgap(15);
         modGrid.setVgap(10);
@@ -1006,8 +976,11 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
         modGrid.add(removeVariableModButton, 1, 2);
         modGrid.add(modSelectionContainer, 0, 3, 2, 1); // Span 2 columns
         
-        section.getChildren().addAll(titleLabel, modGrid);
-        return section;
+        section.getChildren().addAll(modGrid);
+        TitledPane pane = ParameterSection.create("Modifications", section);
+        pane.setMinHeight(250);
+        VBox.setVgrow(pane, Priority.ALWAYS);
+        return pane;
     }
     
     
@@ -1471,13 +1444,7 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
     }
     
     
-    private Label createSectionTitle(String title) {
-        Label label = new Label(title);
-        label.setFont(Font.font("System", FontWeight.BOLD, 14));
-        label.setTextFill(Color.DARKBLUE);
-        return label;
-    }
-    
+
     private void updateIsobaricTable() {
         String selectedType = isobaricTypeComboBox.getValue();
         if (selectedType != null) {
@@ -1846,6 +1813,8 @@ public class MetaPilotDdaIgcMaxQuantPanel extends AbstractWorkflowPanel<DDAIgcMa
             metadataDataArray.add(row.toArray());
         }
         params.setMetadataTableData(metadataDataArray);
+        MetadataConfigurationPanel.applyRows(params.getMetadata(), new ArrayList<>(metadataTableData),
+                MetadataConfigurationPanel.columnNames(metadataTable));
         
         consolePanel.appendConsoleText("✓ Successfully collected parameters from UI\n");
         LOGGER.info("Successfully collected parameters from UI for IGC MaxQuant workflow");

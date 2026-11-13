@@ -2,6 +2,7 @@ package uk.ac.quadram.metapilot.core.runner;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import uk.ac.quadram.metapilot.core.dia.DiaHostLibrarySupport;
 import uk.ac.quadram.metapilot.core.dia.Marker4LibrarySupport;
 import uk.ac.quadram.metapilot.core.diann.DiaNNHeadlessRunner;
 import uk.ac.quadram.metapilot.core.mag.MagGenomeSelectionService;
@@ -20,8 +21,10 @@ import uk.ac.quadram.metapilot.core.MGYG.HapExtractor;
 
 import java.io.*;
 import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 
 /**
  * Headless DIA Marker workflow runner (Marker4 -> genome selection -> combined library -> quant matrices).
@@ -191,6 +194,27 @@ public final class DiaMarkerHeadlessRunner {
 
         // Dispatch deep marker modes to their dedicated headless runners. Returns are adapted
         // to this runner's Result type so existing callers keep working.
+        if (markerMode == DiaRefinementMode.DEEP_TOGETHER && params.isEntrapmentEnabled()) {
+            cb.onMessage("DIA Marker: dispatching to DEEP_TOGETHER entrapment runner (seed "
+                    + params.getEntrapmentSeed() + ", ID digit " + params.getEntrapmentIdDigit() + ")");
+            File deepDir = DiaMarkerDeepEntrapmentHeadlessRunner.run(params, diannExe, magDbConfigJson, cb, condaPrefix,
+                    funcDbFile, reportResourceConfig, params.getEntrapmentSeed(), params.getEntrapmentIdDigit());
+            File markerDir = new File(deepDir, "marker");
+            File combinedDir = new File(deepDir, "combined");
+            return new Result(
+                    deepDir,
+                    markerDir,
+                    combinedDir,
+                    new File(markerDir, "marker.parquet"),
+                    new File(markerDir, "genome_ranked.tsv"),
+                    new File(markerDir, "genome_selected.tsv"),
+                    new File(combinedDir, "combined.fasta"),
+                    new File(combinedDir, "combined.speclib"),
+                    new File(combinedDir, "combined.parquet"),
+                    new File(combinedDir, "combined.pr_matrix.tsv"),
+                    new File(combinedDir, "combined.pg_matrix.tsv")
+            );
+        }
         if (markerMode == DiaRefinementMode.DEEP_TOGETHER) {
             cb.onMessage("DIA Marker: dispatching to DEEP_TOGETHER headless runner");
             DiaMarkerDeepTogetherHeadlessRunner.Result deepTogetherResult = exportPostAnalysis
@@ -260,8 +284,8 @@ public final class DiaMarkerHeadlessRunner {
         MagDbItem magDb = resolveMagDb(params, magDbConfigJson);
         if (magDb == null) throw new IOException("MAG DB could not be resolved from params + magdb config");
 
-        // Ensure Marker4 FASTA and genomes-taxa.tsv exist.
-        ensureMarker4Files(magDb, diannExe, params, cb);
+        // Ensure Marker4 FASTA, highpep (when required), and genomes-taxa.tsv exist.
+        ensureMarker4Files(magDb, diannExe, params, cb, reportResourceConfig);
 
         cb.onMessage("DIA Marker: preparing Marker4 library");
         ensureMarker4Library(magDb, diannExe, params, cb, condaPrefix);
@@ -272,6 +296,7 @@ public final class DiaMarkerHeadlessRunner {
 
         File markerParquet = new File(markerDir, "marker.parquet");
         if (!markerParquet.exists()) {
+            Marker4LibrarySupport.logLibraryInUse(magDb.getMarker4FastaForLibrary(), cb, LOGGER);
             cb.onMessage("DIA Marker: searching Marker4 library (no quant) to select genomes");
             runMarkerNoQuantSearch(diannExe, params, diaFiles, magDb.resolveMarker4LibraryFile(), markerParquet, cb, condaPrefix);
         }
@@ -350,16 +375,19 @@ public final class DiaMarkerHeadlessRunner {
         File prMatrix = new File(combinedDir, "combined.pr_matrix.tsv");
         File pgMatrix = new File(combinedDir, "combined.pg_matrix.tsv");
 
+        // Host and microbial libraries are searched together only here (DiaHostLibrarySupport).
+        File hostParquet = resolveHostParquet(params, new File(resultDir, "host_library"), diannExe, cb, condaPrefix);
+        String[] finalLibs = DiaHostLibrarySupport.finalSearchLibraries(combinedSpeclib, hostParquet, combinedDir,
+                libraryBuildPar(params), diannExe, cb, condaPrefix);
         if (!combinedParquet.exists() || !prMatrix.exists() || !pgMatrix.exists()) {
-            cb.onMessage("DIA Marker: running DIA-NN quant with combined library");
-            runCombinedQuantSearch(diannExe, params, diaFiles, combinedSpeclib, combinedParquet, cb, condaPrefix);
+            cb.onMessage("DIA Marker: running DIA-NN quant with combined library"
+                    + (hostParquet != null ? " and the host library" : ""));
+            runCombinedQuantSearch(diannExe, params, diaFiles, finalLibs, combinedParquet, cb, condaPrefix);
         }
 
         if (!combinedParquet.exists()) throw new IOException("Combined quant did not produce: " + combinedParquet.getAbsolutePath());
         if (!prMatrix.exists()) throw new IOException("Combined quant did not produce: " + prMatrix.getAbsolutePath());
         if (!pgMatrix.exists()) throw new IOException("Combined quant did not produce: " + pgMatrix.getAbsolutePath());
-
-        runHostSearchIfRequested(resultDir, diannExe, params, diaFiles, cb, condaPrefix);
 
         // Post-analysis + TSV/report exports under resultDir (marker_focus / marker_comprehensive),
         // matching the Windows task layout.
@@ -426,6 +454,9 @@ public final class DiaMarkerHeadlessRunner {
         }
         if (libFile == null) throw new IOException("Marker4 lib path is null");
 
+        Marker4LibrarySupport.logLibraryInUse(fastaFile, cb, LOGGER);
+        Marker4LibrarySupport.invalidateSpeclibIfIdentityMismatch(magDb, fastaFile, params, diannExe, cb, LOGGER);
+
         if (!libFile.exists()) {
             cb.onMessage("Marker4: generating libraries/Marker4/Marker4.speclib from " + fastaFile.getName());
             DiannParameter diannPar = buildDiannPar(params);
@@ -454,8 +485,21 @@ public final class DiaMarkerHeadlessRunner {
         );
     }
 
-    static void ensureMarker4Files(MagDbItem magDb, File diannExe, MetaParameterDiaMarker params, ProgressCallback cb) throws Exception {
-        Marker4ResourcePreparer.ensureSelectionResources(magDb, cb);
+    /**
+     * Ensures Marker4.fasta, genomes-taxa.tsv, and (when the catalogue is large) Marker4_highpep.fasta.
+     * Requires DeepDetect via {@code resources} when highpep must be generated.
+     */
+    static void ensureMarker4Files(MagDbItem magDb, File diannExe, MetaParameterDiaMarker params, ProgressCallback cb,
+            MetaPilotResourceConfig resources) throws Exception {
+        Marker4ResourcePreparer.DeepDetectPredictor predictor =
+                Marker4ResourcePreparer.predictorFromResources(resources, cb);
+        Marker4ResourcePreparer.ensureLibraryResources(magDb, cb, predictor);
+    }
+
+    /** @deprecated use {@link #ensureMarker4Files(MagDbItem, File, MetaParameterDiaMarker, ProgressCallback, MetaPilotResourceConfig)} */
+    static void ensureMarker4Files(MagDbItem magDb, File diannExe, MetaParameterDiaMarker params, ProgressCallback cb)
+            throws Exception {
+        ensureMarker4Files(magDb, diannExe, params, cb, null);
     }
 
     private static void runMarkerNoQuantSearch(File diannExe, MetaParameterDiaMarker params, String[] diaFiles,
@@ -464,10 +508,12 @@ public final class DiaMarkerHeadlessRunner {
                 params.getThreadCount(), true, true, cb, condaPrefix, LOGGER, "DIA Marker");
     }
 
-    private static void runCombinedQuantSearch(File diannExe, MetaParameterDiaMarker params, String[] diaFiles,
-                                              File combinedLibFile, File outParquet, ProgressCallback cb, File condaPrefix) throws Exception {
-        if (combinedLibFile == null || !combinedLibFile.exists()) {
-            throw new IOException("Combined library not found: " + (combinedLibFile == null ? "null" : combinedLibFile.getAbsolutePath()));
+    static void runCombinedQuantSearch(File diannExe, MetaParameterDiaMarker params, String[] diaFiles,
+                                       String[] libraries, File outParquet, ProgressCallback cb, File condaPrefix) throws Exception {
+        for (String lib : libraries) {
+            if (lib == null || !new File(lib).exists()) {
+                throw new IOException("Combined search library not found: " + lib);
+            }
         }
         DiannParameter diannPar = buildDiannPar(params);
         diannPar.setThreads(params.getThreadCount());
@@ -482,7 +528,7 @@ public final class DiaMarkerHeadlessRunner {
         libSearchPar.setThreadCount(params.getThreadCount());
         libSearchPar.setqValue(0.01);
 
-        String cmd = diannPar.generateLibSearch(libSearchPar, outParquet.getAbsolutePath(), combinedLibFile.getAbsolutePath());
+        String cmd = diannPar.generateLibSearch(libSearchPar, outParquet.getAbsolutePath(), libraries);
         cmd = cmd + buildFArgs(diaFiles);
         int exit = DiaNNHeadlessRunner.run(diannExe, cmd, outParquet.getParentFile(), cb, condaPrefix);
         if (exit != 0) LOGGER.warn("DIA-NN combined quant exit code {}", exit);
@@ -503,7 +549,8 @@ public final class DiaMarkerHeadlessRunner {
                 params != null ? params.getThreadCount() : 1,
                 reportPythonHint,
                 reportResourceConfig,
-                cb
+                cb,
+                params != null ? params.getMetadata() : null
         );
         if (!report.warnings.isEmpty()) {
             cb.onMessage("WARNING: HTML report generation completed with warnings: "
@@ -511,11 +558,16 @@ public final class DiaMarkerHeadlessRunner {
         }
     }
 
-    public static void runHostSearchIfRequested(File resultDir, File diannExe, MetaParameterDiaMarker params,
-                                                String[] diaFiles, ProgressCallback cb, File condaPrefix) throws Exception {
+    /**
+     * Host library for the final combined search, from {@code host_database} when {@code append_host_db} is set
+     * (null otherwise). A {@code .parquet} is used as it is; a {@code .speclib} or protein FASTA is converted once
+     * into {@code <cacheDir>/host.lib.parquet}. See {@link DiaHostLibrarySupport} for the strategy.
+     */
+    public static File resolveHostParquet(MetaParameterDiaMarker params, File cacheDir, File diannExe,
+                                          ProgressCallback cb, File condaPrefix) throws Exception {
         if (cb == null) cb = new ProgressCallback.NoOp();
         if (params == null || !params.isAppendHostDb()) {
-            return;
+            return null;
         }
         String hostDb = params.getHostDB();
         if (hostDb == null || hostDb.isBlank()) {
@@ -525,71 +577,26 @@ public final class DiaMarkerHeadlessRunner {
         if (!hostInput.exists()) {
             throw new IOException("Host database file not found: " + hostInput.getAbsolutePath());
         }
-        if (resultDir == null) {
-            throw new IOException("Result directory is null for host search");
-        }
-        String[] files = diaFiles != null ? diaFiles
-                : (params.getMetadata() != null ? params.getMetadata().getRawFiles() : null);
-        if (files == null || files.length == 0) {
-            throw new IOException("No DIA files available for host search");
-        }
-
-        File hostDir = new File(resultDir, "host");
-        if (!hostDir.exists() && !hostDir.mkdirs()) {
-            throw new IOException("Failed to create host search directory: " + hostDir.getAbsolutePath());
-        }
-        cb.onMessage("DIA Marker: running optional host DB search -> " + hostDir.getAbsolutePath());
-
-        File hostLibrary = resolveHostLibraryForSearch(hostInput, hostDir, diannExe, params, cb, condaPrefix);
-
-        File hostParquet = new File(hostDir, "host.parquet");
-        File hostPrMatrix = new File(hostDir, "host.pr_matrix.tsv");
-        File hostPgMatrix = new File(hostDir, "host.pg_matrix.tsv");
-        if (!hostParquet.exists() || !hostPrMatrix.exists() || !hostPgMatrix.exists()) {
-            cb.onMessage("DIA Marker: running DIA-NN quant with host library");
-            runCombinedQuantSearch(diannExe, params, files, hostLibrary, hostParquet, cb, condaPrefix);
-        }
-        if (!hostParquet.exists()) {
-            throw new IOException("Host search did not produce: " + hostParquet.getAbsolutePath());
-        }
-        if (!hostPrMatrix.exists()) {
-            throw new IOException("Host search did not produce: " + hostPrMatrix.getAbsolutePath());
-        }
-        if (!hostPgMatrix.exists()) {
-            throw new IOException("Host search did not produce: " + hostPgMatrix.getAbsolutePath());
-        }
+        DiannParameter diannPar = buildDiannPar(params);
+        diannPar.setThreads(params.getThreadCount());
+        File host = DiaHostLibrarySupport.ensureParquetLibrary(hostInput, cacheDir, "host", diannPar, diannExe, cb,
+                condaPrefix);
+        cb.onMessage("Host library for the combined search: " + host.getAbsolutePath());
+        return host;
     }
 
-    private static File resolveHostLibraryForSearch(File hostInput, File hostDir, File diannExe,
-                                                    MetaParameterDiaMarker params, ProgressCallback cb,
-                                                    File condaPrefix) throws Exception {
-        String name = hostInput.getName().toLowerCase();
-        if (name.endsWith(".speclib") || name.endsWith(".parquet")) {
-            cb.onMessage("DIA Marker: using host library directly: " + hostInput.getAbsolutePath());
-            return hostInput;
-        }
-        if (!name.endsWith(".fasta") && !name.endsWith(".fa")) {
-            throw new IOException("Unsupported DIA host database file type: " + hostInput.getAbsolutePath()
-                    + " (expected .fasta, .fa, .speclib, or .parquet)");
-        }
+    /** {@link #resolveHostParquet} as a list (empty without a host), the form the final searches take. */
+    public static List<File> resolveHostParquets(MetaParameterDiaMarker params, File cacheDir, File diannExe,
+                                                 ProgressCallback cb, File condaPrefix) throws Exception {
+        File host = resolveHostParquet(params, cacheDir, diannExe, cb, condaPrefix);
+        return host == null ? new ArrayList<>() : new ArrayList<>(List.of(host));
+    }
 
-        File hostSpeclib = new File(hostDir, "host.speclib");
-        if (!hostSpeclib.exists()) {
-            cb.onMessage("DIA Marker: generating host library from FASTA: " + hostInput.getAbsolutePath());
-            DiannParameter diannPar = buildDiannPar(params);
-            String cmd = diannPar.generateFasta(hostInput.getAbsolutePath(), hostSpeclib.getAbsolutePath(), false);
-            int exit = DiaNNHeadlessRunner.run(diannExe, cmd, hostDir, cb, condaPrefix);
-            if (exit != 0) LOGGER.warn("DIA-NN host library build exit code {}", exit);
-
-            File predicted = new File(hostDir, "host.predicted.speclib");
-            if (!hostSpeclib.exists() && predicted.exists()) {
-                Files.move(predicted.toPath(), hostSpeclib.toPath());
-            }
-        }
-        if (!hostSpeclib.exists()) {
-            throw new IOException("Host speclib was not created: " + hostSpeclib.getAbsolutePath());
-        }
-        return hostSpeclib;
+    /** DIA-NN settings used to convert/predict libraries for the combined search. */
+    public static DiannParameter libraryBuildPar(MetaParameterDiaMarker params) {
+        DiannParameter diannPar = buildDiannPar(params);
+        diannPar.setThreads(params.getThreadCount());
+        return diannPar;
     }
 
     private static File resolveUserPath(String path) {

@@ -658,7 +658,7 @@ public final class PangenomeVariantCheck {
 			"ms2_score_other_substitution", "ms2_score_modification", "ms2_score_elsewhere",
 			"ms2_localises_elsewhere", "ms2_best_form", "pangenome_class", "assigned_kegg_ko", "assigned_cog",
 			"assigned_cog_category", "assigned_preferred_name", "assigned_description", "front_end_call",
-			"localized_sequence", "reassigner_in_db" };
+			"localized_sequence", "reassigner_in_db", "localisation_site_probability", "localisation_support" };
 
 	static void writeCandidates(Writer w, List<VariantCandidate> candidates) throws IOException {
 		w.write(String.join("\t", CANDIDATE_COLUMNS));
@@ -700,7 +700,10 @@ public final class PangenomeVariantCheck {
 					function(c.assignedCog), function(c.assignedCogCategory), function(c.assignedPreferredName),
 					function(c.assignedDescription), c.frontEndEvidence.isEmpty() ? NA : clean(c.frontEndEvidence),
 					openSearch && !c.localizedSequence.isEmpty() ? clean(c.localizedSequence) : NA,
-					bool(c.reassignerInDb) };
+					bool(c.reassignerInDb),
+					Double.isNaN(c.localisationSiteProbability) ? NA
+							: String.format(Locale.ROOT, "%.4f", c.localisationSiteProbability),
+					Double.isNaN(c.localisationSupport) ? NA : String.format(Locale.ROOT, "%.3f", c.localisationSupport) };
 			w.write(String.join("\t", f));
 			w.write('\n');
 		}

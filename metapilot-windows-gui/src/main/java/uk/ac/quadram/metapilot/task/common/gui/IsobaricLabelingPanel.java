@@ -38,7 +38,6 @@ public class IsobaricLabelingPanel extends VBox {
 	private void initializeUI() {
 		setSpacing(8);
 		setPadding(new Insets(8));
-		setStyle("-fx-background-color: #f8e8f4; -fx-background-radius: 5;");
 		setMinHeight(200);
 		setPrefHeight(220);
 		setMaxHeight(Double.MAX_VALUE);

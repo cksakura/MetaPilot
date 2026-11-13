@@ -22,8 +22,8 @@ class OpenSearchGenomeEvidenceTest {
 		assertEquals(PeptideClass.UNEXPLAINED, OpenSearchGenomeEvidence.classify(3.0101, false));
 		assertEquals(PeptideClass.UNEXPLAINED, OpenSearchGenomeEvidence.classify(0.05, false));
 		assertEquals(PeptideClass.UNEXPLAINED, OpenSearchGenomeEvidence.classify(-1.0034, false));
-		assertEquals(PeptideClass.KNOWN_SHIFT, OpenSearchGenomeEvidence.classify(15.9949, true));
-		assertEquals(PeptideClass.KNOWN_SHIFT, OpenSearchGenomeEvidence.classify(Double.NaN, true));
+		assertEquals(PeptideClass.ACCEPTED_SHIFT, OpenSearchGenomeEvidence.classify(15.9949, true));
+		assertEquals(PeptideClass.ACCEPTED_SHIFT, OpenSearchGenomeEvidence.classify(Double.NaN, true));
 	}
 
 	private static GenomeRow row(String genome, boolean decoy, boolean accepted, int kept) {

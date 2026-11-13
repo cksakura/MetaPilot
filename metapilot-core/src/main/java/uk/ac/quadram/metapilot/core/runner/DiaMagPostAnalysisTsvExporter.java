@@ -2,6 +2,7 @@ package uk.ac.quadram.metapilot.core.runner;
 
 import uk.ac.quadram.metapilot.core.dia.DiaMagScoringService;
 import uk.ac.quadram.metapilot.core.dia.DiaDeepProteinMappingService;
+import uk.ac.quadram.metapilot.core.dia.DiaHostLibrarySupport;
 import uk.ac.quadram.metapilot.core.dia.MagPredictedPeptideProteinMapper;
 import uk.ac.quadram.metapilot.core.mag.MagPostAnalysisScoringService;
 import uk.ac.quadram.metapilot.core.tools.FormatTool;
@@ -15,6 +16,7 @@ import uk.ac.quadram.metapilot.task.io.pro.MetaProtein;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 
 import java.io.File;
+import uk.ac.quadram.metapilot.core.mag.MagResultFinalisationService;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.math.BigInteger;
@@ -28,6 +30,7 @@ import org.apache.logging.log4j.Logger;
  * Headless post-analysis for DIA MAG workflows (no HTML).
  *
  * Writes under resultDir: - id.tsv - final_peptides.tsv - razor_proteins.tsv -
+ * host_peptides.tsv + host_summary.tsv (when the final search included a host library) -
  * all_proteins.tsv - final_summary.tsv - taxonomy_analysis/Genome.tsv -
  * taxonomy_analysis/Taxa.tsv - taxonomy_analysis/Taxa_report.tsv -
  * taxonomy_analysis/genome_final_*.tsv - functional_annotation/* (when
@@ -71,6 +74,37 @@ public final class DiaMagPostAnalysisTsvExporter {
 		}
 	}
 
+
+    /** Explicit Seed export: null allowedGenomes means Direct catalogue mapping;
+     * a non-null set is the recorded selection used to construct the final library. */
+    public static Result exportSeed(File resultDir, MagDbItem magDb, File parquet, File matrix,
+            File taxonomyMapping, File funcDb, String catalogueId, String quantMode, ProgressCallback cb,
+            java.util.Set<String> allowedGenomes, boolean metaAtlas) throws Exception {
+        return exportSeed(resultDir, magDb, parquet, matrix, taxonomyMapping, funcDb, catalogueId, quantMode, cb,
+                allowedGenomes, metaAtlas, null);
+    }
+
+    static Result exportSeed(File resultDir, MagDbItem magDb, File parquet, File matrix,
+            File taxonomyMapping, File funcDb, String catalogueId, String quantMode, ProgressCallback cb,
+            java.util.Set<String> allowedGenomes, boolean metaAtlas, Double globalPrecursorQValue) throws Exception {
+        if (cb == null) cb = new ProgressCallback.NoOp();
+        File predicted = new File(magDb.getCurrentFile(), "predicted");
+        if (!predicted.isDirectory()) throw new IOException("Seed protein mapping requires " + predicted);
+        DiaNNPrecursor[] pp = new DiaNNParquetReader(parquet.getAbsolutePath(), "K*,R*").getDiaNNPrecursors();
+        pp = DiaHostLibrarySupport.removeHostPrecursors(pp, parquet.getParentFile(), resultDir, cb);
+        pp = filterGlobalPrecursorQValue(pp, globalPrecursorQValue, cb);
+        DiaNNPrecursor[] mapped = MagPredictedPeptideProteinMapper.mapForFinalisation(pp, predicted, allowedGenomes);
+        if (mapped == null) throw new IOException("Seed protein mapping failed");
+        resultDir.mkdirs();
+        try (PrintWriter out = new PrintWriter(new File(resultDir, "protein_mapping_policy.tsv"))) {
+            out.println("Policy\tGenome");
+            if (allowedGenomes == null) out.println("SEED_DIRECT\t");
+            else for (String g : new java.util.TreeSet<>(allowedGenomes)) out.println("SEED_SELECTED\t" + g);
+        }
+        return exportPrepared(resultDir, magDb, matrix, taxonomyMapping, funcDb, catalogueId,
+                quantMode, cb, mapped, metaAtlas);
+    }
+
 	public static Result export(File resultDir, MagDbItem magDb, File combinedParquet, File combinedPrMatrix,
 			File optionalGtdbNcbiMappingTsv, String markerMode, File funcDbFile, String microDbCatalogueId,
 			String quantitativeMode, ProgressCallback cb) throws Exception {
@@ -97,6 +131,15 @@ public final class DiaMagPostAnalysisTsvExporter {
 			String quantitativeMode, ProgressCallback cb,
 			DiaDeepProteinMappingService.Request deepProteinMappingRequest, boolean exportMetaAtlasParquet)
 			throws Exception {
+        return export(resultDir, magDb, combinedParquet, combinedPrMatrix, optionalGtdbNcbiMappingTsv, markerMode,
+                funcDbFile, microDbCatalogueId, quantitativeMode, cb, deepProteinMappingRequest,
+                exportMetaAtlasParquet, null);
+    }
+
+    static Result export(File resultDir, MagDbItem magDb, File combinedParquet, File combinedPrMatrix,
+            File optionalGtdbNcbiMappingTsv, String markerMode, File funcDbFile, String microDbCatalogueId,
+            String quantitativeMode, ProgressCallback cb, DiaDeepProteinMappingService.Request deepProteinMappingRequest,
+            boolean exportMetaAtlasParquet, Double globalPrecursorQValue) throws Exception {
 		if (cb == null)
 			cb = new ProgressCallback.NoOp();
 		if (resultDir == null)
@@ -110,9 +153,9 @@ public final class DiaMagPostAnalysisTsvExporter {
 			throw new IOException("combined.pr_matrix.tsv missing: "
 					+ (combinedPrMatrix == null ? "null" : combinedPrMatrix.getAbsolutePath()));
 
-		resultDir.mkdirs();
+        resultDir.mkdirs();
 
-		cb.onMessage("DIA post-analysis: reading precursors from combined.parquet");
+        cb.onMessage("DIA post-analysis: reading precursors from combined.parquet");
 		// "K*,R*" matches DiannParameter's Trypsin/P cut pattern (comma-separated
 		// tokens). The parser only ever reads charAt(0)/charAt(2) of each token, so a
 		// bare "KR" was parsed as a single token and only registered 'K' as a cleavage
@@ -121,34 +164,103 @@ public final class DiaMagPostAnalysisTsvExporter {
 		DiaNNPrecursor[] precursorsQ01 = diannReader.getDiaNNPrecursors();
 		if (precursorsQ01 == null)
 			precursorsQ01 = new DiaNNPrecursor[0];
-		precursorsQ01 = mapUnassignedSeedPrecursorsIfNeeded(precursorsQ01, magDb, cb);
+		// Host searched together in the final search (combined/host_library.txt): host precursors, including
+		// peptides shared with microbes, are removed here and reported in host_peptides.tsv / host_summary.tsv.
+		precursorsQ01 = DiaHostLibrarySupport.removeHostPrecursors(precursorsQ01, combinedParquet.getParentFile(),
+				resultDir, cb);
+        precursorsQ01 = filterGlobalPrecursorQValue(precursorsQ01, globalPrecursorQValue, cb);
+
+        try (PrintWriter policy = new PrintWriter(new File(resultDir, "protein_mapping_policy.tsv"))) {
+            policy.println("Policy\tGenome");
+            policy.println((deepProteinMappingRequest == null ? "SEARCH" : "ROUND_PROTEINS") + "\t");
+        }
+
 		if (deepProteinMappingRequest != null) {
 			cb.onMessage("DIA post-analysis: remapping deep peptides to all round proteins");
 			precursorsQ01 = DiaDeepProteinMappingService.remapPrecursors(precursorsQ01, deepProteinMappingRequest,
 					LOGGER, "DIA post-analysis").precursors;
 		}
 
-		// Filter and score (matches MetaDiaTask.doExportReportInternal()).
-		MagPostAnalysisScoringService.DiaResult scoring = MagPostAnalysisScoringService.scoreDia(precursorsQ01);
-		DiaNNPrecursor[] filtered = scoring.filteredPrecursors;
+
+        return exportPrepared(resultDir, magDb, combinedPrMatrix, optionalGtdbNcbiMappingTsv,
+                funcDbFile, microDbCatalogueId, quantitativeMode, cb, precursorsQ01, exportMetaAtlasParquet);
+    }
+
+    private static DiaNNPrecursor[] filterGlobalPrecursorQValue(DiaNNPrecursor[] precursors,
+            Double globalPrecursorQValue, ProgressCallback cb) {
+        if (globalPrecursorQValue == null) {
+            return precursors;
+        }
+        // DIA-NN stores q-values as floats. Compare at the stored precision to include the cutoff itself.
+        float cutoff = globalPrecursorQValue.floatValue();
+        DiaNNPrecursor[] filtered = Arrays.stream(precursors)
+                .filter(precursor -> precursor.getGlobalQvalue() <= cutoff)
+                .toArray(DiaNNPrecursor[]::new);
+        cb.onMessage("DIA post-analysis: Global.Q.Value <= " + globalPrecursorQValue + " retained "
+                + filtered.length + " of " + precursors.length + " microbial precursor records for scoring");
+        return filtered;
+    }
+
+    /** Shared finalisation/export entry point for GUI and CLI after explicit workflow mapping. */
+    public static Result exportPrepared(File resultDir, MagDbItem magDb, File combinedPrMatrix,
+            File optionalGtdbNcbiMappingTsv, File funcDbFile, String microDbCatalogueId,
+            String quantitativeMode, ProgressCallback cb, DiaNNPrecursor[] precursors,
+            boolean exportMetaAtlasParquet) throws Exception {
+        MagPostAnalysisScoringService.DiaResult scoring = MagPostAnalysisScoringService.scoreDia(precursors);
+        java.util.Set<String> confident = new java.util.HashSet<>();
+        for (java.util.Map.Entry<String, double[]> e : scoring.genomeScoreMap.entrySet()) {
+            double[] st = e.getValue();
+            if (st != null && st.length > IDX_Q_VALUE && Double.isFinite(st[IDX_Q_VALUE])
+                    && st[IDX_Q_VALUE] <= 0.01) confident.add(e.getKey());
+        }
+        ArrayList<String[]> excluded = new ArrayList<>();
+        for (DiaNNPrecursor p : precursors) {
+            if (p != null && !p.getIsDecoy() && p.getGlobalQvalue() < 0.01
+                    && (p.getProGroups() == null || p.getProGroups().length == 0))
+                excluded.add(new String[]{p.getSeqString(), p.getModSeqString(), "", "NO_MAPPING_IN_WORKFLOW_SCOPE"});
+        }
+
+        DiaNNPrecursor[] gated = prunePrecursors(scoring.filteredPrecursors, magDb.getIdentifier(),
+                confident, scoring.proteinScoreMap, excluded);
+        return exportScored(resultDir, magDb, combinedPrMatrix, optionalGtdbNcbiMappingTsv,
+                funcDbFile, microDbCatalogueId, quantitativeMode, cb, gated,
+                scoring.genomeScoreMap, scoring.proteinScoreMap, exportMetaAtlasParquet, null, excluded);
+    }
+
+    private static Result exportScored(File resultDir, MagDbItem magDb, File combinedPrMatrix,
+            File optionalGtdbNcbiMappingTsv, File funcDbFile, String microDbCatalogueId,
+            String quantitativeMode, ProgressCallback cb, DiaNNPrecursor[] filtered,
+            HashMap<String, double[]> genomeDiaStats, HashMap<String, double[]> proteinDiaStats,
+            boolean exportMetaAtlasParquet, MagResultFinalisationService.Selection selection, List<String[]> gateExcluded) throws Exception {
 
 		cb.onMessage("DIA post-analysis: reading peptide matrix and mapping razor proteins");
 		DiannPrMatrixReader prReader = new DiannPrMatrixReader(combinedPrMatrix);
 		FlashLfqQuanPeptide[] peps = prReader.getMetaPeptides(filtered);
+        java.util.Set<String> quantified = new java.util.HashSet<>();
+        if (peps != null) for (FlashLfqQuanPeptide p : peps) if (p != null) quantified.add(p.getModSeq());
+        ArrayList<DiaNNPrecursor> quantifiedPrecursors = new ArrayList<>();
+        for (DiaNNPrecursor p : filtered) {
+            if (quantified.contains(p.getModSeqString())) quantifiedPrecursors.add(p);
+            else {
+                String[] evidence = {p.getSeqString(), p.getModSeqString(), String.join(";", p.getProGroups()), "NO_QUANTIFIED_PEPTIDE"};
+                if (selection == null) gateExcluded.add(evidence); else selection.excludedPeptides.add(evidence);
+            }
+        }
+        filtered = quantifiedPrecursors.toArray(new DiaNNPrecursor[0]);
 		String[] expNames = prReader.getIntensityTitle();
 		if (expNames == null)
 			expNames = new String[0];
 
 		// Score maps for proteins/genomes (S,p_emp,q) - delegated to shared MAG scoring
 		// orchestration.
-		HashMap<String, double[]> genomeDiaStats = scoring.genomeScoreMap;
-		HashMap<String, double[]> proteinDiaStats = scoring.proteinScoreMap;
+
 		HashMap<String, Integer> psmCountMap = buildPrecursorPsmCountMap(filtered, magDb.getIdentifier(),
 				genomeDiaStats);
 		applyParquetMs2Counts(peps, filtered, expNames);
 
 		// Build intensity + count maps, and export peptide/protein TSVs.
 		HashMap<String, double[]> genomeIntensityMap = new HashMap<>();
+		HashMap<String, double[]> genomeUniqueIntensityMap = new HashMap<>();
 		HashMap<String, double[]> proteinIntensityMap = new HashMap<>();
 		HashMap<String, Double> proteinTotalIntensityMap = new HashMap<>();
 
@@ -258,6 +370,25 @@ public final class DiaMagPostAnalysisTsvExporter {
 				if (count <= 0)
 					continue;
 
+				String uniqueGenome = null;
+				boolean uniqueToOneGenome = true;
+				for (String pro : proteins) {
+					if (pro == null || pro.isEmpty())
+						continue;
+					if (pro.startsWith(magDb.getIdentifier())) {
+						String genome = pro.split("_")[0];
+						if (uniqueGenome == null)
+							uniqueGenome = genome;
+						else if (!uniqueGenome.equals(genome)) {
+							uniqueToOneGenome = false;
+							break;
+						}
+					} else {
+						uniqueToOneGenome = false;
+						break;
+					}
+				}
+
 				String modSeq = pep.getModSeq();
 				int[] idenType = pep.getIdenType();
 				if (idenType != null) {
@@ -271,6 +402,13 @@ public final class DiaMagPostAnalysisTsvExporter {
 				double[] pepIntensity = new double[pep.getIntensity().length];
 				for (int j = 0; j < pepIntensity.length; j++) {
 					pepIntensity[j] = pep.getIntensity()[j] / (double) count;
+				}
+				if (uniqueToOneGenome && uniqueGenome != null && isConfidentGenome(genomeDiaStats, uniqueGenome)) {
+					double[] src = pep.getIntensity();
+					double[] uniqueInt = genomeUniqueIntensityMap.computeIfAbsent(uniqueGenome,
+							k -> new double[src.length]);
+					for (int k = 0; k < uniqueInt.length; k++)
+						uniqueInt[k] += src[k];
 				}
 
 				int pepMs2Count = 0;
@@ -314,6 +452,25 @@ public final class DiaMagPostAnalysisTsvExporter {
 			}
 		}
 
+
+        if (selection == null) {
+            HashMap<String, HashSet<String>> unique = new HashMap<>();
+            DiaMagScoringService.fillDiaGenomeUniqueAndILMaps(peps, magDb.getIdentifier(), razorPepCountMap,
+                    unique, new HashMap<>(), new HashMap<>(), new HashMap<>(), genomeIntensityMap.keySet());
+            selection = MagResultFinalisationService.select(genomeIntensityMap, genomeDiaStats, null,
+                    psmCountMap, totalPepCountMap, razorPepCountMap, unique);
+            selection.excludedPeptides.addAll(gateExcluded);
+            DiaNNPrecursor[] retained = prunePrecursors(filtered, magDb.getIdentifier(), selection.genomes,
+                    proteinDiaStats, selection.excludedPeptides);
+            return exportScored(resultDir, magDb, combinedPrMatrix, optionalGtdbNcbiMappingTsv,
+                    funcDbFile, microDbCatalogueId, quantitativeMode, cb, retained,
+                    genomeDiaStats, proteinDiaStats, exportMetaAtlasParquet, selection, gateExcluded);
+        }
+        genomeIntensityMap = new MagResultFinalisationService.FinalGenomeIntensityMap(genomeIntensityMap, selection);
+        genomeUniqueIntensityMap = new MagResultFinalisationService.FinalGenomeIntensityMap(genomeUniqueIntensityMap,
+                selection);
+        selection.write(resultDir);
+        MagResultFinalisationService.writeCatalogueContext(resultDir, magDb);
 		File idTsv = new File(resultDir, "id.tsv");
 		cb.onMessage("DIA post-analysis: writing " + idTsv.getName());
 		try (PrintWriter idWriter = new PrintWriter(idTsv)) {
@@ -402,6 +559,7 @@ public final class DiaMagPostAnalysisTsvExporter {
 		taxonomyRequest.gtdbNcbiMappingTsv = optionalGtdbNcbiMappingTsv;
 		taxonomyRequest.generateFinalGenomeRanking = true;
 		taxonomyRequest.genomeIntensityMap = genomeIntensityMap;
+		taxonomyRequest.genomeUniqueIntensityMap = genomeUniqueIntensityMap;
 		taxonomyRequest.genomeScoreMap = genomeScoreForTaxonomy;
 		taxonomyRequest.genomeStats = genomeDiaStats;
 		taxonomyRequest.psmCountMap = psmCountMap;
@@ -427,42 +585,30 @@ public final class DiaMagPostAnalysisTsvExporter {
 				genomeDiaStats);
 	}
 
-	private static DiaNNPrecursor[] mapUnassignedSeedPrecursorsIfNeeded(DiaNNPrecursor[] precursors, MagDbItem magDb,
-			ProgressCallback cb) {
-		if (precursors == null || precursors.length == 0 || magDb == null || magDb.getCurrentFile() == null) {
-			return precursors;
-		}
-		String magIdentifier = magDb.getIdentifier();
-		for (DiaNNPrecursor precursor : precursors) {
-			String[] proteins = precursor == null ? null : precursor.getProGroups();
-			if (proteins == null) {
-				continue;
-			}
-			for (String protein : proteins) {
-				if (protein != null && protein.startsWith(magIdentifier + "_")) {
-					return precursors;
-				}
-			}
-		}
-
-		File predictedFolder = new File(magDb.getCurrentFile(), "predicted");
-		if (!predictedFolder.isDirectory()) {
-			return precursors;
-		}
-
-		cb.onMessage(
-				"DIA post-analysis: mapping Seed peptides to MAG proteins from " + predictedFolder.getAbsolutePath());
-		List<DiaNNPrecursor> mapped = MagPredictedPeptideProteinMapper.mapPrecursorsToProteins(precursors,
-				predictedFolder);
-		if (mapped == null || mapped.isEmpty()) {
-			cb.onMessage(
-					"DIA post-analysis: no Seed peptides mapped to MAG proteins; continuing with original precursors");
-			return precursors;
-		}
-		cb.onMessage("DIA post-analysis: mapped " + mapped.size() + " / " + precursors.length
-				+ " precursors to MAG proteins");
-		return mapped.toArray(new DiaNNPrecursor[0]);
-	}
+    private static DiaNNPrecursor[] prunePrecursors(DiaNNPrecursor[] precursors, String prefix,
+            java.util.Set<String> genomes, java.util.Map<String, double[]> proteinStats, List<String[]> excluded) {
+        ArrayList<DiaNNPrecursor> retained = new ArrayList<>();
+        for (DiaNNPrecursor pp : precursors) {
+            String[] kept = MagResultFinalisationService.retainedProteins(pp.getProGroups(), prefix,
+                    uk.ac.quadram.metapilot.core.prodb.FastaManager.shuffle, genomes);
+            if (pp.getIsDecoy() || kept.length == 0) {
+                if (!pp.getIsDecoy()) excluded.add(new String[]{pp.getSeqString(), pp.getModSeqString(),
+                        pp.getProGroups() == null ? "" : String.join(";", pp.getProGroups()), "NO_RETAINED_PROTEIN"});
+                continue;
+            }
+            pp.setProGroups(kept);
+            String best = null;
+            double bestScore = -Double.MAX_VALUE;
+            for (String pro : kept) {
+                double[] st = proteinStats.get(pro);
+                double score = st == null ? 0 : st[IDX_S];
+                if (best == null || score > bestScore) { best = pro; bestScore = score; }
+            }
+            pp.setRazorProtein(best);
+            retained.add(pp);
+        }
+        return retained.toArray(new DiaNNPrecursor[0]);
+    }
 
 	private static boolean isConfidentGenome(Map<String, double[]> genomeStats, String genome) {
 		double[] stats = genomeStats != null ? genomeStats.get(genome) : null;

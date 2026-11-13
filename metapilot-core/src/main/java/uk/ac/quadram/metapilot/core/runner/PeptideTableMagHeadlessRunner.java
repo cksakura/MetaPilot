@@ -194,6 +194,9 @@ public final class PeptideTableMagHeadlessRunner {
 		TablePeptide[] peptides = peptideList.toArray(new TablePeptide[0]);
 		DdaMagPostAnalysisService.Result analysis = DdaMagPostAnalysisService.analyzeWithAcceptedGenomes(peptides,
 				fileCount, magIdentifier, accepted);
+        analysis.finalSelection.write(outDir);
+        uk.ac.quadram.metapilot.core.mag.MagResultFinalisationService.writeCatalogueContext(outDir, mag);
+
 
 		int withRazor = 0;
 		for (int i = 0; i < peptides.length; i++) {
@@ -221,6 +224,7 @@ public final class PeptideTableMagHeadlessRunner {
 			tax.magDb = mag;
 			tax.generateFinalGenomeRanking = true;
 			tax.genomeIntensityMap = analysis.genomeIntensityMap;
+			tax.genomeUniqueIntensityMap = analysis.genomeUniqueIntensityMap;
 			tax.genomeScoreMap = null; // no genome score exists for this input
 			tax.genomeStats = null;
 			tax.psmCountMap = analysis.psmCountMap;
@@ -484,6 +488,7 @@ public final class PeptideTableMagHeadlessRunner {
 			pw.println(h);
 			for (int i = 0; i < peptides.length; i++) {
 				TablePeptide p = peptides[i];
+                if (i >= razorProteins.length || razorProteins[i] == null) continue;
 				String razor = i < razorProteins.length && razorProteins[i] != null ? razorProteins[i] : "";
 				Set<String> genomes = genomesOf(Arrays.asList(p.getProteins()), magIdentifier);
 				StringBuilder sb = new StringBuilder();

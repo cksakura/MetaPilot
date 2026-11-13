@@ -15,6 +15,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import uk.ac.quadram.metapilot.core.dia.DiaDeepProteinMappingService;
+import uk.ac.quadram.metapilot.core.dia.DiaHostLibrarySupport;
 import uk.ac.quadram.metapilot.core.diann.DiaNNHeadlessRunner;
 import uk.ac.quadram.metapilot.core.mag.MagGenomeSelectionService;
 import uk.ac.quadram.metapilot.core.report.MetaPilotHtmlReportService;
@@ -146,7 +147,7 @@ public final class DiaMarkerDeepTogetherHeadlessRunner {
         MagDbItem magDb = DiaMarkerHeadlessRunner.resolveMagDb(params, magDbConfigJson);
         if (magDb == null) throw new IOException("MAG DB could not be resolved from params + magdb config");
 
-        DiaMarkerHeadlessRunner.ensureMarker4Files(magDb, diannExe, params, callback);
+        DiaMarkerHeadlessRunner.ensureMarker4Files(magDb, diannExe, params, callback, reportResourceConfig);
         callback.onMessage(TASK_NAME + ": preparing Marker4 library");
         DiaMarkerHeadlessRunner.ensureMarker4Library(magDb, diannExe, params, callback, condaPrefix);
 
@@ -157,6 +158,8 @@ public final class DiaMarkerDeepTogetherHeadlessRunner {
 
         File markerParquet = new File(markerDir, "marker.parquet");
         if (!markerParquet.exists()) {
+            uk.ac.quadram.metapilot.core.dia.Marker4LibrarySupport.logLibraryInUse(
+                    magDb.getMarker4FastaForLibrary(), callback, LOGGER);
             callback.onMessage(TASK_NAME + ": searching Marker4 library across all DIA files");
             DiaNNNoQuantLibrarySearchService.run(diannExe, params, diaFiles, magDb.resolveMarker4LibraryFile(),
                     markerParquet, params.getThreadCount(), true, false, callback, condaPrefix, LOGGER, TASK_NAME);
@@ -218,15 +221,15 @@ public final class DiaMarkerDeepTogetherHeadlessRunner {
         File prMatrix = new File(combinedDir, "combined.pr_matrix.tsv");
         File pgMatrix = new File(combinedDir, "combined.pg_matrix.tsv");
 
+        List<File> hostParquets = DiaMarkerHeadlessRunner.resolveHostParquets(params, new File(markerDeepDir, "host_library"),
+                diannExe, callback, condaPrefix);
         if (!runGlobalCombinedFromRounds(diaFiles, markerDir, loop.lastRound, combinedDir, combinedFasta,
-                combinedSpeclib, combinedParquet, diannExe, params, condaPrefix, callback)) {
+                combinedSpeclib, combinedParquet, hostParquets, diannExe, params, condaPrefix, callback)) {
             throw new IOException(TASK_NAME + ": global combined search failed");
         }
         if (!combinedParquet.exists()) throw new IOException("Combined quant did not produce: " + combinedParquet.getAbsolutePath());
         if (!prMatrix.exists()) throw new IOException("Combined quant did not produce: " + prMatrix.getAbsolutePath());
         if (!pgMatrix.exists()) throw new IOException("Combined quant did not produce: " + pgMatrix.getAbsolutePath());
-
-        DiaMarkerHeadlessRunner.runHostSearchIfRequested(markerDeepDir, diannExe, params, diaFiles, callback, condaPrefix);
 
         if (exportPostAnalysis) {
             try {
@@ -297,9 +300,13 @@ public final class DiaMarkerDeepTogetherHeadlessRunner {
                 LOGGER, TASK_NAME);
     }
 
-    private static boolean runGlobalCombinedFromRounds(String[] diaFiles, File markerDir, int lastRound,
+    /**
+     * Also used by {@link DiaSeedHeadlessRunner} (Seed Deep): the final combined search is the same. With
+     * {@code hostParquets} the host libraries are searched together with the combined library (DiaHostLibrarySupport).
+     */
+    static boolean runGlobalCombinedFromRounds(String[] diaFiles, File markerDir, int lastRound,
                                                        File combinedDir, File combinedFasta, File combinedSpeclib,
-                                                       File combinedParquet, File diannExe,
+                                                       File combinedParquet, List<File> hostParquets, File diannExe,
                                                        MetaParameterDiaMarker params, File condaPrefix,
                                                        ProgressCallback cb) {
         HashMap<String, HashSet<String>> pepProMap = buildPepToProteinsFromRounds(markerDir, lastRound);
@@ -318,6 +325,8 @@ public final class DiaMarkerDeepTogetherHeadlessRunner {
                 DiannParameter diannPar = DiaMarkerHeadlessRunner.buildDiannPar(params);
                 diannPar.setThreads(params.getThreadCount());
                 diannPar.setExportDecoy(true);
+                // combined.fasta holds one entry per round peptide: no protein N-terminal rules
+                uk.ac.quadram.metapilot.core.dia.PeptideListLibrarySupport.applyPeptideEntryRules(diannPar);
                 String cmd = diannPar.generateFasta(combinedFasta.getAbsolutePath(), combinedSpeclib.getAbsolutePath(), false);
                 int exit = DiaNNHeadlessRunner.run(diannExe, cmd, combinedDir, cb, condaPrefix);
                 if (exit != 0) LOGGER.warn("{}: DIA-NN combined library build exit code {}", TASK_NAME, exit);
@@ -334,6 +343,14 @@ public final class DiaMarkerDeepTogetherHeadlessRunner {
 
         File prMatrix = new File(combinedDir, "combined.pr_matrix.tsv");
         File pgMatrix = new File(combinedDir, "combined.pg_matrix.tsv");
+        String[] finalLibs;
+        try {
+            finalLibs = DiaHostLibrarySupport.finalSearchLibraries(combinedSpeclib, hostParquets, combinedDir,
+                    DiaMarkerHeadlessRunner.libraryBuildPar(params), diannExe, cb, condaPrefix);
+        } catch (Exception e) {
+            LOGGER.error("{}: preparing the combined search libraries failed", TASK_NAME, e);
+            return false;
+        }
         if (combinedParquet.exists() && prMatrix.exists() && pgMatrix.exists()) {
             return true;
         }
@@ -351,8 +368,7 @@ public final class DiaMarkerDeepTogetherHeadlessRunner {
             libSearchPar.setThreadCount(params.getThreadCount());
             libSearchPar.setqValue(0.01);
 
-            String cmd = diannPar.generateLibSearch(libSearchPar, combinedParquet.getAbsolutePath(),
-                    combinedSpeclib.getAbsolutePath());
+            String cmd = diannPar.generateLibSearch(libSearchPar, combinedParquet.getAbsolutePath(), finalLibs);
             cmd = cmd + DiaMarkerHeadlessRunner.buildFArgs(diaFiles);
             int exit = DiaNNHeadlessRunner.run(diannExe, cmd, combinedDir, cb, condaPrefix);
             if (exit != 0) LOGGER.warn("{}: DIA-NN combined quant exit code {}", TASK_NAME, exit);
@@ -370,7 +386,7 @@ public final class DiaMarkerDeepTogetherHeadlessRunner {
                 LOGGER, TASK_NAME);
     }
 
-    private static boolean writeFastaFromGenomes(MagDbItem magDb, List<String> genomes, File outputFasta) {
+    static boolean writeFastaFromGenomes(MagDbItem magDb, List<String> genomes, File outputFasta) {
         File dbFolder = magDb.getOriginalDbFolder();
         if (dbFolder == null || !dbFolder.isDirectory()) {
             LOGGER.error("{}: MAG original DB folder not available", TASK_NAME);
@@ -395,7 +411,7 @@ public final class DiaMarkerDeepTogetherHeadlessRunner {
         return outputFasta.exists() && outputFasta.length() > 0;
     }
 
-    private static boolean writeFastaFromGenomesAndPreviousPeptides(MagDbItem magDb, List<String> genomes,
+    static boolean writeFastaFromGenomesAndPreviousPeptides(MagDbItem magDb, List<String> genomes,
             File previousRoundParquet, File outputFasta) {
         File dbFolder = magDb.getOriginalDbFolder();
         if (dbFolder == null || !dbFolder.isDirectory()) {
@@ -484,7 +500,8 @@ public final class DiaMarkerDeepTogetherHeadlessRunner {
                 params != null ? params.getThreadCount() : 1,
                 reportPythonHint,
                 reportResourceConfig,
-                cb
+                cb,
+                params != null ? params.getMetadata() : null
         );
         if (!report.warnings.isEmpty()) {
             cb.onMessage("WARNING: HTML report generation completed with warnings: "

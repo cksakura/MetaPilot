@@ -4,6 +4,7 @@ import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
+import uk.ac.quadram.metapilot.task.common.gui.ParameterSection;
 import javafx.scene.layout.*;
 import javafx.stage.DirectoryChooser;
 import javafx.collections.FXCollections;
@@ -272,7 +273,6 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         VBox tabContent = new VBox(10);
         tabContent.setPadding(new Insets(10));
         tabContent.setMinWidth(960);
-        tabContent.setMinHeight(760);
 
         // 2-column grid like seed panel (no metadata)
         GridPane mainGrid = new GridPane();
@@ -280,8 +280,6 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         mainGrid.setVgap(15);
         mainGrid.setPadding(new Insets(10));
         mainGrid.setMinWidth(940);
-        mainGrid.setMinHeight(600);
-        VBox.setVgrow(mainGrid, Priority.ALWAYS);
 
         ColumnConstraints col1 = new ColumnConstraints();
         col1.setPercentWidth(50);
@@ -295,7 +293,6 @@ public class MetaPilotDiaRealTimePanel extends VBox {
 
         RowConstraints row1 = new RowConstraints();
         row1.setVgrow(Priority.ALWAYS);
-        row1.setMinHeight(400);
         mainGrid.getRowConstraints().add(row1);
 
         // Left column: Database, Workflow & threads, Library controls
@@ -322,7 +319,7 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         mainGrid.add(leftColumn, 0, 0);
         mainGrid.add(rightColumn, 1, 0);
 
-        tabContent.getChildren().add(mainGrid);
+        tabContent.getChildren().add(ParameterSection.createViewport(mainGrid));
         return tabContent;
     }
 
@@ -1237,12 +1234,9 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         }
     }
 
-    private VBox createWorkflowAndThreadSection() {
+    private TitledPane createWorkflowAndThreadSection() {
         VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #f0f8ff; -fx-background-radius: 5;");
 
-        Label titleLabel = createSectionTitle("Workflow, Performance & Modifications");
 
         GridPane settingsGrid = new GridPane();
         settingsGrid.setHgap(20);
@@ -1338,8 +1332,8 @@ public class MetaPilotDiaRealTimePanel extends VBox {
         // Place modification row spanning both columns underneath workflow/threads
         settingsGrid.add(modsBox, 0, 1, 2, 1);
 
-        section.getChildren().addAll(titleLabel, settingsGrid);
-        return section;
+        section.getChildren().addAll(settingsGrid);
+        return ParameterSection.create("Workflow, Performance & Modifications", section);
     }
 
     private void updateParameterView() {

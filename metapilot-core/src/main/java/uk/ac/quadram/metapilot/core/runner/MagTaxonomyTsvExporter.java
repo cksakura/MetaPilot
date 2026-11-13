@@ -33,6 +33,7 @@ import java.util.TreeSet;
  * Writes:
  * - taxonomy_analysis/Genome.html
  * - taxonomy_analysis/Genome.tsv
+ * - taxonomy_analysis/Genome_unique_peptides.tsv (same columns; intensity from unique peptides)
  * - taxonomy_analysis/Taxa.tsv (DIA-style scoring)
  * - taxonomy_analysis/Taxa_report.tsv
  * - taxonomy_analysis/genome_rank_scores.tsv (DIA-style scoring), or genome_scores.tsv and
@@ -45,6 +46,7 @@ public final class MagTaxonomyTsvExporter {
 
     static final String GENOME_SCORES_TSV = "genome_scores.tsv";
     static final String GENOME_SCORES_RUNINFO = "genome_scores_runinfo.txt";
+    static final String GENOME_UNIQUE_PEPTIDES_TSV = "Genome_unique_peptides.tsv";
 
     private MagTaxonomyTsvExporter() {
     }
@@ -92,7 +94,7 @@ public final class MagTaxonomyTsvExporter {
         exportGenomeAndTaxaReports(taxonomyAnalysisDir, originalTaxaTsv, gtdbNcbiMappingTsv, genomeIntensityMap,
                 genomeScoreMap, genomeDiaStats, orderedGenomes, genomePsmCountMap, genomeSelectionLabel,
                 totalPepCountMap, razorPepCountMap, uniquePepCountMap, totalPepWithILMap, razorPepWithILMap,
-                uniquePepWithILMap, intensityTitles, runinfo, null, cb);
+                uniquePepWithILMap, intensityTitles, runinfo, null, null, cb);
     }
 
     /**
@@ -120,6 +122,7 @@ public final class MagTaxonomyTsvExporter {
                                                   String[] intensityTitles,
                                                   DdaMagGenomeScoringService.DdaGenomeScoreRuninfo runinfo,
                                                   GenomeEvidenceTest.Result genomeEvidence,
+                                                  Map<String, double[]> genomeUniqueIntensityMap,
                                                   ProgressCallback cb) throws IOException {
         if (cb == null) cb = new ProgressCallback.NoOp();
         if (taxonomyAnalysisDir == null) throw new IOException("taxonomyAnalysisDir is null");
@@ -129,8 +132,8 @@ public final class MagTaxonomyTsvExporter {
             throw new IOException("MAG taxa TSV not found: " + (originalTaxaTsv == null ? "null" : originalTaxaTsv.getAbsolutePath()));
         }
 
-        if (genomeIntensityMap == null || genomeIntensityMap.isEmpty()) {
-            throw new IOException("genomeIntensityMap is empty (no genomes to export)");
+        if (genomeIntensityMap == null) {
+            throw new IOException("genomeIntensityMap is null");
         }
 
         if (intensityTitles == null) intensityTitles = new String[0];
@@ -160,6 +163,18 @@ public final class MagTaxonomyTsvExporter {
                 totalPepCountMap, razorPepCountMap, uniquePepCountMap,
                 totalPepWithILMap, razorPepWithILMap, uniquePepWithILMap,
                 intensityTitles, genomeEvidence != null);
+
+        if (genomeUniqueIntensityMap != null) {
+            File uniqueTsv = new File(taxonomyAnalysisDir, GENOME_UNIQUE_PEPTIDES_TSV);
+            cb.onMessage("Writing taxonomy: " + uniqueTsv.getName());
+            writeGenomeTsv(uniqueTsv, alignIntensityToGenomes(genomeUniqueIntensityMap, genomeIntensityMap),
+                    genomeScoreMap, genomeDiaStats, orderedGenomes,
+                    genomePsmCountMap, lineageMap, gtdbToNcbi,
+                    genomeSelectionLabel,
+                    totalPepCountMap, razorPepCountMap, uniquePepCountMap,
+                    totalPepWithILMap, razorPepWithILMap, uniquePepWithILMap,
+                    intensityTitles, genomeEvidence != null);
+        }
 
         if (genomeEvidence != null) {
             File scoresFile = new File(taxonomyAnalysisDir, GENOME_SCORES_TSV);
@@ -216,8 +231,8 @@ public final class MagTaxonomyTsvExporter {
             throw new IOException(
                     "MAG taxa TSV not found: " + (originalTaxaTsv == null ? "null" : originalTaxaTsv.getAbsolutePath()));
         }
-        if (genomeIntensityMap == null || genomeIntensityMap.isEmpty()) {
-            throw new IOException("genomeIntensityMap is empty (no genomes to export)");
+        if (genomeIntensityMap == null) {
+            throw new IOException("genomeIntensityMap is null");
         }
         if (intensityTitles == null) intensityTitles = new String[0];
 
@@ -880,6 +895,28 @@ public final class MagTaxonomyTsvExporter {
             if (p <= threshold) n++;
         }
         return n;
+    }
+
+    private static Map<String, double[]> alignIntensityToGenomes(Map<String, double[]> values,
+            Map<String, double[]> genomeIntensityMap) {
+        HashMap<String, double[]> aligned = new HashMap<>();
+        for (String genome : genomeIntensityMap.keySet()) {
+            double[] template = genomeIntensityMap.get(genome);
+            int n = template == null ? 0 : template.length;
+            double[] src = values == null ? null : values.get(genome);
+            if (src == null) {
+                aligned.put(genome, new double[n]);
+                continue;
+            }
+            if (src.length == n) {
+                aligned.put(genome, src);
+                continue;
+            }
+            double[] copy = new double[n];
+            System.arraycopy(src, 0, copy, 0, Math.min(n, src.length));
+            aligned.put(genome, copy);
+        }
+        return aligned;
     }
 
     private static String[] orderGenomes(Map<String, double[]> genomeIntensityMap, List<String> orderedGenomes) {

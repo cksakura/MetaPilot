@@ -1,6 +1,7 @@
 package uk.ac.quadram.metapilot.dbSearch.diann;
 
 import java.util.HashMap;
+import java.util.Map;
 
 import uk.ac.quadram.metapilot.core.enzyme.Enzyme;
 import uk.ac.quadram.metapilot.dbSearch.deepDetect.DeepDetectParameter;
@@ -53,8 +54,30 @@ public class DiannParameter {
 		this.cutMap.put("Trypsin", "K*,R*,!*P");
 		this.cutMap.put("Lys-C", "K*");
 		this.cutMap.put("ChymoTrypsin", "F*,Y*,W*,M*,L*,!*P");
-		this.cutMap.put("AspN", "D*");
+		// Asp-N cleaves before D
+		this.cutMap.put("AspN", "*D");
 		this.cutMap.put("GluC", "E*");
+	}
+
+	/** The --cut rule for an enzyme name, matched case-insensitively; null if unknown. */
+	private String cutRule(String enzyme) {
+		if (enzyme != null) {
+			for (Map.Entry<String, String> e : this.cutMap.entrySet()) {
+				if (e.getKey().equalsIgnoreCase(enzyme.trim())) {
+					return e.getValue();
+				}
+			}
+		}
+		return null;
+	}
+
+	private String requireCutRule() {
+		String cut = cutRule(enzyme);
+		if (cut == null) {
+			throw new IllegalArgumentException("Unknown DIA-NN enzyme '" + enzyme + "'. Expected one of "
+					+ this.cutMap.keySet());
+		}
+		return cut;
 	}
 
 	public Enzyme getMetaLabEnzyme() {
@@ -76,11 +99,8 @@ public class DiannParameter {
 	}
 
 	public String getCut() {
-		String cut = "";
-		if (this.cutMap.containsKey(enzyme)) {
-			cut = this.cutMap.get(enzyme);
-		}
-		return cut;
+		String cut = cutRule(enzyme);
+		return cut == null ? "" : cut;
 	}
 
 	public boolean isExportDecoy() {
@@ -563,8 +583,7 @@ public class DiannParameter {
 			sb.append("--unimod4 ");
 		}
 
-		String cut = this.cutMap.get(enzyme);
-		sb.append("--cut ").append(cut).append(" ");
+		sb.append("--cut ").append(requireCutRule()).append(" ");
 		sb.append("--missed-cleavages ").append(missed_cleavages).append(" ");
 		sb.append("--min-pep-len ").append(min_pep_len).append(" ");
 		sb.append("--max-pep-len ").append(max_pep_len).append(" ");
@@ -633,8 +652,7 @@ public class DiannParameter {
 			sb.append("--unimod4 ");
 		}
 
-		String cut = this.cutMap.get(enzyme);
-		sb.append("--cut ").append(cut).append(" ");
+		sb.append("--cut ").append(requireCutRule()).append(" ");
 		sb.append("--missed-cleavages ").append(missed_cleavages).append(" ");
 		sb.append("--min-pep-len ").append(min_pep_len).append(" ");
 		sb.append("--max-pep-len ").append(max_pep_len).append(" ");

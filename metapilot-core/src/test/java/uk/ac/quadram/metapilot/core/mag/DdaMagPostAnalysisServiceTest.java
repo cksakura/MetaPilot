@@ -41,13 +41,57 @@ class DdaMagPostAnalysisServiceTest {
 		assertTrue(q(strongNull) > DdaMagProteinInferenceService.DEFAULT_GENOME_Q_VALUE_THRESHOLD,
 				"decoys that outscore every target reject it");
 
-		assertEquals(weakNull.peptideList.size(), strongNull.peptideList.size());
+		assertEquals(7, weakNull.peptideList.size());
+        assertEquals(0, strongNull.peptideList.size());
+        assertEquals(7, strongNull.finalSelection.excludedPeptides.size());
 		assertEquals(weakNull.psmMap.keySet(), strongNull.psmMap.keySet());
 		assertEquals(weakNull.pepPsmCountMap.keySet(), strongNull.pepPsmCountMap.keySet());
-		assertArrayEquals(weakNull.filePsmCount, strongNull.filePsmCount);
+		assertArrayEquals(new int[]{7}, weakNull.filePsmCount);
+        assertArrayEquals(new int[]{0}, strongNull.filePsmCount);
 		for (MetaPeptide peptide : strongNull.peptideList) {
 			assertTrue(!peptide.getSequence().startsWith("DECOY"), peptide.getSequence());
 		}
+	}
+
+	/**
+	 * "Peptide Sequences Identified" per file counts MS/MS identifications only. Every peptide here is
+	 * identified in S1; FlashLFQ also gives PEPTIDEAK intensity in S2 (match-between-runs), where it has
+	 * no MS2 scan, so S2 identifies one peptide, not two.
+	 */
+	@Test
+	void perFilePeptidesCountMsmsIdentificationsNotMatchBetweenRuns() {
+		List<MetaPeptide> peptides = new ArrayList<>();
+		List<MetaPSM> psms = new ArrayList<>();
+		for (int i = 0; i < 6; i++) {
+			String seq = "TARGET" + (char) ('A' + i) + "K";
+			peptides.add(peptide(seq, new double[] { 1000.0, 0.0 }, new int[] { 1, 0 }, GENOME + "_0000" + i));
+			psms.add(psm("S1", psms.size() + 1, seq, 10.0, GENOME + "_0000" + i));
+		}
+		peptides.add(peptide("PEPTIDEAK", new double[] { 1000.0, 800.0 }, new int[] { 1, 0 }, GENOME + "_00007"));
+		psms.add(psm("S1", psms.size() + 1, "PEPTIDEAK", 10.0, GENOME + "_00007"));
+		peptides.add(peptide("PEPTIDEBK", new double[] { 0.0, 900.0 }, new int[] { 0, 1 }, GENOME + "_00008"));
+		psms.add(psm("S2", psms.size() + 1, "PEPTIDEBK", 10.0, GENOME + "_00008"));
+		List<MetaPeptide> decoyPeptides = new ArrayList<>();
+		List<MetaPSM> decoyPsms = new ArrayList<>();
+		for (int i = 0; i < 200; i++) {
+			String seq = "DECOY" + i + "K";
+			decoyPeptides.add(peptide(seq, new double[] { 1000.0, 0.0 }, new int[] { 1, 0 }, "rev_MGYG000000003_" + i));
+			decoyPsms.add(psm("S1", 1000 + i, seq, 1.0, "rev_MGYG000000003_" + i));
+		}
+		HashMap<String, Integer> fileIdMap = new HashMap<>();
+		fileIdMap.put("S1", 0);
+		fileIdMap.put("S2", 1);
+		ArrayList<String> fileList = new ArrayList<>(List.of("S1", "S2"));
+
+		DdaMagPostAnalysisService.Result result = DdaMagPostAnalysisService.analyze(
+				new DdaMagPostAnalysisService.Input(peptides.toArray(new MetaPeptide[0]),
+						psms.toArray(new MetaPSM[0]), fileIdMap, fileList, "rev_", "MGYG", null, true,
+						decoyPeptides.toArray(new MetaPeptide[0]), decoyPsms.toArray(new MetaPSM[0])));
+
+		assertEquals(8, result.peptideList.size());
+		assertEquals(7, result.fileSequenceSets[0].size());
+		assertEquals(java.util.Set.of("PEPTIDEBK"), result.fileSequenceSets[1], "PEPTIDEAK is MBR-only in S2");
+		assertArrayEquals(new int[] { 7, 1 }, result.filePsmCount);
 	}
 
 	private static DdaMagPostAnalysisService.Result analyzeWithDecoys(List<MetaPeptide> peptides,
@@ -73,6 +117,51 @@ class DdaMagPostAnalysisServiceTest {
 				psms.toArray(new MetaPSM[0]), fileIdMap, fileList, "rev_", "MGYG", null, false,
 				decoyPeptides == null ? null : decoyPeptides.toArray(new MetaPeptide[0]),
 				decoyPsms == null ? null : decoyPsms.toArray(new MetaPSM[0]));
+	}
+
+	private static MetaPeptide peptide(String sequence, double[] intensity, int[] ms2Counts, String... proteins) {
+		MetaPeptide peptide = new MetaPeptide(sequence, sequence, proteins, intensity, null) {
+			@Override
+			public Object[] getTableObjects() {
+				return null;
+			}
+
+			@Override
+			public Element getXmlPepElement() {
+				return null;
+			}
+		};
+		peptide.setMs2Counts(ms2Counts);
+		return peptide;
+	}
+
+	private static MetaPSM psm(String file, int scan, String sequence, double score, String... proteins) {
+		return new MetaPSM(file, scan, sequence, sequence, 2, proteins, score, 0.001) {
+			@Override
+			public double getExpMass() {
+				return 0;
+			}
+
+			@Override
+			public double getRt() {
+				return 0;
+			}
+
+			@Override
+			public double getCalMass() {
+				return 0;
+			}
+
+			@Override
+			public double getMassDiff() {
+				return 0;
+			}
+
+			@Override
+			public int getMiss() {
+				return 0;
+			}
+		};
 	}
 
 	private static void add(List<MetaPeptide> peptides, List<MetaPSM> psms, String sequence, double score,

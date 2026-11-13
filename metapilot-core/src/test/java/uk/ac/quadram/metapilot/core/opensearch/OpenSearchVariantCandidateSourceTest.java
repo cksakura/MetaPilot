@@ -90,6 +90,76 @@ class OpenSearchVariantCandidateSourceTest {
 		assertEquals("peak_not_substitution_shaped", b.frontEndEvidence);
 	}
 
+	private static ShiftLocaliser.Result localised(int site, String... explanations) {
+		return new ShiftLocaliser.Result(7.5, site, 0.95, ShiftLocaliser.State.LOCALISED_EXPLAINED,
+				Arrays.asList(explanations));
+	}
+
+	@Test
+	@DisplayName("Localised substitutions on validated targets become candidates at their site; a matching peak "
+			+ "proposal gains the localisation instead of a second candidate")
+	void localisedCandidates() {
+		OpenSearchPsm offPeak = psm("PEPGTIDEK", 20, -1, true);
+		offPeak.setShiftLocalisation(localised(3, "subst G->A", "unimod Methyl"));
+		OpenSearchPsm onPeak = psm("SAMGLEK", 21, 5, true);
+		onPeak.setSubstitutionVerdict("substitution");
+		onPeak.setShiftLocalisation(localised(3, "subst G->A"));
+		OpenSearchPsm ambiguous = psm("PEPGTIDEK", 22, -1, true);
+		ambiguous.setShiftLocalisation(new ShiftLocaliser.Result(0.5, 3, 0.4, ShiftLocaliser.State.AMBIGUOUS,
+				List.of()));
+		OpenSearchPsm decoy = psm("KEDITGPEP", 23, -1, false);
+		decoy.setShiftLocalisation(localised(5, "subst G->A"));
+		OpenSearchPsm notValidated = psm("PEPGTIDEK", 24, -1, true);
+		notValidated.setShiftLocalisation(localised(3, "subst G->A"));
+		OpenSearchPsm modificationOnly = psm("PEPMTIDEK", 25, -1, true);
+		modificationOnly.setShiftLocalisation(localised(3, "unimod Oxidation"));
+		OpenSearchPsm acceptedShift = psm("PEPGTIDEK", 26, -1, true);
+		acceptedShift.setShiftLocalisation(localised(3, "subst G->A"));
+		acceptedShift.setIdentificationGroup("OPEN_ACCEPTED_SHIFT"); // an accepted-peak modification, not a variant
+		for (OpenSearchPsm p : Arrays.asList(offPeak, onPeak, ambiguous, decoy, notValidated, modificationOnly)) {
+			p.setIdentificationGroup("OPEN_LOCALISED");
+		}
+		offPeak.setIdentificationGroup("OPEN_SUBSTITUTION_SITE"); // reported, not identified, still a variant source
+		onPeak.setIdentificationGroup("OPEN_SUBSTITUTION_SITE");
+
+		// A peak proposal counts only where it is also the identification's call: the one for the
+		// accepted-shift PSM, and one at another residue than the fragments' site, are dropped.
+		SubstitutionReassigner.Result reassigner = new SubstitutionReassigner.Result(
+				new ArrayList<>(Arrays.asList(proposal(onPeak, 3, 'G', 'A'), proposal(acceptedShift, 3, 'G', 'A'),
+						proposal(offPeak, 0, 'P', 'S'))), new ArrayList<>(),
+				new HashSet<>(Arrays.asList(5)), new ArrayList<>());
+		OpenSearchVariantCandidateSource.Result out = OpenSearchVariantCandidateSource.collect(reassigner,
+				Arrays.asList(offPeak, onPeak, ambiguous, decoy, modificationOnly, acceptedShift), TOL);
+
+		assertEquals(2, out.candidates.size());
+		assertEquals(1, out.shapedCandidates);
+		assertEquals(1, out.localisedCandidates);
+		VariantCandidate peak = out.candidates.get(0);
+		assertEquals("SAMALEK", peak.variantPeptide);
+		assertTrue(peak.peakSubstitutionShaped);
+		assertEquals(0.95, peak.localisationSiteProbability, 1e-12, "the peak proposal gains the localisation");
+		assertEquals(7.5, peak.localisationSupport, 1e-12);
+		VariantCandidate loc = out.candidates.get(1);
+		assertEquals("PEPATIDEK", loc.variantPeptide);
+		assertEquals(4, loc.position, "1-based");
+		assertEquals('G', loc.fromAa);
+		assertEquals('A', loc.toAa);
+		assertEquals(-1, loc.peakId);
+		assertEquals(null, loc.peakSubstitutionShaped);
+		assertEquals(null, loc.reassignerInDb);
+		assertEquals(OpenSearchVariantCandidateSource.LOCALISED_CALL, loc.frontEndEvidence);
+		assertEquals(0.95, loc.localisationSiteProbability, 1e-12);
+		assertEquals(SubstitutionMassTable.residueMass('A') - SubstitutionMassTable.residueMass('G'), loc.deltaMass,
+				1e-9);
+		assertTrue(loc.ms2Decidable, "G->A has no same-residue modification of equal mass");
+
+		// Localisation alone still gives candidates when the reassigner did not run.
+		OpenSearchVariantCandidateSource.Result alone = OpenSearchVariantCandidateSource.collect(null,
+				Arrays.asList(offPeak), TOL);
+		assertEquals(1, alone.localisedCandidates);
+		assertEquals("PEPATIDEK", alone.candidates.get(0).variantPeptide);
+	}
+
 	@Test
 	@DisplayName("No reassigner result gives no candidates but still fills the control pool")
 	void nullResult() {

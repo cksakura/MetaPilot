@@ -15,7 +15,6 @@ import java.util.function.Consumer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import uk.ac.quadram.metapilot.core.opensearch.ExpectedPeakSelector.ExpectedShift;
 
 /**
  * Per-modification validation of scored open-search PSMs.
@@ -84,10 +83,14 @@ public final class ModificationValidator {
 		 * {@link DeltaMassEvidenceGate.Config#zeroWindowDa}.
 		 */
 		public double zeroWindowDa = 0.05;
-		/** Masses that may be accepted as modifications; everything else is unexplained. */
-		public List<ExpectedShift> knownShifts = ExpectedPeakSelector.DEFAULT_SHIFTS;
-		/** Matching tolerance, in Da, between a peak centroid and a known shift. */
-		public double knownShiftToleranceDa = 0.008;
+		/** Peptides at least this long are the ones a peak is judged on; see {@link #filterPeaks}. */
+		public int longPeptideLength = 13;
+		/** Fewest rank-1 long-peptide PSMs (targets and decoys) a peak needs to be judged at all. */
+		public int minLongPeptidePsms = 50;
+		/** Highest decoy fraction among a peak's long-peptide PSMs. */
+		public double maxLongPeptideDecoyFraction = 0.05;
+		/** Lowest long-peptide share of a peak, as a ratio of the share in every other non-zero peak. */
+		public double minLongPeptideShareRatio = 0.75;
 		/** Local FDR threshold within each accepted peak. */
 		public double localFdr = 0.01;
 		/** Identification FDR threshold for each identification-only population. */
@@ -98,8 +101,8 @@ public final class ModificationValidator {
 	public enum MassClass {
 		/** The peak nearest zero: the unmodified hypothesis. */
 		ZERO,
-		/** Within tolerance of an allow-list shift. */
-		KNOWN,
+		/** A mass shift that passed the evidence rule of {@link ModificationValidator#filterPeaks}. */
+		ESTABLISHED,
 		/** Any other mass. */
 		UNEXPLAINED
 	}
@@ -108,8 +111,6 @@ public final class ModificationValidator {
 		public final int peakId;
 		public final double centroid;
 		public final MassClass massClass;
-		/** Allow-list entry name for a {@link MassClass#KNOWN} peak, otherwise empty. */
-		public final String knownShift;
 		public final int targets;
 		public final int decoys;
 		/** The peak's own decoy fraction among rank-1 in-peak PSMs. */
@@ -117,8 +118,8 @@ public final class ModificationValidator {
 		/** Wilson 95% upper bound on {@link #decoyFraction}. */
 		public final double decoyUpperBound;
 		/**
-		 * Decoy fraction of the rank-1 PSMs in every other non-zero peak - the
-		 * reference a known shift must beat. NaN for the zero family.
+		 * Decoy fraction of the rank-1 PSMs in every other non-zero peak; recorded,
+		 * not used to accept. NaN for the zero family.
 		 */
 		public final double backgroundDecoyFraction;
 		/**
@@ -129,14 +130,31 @@ public final class ModificationValidator {
 		public final boolean accepted;
 		public final String reason;
 		public final int psmsRetained;
+		/** Rank-1 PSMs of at least {@link Config#longPeptideLength} residues, targets and decoys. */
+		public final int longPeptidePsms;
+		/** Decoy fraction among {@link #longPeptidePsms}; NaN without any. */
+		public final double longPeptideDecoyFraction;
+		/** This peak's long-peptide share over that of every other non-zero peak; NaN for the zero family. */
+		public final double longPeptideShareRatio;
 
-		PeakVerdict(int peakId, double centroid, MassClass massClass, String knownShift, int targets, int decoys,
+		PeakVerdict(int peakId, double centroid, MassClass massClass, int targets, int decoys,
 				double decoyFraction, double decoyUpperBound, double backgroundDecoyFraction,
 				boolean fragmentSupported, boolean accepted, String reason, int psmsRetained) {
+			this(peakId, centroid, massClass, targets, decoys, decoyFraction, decoyUpperBound,
+					backgroundDecoyFraction, fragmentSupported, accepted, reason, psmsRetained, 0, Double.NaN,
+					Double.NaN);
+		}
+
+		PeakVerdict(int peakId, double centroid, MassClass massClass, int targets, int decoys,
+				double decoyFraction, double decoyUpperBound, double backgroundDecoyFraction,
+				boolean fragmentSupported, boolean accepted, String reason, int psmsRetained, int longPeptidePsms,
+				double longPeptideDecoyFraction, double longPeptideShareRatio) {
+			this.longPeptidePsms = longPeptidePsms;
+			this.longPeptideDecoyFraction = longPeptideDecoyFraction;
+			this.longPeptideShareRatio = longPeptideShareRatio;
 			this.peakId = peakId;
 			this.centroid = centroid;
 			this.massClass = massClass;
-			this.knownShift = knownShift;
 			this.targets = targets;
 			this.decoys = decoys;
 			this.decoyFraction = decoyFraction;
@@ -149,13 +167,15 @@ public final class ModificationValidator {
 		}
 
 		PeakVerdict withdrawn(String why) {
-			return new PeakVerdict(peakId, centroid, massClass, knownShift, targets, decoys, decoyFraction,
-					decoyUpperBound, backgroundDecoyFraction, fragmentSupported, false, why, 0);
+			return new PeakVerdict(peakId, centroid, massClass, targets, decoys, decoyFraction,
+					decoyUpperBound, backgroundDecoyFraction, fragmentSupported, false, why, 0, longPeptidePsms,
+					longPeptideDecoyFraction, longPeptideShareRatio);
 		}
 
 		PeakVerdict withRetained(int retained) {
-			return new PeakVerdict(peakId, centroid, massClass, knownShift, targets, decoys, decoyFraction,
-					decoyUpperBound, backgroundDecoyFraction, fragmentSupported, accepted, reason, retained);
+			return new PeakVerdict(peakId, centroid, massClass, targets, decoys, decoyFraction,
+					decoyUpperBound, backgroundDecoyFraction, fragmentSupported, accepted, reason, retained,
+					longPeptidePsms, longPeptideDecoyFraction, longPeptideShareRatio);
 		}
 	}
 
@@ -233,11 +253,13 @@ public final class ModificationValidator {
 		 * The same gate with some peaks withdrawn from the accepted set.
 		 * <p>
 		 * Used for peaks that pass the screen but are not modification hypotheses
-		 * at all - a peak whose delta is explained by a single amino-acid
-		 * substitution rather than a mass change on the assigned peptide. Their
-		 * PSMs fall back to identification-only, which is exactly what withdrawing
-		 * them from {@code acceptedPeakIds} does. The withdrawal is recorded in
-		 * the verdict's reason.
+		 * at all - a peak {@link PeakSiteShare} finds on sites a single amino-acid
+		 * substitution fits, rather than a mass change on the assigned peptide. Their
+		 * PSMs are then treated as those of a peak that failed, which is exactly what
+		 * withdrawing them from {@code acceptedPeakIds} does. In the joint
+		 * identification that means each open winner is judged on its own fragments
+		 * ({@link PeakSiteShare} says how); exact-mass PSMs are untouched. The
+		 * withdrawal is recorded in the verdict's reason.
 		 */
 		public Gate withoutPeaks(Set<Integer> withdrawn) {
 			if (withdrawn == null || withdrawn.isEmpty()) {
@@ -248,7 +270,7 @@ public final class ModificationValidator {
 			List<PeakVerdict> revised = new ArrayList<>(verdicts.size());
 			for (PeakVerdict v : verdicts) {
 				revised.add(withdrawn.contains(v.peakId) && v.accepted
-						? v.withdrawn("withdrawn: explained by an amino-acid substitution")
+						? v.withdrawn("withdrawn: its localised PSMs sit where a substitution fits")
 						: v);
 			}
 			return new Gate(kept, revised, gateFiles);
@@ -262,14 +284,44 @@ public final class ModificationValidator {
 	 * <ul>
 	 * <li>The peak nearest zero (within {@link Config#zeroWindowDa}) is the
 	 * unmodified hypothesis and is always accepted.</li>
-	 * <li>A peak within {@link Config#knownShiftToleranceDa} of an allow-list
-	 * shift is accepted when the Wilson 95% upper bound on its rank-1 decoy
-	 * fraction lies below the decoy fraction of all other non-zero peaks
-	 * combined: the shift must be target-enriched against the in-peak
-	 * background, with the bound making a small peak earn it.</li>
-	 * <li>Any other mass is not accepted. Its PSMs stay identifications and no
-	 * modification claim is made.</li>
+	 * <li>Any other peak is judged by the same evidence, whatever its mass, on its
+	 * rank-1 PSMs of at least {@link Config#longPeptideLength} residues. It is
+	 * established when it has {@link Config#minLongPeptidePsms} of them, at most
+	 * {@link Config#maxLongPeptideDecoyFraction} are decoys, and its long-peptide
+	 * share is at least {@link Config#minLongPeptideShareRatio} of the share in
+	 * every other non-zero peak. A peak whose localised PSMs mostly sit where a
+	 * substitution fits ({@link PeakSiteShare}) is then withdrawn by the caller
+	 * ({@link Gate#withoutPeaks}), so a shift the sequence can explain is never
+	 * established.</li>
+	 * <li>A peak that fails stays unexplained: its PSMs make no modification
+	 * claim. Here they are identification-only; in the joint identification
+	 * (identification v2) they are identified only where the fragments place the
+	 * shift on a site no substitution fits, unless unexplained shifts are
+	 * accepted ({@code JointIdentification.Config#acceptUnexplained}).</li>
 	 * </ul>
+	 *
+	 * <h2>Why evidence and not a list of masses</h2>
+	 * This replaced an allow-list of seven masses chosen on 12mix for stage-1 genome
+	 * evidence. A list cannot say why those masses and not others, and it dropped the
+	 * subject of a dataset: on PXD013427, an acetylome, acetyl and carbamyl were the
+	 * two largest peaks and neither was on it. Measured on the entrapment runs, each
+	 * peak walked to 1%: on 12mix the rule accepted 69,455 PSMs at 1.21% FDP and 1.9%
+	 * outside the true genomes, the list 17,378 at 1.09% and 2.1%, and all peaks
+	 * 98,175 at 1.78% and 3.4%; on faecal 11,673 at 1.23%, the list 4,334 at 2.03%,
+	 * all peaks 31,169 at 5.70%.
+	 *
+	 * <h2>Why long peptides</h2>
+	 * Chance matches pile up on short peptides, so a peak of them has a decoy share
+	 * near one half there and few long members. Residue-mass peaks (-Q, -N, -A, -S,
+	 * -E) are the clearest case: a long-peptide share of 0.05-0.3 of the background,
+	 * against 0.85 and above for almost all others. A real shift does not depend on
+	 * length. The decision is made on long peptides; once a peak is established, all
+	 * its PSMs go through the FDR walk.
+	 *
+	 * <h2>Why the substitution test is needed as well</h2>
+	 * Neither test above sees a wrong peptide carrying a consistent offset. On 12mix
+	 * -14.016 and +14.016 pass at about 1% FDP with 18-20% of their PSMs outside the
+	 * true genomes. Only localisation separates them; see {@link PeakSiteShare}.
 	 *
 	 * <h2>Why not a cumulative walk to a target FDR</h2>
 	 * The walk this replaced admitted peaks in order of decoy fraction until the
@@ -283,20 +335,19 @@ public final class ModificationValidator {
 	 *
 	 * <h2>Why the background, not a multiple of the zero peak</h2>
 	 * Decoy fraction measures identification quality, not whether a mass is a
-	 * modification. On PXD050781 the upper bounds of real known shifts ranged
+	 * modification. On PXD050781 the upper bounds of real modification peaks ranged
 	 * from 0.7x to 5.1x the zero peak's decoy fraction with no gap separating
 	 * them from junk, so any fixed multiple is arbitrary. The non-zero in-peak
 	 * background (about 19% decoys on both workflows) is measured in each run
 	 * and carries over between datasets; it is computed leave-one-out so a large
 	 * peak is not held to a reference it dominates.
 	 *
-	 * <h2>Why unexplained masses make no claim</h2>
-	 * Target enrichment cannot distinguish an unknown modification from an
-	 * amino-acid substitution, a chimeric spectrum or a wrong peptide carrying a
-	 * consistent offset, and neither can fragment gain: on PXD050781 known shifts
-	 * and substitution-shaped peaks gain from shifted fragments at similar rates.
-	 * Until a test exists that separates them, the PSMs are reported as
-	 * identifications and the fragment-support status is recorded for audit.
+	 * <h2>What acceptance claims</h2>
+	 * That the mass shift is established in this run, not what it is. Names come from
+	 * the localisation ({@code ShiftLocaliser}), with fragment support, or not at all.
+	 * Fragment gain does not decide: on PXD050781 accepted shifts and
+	 * substitution-shaped peaks gain from shifted fragments at similar rates, so the
+	 * fragment-support status is recorded for audit.
 	 *
 	 * <h2>Why rank 1 only</h2>
 	 * Nothing has been rescored yet, so the engine's own ranking is the only
@@ -320,22 +371,21 @@ public final class ModificationValidator {
 				continue;
 			}
 			used++;
-			int[] tallies = counts.computeIfAbsent(psm.getPeakId(), k -> new int[2]);
-			tallies[psm.isTarget() ? 0 : 1]++;
+			tally(counts.computeIfAbsent(psm.getPeakId(), k -> new int[4]), psm, cfg);
 			centroids.putIfAbsent(psm.getPeakId(), psm.getPeakCentroid());
 		}
 
 		List<PeakVerdict> verdicts = screen(counts, centroids, cfg, fragmentSupported);
 		Set<Integer> accepted = new LinkedHashSet<>();
-		int known = 0;
+		int established = 0;
 		int unexplained = 0;
 		int unexplainedSupported = 0;
 		for (PeakVerdict v : verdicts) {
 			if (v.accepted) {
 				accepted.add(v.peakId);
 			}
-			if (v.massClass == MassClass.KNOWN) {
-				known++;
+			if (v.massClass == MassClass.ESTABLISHED) {
+				established++;
 			} else if (v.massClass == MassClass.UNEXPLAINED) {
 				unexplained++;
 				if (v.fragmentSupported) {
@@ -348,11 +398,10 @@ public final class ModificationValidator {
 			zeroFound |= v.massClass == MassClass.ZERO;
 		}
 		String note = String.format(Locale.ROOT,
-				"Peak screen: %d/%d peaks accepted from %,d rank-1 in-peak PSMs (zero family %s; %d/%d known "
-						+ "shifts target-enriched; %d unexplained masses identification-only, %d of them "
-						+ "fragment-supported)",
-				accepted.size(), verdicts.size(), used, zeroFound ? "accepted" : "not found",
-				accepted.size() - (zeroFound ? 1 : 0), known, unexplained, unexplainedSupported);
+				"Peak screen: %d/%d peaks accepted from %,d rank-1 in-peak PSMs (zero family %s; %d established "
+						+ "shifts; %d unexplained masses identification-only, %d of them fragment-supported)",
+				accepted.size(), verdicts.size(), used, zeroFound ? "accepted" : "not found", established,
+				unexplained, unexplainedSupported);
 		LOGGER.info(note);
 		if (progress != null) {
 			progress.accept(note);
@@ -360,20 +409,32 @@ public final class ModificationValidator {
 		return new Gate(accepted, verdicts, Collections.emptySet());
 	}
 
+	/** Adds a rank-1 PSM to {targets, decoys, long targets, long decoys}. */
+	private static void tally(int[] tallies, OpenSearchPsm psm, Config cfg) {
+		int side = psm.isTarget() ? 0 : 1;
+		tallies[side]++;
+		String peptide = psm.getPeptide();
+		if (peptide != null && peptide.length() >= cfg.longPeptideLength) {
+			tallies[2 + side]++;
+		}
+	}
+
 	/**
-	 * Applies the rule documented on {@link #filterPeaks} to per-peak target and
-	 * decoy counts. Shared with {@link #validate}'s no-gate path so the two
-	 * cannot diverge.
+	 * Applies the rule documented on {@link #filterPeaks} to per-peak counts,
+	 * {targets, decoys, long targets, long decoys}. Shared with {@link #validate}'s
+	 * no-gate path so the two cannot diverge.
 	 */
 	static List<PeakVerdict> screen(Map<Integer, int[]> counts, Map<Integer, Double> centroids, Config cfg,
 			Set<Integer> fragmentSupported) {
 		int zeroPeakId = zeroPeakId(centroids, cfg.zeroWindowDa);
 		long nonZeroTargets = 0;
 		long nonZeroDecoys = 0;
+		long nonZeroLong = 0;
 		for (Map.Entry<Integer, int[]> e : counts.entrySet()) {
 			if (e.getKey() != zeroPeakId) {
 				nonZeroTargets += e.getValue()[0];
 				nonZeroDecoys += e.getValue()[1];
+				nonZeroLong += e.getValue()[2] + e.getValue()[3];
 			}
 		}
 
@@ -382,34 +443,35 @@ public final class ModificationValidator {
 			int peakId = e.getKey();
 			int targets = e.getValue()[0];
 			int decoys = e.getValue()[1];
+			int longPsms = e.getValue()[2] + e.getValue()[3];
 			int n = targets + decoys;
 			double centroid = centroids.getOrDefault(peakId, Double.NaN);
 			double fraction = n == 0 ? 1.0 : decoys / (double) n;
 			double upper = wilsonUpperBound(decoys, n);
+			double longDecoys = longPsms == 0 ? Double.NaN : e.getValue()[3] / (double) longPsms;
 			boolean supported = fragmentSupported != null && fragmentSupported.contains(peakId);
 
 			if (peakId == zeroPeakId) {
-				verdicts.add(new PeakVerdict(peakId, centroid, MassClass.ZERO, "", targets, decoys, fraction, upper,
-						Double.NaN, supported, true, "zero family: the unmodified hypothesis", 0));
+				verdicts.add(new PeakVerdict(peakId, centroid, MassClass.ZERO, targets, decoys, fraction, upper,
+						Double.NaN, supported, true, "zero family: the unmodified hypothesis", 0, longPsms, longDecoys,
+						Double.NaN));
 				continue;
 			}
 
 			long otherTargets = nonZeroTargets - targets;
 			long otherDecoys = nonZeroDecoys - decoys;
-			double background = otherTargets + otherDecoys == 0 ? NULL_DECOY_FRACTION
-					: otherDecoys / (double) (otherTargets + otherDecoys);
-			ExpectedShift shift = ExpectedPeakSelector.matching(centroid, cfg.knownShifts, cfg.knownShiftToleranceDa);
-			if (shift == null) {
-				verdicts.add(new PeakVerdict(peakId, centroid, MassClass.UNEXPLAINED, "", targets, decoys, fraction,
-						upper, background, supported, false, "unexplained mass: identification only", 0));
-				continue;
-			}
-			boolean enriched = upper < background;
-			verdicts.add(new PeakVerdict(peakId, centroid, MassClass.KNOWN, shift.name, targets, decoys, fraction,
-					upper, background, supported, enriched,
-					enriched ? "known shift, target-enriched against the background"
-							: "known shift, not target-enriched against the background",
-					0));
+			long others = otherTargets + otherDecoys;
+			double background = others == 0 ? NULL_DECOY_FRACTION : otherDecoys / (double) others;
+			double otherShare = others == 0 ? 0 : (nonZeroLong - longPsms) / (double) others;
+			double ratio = n == 0 ? 0 : otherShare == 0 ? 1.0 : (longPsms / (double) n) / otherShare;
+			String failure = longPsms < cfg.minLongPeptidePsms ? "too few long-peptide PSMs"
+					: longDecoys > cfg.maxLongPeptideDecoyFraction ? "long-peptide decoy fraction too high"
+							: ratio < cfg.minLongPeptideShareRatio ? "skewed to short peptides" : null;
+			verdicts.add(new PeakVerdict(peakId, centroid,
+					failure == null ? MassClass.ESTABLISHED : MassClass.UNEXPLAINED, targets, decoys, fraction,
+					upper, background, supported, failure == null,
+					failure == null ? "established by the evidence rule" : failure + ": identification only", 0,
+					longPsms, longDecoys, ratio));
 		}
 		verdicts.sort((a, b) -> Integer.compare(a.peakId, b.peakId));
 		return verdicts;
@@ -485,9 +547,9 @@ public final class ModificationValidator {
 			Map<Integer, int[]> localCounts = new LinkedHashMap<>();
 			Map<Integer, Double> localCentroids = new HashMap<>();
 			for (Map.Entry<Integer, List<OpenSearchPsm>> e : byPeak.entrySet()) {
-				int[] tallies = new int[2];
+				int[] tallies = new int[4];
 				for (OpenSearchPsm psm : e.getValue()) {
-					tallies[psm.isTarget() ? 0 : 1]++;
+					tally(tallies, psm, cfg);
 					localCentroids.putIfAbsent(e.getKey(), psm.getPeakCentroid());
 				}
 				localCounts.put(e.getKey(), tallies);
@@ -567,7 +629,7 @@ public final class ModificationValidator {
 	 * ({@code docs/developer/closed-then-open-identification-plan.md}): {@code remaining} holds the
 	 * collapsed open winners of the spectra the closed stage did not accept. Two pooled walks, one
 	 * over the PSMs of the accepted zero peak (unmodified) and one over those of accepted
-	 * allow-list peaks (known shift); their accepted PSMs are the identifications. Everything else
+	 * established peaks (accepted shift); their accepted PSMs are the identifications. Everything else
 	 * is an unexplained shift: walked as {@link #validate} does, for {@code unexplained_psms.tsv}
 	 * and the variant outputs, but not identified.
 	 * <p>
@@ -584,7 +646,7 @@ public final class ModificationValidator {
 		}
 		Map<Integer, List<OpenSearchPsm>> byPeak = new LinkedHashMap<>();
 		List<OpenSearchPsm> unmodified = new ArrayList<>();
-		List<OpenSearchPsm> knownShift = new ArrayList<>();
+		List<OpenSearchPsm> acceptedShift = new ArrayList<>();
 		List<OpenSearchPsm> rejectedPeakPsms = new ArrayList<>();
 		List<OpenSearchPsm> noPeak = new ArrayList<>();
 		for (OpenSearchPsm psm : remaining) {
@@ -599,17 +661,17 @@ public final class ModificationValidator {
 				rejectedPeakPsms.add(psm);
 			} else if (v.massClass == MassClass.ZERO) {
 				unmodified.add(psm);
-			} else if (v.massClass == MassClass.KNOWN) {
-				knownShift.add(psm);
+			} else if (v.massClass == MassClass.ESTABLISHED) {
+				acceptedShift.add(psm);
 			} else {
 				rejectedPeakPsms.add(psm);
 			}
 		}
 		List<OpenSearchPsm> keptUnmodified = applyLocalFdr(unmodified, cfg.localFdr);
-		List<OpenSearchPsm> keptKnown = applyLocalFdr(knownShift, cfg.localFdr);
-		List<OpenSearchPsm> peakValidated = new ArrayList<>(keptUnmodified.size() + keptKnown.size());
+		List<OpenSearchPsm> keptAccepted = applyLocalFdr(acceptedShift, cfg.localFdr);
+		List<OpenSearchPsm> peakValidated = new ArrayList<>(keptUnmodified.size() + keptAccepted.size());
 		peakValidated.addAll(keptUnmodified);
-		peakValidated.addAll(keptKnown);
+		peakValidated.addAll(keptAccepted);
 
 		Map<Integer, Integer> retained = new HashMap<>();
 		for (OpenSearchPsm psm : peakValidated) {
@@ -636,10 +698,10 @@ public final class ModificationValidator {
 		diagnostic.addAll(unexplained);
 
 		LOGGER.info(String.format(Locale.ROOT,
-				"Open stage over %,d spectra the closed stage left: %,d/%,d unmodified and %,d/%,d known-shift "
+				"Open stage over %,d spectra the closed stage left: %,d/%,d unmodified and %,d/%,d accepted-shift "
 						+ "PSMs accepted at %.2f%% FDR; %,d unexplained-shift PSMs pass their walks and are not "
 						+ "identifications",
-				remaining.size(), keptUnmodified.size(), unmodified.size(), keptKnown.size(), knownShift.size(),
+				remaining.size(), keptUnmodified.size(), unmodified.size(), keptAccepted.size(), acceptedShift.size(),
 				cfg.localFdr * 100, unexplained.size()));
 		return new Result(new ArrayList<>(peakValidated), peakValidated, unexplained, verdicts, diagnostic);
 	}
@@ -673,10 +735,9 @@ public final class ModificationValidator {
 			}
 		}
 		int n = targets + decoys;
-		ExpectedShift shift = ExpectedPeakSelector.matching(centroid, cfg.knownShifts, cfg.knownShiftToleranceDa);
-		return new PeakVerdict(peakId, centroid, shift == null ? MassClass.UNEXPLAINED : MassClass.KNOWN,
-				shift == null ? "" : shift.name, targets, decoys, n == 0 ? 1.0 : decoys / (double) n,
-				wilsonUpperBound(decoys, n), Double.NaN, false, false, "not screened: no rank-1 PSMs at the gate", 0);
+		return new PeakVerdict(peakId, centroid, MassClass.UNEXPLAINED, targets, decoys,
+				n == 0 ? 1.0 : decoys / (double) n, wilsonUpperBound(decoys, n), Double.NaN, false, false,
+				"not screened: no rank-1 PSMs at the gate", 0);
 	}
 
 	/**

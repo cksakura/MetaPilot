@@ -19,7 +19,7 @@ java -jar metapilot-cli/target/metapilot-cli-*-shaded.jar --version
 
 ## Status
 
-This module provides the headless entry point for the MetaPilot `1.1.1` release.
+This module provides the headless entry point for the upcoming MetaPilot `1.2.0` release.
 
 Current headless execution supports:
 

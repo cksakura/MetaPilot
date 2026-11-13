@@ -5,6 +5,7 @@ import uk.ac.quadram.metapilot.core.workflow.ProgressCallback;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.HttpURLConnection;
@@ -39,6 +40,103 @@ public final class ResumableDownload {
         return download(url, dest, resume, DEFAULT_CONNECT_TIMEOUT_MS, DEFAULT_READ_TIMEOUT_MS, MAX_RETRY_ATTEMPTS, cb);
     }
 
+    /**
+     * HTTP status of {@code url} (GET with a 1-byte Range, following redirects
+     * including http→https). Negative when the request cannot be made.
+     */
+    public static int httpStatus(String url) {
+        return httpStatus(url, 5);
+    }
+
+    public static boolean remoteExists(String url) {
+        int code = httpStatus(url);
+        return code >= 200 && code < 300;
+    }
+
+    /**
+     * Remote file size in bytes, following redirects. Negative when the server
+     * does not report it.
+     */
+    public static long contentLength(String url) {
+        return getContentLength(url, DEFAULT_CONNECT_TIMEOUT_MS, DEFAULT_READ_TIMEOUT_MS);
+    }
+
+    public static boolean isNotFound(IOException e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t instanceof FileNotFoundException) {
+                return true;
+            }
+            String m = t.getMessage();
+            if (m != null && m.contains("HTTP 404")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static int httpStatus(String url, int redirectsLeft) {
+        Objects.requireNonNull(url, "url");
+        HttpURLConnection http = null;
+        try {
+            http = open(url, "GET");
+            http.setInstanceFollowRedirects(false);
+            http.setRequestProperty("Range", "bytes=0-0");
+            int code = http.getResponseCode();
+            if (redirectsLeft > 0 && isRedirect(code)) {
+                String loc = http.getHeaderField("Location");
+                if (loc != null && !loc.isBlank()) {
+                    String next = URI.create(url).resolve(loc).toString();
+                    http.disconnect();
+                    http = null;
+                    return httpStatus(next, redirectsLeft - 1);
+                }
+            }
+            return code;
+        } catch (FileNotFoundException e) {
+            return HttpURLConnection.HTTP_NOT_FOUND;
+        } catch (Exception e) {
+            return -1;
+        } finally {
+            if (http != null) {
+                http.disconnect();
+            }
+        }
+    }
+
+    private static boolean isRedirect(int code) {
+        return code == HttpURLConnection.HTTP_MOVED_PERM
+                || code == HttpURLConnection.HTTP_MOVED_TEMP
+                || code == HttpURLConnection.HTTP_SEE_OTHER
+                || code == 307
+                || code == 308;
+    }
+
+    static IOException notFound(String url, IOException cause) {
+        String hint = url.endsWith(".gz")
+                ? ""
+                : " (MGnify v3.0+ genome files are gzipped; expected " + url + ".gz)";
+        return new IOException("HTTP 404 Not Found: " + url + hint, cause);
+    }
+
+    private static HttpURLConnection open(String url, String method) throws IOException {
+        URLConnection connection;
+        try {
+            connection = new URI(url).toURL().openConnection();
+        } catch (Exception e) {
+            throw new IOException("Invalid URL: " + url, e);
+        }
+        if (!(connection instanceof HttpURLConnection)) {
+            throw new IOException("Not an HTTP URL: " + url);
+        }
+        HttpURLConnection http = (HttpURLConnection) connection;
+        http.setRequestMethod(method);
+        http.setConnectTimeout(DEFAULT_CONNECT_TIMEOUT_MS);
+        http.setReadTimeout(DEFAULT_READ_TIMEOUT_MS);
+        http.setInstanceFollowRedirects(true);
+        http.setRequestProperty("User-Agent", "MetaPilot/cli");
+        return http;
+    }
+
     public static boolean download(String url,
                                    File dest,
                                    boolean resume,
@@ -61,12 +159,13 @@ public final class ResumableDownload {
                 cb.onMessage("Downloading: " + dest.getName());
                 return attemptDownload(url, dest, resume, connectTimeoutMs, readTimeoutMs, cb);
             } catch (IOException e) {
+                IOException wrapped = isNotFound(e) ? notFound(url, e) : e;
                 attempt++;
-                if (attempt > maxRetries) {
-                    cb.onError(e);
-                    throw e;
+                if (isNotFound(e) || attempt > maxRetries) {
+                    cb.onError(wrapped);
+                    throw wrapped;
                 }
-                cb.onMessage("Download failed (" + attempt + "/" + maxRetries + "): " + e.getMessage());
+                cb.onMessage("Download failed (" + attempt + "/" + maxRetries + "): " + wrapped.getMessage());
                 try {
                     Thread.sleep(1000L * attempt);
                 } catch (InterruptedException ie) {

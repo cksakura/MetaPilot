@@ -215,6 +215,24 @@ public final class SequenceVariantCaller {
 	 */
 	public static Result call(List<OpenSearchPsm> validated, List<File> proteinFastas, Config cfg,
 			Consumer<String> progress) {
+		return call(validated, null, proteinFastas, cfg, progress);
+	}
+
+	/**
+	 * As {@link #call(List, List, Config, Consumer)}, with the reference observations given.
+	 * <p>
+	 * Whether a reference peptide is "also observed" is a question about the sample, so it is asked of
+	 * the whole identified result. With the joint identification {@code validated} holds the open rows
+	 * only (identified or set aside): the closed search's exact-mass identifications, most of the
+	 * result, are not in it. On the round-5 entrapment runs (2026-11-10) 45 of 483 (faecal) and 44 of
+	 * 286 (12mix) SEQUENCE_VARIANT calls had their reference identified unmodified, 41 and 27 of them
+	 * by the closed search only.
+	 *
+	 * @param references identified PSMs of unmodified peptides, any search; targets are read. Null:
+	 *                   the unmodified PSMs of {@code validated} ({@link Config#zeroWindowDa}), as before
+	 */
+	public static Result call(List<OpenSearchPsm> validated, List<OpenSearchPsm> references,
+			List<File> proteinFastas, Config cfg, Consumer<String> progress) {
 		if (cfg == null) {
 			cfg = new Config();
 		}
@@ -229,7 +247,7 @@ public final class SequenceVariantCaller {
 		List<OpenSearchPsm> decoyEvidence = new ArrayList<>();
 		for (OpenSearchPsm psm : validated) {
 			allSamples.add(psm.getFileName());
-			if (psm.isTarget() && Math.abs(psm.getNormalizedMassDiff()) < cfg.zeroWindowDa
+			if (references == null && psm.isTarget() && Math.abs(psm.getNormalizedMassDiff()) < cfg.zeroWindowDa
 					&& psm.getPeptide() != null) {
 				unmodifiedSamples.computeIfAbsent(normalise(psm.getPeptide()), k -> new HashSet<>())
 						.add(psm.getFileName());
@@ -239,6 +257,15 @@ public final class SequenceVariantCaller {
 				continue;
 			}
 			(psm.isTarget() ? targetEvidence : decoyEvidence).add(psm);
+		}
+		if (references != null) {
+			for (OpenSearchPsm psm : references) {
+				if (psm != null && psm.isTarget() && psm.getPeptide() != null) {
+					allSamples.add(psm.getFileName());
+					unmodifiedSamples.computeIfAbsent(normalise(psm.getPeptide()), k -> new HashSet<>())
+							.add(psm.getFileName());
+				}
+			}
 		}
 		int minSamples = Math.max(1, Math.min(cfg.minSamples, allSamples.size()));
 

@@ -345,8 +345,18 @@ public class OpenSearchPsm {
 	 * the {@code []}/{@code [unexplained:...]} tag.
 	 */
 	public String getModificationFamilyKey() {
+		if (isShiftLocalisedExplained()) {
+			// Identification v2: the fragments placed the shift and an explanation fits there. The
+			// family is the explanation's exact mass, so every PSM of this peptide and explanation
+			// shares one row, whatever its observed mass or peak - and whichever search found it.
+			return peptide + String.format(Locale.ROOT, "[%+.4f]", shiftLocalisation.explainedMass);
+		}
 		if (closedStage) {
 			return getClosedModifiedSequence();
+		}
+		if (isShiftFoldedUnmodified()) {
+			// An accepted-peak shift the fragments do not carry: the unmodified peptide (design doc, section 8).
+			return peptide;
 		}
 		if (peakId < 0) {
 			// No fitted hypothesis exists for this mass. Keep it explicitly
@@ -477,8 +487,14 @@ public class OpenSearchPsm {
 		if (!Double.isNaN(resolvedMonoisotopicMass)) {
 			return resolvedMonoisotopicMass;
 		}
+		if (isShiftLocalisedExplained()) {
+			return calcNeutralPepMass + shiftLocalisation.explainedMass;
+		}
 		if (closedStage) {
 			// A closed search's calculated mass already carries its variable modifications.
+			return calcNeutralPepMass;
+		}
+		if (isShiftFoldedUnmodified()) {
 			return calcNeutralPepMass;
 		}
 		if (peakId < 0) {
@@ -1014,6 +1030,108 @@ public class OpenSearchPsm {
 			return calibratedScore;
 		}
 		return Double.isNaN(classLogit) ? classScore : classLogit;
+	}
+
+	/**
+	 * Joint closed+open identification only: the FDR group this PSM was accepted or walked in
+	 * ({@code JointCandidate.Group} name), null on every other path. Written to
+	 * {@code validated_psms.tsv} as {@code id_group}.
+	 */
+	private String identificationGroup;
+
+	public String getIdentificationGroup() {
+		return identificationGroup;
+	}
+
+	public void setIdentificationGroup(String identificationGroup) {
+		this.identificationGroup = identificationGroup;
+	}
+
+	/**
+	 * Identification v2 only: the {@link ShiftLocaliser} result of an unexplained-shift spectrum
+	 * winner, null otherwise. Feeds the pangenome variant check's localised candidates.
+	 */
+	private ShiftLocaliser.Result shiftLocalisation;
+
+	public ShiftLocaliser.Result getShiftLocalisation() {
+		return shiftLocalisation;
+	}
+
+	public void setShiftLocalisation(ShiftLocaliser.Result shiftLocalisation) {
+		this.shiftLocalisation = shiftLocalisation;
+	}
+
+	/**
+	 * Whether this PSM's shift is explained - localised by the fragments and explained there, or an
+	 * accepted peak's unplaced shift given its UNIMOD modification ({@code ShiftLocaliser.State#ASSIGNED}):
+	 * its exported sequence then carries the explanation's mass on that residue, and FlashLFQ is given
+	 * the peptide's mass plus it. Open PSMs, and closed PSMs whose isotope offset was
+	 * an established shift ({@code JointIdentification.localiseWinners}); a closed PSM carrying variable
+	 * modifications is never localised.
+	 */
+	public boolean isShiftLocalisedExplained() {
+		return shiftLocalisation != null && shiftLocalisation.isExplained()
+				&& !Double.isNaN(shiftLocalisation.explainedMass)
+				&& (!closedStage || getClosedModificationCount() == 0);
+	}
+
+	/**
+	 * An accepted-shift PSM (on an accepted peak) whose shift the fragments do not carry: exported as the
+	 * unmodified peptide, the observed shift kept in its mass-difference columns.
+	 */
+	public boolean isShiftFoldedUnmodified() {
+		return !closedStage && shiftLocalisation != null && shiftLocalisation.state == ShiftLocaliser.State.UNSUPPORTED
+				&& "OPEN_ACCEPTED_SHIFT".equals(identificationGroup);
+	}
+
+	/**
+	 * The site of an exported shift: the fragment-supported one (explained, or not explained there), or
+	 * the UNIMOD site an unplaced accepted shift was assigned; -1 otherwise.
+	 */
+	public int getLocalisedShiftSite() {
+		if (shiftLocalisation == null || shiftLocalisation.site < 0
+				|| closedStage && getClosedModificationCount() != 0) {
+			return -1;
+		}
+		return shiftLocalisation.state == ShiftLocaliser.State.LOCALISED_EXPLAINED
+				|| shiftLocalisation.state == ShiftLocaliser.State.LOCALISED_UNEXPLAINED
+				|| shiftLocalisation.state == ShiftLocaliser.State.ASSIGNED ? shiftLocalisation.site : -1;
+	}
+
+	/**
+	 * The explanation of the representative PSM that placed this PSM's group bracket, set with
+	 * {@link #getCanonicalModifiedSequence()}; empty for groups that are not localised-explained.
+	 */
+	private String resolvedShiftExplanation = "";
+
+	public String getResolvedShiftExplanation() {
+		return resolvedShiftExplanation;
+	}
+
+	public void setResolvedShiftExplanation(String resolvedShiftExplanation) {
+		this.resolvedShiftExplanation = resolvedShiftExplanation == null ? "" : resolvedShiftExplanation;
+	}
+
+	/**
+	 * Beside {@link #getResolvedShiftExplanation()}, for the peptide table: how the representative PSM's
+	 * site is known ({@code localised_explained}: placed by the fragments; {@code assigned}: the UNIMOD
+	 * site of the peak's mass) and what kind of explanation it is ({@code modification}, ...). Empty
+	 * without an explanation.
+	 */
+	private String resolvedShiftState = "";
+	private String resolvedShiftClass = "";
+
+	public String getResolvedShiftState() {
+		return resolvedShiftState;
+	}
+
+	public String getResolvedShiftClass() {
+		return resolvedShiftClass;
+	}
+
+	public void setResolvedShiftStateAndClass(String state, String shiftClass) {
+		this.resolvedShiftState = state == null ? "" : state;
+		this.resolvedShiftClass = shiftClass == null ? "" : shiftClass;
 	}
 
 	public double getQValue() {

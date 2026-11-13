@@ -80,18 +80,21 @@ Skip: `marker/pFind-Filtered.spectra` exists and is non-empty.
 ## Step 3. Genome selection and sample database (`<smp>marker/`)
 
 `MagGenomeSelectionService` -> `MarkerGenomeSelector` reads the marker PSMs (q <= 0.01, length >= 7)
-and selects up to 300 genomes per sample (privileged by unique peptides, then greedy set cover
-with a knee cut). File prefix `genome` (Marker2) or `marker_genome` (Marker4).
+and selects genomes per sample (privileged by unique peptides, then greedy set cover).
+Automatic Focus or Comprehensive applies the knee cut and keeps the 300-genome cap.
+PSM coverage, when selected, walks that same ranking until the PSM-coverage target,
+the step guard, or `genome_selection_max_genomes`. File prefix `genome` (Marker2) or `marker_genome` (Marker4).
 
 | File | Content | Used by |
 |---|---|---|
 | `genome_evidence.tsv` | per genome: `Genome	TotalPeptides	UniquePeptides	TotalPSM` (Marker4: per marker category counts, `GenusKey`, `FamilyKey`) | diagnostics |
-| `genome_ranked.tsv` | selected genomes first, then the rest: `Rank` (0-based), `Genome`, counts, `Reason`, greedy and knee diagnostics, cumulative coverage | diagnostics |
-| `genome_selected.tsv` | `Genome	Reason`, then a blank line and `#TotalMarkerPeptides`, `#TotalMarkerPSMs`, `#SelectedGenomes` | builds `<raw>.fasta`; cached on rerun |
+| `genome_ranked.tsv` | selected genomes first, then the rest: `Rank` (0-based), `Genome`, counts, `Reason`, greedy and knee diagnostics, cumulative coverage, `CutStep`, `InRanking` (`InRanking` 0 is after the greedy cap and is not part of the ranking) | diagnostics |
+| `genome_selected.tsv` | `Genome	Reason`, then a blank line and `#TotalMarkerPeptides`, `#TotalMarkerPSMs`, `#SelectedGenomes`, `#SelectionStrategy`, `#PsmCoverageThreshold`, `#StepGuard`, `#MaxGenomes`, `#StopReason`, `#PsmCoverageReached` | builds `<raw>.fasta`; cached on rerun |
+| `genome_selection_summary.tsv` | one row in `<raw>/marker/`, and one combined table at `pfind_MAG_search/genome_selection_summary.tsv` with one row per raw file | the coverage curve and the stop reason |
 | `<raw>.fasta` | concatenated proteomes (`.faa`) of the selected genomes (+ host FASTA if "append host" is on) | step 4 database |
 
 `Reason` values: `PRIVILEGE_UNIQUE_PEPTIDE_1PCT` (Marker2), `PRIVILEGE_UNIQUE_3TYPES` and
-`*_REP` (Marker4), `GREEDY`, `GREEDY_FULL_COVERAGE`, `FALLBACK_MIN1`.
+`*_REP` (Marker4), `GREEDY`, `GREEDY_COVERAGE` (PSM coverage cut), `GREEDY_FULL_COVERAGE`, `FALLBACK_MIN1`.
 
 Skip: `<raw>.fasta` exists and is non-empty.
 
@@ -196,6 +199,7 @@ and intensity, so only they appear in the files below (except `genome_rank_score
 | `genome_final_ranked.tsv` | `Rank` (0-based), `Genome`, the evidence columns, `Reason`, greedy and knee diagnostics, `TotalCoveredPeptides	Coverage	Increment` | `Selection_label` and row order of `Genome.tsv` |
 | `genome_final_selected.tsv` | `Genome	Reason` (`PRIVILEGE_UNIQUE_PEPTIDE_1PCT`, `GREEDY_core`, `GREEDY_mid`, `GREEDY_tail`), footer `#PrivilegeGenomes`, `#GreedyGenomes`, `#FocusKnee`, `#ComprehensiveKnee` | checkpoint; variant check |
 | `Genome.tsv` | **main genome table**, see below | users |
+| `Genome_unique_peptides.tsv` | same columns and rows as `Genome.tsv`; `Intensity` is summed from peptides unique to that genome only | users |
 | `Genome.html` | genome table with lineage and MGnify links | report (GUI copies it to `report/reports/`) |
 | `Taxa.tsv` | `Name	Score	Rank	domain	kingdom	phylum	class	order	family	genus	species	Intensity <sample>`...; one row per taxon per rank; `Score` = sum of `genome_score_S` | users |
 | `Taxa_report.tsv` | as `Taxa.tsv` without `Score` | `report_taxonomy_summary.html` |
@@ -210,6 +214,7 @@ and intensity, so only they appear in the files below (except `genome_rank_score
   mapping only to it.
 - GTDB lineage from the MAG database taxa file; NCBI from the bundled GTDB->NCBI mapping.
 - Intensity = sum of the genome's razor-protein intensities (taxonomic abundance).
+- `Genome_unique_peptides.tsv` repeats this table with Intensity = sum of peptides that map only to that genome (no host proteins, no other MAG genomes). Shared peptides contribute 0.
 
 ### 7c. Functional annotation (`R/functional_annotation/`)
 

@@ -485,6 +485,14 @@ Finally, MetaPilot selects:
 
 and writes them to `genome_selected.tsv` along with selection reasons.
 
+### When to stop adding genomes (pFind, FragPipe, open search)
+
+pFind, FragPipe and open search can stop the same ranking at a PSM coverage instead of the knee. Automatic remains the default. The alternative keeps seed genomes, then walks the greedy order until the cumulative share of marker PSMs reaches a target (default 0.95), a step guard fires, or the genome cap is hit.
+
+The step guard is the coverage and step-guard cut adopted from MetaLab-MAG (J Proteome Res 2023). It stops at the last genome that still adds more than one marker PSM and more than the guard's share of marker PSMs, because PSM increments along this ranking do not fall steadily. Set the guard to 0 to reach the target exactly. This is not the MetaLab-MAG workflow: MetaLab-MAG ranks by plain greedy cover of PSMs, whereas this cut runs on MetaPilot's ranking.
+
+The ranked table appends `CutStep` (1 for a selected genome) and `InRanking` (0 for genomes listed after the cap). Do not read PSM coverage from the rows after the cap; those values are not a ranking. `genome_selection_summary.tsv` has one row per raw file: genomes selected, coverage reached, stop reason, the Focus and Comprehensive positions, and how many genomes reach 0.80, 0.90, 0.95 and 0.99.
+
 ### Output ordering and labels (core/mid/tail)
 
 `genome_ranked.tsv` records the full ranking order (selected-first plus remaining ranked genomes) and includes:

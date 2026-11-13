@@ -8,19 +8,18 @@ import javafx.scene.control.Toggle;
 import javafx.scene.layout.*;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
-import javafx.scene.text.Font;
-import javafx.scene.text.FontWeight;
-import javafx.scene.paint.Color;
 import javafx.scene.control.Alert.AlertType;
 import java.util.Optional;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.util.converter.DefaultStringConverter;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
+import uk.ac.quadram.metapilot.task.common.gui.ParameterSection;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX.ExperimentRow;
 import uk.ac.quadram.metapilot.task.common.gui.IsobaricLabelingPanel;
 import uk.ac.quadram.metapilot.task.common.gui.DdaIgcInputOutputPanel;
 import uk.ac.quadram.metapilot.task.par.MetaData;
+import uk.ac.quadram.metapilot.dbSearch.pfind.PFindEnzymes;
 import uk.ac.quadram.metapilot.MetaPilotApp;
 import uk.ac.quadram.metapilot.task.dda.igc.DDAIgcPFindTask;
 import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcPFindParameters;
@@ -28,6 +27,7 @@ import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcPFindParameterIO;
 import uk.ac.quadram.metapilot.resources.MetaResourceIO;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.common.gui.AbstractWorkflowPanel;
+import uk.ac.quadram.metapilot.task.common.gui.MetadataConfigurationPanel;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -90,7 +90,7 @@ public class MetaPilotDdaIgcPFindPanel extends AbstractWorkflowPanel<DDAIgcPFind
         // Initialize parameter IO instance
         parameterIO = new DDAIgcPFindParameterIO();
         
-        loadEnzymesFromIni();
+        loadEnzymes();
         loadModificationsFromIni();
         
         // Initialize isobaric labeling panel
@@ -147,7 +147,6 @@ public class MetaPilotDdaIgcPFindPanel extends AbstractWorkflowPanel<DDAIgcPFind
         VBox tabContent = new VBox(10);
         tabContent.setPadding(new Insets(10));
         tabContent.setMinWidth(960);
-        tabContent.setMinHeight(760);
         // Data already loaded in constructor
         // Create main grid layout for parameters with 2-column responsive sizing
         GridPane mainGrid = new GridPane();
@@ -155,8 +154,6 @@ public class MetaPilotDdaIgcPFindPanel extends AbstractWorkflowPanel<DDAIgcPFind
         mainGrid.setVgap(15);
         mainGrid.setPadding(new Insets(10));
         mainGrid.setMinWidth(940);
-        mainGrid.setMinHeight(740);
-        VBox.setVgrow(mainGrid, Priority.ALWAYS);
         // Column constraints for 2-column layout (50% + 50%) with minimum widths
         ColumnConstraints col1 = new ColumnConstraints();
         col1.setPercentWidth(50);
@@ -170,36 +167,30 @@ public class MetaPilotDdaIgcPFindPanel extends AbstractWorkflowPanel<DDAIgcPFind
         // Row constraints for proper height distribution
         RowConstraints row1 = new RowConstraints();
         row1.setVgrow(Priority.ALWAYS);
-        row1.setMinHeight(400);
         mainGrid.getRowConstraints().add(row1);
         // Left column: Enzyme Settings, Additional Parameters, Taxonomic Analysis, Modifications (stacked)
         VBox leftColumn = new VBox(15);
         leftColumn.setMinWidth(430);
-        VBox enzymeSection = createEnzymeSection();
-        VBox additionalParamsSection = createAdditionalParametersSection();
-        VBox modificationsSection = createModificationsSection();
+        TitledPane enzymeSection = createEnzymeSection();
+        TitledPane additionalParamsSection = createAdditionalParametersSection();
+        TitledPane modificationsSection = createModificationsSection();
         leftColumn.getChildren().addAll(enzymeSection, additionalParamsSection, modificationsSection);
         GridPane.setVgrow(leftColumn, Priority.ALWAYS);
         // Right column: Quantitative Mode and Metadata Configuration (stacked)
         VBox rightColumn = new VBox(15);
         rightColumn.setMinWidth(430);
-        VBox quantModeSection = createQuantitativeModeSection();
-        VBox metadataSection = createMetadataConfigurationSection();
+        TitledPane quantModeSection = createQuantitativeModeSection();
+        TitledPane metadataSection = createMetadataConfigurationSection();
         rightColumn.getChildren().addAll(quantModeSection, metadataSection);
         GridPane.setVgrow(rightColumn, Priority.ALWAYS);
         // Add columns to grid
         mainGrid.add(leftColumn, 0, 0);
         mainGrid.add(rightColumn, 1, 0);
-        tabContent.getChildren().add(mainGrid);
+        tabContent.getChildren().add(ParameterSection.createViewport(mainGrid));
         return tabContent;
     }
-    private VBox createQuantitativeModeSection() {
+    private TitledPane createQuantitativeModeSection() {
         VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #f5f5f5; -fx-background-radius: 5;");
-        section.setMinHeight(300);
-        VBox.setVgrow(section, Priority.ALWAYS);
-        Label titleLabel = createSectionTitle("Quantitative Mode");
         quantModeGroup = new ToggleGroup();
         // Radio buttons for quantitative modes
         RadioButton labelFreeRadio = new RadioButton("Label-free");
@@ -212,7 +203,6 @@ public class MetaPilotDdaIgcPFindPanel extends AbstractWorkflowPanel<DDAIgcPFind
         radioBox.getChildren().addAll(labelFreeRadio, isobaricRadio);
         // StackPane for overlapping panels
         StackPane labelingStackPane = new StackPane();
-        labelingStackPane.setMinHeight(200);
         labelingStackPane.setMaxHeight(Double.MAX_VALUE);
         VBox.setVgrow(labelingStackPane, Priority.ALWAYS);
         
@@ -232,30 +222,15 @@ public class MetaPilotDdaIgcPFindPanel extends AbstractWorkflowPanel<DDAIgcPFind
             updateParameterView();
             updateMetadataTable();
         });
-        section.getChildren().addAll(titleLabel, radioBox, labelingStackPane);
-        return section;
+        section.getChildren().addAll(radioBox, labelingStackPane);
+        return ParameterSection.create("Quantitative Mode", section);
     }
     private void updateMetadataTableFromIOPanel() {
         // Update metadata table when Parameters tab is selected
         updateMetadataTable();
     }
-    private void loadEnzymesFromIni() {
-        try (InputStream in = getClass().getClassLoader().getResourceAsStream("enzyme_default.ini")) {
-            if (in != null) {
-                BufferedReader reader = new BufferedReader(new InputStreamReader(in));
-                Pattern pattern = Pattern.compile("EN\\d+=(.+?) ");
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    Matcher m = pattern.matcher(line);
-                    if (m.find()) {
-                        String enzymeName = m.group(1).trim();
-                        enzymes.add(enzymeName);
-                    }
-                }
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+    private void loadEnzymes() {
+        enzymes.addAll(PFindEnzymes.names());
     }
     private void loadModificationsFromIni() {
         try (InputStream in = getClass().getClassLoader().getResourceAsStream("modification_default.ini")) {
@@ -275,20 +250,12 @@ public class MetaPilotDdaIgcPFindPanel extends AbstractWorkflowPanel<DDAIgcPFind
             e.printStackTrace();
         }
     }
-    private Label createSectionTitle(String title) {
-        Label label = new Label(title);
-        label.setFont(Font.font("System", FontWeight.BOLD, 14));
-        label.setTextFill(Color.DARKBLUE);
-        return label;
-    }
+
     // --- END: Methods adapted from MetaPilotDdaIgcMaxQuantPanel ---
 
     // --- BEGIN: Adapted methods from MaxQuant panel ---
-    private VBox createEnzymeSection() {
+    private TitledPane createEnzymeSection() {
         VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #f5f5f5; -fx-background-radius: 5;");
-        Label titleLabel = createSectionTitle("Enzyme Settings");
         HBox enzymeParamsBox = new HBox(15);
         enzymeParamsBox.setAlignment(Pos.CENTER_LEFT);
         VBox enzymeBox = new VBox(5);
@@ -333,14 +300,11 @@ public class MetaPilotDdaIgcPFindPanel extends AbstractWorkflowPanel<DDAIgcPFind
         digestionModeComboBox.setOnAction(e -> updateParameterView());
         digestionModeBox.getChildren().add(digestionModeComboBox);
         enzymeParamsBox.getChildren().addAll(enzymeBox, missedCleavagesBox, digestionModeBox);
-        section.getChildren().addAll(titleLabel, enzymeParamsBox);
-        return section;
+        section.getChildren().addAll(enzymeParamsBox);
+        return ParameterSection.create("Enzyme Settings", section);
     }
-    private VBox createAdditionalParametersSection() {
+    private TitledPane createAdditionalParametersSection() {
         VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #f0f8ff; -fx-background-radius: 5;");
-        Label titleLabel = createSectionTitle("Additional Parameters");
         GridPane paramGrid = new GridPane();
         paramGrid.setHgap(15);
         paramGrid.setVgap(8);
@@ -388,17 +352,12 @@ public class MetaPilotDdaIgcPFindPanel extends AbstractWorkflowPanel<DDAIgcPFind
         spectraClusteringCheckBox.setSelected(false);
         spectraClusteringCheckBox.setOnAction(e -> updateParameterView());
         checkBoxContainer.getChildren().addAll(generateSampleSpecificDBCheckBox, spectraClusteringCheckBox);
-        section.getChildren().addAll(titleLabel, paramGrid, checkBoxContainer);
-        return section;
+        section.getChildren().addAll(paramGrid, checkBoxContainer);
+        return ParameterSection.create("Additional Parameters", section);
     }
 
-    private VBox createModificationsSection() {
+    private TitledPane createModificationsSection() {
         VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #f5f5f5; -fx-background-radius: 5;");
-        section.setMinHeight(250);
-        VBox.setVgrow(section, Priority.ALWAYS);
-        Label titleLabel = createSectionTitle("Modifications");
         GridPane modGrid = new GridPane();
         modGrid.setHgap(15);
         modGrid.setVgap(10);
@@ -470,16 +429,14 @@ public class MetaPilotDdaIgcPFindPanel extends AbstractWorkflowPanel<DDAIgcPFind
         modGrid.add(removeFixedModButton, 0, 2);
         modGrid.add(removeVariableModButton, 1, 2);
         modGrid.add(modSelectionContainer, 0, 3, 2, 1);
-        section.getChildren().addAll(titleLabel, modGrid);
-        return section;
+        section.getChildren().addAll(modGrid);
+        TitledPane pane = ParameterSection.create("Modifications", section);
+        pane.setMinHeight(250);
+        VBox.setVgrow(pane, Priority.ALWAYS);
+        return pane;
     }
-    private VBox createMetadataConfigurationSection() {
+    private TitledPane createMetadataConfigurationSection() {
         VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #fff8f0; -fx-background-radius: 5;");
-        section.setMinHeight(200);
-        VBox.setVgrow(section, Priority.ALWAYS);
-        Label titleLabel = createSectionTitle("Metadata Configuration");
         Label infoLabel = new Label("Metadata will be configured based on selected quantitative mode");
         infoLabel.setStyle("-fx-font-style: italic; -fx-text-fill: #666666;");
         metadataTable = new TableView<>(metadataTableData);
@@ -538,9 +495,12 @@ public class MetaPilotDdaIgcPFindPanel extends AbstractWorkflowPanel<DDAIgcPFind
         resetMetadataButton.setOnAction(e -> resetMetadataTable());
         
         controlBox.getChildren().addAll(metadataColumnComboBox, customColumnTextField, addMetadataColumnButton, removeMetadataColumnButton, resetMetadataButton);
-        section.getChildren().addAll(titleLabel, infoLabel, metadataTable, controlBox);
+        section.getChildren().addAll(infoLabel, metadataTable, controlBox);
         updateMetadataTable();
-        return section;
+        TitledPane pane = ParameterSection.create("Metadata Configuration", section);
+        pane.setMinHeight(200);
+        VBox.setVgrow(pane, Priority.ALWAYS);
+        return pane;
     }
     @Override
     protected void updateParameterView() {
@@ -1015,6 +975,8 @@ public class MetaPilotDdaIgcPFindPanel extends AbstractWorkflowPanel<DDAIgcPFind
             metadataDataArray.add(row.toArray());
         }
         params.setMetadataTableData(metadataDataArray);
+        MetadataConfigurationPanel.applyRows(params.getMetadata(), new ArrayList<>(metadataTableData),
+                MetadataConfigurationPanel.columnNames(metadataTable));
         
         consolePanel.appendConsoleText("✓ Successfully collected parameters from UI\n");
         LOGGER.info("Successfully collected parameters from UI for IGC pFind workflow");

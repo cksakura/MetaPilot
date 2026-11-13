@@ -10,6 +10,7 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
+import java.util.Locale;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -30,6 +31,7 @@ public final class MagGenomeSelectionService {
     public static final int UNLIMITED_MAXIMUM_SELECTED = MarkerGenomeSelector.UNLIMITED_MAXIMUM_SELECTED;
     public static final String SELECTION_STRATEGY_FOCUS = MarkerGenomeSelector.KNEE_MODE_FOCUS;
     public static final String SELECTION_STRATEGY_COMPREHENSIVE = MarkerGenomeSelector.KNEE_MODE_COMPREHENSIVE;
+    public static final String SELECTION_STRATEGY_PSM_COVERAGE = MarkerGenomeSelector.KNEE_MODE_PSM_COVERAGE;
 
     private MagGenomeSelectionService() {
     }
@@ -38,6 +40,9 @@ public final class MagGenomeSelectionService {
         public MagDbItem magDb;
         public String genomeSelectorMode;
         public String genomeSelectionStrategy;
+        public double genomeSelectionPsmCoverage = uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut.DEFAULT_PSM_COVERAGE;
+        public double genomeSelectionStepGuard = uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut.DEFAULT_STEP_GUARD;
+        public int genomeSelectionMaxGenomes = uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut.DEFAULT_MAX_GENOMES;
         public Collection<? extends MetaPSM> psms;
         public DiaNNPrecursor[] diaPrecursors;
         public File inputResultFile;
@@ -100,8 +105,10 @@ public final class MagGenomeSelectionService {
         boolean useMarker4 = MagDbItem.MARKER4.equalsIgnoreCase(request.genomeSelectorMode);
         SelectionResources resources = resolveResources(request, useMarker4, cb);
         boolean enableAutoRep = useMarker4;
+        MarkerGenomeSelector selectorUsed = null;
         if (!psmList.isEmpty()) {
             MarkerGenomeSelector selector = newSelector(request);
+            selectorUsed = selector;
             MetaPSM[] psmArray = psmList.toArray(new MetaPSM[0]);
             if (resources.markerFasta != null && request.logDiagnostics) {
                 logMarkerSelectionDiagnostics(psmList, resources.markerFasta, cb);
@@ -114,6 +121,7 @@ public final class MagGenomeSelectionService {
                     enableAutoRep);
         } else if (request.diaPrecursors != null && request.diaPrecursors.length > 0) {
             MarkerGenomeSelector selector = newSelector(request);
+            selectorUsed = selector;
             selector.selectMarkerGenomesWithKnee(request.diaPrecursors, resources.markerFasta, resources.genomesTaxaTsv,
                     request.evidenceFile.getAbsolutePath(),
                     request.rankedFile.getAbsolutePath(),
@@ -122,6 +130,7 @@ public final class MagGenomeSelectionService {
                     enableAutoRep);
         } else if (hasContent(request.inputResultFile)) {
             MarkerGenomeSelector selector = newSelector(request);
+            selectorUsed = selector;
             selector.selectMarkerGenomesWithKnee(request.inputResultFile.getAbsolutePath(),
                     resources.markerFasta, resources.genomesTaxaTsv,
                     request.evidenceFile.getAbsolutePath(),
@@ -129,6 +138,10 @@ public final class MagGenomeSelectionService {
                     request.selectedFile.getAbsolutePath(),
                     request.maximumSelected,
                     enableAutoRep);
+        }
+
+        if (selectorUsed != null) {
+            publishCut(selectorUsed, request, cb);
         }
 
         genomeSet.addAll(readSelectedGenomes(request.selectedFile));
@@ -184,6 +197,52 @@ public final class MagGenomeSelectionService {
         }
     }
 
+    private static void publishCut(MarkerGenomeSelector selector, Request request, ProgressCallback cb) {
+        MarkerGenomeSelector.SelectionResult result = selector.getLastSelectionResult();
+        if (result == null || request.selectedFile == null) {
+            return;
+        }
+        String raw = rawFileName(request);
+        int genomes = result.selected == null ? 0 : result.selected.size();
+        String coverage = Double.isNaN(result.psmCoverageReached) ? "n/a"
+                : String.format(Locale.ROOT, "%.1f%%", result.psmCoverageReached * 100.0);
+        cb.onMessage(raw + ": " + result.stopReason + ", PSM coverage " + coverage + ", " + genomes + " genomes");
+        if (uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut.isPsmCoverage(result.selectionStrategy)) {
+            double target = uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut.DEFAULT_PSM_COVERAGE;
+            try {
+                if (result.psmCoverageThresholdText != null && !result.psmCoverageThresholdText.isEmpty()) {
+                    target = Double.parseDouble(result.psmCoverageThresholdText);
+                }
+            } catch (NumberFormatException ignored) {
+            }
+            int maxGenomes = request.genomeSelectionMaxGenomes;
+            String missed = uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut.missedTargetMessage(target,
+                    result.psmCoverageReached, result.stopReason, maxGenomes);
+            if (!missed.isEmpty()) {
+                cb.onMessage(raw + ": " + missed);
+            }
+        }
+        try {
+            uk.ac.quadram.metapilot.task.mag.GenomeSelectionSummary.writeSample(
+                    new File(request.selectedFile.getParentFile(),
+                            uk.ac.quadram.metapilot.task.mag.GenomeSelectionSummary.FILE_NAME),
+                    raw, result);
+        } catch (IOException e) {
+            cb.onMessage("WARNING: could not write genome selection summary for " + raw + ": " + e.getMessage());
+        }
+    }
+
+    private static String rawFileName(Request request) {
+        File selected = request.selectedFile;
+        if (selected != null && selected.getParentFile() != null && selected.getParentFile().getParentFile() != null) {
+            return selected.getParentFile().getParentFile().getName();
+        }
+        if (request.sourceDescription != null) {
+            return new File(request.sourceDescription).getName();
+        }
+        return "";
+    }
+
     private static String normalizeSelectionStrategy(String strategy) {
         if (strategy == null || strategy.trim().isEmpty()) {
             return SELECTION_STRATEGY_FOCUS;
@@ -194,6 +253,8 @@ public final class MagGenomeSelectionService {
     private static MarkerGenomeSelector newSelector(Request request) {
         MarkerGenomeSelector selector = new MarkerGenomeSelector();
         selector.setKneeSelectionMode(normalizeSelectionStrategy(request.genomeSelectionStrategy));
+        selector.setPsmCoverageCut(request.genomeSelectionPsmCoverage, request.genomeSelectionStepGuard,
+                request.genomeSelectionMaxGenomes);
         if (request.representativeLevel != null && !request.representativeLevel.trim().isEmpty()) {
             selector.setRepresentativeLevel(request.representativeLevel);
         }

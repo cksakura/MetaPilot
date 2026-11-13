@@ -2,7 +2,7 @@
 
 This folder contains the current release-facing documentation for MetaPilot, plus an archive of historical implementation notes.
 
-Current version target: `1.1.1`.
+Current version target: `1.2.0`.
 
 ## User Guides
 

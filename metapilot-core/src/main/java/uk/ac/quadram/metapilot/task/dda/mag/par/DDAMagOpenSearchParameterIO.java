@@ -10,9 +10,11 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import uk.ac.quadram.metapilot.core.msfragger.MSFraggerHeadlessRunner;
+import uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut;
 import uk.ac.quadram.metapilot.core.opensearch.OpenSearchLayout;
 import uk.ac.quadram.metapilot.task.par.BaseParameterIO;
 import uk.ac.quadram.metapilot.task.par.MetaData;
+import uk.ac.quadram.metapilot.task.par.SampleMetadata;
 
 /**
  * Parameter persistence for the DDA MAG open-search workflow.
@@ -26,8 +28,9 @@ import uk.ac.quadram.metapilot.task.par.MetaData;
  * as FragPipe's {@code search_mode} and {@code genome_selector_mode} do.
  * <p>
  * Experiments are read from and written to {@link MetaData} using
- * {@code file_path}/{@code experiment_name}, so a parameter file from this
- * workflow is interchangeable in shape with the others.
+ * {@code file_path}/{@code experiment_name}/{@code fraction}. Missing
+ * {@code fraction} defaults to 1 on load (same as pFind), so older GUI
+ * exports without that field still produce a FlashLFQ-ready MetaData.
  * <p>
  * The filename comes from {@link OpenSearchLayout#PARAMETER_FILE} rather than a
  * duplicated literal, because {@code ResultFolderCleaner} detects the workflow
@@ -81,21 +84,30 @@ public class DDAMagOpenSearchParameterIO extends BaseParameterIO {
 
 				JSONArray experiments = io.optJSONArray("experiments");
 				if (experiments != null) {
-					List<String> rawFiles = new ArrayList<>();
-					List<String> expNames = new ArrayList<>();
+					String[] rawFiles = new String[experiments.length()];
+					String[] expNames = new String[experiments.length()];
+					int[] fractions = new int[experiments.length()];
+					int[] replicates = new int[experiments.length()];
 					List<String[]> rows = new ArrayList<>();
 					for (int i = 0; i < experiments.length(); i++) {
 						JSONObject exp = experiments.getJSONObject(i);
 						String file = exp.optString("file_path", "");
 						String name = exp.optString("experiment_name", "");
-						rawFiles.add(file);
-						expNames.add(name);
-						rows.add(new String[] { file, name, "1" });
+						int fraction = exp.optInt("fraction", 1);
+						if (fraction <= 0) {
+							fraction = 1;
+						}
+						rawFiles[i] = file;
+						expNames[i] = name;
+						fractions[i] = fraction;
+						replicates[i] = 1;
+						rows.add(new String[] { file, name, String.valueOf(fraction) });
 					}
-					MetaData metaData = params.getMetadata() == null ? new MetaData() : params.getMetadata();
-					metaData.setRawFiles(rawFiles.toArray(new String[0]));
-					metaData.setExpNames(expNames.toArray(new String[0]));
-					params.setMetadata(metaData);
+					// Same full MetaData reconstruction as DDAMagPfindParameterIO:
+					// FlashLFQ ExperimentalDesign needs fractions/replicates; setting
+					// only rawFiles/expNames leaves those arrays empty (length 0) and
+					// mag-opensearch Step F crashes with ArrayIndexOutOfBoundsException.
+					params.setMetadata(new MetaData(rawFiles, expNames, fractions, replicates));
 					params.setExperimentData(rows);
 				}
 			}
@@ -129,8 +141,28 @@ public class DDAMagOpenSearchParameterIO extends BaseParameterIO {
 				params.setSpectraCluster(extra.optBoolean("spectra_clustering", false));
 				params.setGenomeSelectorMode(
 						extra.optString("genome_selector_mode", params.getGenomeSelectorMode()));
-				params.setGenomeSelectionStrategy(
-						extra.optString("genome_selection_strategy", params.getGenomeSelectionStrategy()));
+				String storedStrategy = extra.optString("genome_selection_strategy", params.getGenomeSelectionStrategy());
+				String strategyWarning = GenomeSelectionCut.strategyReplacementWarning(storedStrategy);
+				if (strategyWarning != null) {
+					LOGGER.warn(strategyWarning);
+				}
+				params.setGenomeSelectionStrategy(GenomeSelectionCut.strategyOrDefault(storedStrategy));
+				GenomeSelectionCut.LoadedCoverage loaded = GenomeSelectionCut.readAdditionalKeys(extra,
+						params.getGenomeSelectionPsmCoverage(), params.getGenomeSelectionStepGuard(),
+						params.getGenomeSelectionMaxGenomes());
+				params.setGenomeSelectionPsmCoverage(loaded.coverage);
+				params.setGenomeSelectionStepGuard(loaded.stepGuard);
+				params.setGenomeSelectionMaxGenomes(loaded.maxGenomes);
+				if (loaded.replacementWarning != null) {
+					LOGGER.warn(loaded.replacementWarning);
+				}
+				if (loaded.anyKey) {
+					String warning = GenomeSelectionCut.unusedCoverageKeysWarning(params.getGenomeSelectionStrategy(),
+							loaded.coverage, loaded.stepGuard, loaded.maxGenomes);
+					if (warning != null) {
+						LOGGER.warn(warning);
+					}
+				}
 				params.setParallelTasks(extra.optInt("opensearch_parallel_tasks", params.getParallelTasks()));
 
 				params.setSearchEngines(extra.optString("search_engines", params.getSearchEngines()));
@@ -148,6 +180,28 @@ public class DDAMagOpenSearchParameterIO extends BaseParameterIO {
 				params.setClosedStageEnabled(extra.optBoolean("closed_stage_enabled", params.isClosedStageEnabled()));
 				params.setClosedStagePrecursorPpm(
 						extra.optDouble("closed_stage_precursor_ppm", params.getClosedStagePrecursorPpm()));
+				params.setClosedOpenIntegration(
+						extra.optString("closed_open_integration", params.getClosedOpenIntegration()));
+				params.setClosedStageTopN(extra.optInt("closed_stage_topn", params.getClosedStageTopN()));
+				params.setJointMs2Features(extra.optBoolean("joint_ms2_features", params.isJointMs2Features()));
+				params.setCascadeMs2Features(extra.optBoolean("cascade_ms2_features", params.isCascadeMs2Features()));
+				params.setCascadeClosedRerank(
+						extra.optBoolean("cascade_closed_rerank", params.isCascadeClosedRerank()));
+				params.setIdentificationVersion(
+						extra.optString("identification_version", params.getIdentificationVersion()));
+				// v2 changes two defaults; an explicit value in the file still wins.
+				params.setSampleDecoyMethod(extra.optString("sample_decoy_method",
+						params.isIdentificationV2() ? "pseudo_reverse" : params.getSampleDecoyMethod()));
+				params.setJointMs2MaxOpenRank(extra.optInt("joint_ms2_max_open_rank",
+						params.isIdentificationV2() ? Math.max(3, params.getJointMs2MaxOpenRank())
+								: params.getJointMs2MaxOpenRank()));
+				params.setJointFragmentTolerancePpm(
+						extra.optDouble("joint_fragment_tolerance_ppm", params.getJointFragmentTolerancePpm()));
+				params.setJointAcceptUnexplained(
+						extra.optBoolean("joint_accept_unexplained", params.isJointAcceptUnexplained()));
+				params.setJointCompareArms(extra.optBoolean("joint_compare_arms", params.isJointCompareArms()));
+				params.setJointWithheldFeatures(
+						extra.optString("joint_withheld_features", params.getJointWithheldFeatures()));
 				params.setExpectedPeaksEnabled(
 						extra.optBoolean("expected_peaks_enabled", params.isExpectedPeaksEnabled()));
 				params.setExpectedPeakToleranceDa(
@@ -247,6 +301,12 @@ public class DDAMagOpenSearchParameterIO extends BaseParameterIO {
 				params.setClassifierTrainQValue(
 						extra.optDouble("classifier_train_qvalue", params.getClassifierTrainQValue()));
 				params.setLocalFdr(extra.optDouble("local_fdr", params.getLocalFdr()));
+				params.setEntrapmentEnabled(extra.optBoolean("entrapment_enabled", params.isEntrapmentEnabled()));
+				params.setEntrapmentSeed(extra.optLong("entrapment_seed", params.getEntrapmentSeed()));
+				int entrapmentDigit = extra.optInt("entrapment_id_digit", params.getEntrapmentIdDigit());
+				if (entrapmentDigit >= 1 && entrapmentDigit <= 9) {
+					params.setEntrapmentIdDigit(entrapmentDigit);
+				}
 			}
 
 			// --- modifications -----------------------------------------------
@@ -267,8 +327,16 @@ public class DDAMagOpenSearchParameterIO extends BaseParameterIO {
 				params.setVariMods(mods);
 			}
 
+			List<String[]> metadataRows = SampleMetadata.fromJson(json);
+			if (metadataRows != null) {
+				params.setMetadataTableData(metadataRows);
+				SampleMetadata.apply(params.getMetadata(), metadataRows);
+			}
 			return params;
 
+		} catch (IllegalArgumentException e) {
+			LOGGER.error("Rejected open-search parameters from {}: {}", inputFile.getAbsolutePath(), e.getMessage());
+			throw e;
 		} catch (Exception e) {
 			LOGGER.error("Error loading open-search parameters from " + inputFile, e);
 			return null;
@@ -308,10 +376,13 @@ public class DDAMagOpenSearchParameterIO extends BaseParameterIO {
 			if (metaData != null && metaData.getRawFiles() != null) {
 				String[] rawFiles = metaData.getRawFiles();
 				String[] expNames = metaData.getExpNames();
+				int[] fractions = metaData.getFractions();
 				for (int i = 0; i < rawFiles.length; i++) {
 					JSONObject exp = new JSONObject();
 					exp.put("file_path", rawFiles[i]);
 					exp.put("experiment_name", expNames != null && i < expNames.length ? expNames[i] : "");
+					int fraction = fractions != null && i < fractions.length && fractions[i] > 0 ? fractions[i] : 1;
+					exp.put("fraction", fraction);
 					experiments.put(exp);
 				}
 			} else if (params.getExperimentData() != null) {
@@ -321,6 +392,18 @@ public class DDAMagOpenSearchParameterIO extends BaseParameterIO {
 					JSONObject exp = new JSONObject();
 					exp.put("file_path", row.length > 0 ? row[0] : "");
 					exp.put("experiment_name", row.length > 1 ? row[1] : "");
+					int fraction = 1;
+					if (row.length > 2) {
+						try {
+							fraction = Integer.parseInt(row[2]);
+							if (fraction <= 0) {
+								fraction = 1;
+							}
+						} catch (NumberFormatException ignored) {
+							fraction = 1;
+						}
+					}
+					exp.put("fraction", fraction);
 					experiments.put(exp);
 				}
 			}
@@ -355,6 +438,8 @@ public class DDAMagOpenSearchParameterIO extends BaseParameterIO {
 			additionalParams.put("spectra_clustering", params.isSpectraCluster());
 			additionalParams.put("genome_selector_mode", params.getGenomeSelectorMode());
 			additionalParams.put("genome_selection_strategy", params.getGenomeSelectionStrategy());
+			GenomeSelectionCut.writeAdditionalKeys(additionalParams, params.getGenomeSelectionPsmCoverage(),
+					params.getGenomeSelectionStepGuard(), params.getGenomeSelectionMaxGenomes());
 			additionalParams.put("opensearch_parallel_tasks", params.getParallelTasks());
 
 			additionalParams.put("search_engines", params.getSearchEngines());
@@ -367,6 +452,18 @@ public class DDAMagOpenSearchParameterIO extends BaseParameterIO {
 			additionalParams.put("round1_closed_precursor_ppm", params.getRound1ClosedPrecursorPpm());
 			additionalParams.put("closed_stage_enabled", params.isClosedStageEnabled());
 			additionalParams.put("closed_stage_precursor_ppm", params.getClosedStagePrecursorPpm());
+			additionalParams.put("closed_open_integration", params.getClosedOpenIntegration());
+			additionalParams.put("closed_stage_topn", params.getClosedStageTopN());
+			additionalParams.put("joint_ms2_features", params.isJointMs2Features());
+			additionalParams.put("cascade_ms2_features", params.isCascadeMs2Features());
+			additionalParams.put("cascade_closed_rerank", params.isCascadeClosedRerank());
+			additionalParams.put("sample_decoy_method", params.getSampleDecoyMethod());
+			additionalParams.put("identification_version", params.getIdentificationVersion());
+			additionalParams.put("joint_ms2_max_open_rank", params.getJointMs2MaxOpenRank());
+			additionalParams.put("joint_fragment_tolerance_ppm", params.getJointFragmentTolerancePpm());
+			additionalParams.put("joint_accept_unexplained", params.isJointAcceptUnexplained());
+			additionalParams.put("joint_compare_arms", params.isJointCompareArms());
+			additionalParams.put("joint_withheld_features", params.getJointWithheldFeatures());
 			additionalParams.put("expected_peaks_enabled", params.isExpectedPeaksEnabled());
 			additionalParams.put("expected_peak_tolerance_da", params.getExpectedPeakToleranceDa());
 			additionalParams.put("expected_peak_min_targets", params.getExpectedPeakMinTargets());
@@ -430,6 +527,9 @@ public class DDAMagOpenSearchParameterIO extends BaseParameterIO {
 			additionalParams.put("classifier_max_iterations", params.getClassifierMaxIterations());
 			additionalParams.put("classifier_train_qvalue", params.getClassifierTrainQValue());
 			additionalParams.put("local_fdr", params.getLocalFdr());
+			additionalParams.put("entrapment_enabled", params.isEntrapmentEnabled());
+			additionalParams.put("entrapment_seed", params.getEntrapmentSeed());
+			additionalParams.put("entrapment_id_digit", params.getEntrapmentIdDigit());
 			json.put("additional_parameters", additionalParams);
 
 			// --- modifications -----------------------------------------------
@@ -448,6 +548,7 @@ public class DDAMagOpenSearchParameterIO extends BaseParameterIO {
 				}
 			}
 			json.put("variable_modifications", variableMods);
+			json.put(SampleMetadata.JSON_KEY, SampleMetadata.toJson(params.getMetadataTableData()));
 
 			boolean success = writeJsonToFile(json, outputFile);
 			if (success) {

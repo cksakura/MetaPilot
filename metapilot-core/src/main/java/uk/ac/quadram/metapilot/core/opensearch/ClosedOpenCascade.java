@@ -21,7 +21,7 @@ import java.util.function.Consumer;
  * alone; per-spectrum target-decoy q, accepted at q &lt;= 1%.</li>
  * <li><b>Open stage.</b> {@link ModificationValidator#validateRemaining} on the open winners of
  * the spectra the closed stage did not accept.</li>
- * <li><b>Peptides.</b> Per class (closed, open unmodified, open known shift), base peptide
+ * <li><b>Peptides.</b> Per class (closed, open unmodified, open accepted shift), base peptide
  * (I = L) at its best score, walked to q &lt;= 1%. A true peptide is often accepted in more than
  * one class and counts once in their union while decoy peptides rarely repeat, so the union can
  * exceed 1%; every class threshold is then lowered by one factor until it does not.</li>
@@ -49,7 +49,7 @@ public final class ClosedOpenCascade {
 	static final double UNION_STEP = 0.9;
 
 	public enum IdClass {
-		CLOSED("closed"), OPEN_UNMODIFIED("open_unmodified"), OPEN_KNOWN_SHIFT("open_known_shift");
+		CLOSED("closed"), OPEN_UNMODIFIED("open_unmodified"), OPEN_ACCEPTED_SHIFT("open_accepted_shift");
 
 		public final String label;
 
@@ -122,6 +122,18 @@ public final class ClosedOpenCascade {
 	 */
 	public static ClosedStage validateClosed(List<OpenSearchPsm> closed, SemiSupervisedPsmClassifier.Config cfg,
 			double fdr, Consumer<String> progress) throws Exception {
+		return validateClosed(closed, cfg, fdr, progress, false, new String[0]);
+	}
+
+	/**
+	 * @param rerank        score every closed candidate (all reported ranks, with {@code hit_rank} as a
+	 *                      feature) and take each spectrum's best-scoring one as its winner; otherwise
+	 *                      only the rank-1 PSM is scored
+	 * @param extraFeatures external features added to {@link #CLOSED_FEATURES} (the predicted-spectrum
+	 *                      block)
+	 */
+	public static ClosedStage validateClosed(List<OpenSearchPsm> closed, SemiSupervisedPsmClassifier.Config cfg,
+			double fdr, Consumer<String> progress, boolean rerank, String[] extraFeatures) throws Exception {
 		Map<String, OpenSearchPsm> bySpectrum = new LinkedHashMap<>();
 		for (OpenSearchPsm psm : closed) {
 			OpenSearchPsm held = bySpectrum.get(spectrumKey(psm));
@@ -129,18 +141,83 @@ public final class ClosedOpenCascade {
 				bySpectrum.put(spectrumKey(psm), psm);
 			}
 		}
-		List<OpenSearchPsm> winners = new ArrayList<>(bySpectrum.values());
-		prepareClosed(winners);
-		OpenSearchFeatures.computeAggregateCounts(winners);
-		SemiSupervisedPsmClassifier.Result scored = SemiSupervisedPsmClassifier.classify(winners, cfg,
-				CLOSED_FEATURES, progress);
+		List<OpenSearchPsm> rankOne = new ArrayList<>(bySpectrum.values());
+		List<OpenSearchPsm> pool = rerank ? closed : rankOne;
+		prepareClosed(pool);
+		// Counts over the rank-1 PSMs, as without re-ranking; a lower-ranked candidate gets its
+		// peptide's and protein's rank-1 counts, so the counts do not grow with the report depth.
+		OpenSearchFeatures.computeAggregateCounts(rankOne);
+		if (rerank) {
+			Map<String, Integer> peptideCount = new HashMap<>();
+			Map<String, Integer> proteinCount = new HashMap<>();
+			for (OpenSearchPsm psm : rankOne) {
+				if (psm.getPeptide() != null) {
+					peptideCount.put(psm.getPeptide(), psm.getSamePeptideCount());
+				}
+				if (psm.getProtein() != null) {
+					proteinCount.put(psm.getProtein(), psm.getSameProteinCount());
+				}
+			}
+			for (OpenSearchPsm psm : pool) {
+				psm.setSamePeptideCount(psm.getPeptide() == null ? 0 : peptideCount.getOrDefault(psm.getPeptide(), 0));
+				psm.setSameProteinCount(psm.getProtein() == null ? 0 : proteinCount.getOrDefault(psm.getProtein(), 0));
+			}
+		}
+		List<String> names = new ArrayList<>(Arrays.asList(CLOSED_FEATURES));
+		if (rerank) {
+			names.add("hit_rank");
+		}
+		names.addAll(Arrays.asList(extraFeatures));
+		if (progress != null) {
+			progress.accept(String.format(Locale.ROOT, "Closed stage: scoring %,d candidates of %,d spectra on %d features%s",
+					pool.size(), rankOne.size(), names.size(), rerank ? " (all reported ranks, winner after rescoring)" : ""));
+		}
+		SemiSupervisedPsmClassifier.Config used = cfg;
+		if (rerank) {
+			// A spectrum's candidates compete on the logit; the clamped logit ties confident ones.
+			used = copyOf(cfg);
+			used.unclampedLogits = true;
+		}
+		SemiSupervisedPsmClassifier.Result scored = SemiSupervisedPsmClassifier.classify(pool, used,
+				names.toArray(new String[0]), progress);
+		for (int i = 0; i < pool.size(); i++) {
+			OpenSearchPsm psm = pool.get(i);
+			psm.setClassScore(scored.scores[i]);
+			psm.setClassLogit(scored.logits[i]);
+			psm.setEngineSupport("MSFRAGGER");
+		}
+		List<OpenSearchPsm> winners = rankOne;
+		if (rerank) {
+			Map<String, OpenSearchPsm> best = new LinkedHashMap<>();
+			for (OpenSearchPsm psm : rankOne) {
+				best.put(spectrumKey(psm), psm);
+			}
+			int overruled = 0;
+			for (OpenSearchPsm psm : pool) {
+				String key = spectrumKey(psm);
+				OpenSearchPsm held = best.get(key);
+				double a = psm.getComparableScore();
+				double b = held.getComparableScore();
+				if (a > b || (a == b && psm.getHitRank() < held.getHitRank())) {
+					best.put(key, psm);
+				}
+			}
+			winners = new ArrayList<>(best.values());
+			for (OpenSearchPsm psm : winners) {
+				if (psm.getHitRank() != 1) {
+					overruled++;
+				}
+			}
+			if (progress != null) {
+				progress.accept(String.format(Locale.ROOT,
+						"Closed stage: the rescored winner is not the closed rank 1 for %,d of %,d spectra (%.1f%%)",
+						overruled, winners.size(), 100.0 * overruled / Math.max(1, winners.size())));
+			}
+		}
 		double[] scores = new double[winners.size()];
 		boolean[] targets = new boolean[winners.size()];
 		for (int i = 0; i < winners.size(); i++) {
 			OpenSearchPsm psm = winners.get(i);
-			psm.setClassScore(scored.scores[i]);
-			psm.setClassLogit(scored.logits[i]);
-			psm.setEngineSupport("MSFRAGGER");
 			scores[i] = psm.getComparableScore();
 			targets[i] = psm.isTarget();
 		}
@@ -153,6 +230,22 @@ public final class ClosedOpenCascade {
 			}
 		}
 		return new ClosedStage(winners, accepted);
+	}
+
+	private static SemiSupervisedPsmClassifier.Config copyOf(SemiSupervisedPsmClassifier.Config cfg) {
+		SemiSupervisedPsmClassifier.Config c = new SemiSupervisedPsmClassifier.Config();
+		c.folds = cfg.folds;
+		c.maxIterations = cfg.maxIterations;
+		c.trainQValue = cfg.trainQValue;
+		c.positiveFilter = cfg.positiveFilter;
+		c.convergenceTolerance = cfg.convergenceTolerance;
+		c.minPositives = cfg.minPositives;
+		c.stratifyPositiveSeeding = cfg.stratifyPositiveSeeding;
+		c.negativeSource = cfg.negativeSource;
+		c.maxTrainingInstances = cfg.maxTrainingInstances;
+		c.modelFactory = cfg.modelFactory;
+		c.unclampedLogits = cfg.unclampedLogits;
+		return c;
 	}
 
 	/** Peptide-level filter and the union check. */

@@ -25,7 +25,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 PROJECT_NAME="MetaPilot"
-VERSION="1.1.1"
+VERSION="1.2.0"
 BUILD_PROFILE="linux-web"
 MAVEN_OPTS="-Xmx2g"
 

@@ -92,6 +92,9 @@ final class MetaDiaMarkerCoreRunnerBridge {
 		copy.setRepresentativeGenomeTopN(original.getRepresentativeGenomeTopN());
 		copy.setRepresentativeMinMarkerPeptides(original.getRepresentativeMinMarkerPeptides());
 		copy.setRepresentativeClusteringDryRun(original.isRepresentativeClusteringDryRun());
+		copy.setEntrapmentEnabled(original.isEntrapmentEnabled());
+		copy.setEntrapmentSeed(original.getEntrapmentSeed());
+		copy.setEntrapmentIdDigit(original.getEntrapmentIdDigit());
 		copy.setMetadata(cloneMetadataWithRawFiles(metadata, diaFiles));
 		copy.setDbSearchResultFile(original.getDbSearchResultFile());
 		copy.setReportDir(original.getReportDir());

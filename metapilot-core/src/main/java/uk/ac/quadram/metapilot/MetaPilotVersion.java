@@ -9,7 +9,7 @@ import java.util.jar.Manifest;
  */
 public final class MetaPilotVersion {
 
-	private static final String FALLBACK_VERSION = "1.1.1";
+	private static final String FALLBACK_VERSION = "1.2.0";
 
 	private MetaPilotVersion() {
 	}

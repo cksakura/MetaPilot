@@ -3,6 +3,7 @@ package uk.ac.quadram.metapilot.task.dia.gui;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
+import uk.ac.quadram.metapilot.task.common.gui.ParameterSection;
 import javafx.scene.layout.*;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -90,8 +91,8 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 
 	private VBox leftColumn;
 	private VBox rightColumn;
-	private VBox libraryControlsPlaceholder;
-	private VBox libraryTablePlaceholder;
+	private TitledPane libraryControlsPlaceholder;
+	private TitledPane libraryTablePlaceholder;
 
 	public MetaPilotDiaSeedPanel(MagDbItem[] magDbItems, MetaResourceParameters resourceParams) {
 		super();
@@ -150,25 +151,8 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 			}
 
 			MetaData metaData = new MetaData(rawFiles, expNames, fractions, replicates);
-
-			List<String> colNames = metadataConfigurationPanel != null ? metadataConfigurationPanel.getMetadataColumnNames() : java.util.Collections.emptyList();
-			int metaTypeCount = Math.max(1, colNames.size());
-			List<MetaPilotDdaIgcMaxQuantPanel.MetadataRow> metadataTableData = metadataConfigurationPanel != null ? metadataConfigurationPanel.getMetadataTableData() : java.util.Collections.emptyList();
-			int rowCount = metadataTableData.size();
-			String[][] metaInfo = new String[rowCount][metaTypeCount];
-			if (!colNames.isEmpty()) {
-				for (int i = 0; i < rowCount; i++) {
-					MetaPilotDdaIgcMaxQuantPanel.MetadataRow row = metadataTableData.get(i);
-					for (int j = 0; j < colNames.size(); j++) {
-						String v = row.getValueByColumnName(colNames.get(j));
-						metaInfo[i][j] = v != null ? v : "";
-					}
-				}
-			}
-			metaData.setMetaTypeCount(metaTypeCount);
-			metaData.setMetaInfo(metaInfo);
-			if (!colNames.isEmpty()) {
-				metaData.setMetaTypeTitles(colNames.toArray(new String[0]));
+			if (metadataConfigurationPanel != null) {
+				metadataConfigurationPanel.applyTo(metaData);
 			}
 
 			String result = ioPanel.getOutputDirectory();
@@ -311,7 +295,7 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 		if (libraryControlsPlaceholder != null) {
 			int idx = leftColumn.getChildren().indexOf(libraryControlsPlaceholder);
 			if (idx >= 0) {
-				VBox controlsSection = libraryPanel.getControlsSection();
+				TitledPane controlsSection = libraryPanel.getControlsSection();
 				leftColumn.getChildren().set(idx, controlsSection);
 				VBox.setVgrow(controlsSection, Priority.ALWAYS);
 			}
@@ -319,7 +303,9 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 		if (libraryTablePlaceholder != null) {
 			int idx = rightColumn.getChildren().indexOf(libraryTablePlaceholder);
 			if (idx >= 0) {
-				rightColumn.getChildren().set(idx, libraryPanel.getTableSection());
+				TitledPane tableSection = libraryPanel.getTableSection();
+				rightColumn.getChildren().set(idx, tableSection);
+				VBox.setVgrow(tableSection, Priority.ALWAYS);
 			}
 		}
 	}
@@ -412,15 +398,12 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 		VBox tabContent = new VBox(10);
 		tabContent.setPadding(new Insets(10));
 		tabContent.setMinWidth(960);
-		tabContent.setMinHeight(840);
 
 		GridPane mainGrid = new GridPane();
 		mainGrid.setHgap(15);
 		mainGrid.setVgap(15);
 		mainGrid.setPadding(new Insets(10));
 		mainGrid.setMinWidth(940);
-		mainGrid.setMinHeight(740);
-		VBox.setVgrow(mainGrid, Priority.ALWAYS);
 
 		ColumnConstraints col1 = new ColumnConstraints();
 		col1.setPercentWidth(50);
@@ -434,21 +417,18 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 
 		RowConstraints row1 = new RowConstraints();
 		row1.setVgrow(Priority.ALWAYS);
-		row1.setMinHeight(400);
 		mainGrid.getRowConstraints().add(row1);
 
 		// Left column: DIA Settings, Modifications, Library controls (Spectral library generation) - same column, modifications above progress bar
 		leftColumn = new VBox(15);
 		leftColumn.setMinWidth(430);
-		VBox diaSettingsSection = createDiaSettingsSection();
-		VBox modificationsSection = createModificationsSection();
+		TitledPane diaSettingsSection = createDiaSettingsSection();
+		TitledPane modificationsSection = createModificationsSection();
 
-		libraryControlsPlaceholder = new VBox();
-		libraryControlsPlaceholder.setMinHeight(100);
-		Label controlsPlaceholderLabel = new Label("Library Generation (available after MAG database is selected)");
+		Label controlsPlaceholderLabel = new Label("Available after a MAG database is selected");
 		controlsPlaceholderLabel.setStyle("-fx-text-alignment: center; -fx-font-style: italic; -fx-text-fill: #666666;");
-		libraryControlsPlaceholder.getChildren().add(controlsPlaceholderLabel);
-		libraryControlsPlaceholder.setAlignment(Pos.CENTER);
+		libraryControlsPlaceholder = ParameterSection.create("Spectral Library Generation", controlsPlaceholderLabel);
+		libraryControlsPlaceholder.setMinHeight(100);
 
 		leftColumn.getChildren().addAll(diaSettingsSection, modificationsSection, libraryControlsPlaceholder);
 		VBox.setVgrow(libraryControlsPlaceholder, Priority.ALWAYS);
@@ -459,7 +439,8 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 		rightColumn.setMinWidth(430);
 
 		libraryTablePlaceholder = createPlaceholderTableSection();
-		metadataConfigurationPanel = new MetadataConfigurationPanel();
+		VBox.setVgrow(libraryTablePlaceholder, Priority.ALWAYS);
+		metadataConfigurationPanel = new MetadataConfigurationPanel(true);
 		metadataConfigurationPanel.setParameterUpdateCallback(() -> updateParameterView());
 
 		rightColumn.getChildren().addAll(libraryTablePlaceholder, metadataConfigurationPanel);
@@ -468,28 +449,21 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 		mainGrid.add(leftColumn, 0, 0);
 		mainGrid.add(rightColumn, 1, 0);
 
-		tabContent.getChildren().add(mainGrid);
+		tabContent.getChildren().add(ParameterSection.createViewport(mainGrid));
 		return tabContent;
 	}
 
-	private VBox createPlaceholderTableSection() {
-		VBox section = new VBox(10);
-		section.setPadding(new Insets(10));
-		section.setStyle("-fx-background-color: #f8f8f8; -fx-background-radius: 5;");
-		section.setMinHeight(200);
-		Label placeholderLabel = new Label("Library Table\n(available after MAG database is selected)");
+	private TitledPane createPlaceholderTableSection() {
+		Label placeholderLabel = new Label("Available after a MAG database is selected");
 		placeholderLabel.setStyle("-fx-text-alignment: center; -fx-font-style: italic; -fx-text-fill: #666666;");
-		section.getChildren().add(placeholderLabel);
-		section.setAlignment(Pos.CENTER);
+		TitledPane section = ParameterSection.create("Available Libraries", placeholderLabel);
+		section.setMinHeight(200);
 		return section;
 	}
 
-	private VBox createDiaSettingsSection() {
+	private TitledPane createDiaSettingsSection() {
 		VBox section = new VBox(10);
-		section.setPadding(new Insets(10));
-		section.setStyle("-fx-background-color: #f0f8ff; -fx-background-radius: 5;");
 
-		Label titleLabel = createSectionTitle("DIA Analysis Settings");
 
 		GridPane settingsGrid = new GridPane();
 		settingsGrid.setHgap(15);
@@ -568,16 +542,13 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 		deepPeptideBox.getChildren().addAll(deepPeptideLabel, usePeptideRoundCheckBox, thresholdBox);
 		updatePeptideBasedControlsState();
 
-		section.getChildren().addAll(titleLabel, settingsGrid, deepPeptideBox);
-		return section;
+		section.getChildren().addAll(settingsGrid, deepPeptideBox);
+		return ParameterSection.create("DIA Analysis Settings", section);
 	}
 
-	private VBox createModificationsSection() {
+	private TitledPane createModificationsSection() {
 		VBox section = new VBox(10);
-		section.setPadding(new Insets(10));
-		section.setStyle("-fx-background-color: #f0f8ff; -fx-background-radius: 5;");
 
-		Label titleLabel = createSectionTitle("Modifications");
 
 		VBox checkboxesBox = new VBox(8);
 
@@ -614,8 +585,8 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 				kGGCheckBox
 		);
 
-		section.getChildren().addAll(titleLabel, checkboxesBox);
-		return section;
+		section.getChildren().addAll(checkboxesBox);
+		return ParameterSection.create("Modifications", section);
 	}
 
 	private VBox createMagDbStatusPanel() {
@@ -893,24 +864,8 @@ public class MetaPilotDiaSeedPanel extends AbstractWorkflowPanel<MetaParameterDi
 				replicates[i] = 1;
 			}
 			MetaData metaData = new MetaData(rawFiles, expNames, fractions, replicates);
-			List<String> colNames = metadataConfigurationPanel != null ? metadataConfigurationPanel.getMetadataColumnNames() : java.util.Collections.emptyList();
-			List<MetaPilotDdaIgcMaxQuantPanel.MetadataRow> metadataTableData = metadataConfigurationPanel != null ? metadataConfigurationPanel.getMetadataTableData() : java.util.Collections.emptyList();
-			int rowCount = metadataTableData.size();
-			int metaTypeCount = Math.max(1, colNames.size());
-			String[][] metaInfo = new String[rowCount][metaTypeCount];
-			if (!colNames.isEmpty()) {
-				for (int i = 0; i < rowCount; i++) {
-					MetaPilotDdaIgcMaxQuantPanel.MetadataRow row = metadataTableData.get(i);
-					for (int j = 0; j < colNames.size(); j++) {
-						String v = row.getValueByColumnName(colNames.get(j));
-						metaInfo[i][j] = v != null ? v : "";
-					}
-				}
-			}
-			metaData.setMetaTypeCount(metaTypeCount);
-			metaData.setMetaInfo(metaInfo);
-			if (!colNames.isEmpty()) {
-				metaData.setMetaTypeTitles(colNames.toArray(new String[0]));
+			if (metadataConfigurationPanel != null) {
+				metadataConfigurationPanel.applyTo(metaData);
 			}
 
 			boolean appendHostDb = magDatabasePanel != null && magDatabasePanel.isAppendHostDb();

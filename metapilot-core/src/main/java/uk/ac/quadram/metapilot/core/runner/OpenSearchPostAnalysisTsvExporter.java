@@ -2,6 +2,7 @@ package uk.ac.quadram.metapilot.core.runner;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -82,6 +83,7 @@ public final class OpenSearchPostAnalysisTsvExporter {
 		public String[] intensityTitles;
 		public MetaProtein[] metaProteins;
 		public HashMap<String, double[]> genomeIntensityMap;
+		public HashMap<String, double[]> genomeUniqueIntensityMap;
 		/** genome -> double[]{S, p_emp, q_value} when PSM-score/top-k scoring is used; null otherwise */
 		public HashMap<String, double[]> genomeDiaStats;
 		/** The genome test behind {@link #genomeDiaStats} when it was {@link GenomeEvidenceTest}; else null. */
@@ -199,6 +201,9 @@ public final class OpenSearchPostAnalysisTsvExporter {
 						TargetDecoyFasta.DECOY_TAG, magDb.getIdentifier(),
 						OpenSearchPostAnalysisTsvExporter::resolveFileIndex, true, decoyPeptides, decoyMetaPsms,
 						genomeEvidence));
+        analysis.finalSelection.write(outDir);
+        uk.ac.quadram.metapilot.core.mag.MagResultFinalisationService.writeCatalogueContext(outDir, magDb);
+
 		String[] proteinScoreColumns = genomeEvidence != null ? DdaMagReportExportService.PICKED_PROTEIN_SCORE_COLUMNS
 				: DdaMagReportExportService.RESAMPLING_PROTEIN_SCORE_COLUMNS;
 
@@ -212,12 +217,14 @@ public final class OpenSearchPostAnalysisTsvExporter {
 
 		cb.onMessage(taskName + ": writing id.tsv");
 		DdaMagReportExportService.writeIdentificationSummary(combinedDir, outDir, spectraDir, fileIdMap,
-				analysis.filePsmCount, analysis.fileSequenceSets, null);
+				analysis.filePsmCount, identifiedSpectraPerFile(targetPsms, fileIdMap, fileList),
+				analysis.fileSequenceSets, null);
 
 		cb.onMessage(taskName + ": writing " + pepOut.getName());
 		DdaMagReportExportService.writePeptideReport(pepOut, analysis.peptideList, analysis.psmMap,
 				analysis.pepPsmCountMap, analysis.pepChargeMap, analysis.proteinIdMap, fileList,
-				MetaConstants.labelFree, intensityTitles, buildRazorProteinMap(peptides, analysis.razorProteins));
+				MetaConstants.labelFree, intensityTitles, buildRazorProteinMap(peptides, analysis.razorProteins),
+				SHIFT_COLUMNS, shiftColumnsBySequence(targetPsms));
 
 		cb.onMessage(taskName + ": writing " + proOut.getName());
 		DdaMagReportExportService.writeProteinReport(proOut, analysis.proteins, analysis.proteinIntensityMap,
@@ -237,12 +244,13 @@ public final class OpenSearchPostAnalysisTsvExporter {
 		result.finalPeptidesTsv = pepOut;
 		result.razorProteinsTsv = proOut;
 		result.allProteinsTsv = allProOut;
-		result.peptideCount = peptides.length;
+		result.peptideCount = analysis.peptideList.size();
 		result.proteinCount = analysis.proteins == null ? 0 : analysis.proteins.length;
 		result.genomeScoreMap = analysis.genomeScoreMap;
 		result.intensityTitles = intensityTitles;
 		result.metaProteins = analysis.metaProteins;
 		result.genomeIntensityMap = analysis.genomeIntensityMap;
+		result.genomeUniqueIntensityMap = analysis.genomeUniqueIntensityMap;
 		result.genomeDiaStats = analysis.genomeDiaStats;
 		result.genomeEvidence = genomeEvidence;
 		result.psmCountMap = analysis.psmCountMap;
@@ -462,6 +470,55 @@ public final class OpenSearchPostAnalysisTsvExporter {
 	 * which rows this peptide's PSMs, or its FlashLFQ intensity, are split
 	 * across.
 	 */
+	/** final_peptides.tsv column: the localised shift's explanation ("subst A->T|unimod ..."), empty otherwise. */
+	static final String SHIFT_EXPLANATION_COLUMN = "Shift explanation";
+
+	/**
+	 * The peptide table's trailing shift columns: the explanation, how its site is known
+	 * ({@code localised_explained} by the fragments, {@code assigned} from UNIMOD) and its class.
+	 */
+	static final String SHIFT_COLUMNS = SHIFT_EXPLANATION_COLUMN + "\tShift state\tShift class";
+
+	/** {@link #SHIFT_COLUMNS} per "Full Sequence", tab-separated, for rows with an explanation. */
+	static Map<String, String> shiftColumnsBySequence(Collection<OpenSearchPsm> psms) {
+		Map<String, String> out = new HashMap<>();
+		if (psms == null) {
+			return out;
+		}
+		for (OpenSearchPsm psm : psms) {
+			String explanation = psm.getResolvedShiftExplanation();
+			if (!explanation.isEmpty()) {
+				out.putIfAbsent(psm.getCanonicalModifiedSequence(),
+						explanation + "\t" + psm.getResolvedShiftState() + "\t" + psm.getResolvedShiftClass());
+			}
+		}
+		return out;
+	}
+
+	/**
+	 * The explanation each localised-explained peptide row reports, keyed by its "Full Sequence"
+	 * (the canonical modified sequence {@link #resolveCanonicalModifiedSequences} resolved).
+	 */
+	static Map<String, String> shiftExplanationsBySequence(Collection<OpenSearchPsm> psms) {
+		Map<String, String> out = new HashMap<>();
+		if (psms == null) {
+			return out;
+		}
+		for (OpenSearchPsm psm : psms) {
+			String explanation = psm.getResolvedShiftExplanation();
+			if (!explanation.isEmpty()) {
+				out.putIfAbsent(psm.getCanonicalModifiedSequence(), explanation);
+			}
+		}
+		return out;
+	}
+
+	/** False only for a shift whose site was assigned from UNIMOD, not placed by the fragments. */
+	private static boolean siteMeasured(OpenSearchPsm psm) {
+		return psm.getShiftLocalisation() == null
+				|| psm.getShiftLocalisation().state != uk.ac.quadram.metapilot.core.opensearch.ShiftLocaliser.State.ASSIGNED;
+	}
+
 	static void resolveCanonicalModifiedSequences(List<OpenSearchPsm> psms) {
 		if (psms == null || psms.isEmpty()) {
 			return;
@@ -473,17 +530,26 @@ public final class OpenSearchPostAnalysisTsvExporter {
 		for (List<OpenSearchPsm> group : byFamily.values()) {
 			OpenSearchPsm best = null;
 			for (OpenSearchPsm psm : group) {
-				if (best == null || score(psm) > score(best)) {
+				// A PSM whose fragments placed the shift represents its family before one whose site
+				// was assigned from UNIMOD: the row then shows a measured site wherever one exists.
+				if (best == null || siteMeasured(psm) && !siteMeasured(best)
+						|| siteMeasured(psm) == siteMeasured(best) && score(psm) > score(best)) {
 					best = psm;
 				}
 			}
 			String resolvedSequence = decorateWithRepresentativeSite(best);
 			double resolvedMass = representativeMonoisotopicMass(best);
 			int resolvedSite = representativeSiteIndex(best);
+			String resolvedExplanation = best.isShiftLocalisedExplained()
+					? best.getShiftLocalisation().explanationText() : "";
 			for (OpenSearchPsm psm : group) {
 				psm.setResolvedModifiedSequence(resolvedSequence);
 				psm.setResolvedMonoisotopicMass(resolvedMass);
 				psm.setResolvedSiteIndex(resolvedSite);
+				psm.setResolvedShiftExplanation(resolvedExplanation);
+				psm.setResolvedShiftStateAndClass(
+						resolvedExplanation.isEmpty() ? "" : best.getShiftLocalisation().state.name().toLowerCase(Locale.ROOT),
+						resolvedExplanation.isEmpty() ? "" : best.getShiftLocalisation().explanationClassText());
 			}
 		}
 	}
@@ -499,6 +565,9 @@ public final class OpenSearchPostAnalysisTsvExporter {
 	 * two callers do different things once they know it applies.
 	 */
 	private static double canonicalMassOf(OpenSearchPsm representative) {
+		if (representative.isShiftLocalisedExplained()) {
+			return representative.getShiftLocalisation().explainedMass;
+		}
 		if (representative.getPeakId() < 0) {
 			return Double.NaN;
 		}
@@ -524,7 +593,7 @@ public final class OpenSearchPostAnalysisTsvExporter {
 	 * to it so the two cannot drift.
 	 */
 	static int representativeSiteIndex(OpenSearchPsm representative) {
-		if (representative.isClosedStage()) {
+		if (representative.isClosedStage() && !representative.isShiftLocalisedExplained()) {
 			double[] mods = representative.getClosedModifications();
 			for (int i = 1; mods != null && i < mods.length; i++) {
 				if (mods[i] != 0.0) {
@@ -533,12 +602,20 @@ public final class OpenSearchPostAnalysisTsvExporter {
 			}
 			return -1;
 		}
+		if (representative.isShiftFoldedUnmodified()) {
+			return -1;
+		}
 		double canonicalMass = canonicalMassOf(representative);
 		if (Double.isNaN(canonicalMass) || Math.abs(canonicalMass) <= 0.05) {
 			return -1;
 		}
-		String localized = representative.getLocalizedSequence();
 		String peptide = representative.getPeptide();
+		int localised = representative.getLocalisedShiftSite();
+		if (localised >= 0 && peptide != null) {
+			// The fragment-supported site (ShiftLocaliser), not the search engine's placement.
+			return Math.min(localised, peptide.length() - 1);
+		}
+		String localized = representative.getLocalizedSequence();
 		int site = representative.getFirstLocalizedSiteIndex();
 		if (site < 0 || localized == null || peptide == null || localized.length() != peptide.length()) {
 			return -1;
@@ -548,18 +625,26 @@ public final class OpenSearchPostAnalysisTsvExporter {
 
 	private static String decorateWithRepresentativeSite(OpenSearchPsm representative) {
 		String familyKey = representative.getModificationFamilyKey();
-		if (representative.isClosedStage()) {
+		if (representative.isClosedStage() && !representative.isShiftLocalisedExplained()) {
 			return familyKey;
 		}
 		// The family key already carries no position for the unexplained and
 		// isotope-zero branches (see getModificationFamilyKey()); only a real,
 		// in-peak modification has a residue worth showing.
+		if (representative.isShiftFoldedUnmodified()) {
+			return familyKey;
+		}
 		double canonicalMass = canonicalMassOf(representative);
 		if (Double.isNaN(canonicalMass) || Math.abs(canonicalMass) <= 0.05) {
 			return familyKey;
 		}
-		String localized = representative.getLocalizedSequence();
 		String peptide = representative.getPeptide();
+		if (representative.getLocalisedShiftSite() >= 0 && peptide != null) {
+			int at = representativeSiteIndex(representative) + 1;
+			return peptide.substring(0, at) + String.format(Locale.ROOT, "[%+.4f]", canonicalMass)
+					+ peptide.substring(at);
+		}
+		String localized = representative.getLocalizedSequence();
 		int site = representative.getFirstLocalizedSiteIndex();
 		if (site < 0 || localized == null || peptide == null || localized.length() != peptide.length()) {
 			// No localization on the representative itself (or a malformed
@@ -585,10 +670,16 @@ public final class OpenSearchPostAnalysisTsvExporter {
 	 * carry bit-identical raw {@code precursor_neutral_mass} values.
 	 */
 	private static double representativeMonoisotopicMass(OpenSearchPsm representative) {
-		if (representative.isClosedStage()) {
+		if (representative.isClosedStage() && !representative.isShiftLocalisedExplained()) {
+			return representative.getCalcNeutralPepMass();
+		}
+		if (representative.isShiftFoldedUnmodified()) {
 			return representative.getCalcNeutralPepMass();
 		}
 		double canonicalMass = canonicalMassOf(representative);
+		if (representative.isShiftLocalisedExplained()) {
+			return representative.getCalcNeutralPepMass() + canonicalMass;
+		}
 		if (Double.isNaN(canonicalMass)) {
 			// No fitted peak: report the actually-observed ion mass, matching
 			// getModificationFamilyKey()'s own [unexplained:+massDiff] branch,
@@ -712,6 +803,24 @@ public final class OpenSearchPostAnalysisTsvExporter {
 	 * {@code base_name} is already the sample base name, so a direct lookup is
 	 * enough — but fall back to a suffix match in case an extension survives.
 	 */
+	/**
+	 * Distinct identified spectra (scans) per file. Under identification v2 a scan can carry one
+	 * identification per precursor, so this can be lower than the PSM count; final_summary.tsv's
+	 * identification rate counts spectra.
+	 */
+	static int[] identifiedSpectraPerFile(Collection<OpenSearchPsm> psms, Map<String, Integer> fileIdMap,
+			List<String> fileList) {
+		int[] out = new int[fileList.size()];
+		HashSet<Long> seen = new HashSet<>();
+		for (OpenSearchPsm psm : psms) {
+			int file = resolveFileIndex(psm.getFileName(), fileIdMap, fileList);
+			if (file >= 0 && file < out.length && seen.add(((long) file << 32) | (psm.getScan() & 0xffffffffL))) {
+				out[file]++;
+			}
+		}
+		return out;
+	}
+
 	private static int resolveFileIndex(String fileName, Map<String, Integer> fileIdMap, List<String> fileList) {
 		if (fileName == null || fileName.isBlank()) {
 			return -1;

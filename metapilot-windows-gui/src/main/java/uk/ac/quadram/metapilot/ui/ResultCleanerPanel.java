@@ -6,6 +6,7 @@ import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 import javafx.beans.property.ReadOnlyStringWrapper;
 import javafx.collections.FXCollections;
@@ -32,6 +33,7 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import javafx.stage.DirectoryChooser;
 
+import uk.ac.quadram.metapilot.ReleaseFeatures;
 import uk.ac.quadram.metapilot.core.clean.ResultFolderCleaner;
 import uk.ac.quadram.metapilot.core.clean.ResultFolderCleaner.CleanMode;
 import uk.ac.quadram.metapilot.core.clean.ResultFolderCleaner.CleanPreview;
@@ -535,7 +537,7 @@ public class ResultCleanerPanel extends BorderPane {
 	}
 
 	private List<WorkflowChoice> createWorkflowChoices() {
-		return List.of(
+		return Stream.of(
 				new WorkflowChoice("Select workflow...", null),
 				new WorkflowChoice("DDA / IGC Database / MaxQuant", WorkflowType.DDA_IGC_MAXQUANT),
 				new WorkflowChoice("DDA / IGC Database / pFind", WorkflowType.DDA_IGC_PFIND),
@@ -548,7 +550,8 @@ public class ResultCleanerPanel extends BorderPane {
 				new WorkflowChoice("DIA / Marker", WorkflowType.DIA_MARKER),
 				new WorkflowChoice("DIA / Seeded", WorkflowType.DIA_SEED),
 				new WorkflowChoice("DIA / Target", WorkflowType.DIA_TARGET),
-				new WorkflowChoice("DIA / Real-time", WorkflowType.DIA_REALTIME));
+				new WorkflowChoice("DIA / Real-time", WorkflowType.DIA_REALTIME))
+				.filter(c -> c.workflowType() == null || ReleaseFeatures.isAvailable(c.workflowType())).toList();
 	}
 
 	private String displayWorkflow(WorkflowType workflowType) {

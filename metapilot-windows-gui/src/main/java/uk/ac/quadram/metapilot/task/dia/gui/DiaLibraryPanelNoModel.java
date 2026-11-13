@@ -4,12 +4,10 @@ import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
+import uk.ac.quadram.metapilot.task.common.gui.ParameterSection;
 import javafx.scene.layout.*;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
-import javafx.scene.text.Font;
-import javafx.scene.text.FontWeight;
-import javafx.scene.paint.Color;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
@@ -79,8 +77,8 @@ public class DiaLibraryPanelNoModel extends VBox {
 	private MetaResourceParameters resourceParameters;
 	private File configFile;
 
-	private VBox controlsSection;
-	private VBox tableSection;
+	private TitledPane controlsSection;
+	private TitledPane tableSection;
 
 	public DiaLibraryPanelNoModel(MetaParameterDia metaParameter, MetaResourceParameters resourceParameters,
 			File configFile) {
@@ -129,12 +127,12 @@ public class DiaLibraryPanelNoModel extends VBox {
 	}
 
 	/** Returns the controls section (input type, file, enzyme, generate button, progress) for left column. */
-	public VBox getControlsSection() {
+	public TitledPane getControlsSection() {
 		return controlsSection;
 	}
 
 	/** Returns the library table section for right column - better view for many items. */
-	public VBox getTableSection() {
+	public TitledPane getTableSection() {
 		return tableSection;
 	}
 
@@ -155,13 +153,12 @@ public class DiaLibraryPanelNoModel extends VBox {
 		tableSection = createTableSection();
 	}
 
-	private VBox createControlsSection() {
+	private TitledPane createControlsSection() {
 		VBox section = new VBox(10);
-		section.setPadding(new Insets(10));
-		section.setStyle("-fx-background-color: #fff8dc; -fx-background-radius: 5;");
+
+
 		section.setMinWidth(350);
 
-		Label titleLabel = createSectionTitle("Spectral Library Generation");
 
 		HBox inputTypeBox = createInputTypeSelection();
 		HBox fileBox = createFileSelection();
@@ -169,21 +166,19 @@ public class DiaLibraryPanelNoModel extends VBox {
 		HBox generationBox = createGenerationControls();
 		VBox progressBox = createProgressSection();
 
-		section.getChildren().addAll(titleLabel, inputTypeBox, fileBox, enzymeBox, generationBox, progressBox);
+		section.getChildren().addAll(inputTypeBox, fileBox, enzymeBox, generationBox, progressBox);
 		VBox.setVgrow(progressBox, Priority.ALWAYS);
-		return section;
+		return ParameterSection.create("Spectral Library Generation", section);
 	}
 
-	private VBox createTableSection() {
+	private TitledPane createTableSection() {
 		VBox section = new VBox(10);
-		section.setPadding(new Insets(10));
-		section.setStyle("-fx-background-color: #f8f8f8; -fx-background-radius: 5;");
 		section.setMinHeight(300);
 		VBox.setVgrow(section, Priority.ALWAYS);
 
 		HBox headerBox = new HBox(10);
 		headerBox.setAlignment(Pos.CENTER_LEFT);
-		Label availableLabel = new Label("Available Libraries (select for identification):");
+		Label availableLabel = new Label("Select libraries for identification");
 		availableLabel.setStyle("-fx-font-weight: bold;");
 
 		Button checkAvailableButton = new Button("Check Available");
@@ -277,7 +272,7 @@ public class DiaLibraryPanelNoModel extends VBox {
 		libraryTable.getColumns().addAll(useCol, nameCol, pepCountCol, proteaseCol, missCol, typeCol);
 
 		section.getChildren().addAll(headerBox, libraryTable);
-		return section;
+		return ParameterSection.create("Available Libraries", section);
 	}
 
 	private HBox createInputTypeSelection() {
@@ -911,12 +906,6 @@ public class DiaLibraryPanelNoModel extends VBox {
 		}
 	}
 
-	private Label createSectionTitle(String title) {
-		Label label = new Label(title);
-		label.setFont(Font.font(null, FontWeight.BOLD, 14));
-		label.setTextFill(Color.DARKBLUE);
-		return label;
-	}
 
 	private void showError(String title, String content) {
 		Alert alert = new Alert(Alert.AlertType.ERROR);

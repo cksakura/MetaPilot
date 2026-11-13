@@ -10,6 +10,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.function.Predicate;
 
 import org.apache.logging.log4j.Logger;
 
@@ -535,6 +537,15 @@ public final class DeepIterativeCommonSupport {
 
 	public static int countNewPeptidesFromParquet(File parquetFile, HashSet<String> seenPeptides, String cut, Logger logger,
 			String taskName) {
+		return countNewPeptidesFromParquet(parquetFile, seenPeptides, cut, null, logger, taskName);
+	}
+
+	/**
+	 * As {@link #countNewPeptidesFromParquet(File, HashSet, String, Logger, String)}, counting only precursors accepted
+	 * by {@code countFilter} (null = all). Used by the entrapment Deep mode to count target peptides only.
+	 */
+	public static int countNewPeptidesFromParquet(File parquetFile, HashSet<String> seenPeptides, String cut,
+			Predicate<DiaNNPrecursor> countFilter, Logger logger, String taskName) {
 		if (parquetFile == null || !parquetFile.exists()) {
 			logger.warn(taskName + ": countNewPeptidesFromParquet: parquet file not found: {}", parquetFile);
 			return 0;
@@ -547,6 +558,9 @@ public final class DeepIterativeCommonSupport {
 			if (precursors != null) {
 				for (DiaNNPrecursor p : precursors) {
 					if (p == null || p.getIsDecoy()) {
+						continue;
+					}
+					if (countFilter != null && !countFilter.test(p)) {
 						continue;
 					}
 					String seq = p.getSeqString();
@@ -644,6 +658,69 @@ public final class DeepIterativeCommonSupport {
 			return false;
 		}
 		return true;
+	}
+
+	/**
+	 * Peptide-based combined FASTA for the selected genomes: every predicted peptide of
+	 * {@code <predictedFolder>/<genome>.predicted.tsv} with detectability at or above
+	 * {@code detectabilityThreshold}. Used by the DIA Seed Core / Focus and Comprehensive
+	 * workflows (GUI and CLI).
+	 */
+	public static boolean writeCombinedPeptideFastaFromSelectedGenomes(File predictedFolder, Set<String> genomeSet,
+			double detectabilityThreshold, File outputFasta, Logger logger, String taskName) {
+		if (genomeSet == null || genomeSet.isEmpty()) {
+			return false;
+		}
+		if (predictedFolder == null || !predictedFolder.isDirectory()) {
+			logger.error(taskName + ": predicted folder not found for peptide-based iterative FASTA: {}",
+					predictedFolder == null ? "null" : predictedFolder.getAbsolutePath());
+			return false;
+		}
+		HashMap<String, HashSet<String>> pepProMap = new HashMap<>();
+		for (String genome : genomeSet) {
+			File predictedFile = new File(predictedFolder, genome + ".predicted.tsv");
+			if (!predictedFile.isFile()) {
+				logger.warn(taskName + ": predicted file missing for selected genome: {}", genome);
+				continue;
+			}
+			try (BufferedReader reader = new BufferedReader(new FileReader(predictedFile))) {
+				reader.readLine();
+				String line;
+				while ((line = reader.readLine()) != null) {
+					String[] cs = line.split("\t");
+					if (cs.length < 3) {
+						continue;
+					}
+					double detectability;
+					try {
+						detectability = Double.parseDouble(cs[2]);
+					} catch (NumberFormatException nfe) {
+						continue;
+					}
+					if (detectability < detectabilityThreshold) {
+						continue;
+					}
+					String protein = cs[0];
+					String peptide = cs[1];
+					if (peptide == null || peptide.isEmpty()) {
+						continue;
+					}
+					pepProMap.computeIfAbsent(peptide, k -> new HashSet<>()).add(protein);
+				}
+			} catch (IOException e) {
+				logger.warn(taskName + ": error reading predicted file {}", predictedFile.getAbsolutePath(), e);
+			}
+		}
+		if (pepProMap.isEmpty()) {
+			logger.error(taskName + ": no peptides collected from selected genomes under threshold={}",
+					detectabilityThreshold);
+			return false;
+		}
+		boolean ok = writeCombinedFastaFromPeptideProteinMap(outputFasta, pepProMap, logger, taskName);
+		if (ok) {
+			logger.info(taskName + ": wrote peptide-based combined FASTA with {} stripped peptides", pepProMap.size());
+		}
+		return ok;
 	}
 
 	public static boolean ensureCombinedSpeclib(File combinedDir, File combinedSpeclib,
@@ -779,6 +856,23 @@ public final class DeepIterativeCommonSupport {
 			String roundHeaderLabel, String cut, boolean separateSearch, int goodFileCount,
 			UpdateMessageAction updateMessageAction,
 			RunRoundAction runRoundAction, ComputeStopRuleAction computeStopRuleAction, Logger logger, String taskName) {
+		return runIterativeRoundLoop(rankedFile, genomesPerRound, maxRounds, roundHeaderLabel, cut, separateSearch,
+				goodFileCount, updateMessageAction, runRoundAction, computeStopRuleAction, null, logger, taskName);
+	}
+
+	/**
+	 * As the 12-argument overload; the new-peptide increments of the stop rules count only precursors accepted by
+	 * {@code incrementFilter} (null = all; combined round parquets only). Used by the entrapment Deep mode, where
+	 * the shuffled entrapment genomes must not affect when the rounds stop.
+	 */
+	public static IterativeRoundLoopResult runIterativeRoundLoop(File rankedFile, int genomesPerRound, int maxRounds,
+			String roundHeaderLabel, String cut, boolean separateSearch, int goodFileCount,
+			UpdateMessageAction updateMessageAction, RunRoundAction runRoundAction,
+			ComputeStopRuleAction computeStopRuleAction, Predicate<DiaNNPrecursor> incrementFilter, Logger logger,
+			String taskName) {
+		if (separateSearch && incrementFilter != null) {
+			throw new IllegalArgumentException("incrementFilter is not supported with separate (per-file) round searches");
+		}
 		final double earlyRelativeGainThreshold = 0.01;
 		final int earlyConsecutiveRounds = 2;
 
@@ -820,7 +914,7 @@ public final class DeepIterativeCommonSupport {
 						logger, taskName);
 			} else {
 				File roundParquet = new File(roundDir, "round" + round + ".parquet");
-				incThis = countNewPeptidesFromParquet(roundParquet, seenPeptides, cut, logger, taskName);
+				incThis = countNewPeptidesFromParquet(roundParquet, seenPeptides, cut, incrementFilter, logger, taskName);
 			}
 			incPerRound.add(incThis);
 			roundsRecord.add(round);

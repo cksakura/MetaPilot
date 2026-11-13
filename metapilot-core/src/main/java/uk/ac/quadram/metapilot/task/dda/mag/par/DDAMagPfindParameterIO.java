@@ -12,6 +12,7 @@ import org.apache.logging.log4j.LogManager;
 import uk.ac.quadram.metapilot.core.mod.IsobaricTag;
 import uk.ac.quadram.metapilot.task.par.IsobaricLabelSettings;
 import uk.ac.quadram.metapilot.task.par.MetaData;
+import uk.ac.quadram.metapilot.task.par.SampleMetadata;
 import uk.ac.quadram.metapilot.task.par.BaseParameterIO;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 
@@ -59,6 +60,56 @@ public class DDAMagPfindParameterIO extends BaseParameterIO {
 	public DDAMagPfindParameters loadParameters(File inputFile) {
 		Object o = loadParametersFromFile(inputFile);
 		return (o instanceof DDAMagPfindParameters) ? (DDAMagPfindParameters) o : null;
+	}
+
+	@Override
+	public Object loadLastUsedParameters() {
+		File inputFile = new File(CONFIG_DIR, getLastUsedParametersFileName());
+		if (!inputFile.exists()) {
+			LOGGER.info("Last used parameters file not found: " + inputFile.getAbsolutePath());
+			return null;
+		}
+		return loadParametersFromFile(inputFile);
+	}
+
+	@Override
+	public Object loadAnalysisParameters(String resultDirectory) {
+		if (resultDirectory == null || resultDirectory.trim().isEmpty()) {
+			LOGGER.warn("Cannot load analysis parameters: result directory is null/empty");
+			return null;
+		}
+		File inputFile = new File(resultDirectory, getAnalysisParameterFileName());
+		if (!inputFile.exists()) {
+			LOGGER.info("Analysis parameters file not found: " + inputFile.getAbsolutePath());
+			return null;
+		}
+		return loadParametersFromFile(inputFile);
+	}
+
+	private static double requiredDouble(JSONObject object, String key) {
+		Object value = object.get(key);
+		try {
+			double parsed = Double.parseDouble(String.valueOf(value));
+			if (Double.isNaN(parsed) || Double.isInfinite(parsed)) {
+				throw new NumberFormatException(String.valueOf(value));
+			}
+			return parsed;
+		} catch (NumberFormatException e) {
+			throw new IllegalArgumentException(key + " must be a number (got " + value + ")");
+		}
+	}
+
+	private static int requiredInt(JSONObject object, String key) {
+		Object value = object.get(key);
+		try {
+			double parsed = Double.parseDouble(String.valueOf(value));
+			if (parsed != Math.rint(parsed) || parsed > Integer.MAX_VALUE || parsed < Integer.MIN_VALUE) {
+				throw new NumberFormatException(String.valueOf(value));
+			}
+			return (int) parsed;
+		} catch (NumberFormatException e) {
+			throw new IllegalArgumentException(key + " must be an integer (got " + value + ")");
+		}
 	}
 
 	@Override
@@ -124,6 +175,9 @@ public class DDAMagPfindParameterIO extends BaseParameterIO {
 			additionalParams.put("open_search", params.getOsp() != null && params.getOsp().isOpenSearch());
 			additionalParams.put("genome_selector_mode", params.getGenomeSelectorMode());
 			additionalParams.put("genome_selection_strategy", params.getGenomeSelectionStrategy());
+			additionalParams.put("genome_selection_psm_coverage", params.getGenomeSelectionPsmCoverage());
+			additionalParams.put("genome_selection_step_guard", params.getGenomeSelectionStepGuard());
+			additionalParams.put("genome_selection_max_genomes", params.getGenomeSelectionMaxGenomes());
 			additionalParams.put("generate_sample_specific_db", params.isReduceDb());
 			additionalParams.put("spectra_clustering", params.isSpectraCluster());
 			params.getPangenomeVariantSettings().save(additionalParams);
@@ -281,7 +335,33 @@ public class DDAMagPfindParameterIO extends BaseParameterIO {
 					params.getOsp().setOpenSearch(additionalParams.optBoolean("open_search", false));
 				}
 				params.setGenomeSelectorMode(additionalParams.optString("genome_selector_mode", MagDbItem.MARKER2));
-				params.setGenomeSelectionStrategy(additionalParams.optString("genome_selection_strategy", "Focus"));
+				String storedStrategy = additionalParams.optString("genome_selection_strategy", "Focus");
+				String strategyWarning = uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut
+						.strategyReplacementWarning(storedStrategy);
+				if (strategyWarning != null) {
+					LOGGER.warn(strategyWarning);
+				}
+				params.setGenomeSelectionStrategy(
+						uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut.strategyOrDefault(storedStrategy));
+				boolean coverageKey = additionalParams.has("genome_selection_psm_coverage");
+				boolean guardKey = additionalParams.has("genome_selection_step_guard");
+				boolean maxKey = additionalParams.has("genome_selection_max_genomes");
+				uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut.LoadedCoverage loaded =
+						uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut.readAdditionalKeys(additionalParams,
+								params.getGenomeSelectionPsmCoverage(), params.getGenomeSelectionStepGuard(),
+								params.getGenomeSelectionMaxGenomes());
+				params.setGenomeSelectionPsmCoverage(loaded.coverage);
+				params.setGenomeSelectionStepGuard(loaded.stepGuard);
+				params.setGenomeSelectionMaxGenomes(loaded.maxGenomes);
+				if (loaded.replacementWarning != null) {
+					LOGGER.warn(loaded.replacementWarning);
+				}
+				String coverageWarning = uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut.unusedCoverageKeysWarning(
+						params.getGenomeSelectionStrategy(), params.getGenomeSelectionPsmCoverage(),
+						params.getGenomeSelectionStepGuard(), params.getGenomeSelectionMaxGenomes());
+				if (coverageWarning != null && (coverageKey || guardKey || maxKey)) {
+					LOGGER.warn(coverageWarning);
+				}
 				params.setReduceDb(additionalParams.optBoolean("generate_sample_specific_db", true));
 				params.setSpectraCluster(additionalParams.optBoolean("spectra_clustering", true));
 				params.getPangenomeVariantSettings().load(additionalParams);
@@ -382,11 +462,15 @@ public class DDAMagPfindParameterIO extends BaseParameterIO {
 					metadataTableData.add(metadataRow);
 				}
 				params.setMetadataTableData(metadataTableData);
+				SampleMetadata.apply(params.getMetadata(), metadataTableData);
 			}
 
 			LOGGER.info("Successfully loaded parameters from {}", paramFile.getAbsolutePath());
 			return params;
 
+		} catch (IllegalArgumentException e) {
+			LOGGER.error("Rejected parameters in " + paramFile.getAbsolutePath() + ": " + e.getMessage());
+			throw e;
 		} catch (Exception e) {
 			LOGGER.error("Failed to load parameters from " + paramFile.getAbsolutePath(), e);
 			return createDefaultParameters();

@@ -1,5 +1,6 @@
 package uk.ac.quadram.metapilot.task.dda.mag.gui;
 
+import uk.ac.quadram.metapilot.core.fragpipe.FragpipeModifications;
 import uk.ac.quadram.metapilot.core.msfragger.MSFraggerHeadlessRunner;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -18,12 +19,13 @@ import uk.ac.quadram.metapilot.task.common.gui.MagDatabaseSettingsPanel;
 import uk.ac.quadram.metapilot.task.common.gui.ConsolePanel;
 import uk.ac.quadram.metapilot.task.common.gui.MetadataConfigurationPanel;
 import uk.ac.quadram.metapilot.task.common.gui.ModificationsPanel;
+import uk.ac.quadram.metapilot.task.common.gui.ParameterSection;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagFragPipeParameters;
 import uk.ac.quadram.metapilot.task.dda.mag.task.DDAMagFragPipeTask;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagFragPipeParameterIO;
+import uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem.MagVersion;
-import uk.ac.quadram.metapilot.task.mag.MarkerGenomeSelector;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.common.gui.AbstractWorkflowPanel;
@@ -59,19 +61,16 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
 
     // Additional parameters
     private ComboBox<Integer> threadsComboBox;
-    // Closed (default) vs Open search. Closed reproduces the historical behavior
-    // exactly; Open is a "must" for the combined/quant stage and independently
-    // optional for the marker/genome-selection stage (see openSearchMarkerCheckBox).
-    private ComboBox<String> searchModeComboBox;
-    private CheckBox openSearchMarkerCheckBox;
     // Power-user escape hatch: explicit .workflow file overrides, blank by default.
+    // Open search belongs to the dedicated DDA MAG open-search workflow; this panel
+    // always runs FragPipe closed (LFQ-MBR) unless a custom .workflow is supplied.
     private TextField customBasicWorkflowField;
     private Button browseCustomBasicWorkflowButton;
     private TextField customCombinedWorkflowField;
     private Button browseCustomCombinedWorkflowButton;
     private ComboBox<String> msDataTypeComboBox;
     private ComboBox<String> genomeSelectorComboBox;
-    private ComboBox<String> genomeSelectionStrategyComboBox;
+    private GenomeStopControls genomeStopControls;
 
     // Data
     private ObservableList<String> enzymes = FXCollections.observableArrayList();
@@ -117,7 +116,7 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
 
         // Initialize reusable components
         consolePanel = new ConsolePanel();
-        metadataPanel = new MetadataConfigurationPanel();
+        metadataPanel = new MetadataConfigurationPanel(true);
         magDatabasePanel = new MagDatabaseSettingsPanel();
         
         // Set up callbacks for parameter updates
@@ -229,7 +228,6 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
         VBox tabContent = new VBox(10);
         tabContent.setPadding(new Insets(10));
         tabContent.setMinWidth(960);
-        tabContent.setMinHeight(760);
 
         // Create main grid layout for parameters with 2-column responsive sizing
         GridPane mainGrid = new GridPane();
@@ -237,8 +235,6 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
         mainGrid.setVgap(15);
         mainGrid.setPadding(new Insets(10));
         mainGrid.setMinWidth(940);
-        mainGrid.setMinHeight(740);
-        VBox.setVgrow(mainGrid, Priority.ALWAYS);
 
         // Column constraints for 2-column layout
         ColumnConstraints col1 = new ColumnConstraints();
@@ -254,17 +250,18 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
         // Row constraints
         RowConstraints row1 = new RowConstraints();
         row1.setVgrow(Priority.ALWAYS);
-        row1.setMinHeight(400);
         mainGrid.getRowConstraints().add(row1);
 
         // Left column: Enzyme Settings, Additional Parameters, and Modifications Panel (NO taxonomic analysis for MAG)
         VBox leftColumn = new VBox(15);
         leftColumn.setMinWidth(430);
-        VBox enzymeSection = createEnzymeSection();
+        TitledPane enzymeSection = createEnzymeSection();
         VBox additionalParamsSection = createAdditionalParametersSection();
         
         // Create horizontal modifications panel with fixed mods (narrow) and variable mods (wider)
         modificationsPanel = new ModificationsPanel(this::updateParameterView);
+        modificationsPanel.setModifications(FragpipeModifications.DEFAULT_FIXED,
+                FragpipeModifications.DEFAULT_VARIABLE);
         
         leftColumn.getChildren().addAll(enzymeSection, additionalParamsSection, modificationsPanel);
         GridPane.setVgrow(leftColumn, Priority.ALWAYS);
@@ -279,8 +276,8 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
         // Add columns to grid
         mainGrid.add(leftColumn, 0, 0);
         mainGrid.add(rightColumn, 1, 0);
-        
-        tabContent.getChildren().add(mainGrid);
+
+        tabContent.getChildren().add(ParameterSection.createViewport(mainGrid));
         return tabContent;
     }
 
@@ -295,8 +292,8 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
      * opposite of what those names mean to MSFragger, to MetaPilot's own
      * {@code core.enzyme.Enzyme} enum, and to its DIA-NN mapping. Populating this
      * dropdown from there is how that inversion reached the MSFragger workflows.
-     * The pFind panel still reads the file, correctly: there its semantics are the
-     * engine's own.
+     * The pFind panels keep pFind's own names ({@code PFindEnzymes}), where those
+     * semantics are the engine's.
      */
     private void loadEnzymeChoices() {
         enzymes.setAll(MSFraggerHeadlessRunner.ENZYME_CHOICES);
@@ -309,12 +306,7 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
         return label;
     }
 
-    private VBox createEnzymeSection() {
-        VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #f5f5f5; -fx-background-radius: 5;");
-
-        Label titleLabel = createSectionTitle("Enzyme Settings");
+    private TitledPane createEnzymeSection() {
 
         HBox enzymeParamsBox = new HBox(15);
         enzymeParamsBox.setAlignment(Pos.CENTER_LEFT);
@@ -355,38 +347,29 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
         digestionLabel.setStyle("-fx-font-weight: bold;");
         digestionModeBox.getChildren().add(digestionLabel);
 
-        digestionModeComboBox = new ComboBox<>(FXCollections.observableArrayList(
-            "Specific", "Semi free N-term", "Semi free C-term", "Semi specific", "Unspecific", "None"));
+        digestionModeComboBox = new ComboBox<>(
+                FXCollections.observableArrayList(MSFraggerHeadlessRunner.DIGEST_CHOICES));
         digestionModeComboBox.setMinWidth(140);
         digestionModeComboBox.setPrefWidth(160);
         digestionModeComboBox.setMaxWidth(Double.MAX_VALUE);
-        digestionModeComboBox.setValue("Specific");
+        digestionModeComboBox.setValue(MSFraggerHeadlessRunner.DIGEST_SPECIFIC);
         digestionModeComboBox.setOnAction(e -> updateParameterView());
         digestionModeBox.getChildren().add(digestionModeComboBox);
 
         enzymeParamsBox.getChildren().addAll(enzymeBox, missedCleavagesBox, digestionModeBox);
 
-        section.getChildren().addAll(titleLabel, enzymeParamsBox);
-        return section;
+        return ParameterSection.create("Enzyme settings", enzymeParamsBox);
     }
 
     private VBox createAdditionalParametersSection() {
-        VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #f0f8ff; -fx-background-radius: 5;");
-        
-        Label titleLabel = createSectionTitle("Additional Parameters");
-        
         GridPane paramGrid = new GridPane();
         paramGrid.setHgap(15);
         paramGrid.setVgap(8);
         
         ColumnConstraints col1 = new ColumnConstraints();
-        col1.setMinWidth(150);
-        col1.setHgrow(Priority.ALWAYS);
+        col1.setPercentWidth(50);
         ColumnConstraints col2 = new ColumnConstraints();
-        col2.setMinWidth(150);
-        col2.setHgrow(Priority.ALWAYS);
+        col2.setPercentWidth(50);
         paramGrid.getColumnConstraints().addAll(col1, col2);
         
         Label threadsLabel = new Label("Threads:");
@@ -408,33 +391,6 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
         VBox threadsBox = new VBox(5);
         threadsBox.getChildren().addAll(threadsLabel, threadsComboBox);
         
-        Label searchModeLabel = new Label("Search mode:");
-        searchModeLabel.setStyle("-fx-font-weight: bold;");
-        searchModeComboBox = new ComboBox<>(FXCollections.observableArrayList("Closed", "Open"));
-        searchModeComboBox.setValue("Closed");
-        searchModeComboBox.setMinWidth(100);
-        searchModeComboBox.setPrefWidth(120);
-        searchModeComboBox.setMaxWidth(Double.MAX_VALUE);
-
-        VBox workflowBox = new VBox(5);
-        workflowBox.getChildren().addAll(searchModeLabel, searchModeComboBox);
-
-        openSearchMarkerCheckBox = new CheckBox("Also use open search for marker/genome-selection stage");
-        openSearchMarkerCheckBox.setSelected(false);
-        openSearchMarkerCheckBox.setDisable(true);
-        searchModeComboBox.setOnAction(e -> {
-            boolean open = "Open".equals(searchModeComboBox.getValue());
-            openSearchMarkerCheckBox.setDisable(!open);
-            if (!open) {
-                openSearchMarkerCheckBox.setSelected(false);
-            }
-            updateParameterView();
-        });
-        openSearchMarkerCheckBox.setOnAction(e -> updateParameterView());
-
-        Label advancedLabel = new Label("Advanced: custom workflow template overrides (optional, .workflow files)");
-        advancedLabel.setStyle("-fx-font-style: italic;");
-
         FileChooser.ExtensionFilter workflowFilter =
                 new FileChooser.ExtensionFilter("FragPipe workflow files", "*.workflow");
         FileChooser.ExtensionFilter allFilesFilter = new FileChooser.ExtensionFilter("All Files", "*.*");
@@ -477,8 +433,6 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
         customCombinedRow.setAlignment(Pos.CENTER_LEFT);
         HBox.setHgrow(customCombinedWorkflowField, Priority.ALWAYS);
 
-        VBox advancedBox = new VBox(3, advancedLabel, customBasicRow, customCombinedRow);
-
         // Add MS data type option
         Label msDataTypeLabel = new Label("MS data type:");
         msDataTypeLabel.setStyle("-fx-font-weight: bold;");
@@ -492,38 +446,31 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
         VBox msDataTypeBox = new VBox(5);
         msDataTypeBox.getChildren().addAll(msDataTypeLabel, msDataTypeComboBox);
 
-        Label genomeSelectorLabel = new Label("Genome selection:");
+        Label genomeSelectorLabel = new Label("Marker set");
         genomeSelectorLabel.setStyle("-fx-font-weight: bold;");
         genomeSelectorComboBox = new ComboBox<>(FXCollections.observableArrayList(MagDbItem.MARKER2, MagDbItem.MARKER4));
         genomeSelectorComboBox.setValue(MagDbItem.MARKER2);
         genomeSelectorComboBox.setMinWidth(140);
         genomeSelectorComboBox.setPrefWidth(160);
+        genomeSelectorComboBox.setMaxWidth(Double.MAX_VALUE);
         genomeSelectorComboBox.setPromptText("Genome selection workflow");
         genomeSelectorComboBox.setOnAction(e -> updateParameterView());
         VBox genomeSelectorBox = new VBox(5);
         genomeSelectorBox.getChildren().addAll(genomeSelectorLabel, genomeSelectorComboBox);
 
-        Label genomeStrategyLabel = new Label("Genome selection strategy:");
-        genomeStrategyLabel.setStyle("-fx-font-weight: bold;");
-        genomeSelectionStrategyComboBox = new ComboBox<>(FXCollections.observableArrayList(
-                MarkerGenomeSelector.KNEE_MODE_FOCUS, MarkerGenomeSelector.KNEE_MODE_COMPREHENSIVE));
-        genomeSelectionStrategyComboBox.setValue(MarkerGenomeSelector.KNEE_MODE_FOCUS);
-        genomeSelectionStrategyComboBox.setMinWidth(140);
-        genomeSelectionStrategyComboBox.setPrefWidth(160);
-        genomeSelectionStrategyComboBox.setOnAction(e -> updateParameterView());
-        VBox genomeStrategyBox = new VBox(5);
-        genomeStrategyBox.getChildren().addAll(genomeStrategyLabel, genomeSelectionStrategyComboBox);
-        
-        paramGrid.add(threadsBox, 0, 0);
-        paramGrid.add(workflowBox, 1, 0);
-        paramGrid.add(openSearchMarkerCheckBox, 0, 1, 2, 1); // Span both columns
-        paramGrid.add(msDataTypeBox, 0, 2, 2, 1); // Span both columns
-        paramGrid.add(genomeSelectorBox, 0, 3);
-        paramGrid.add(genomeStrategyBox, 1, 3);
-        paramGrid.add(advancedBox, 0, 4, 2, 1); // Span both columns
+        genomeStopControls = new GenomeStopControls(this::updateParameterView);
 
-        section.getChildren().addAll(titleLabel, paramGrid);
-        return section;
+        paramGrid.add(msDataTypeBox, 0, 0);
+        paramGrid.add(threadsBox, 1, 0);
+        TitledPane searchSection = ParameterSection.create("Search", paramGrid);
+
+        VBox genomeSettings = new VBox(8, genomeSelectorBox, genomeStopControls);
+        TitledPane genomeSection = ParameterSection.create("Genome selection", genomeSettings);
+
+        Label workflowHint = new Label("Optional .workflow files");
+        VBox workflowSettings = new VBox(6, workflowHint, customBasicRow, customCombinedRow);
+        TitledPane workflowSection = ParameterSection.create("Workflow overrides", workflowSettings);
+        return new VBox(10, searchSection, genomeSection, workflowSection);
     }
     
     // Combined modifications panel with fixed mods (narrow) and variable mods (wider) side by side
@@ -605,14 +552,15 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
         if (threadsComboBox != null) {
             sb.append("  Threads: ").append(threadsComboBox.getValue()).append("\n");
         }
-        if (searchModeComboBox != null) {
-            sb.append("  Search mode: ").append(searchModeComboBox.getValue()).append("\n");
-            if (openSearchMarkerCheckBox != null && openSearchMarkerCheckBox.isSelected()) {
-                sb.append("  Open search at marker stage: true\n");
-            }
-        }
+        sb.append("  Search mode: Closed (open search uses the dedicated open-search workflow)\n");
         if (msDataTypeComboBox != null) {
             sb.append("  MS data type: ").append(msDataTypeComboBox.getValue()).append("\n");
+        }
+        if (genomeSelectorComboBox != null) {
+            sb.append("  Marker set: ").append(genomeSelectorComboBox.getValue()).append("\n");
+        }
+        if (genomeStopControls != null) {
+            sb.append("  When to stop adding genomes: ").append(genomeStopControls.summary()).append("\n");
         }
         sb.append("\n");
 
@@ -877,21 +825,12 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
             int missCleavages = missedCleavagesSpinner.getValue() != null ? missedCleavagesSpinner.getValue() : 2;
             String digestMode = digestionModeComboBox.getValue() != null ? digestionModeComboBox.getValue() : "Specific";
             int threadCount = threadsComboBox.getValue() != null ? threadsComboBox.getValue() : 4;
-            String searchMode = searchModeComboBox.getValue() != null ? searchModeComboBox.getValue() : "Closed";
-            boolean openSearchAtMarkerStage = "Open".equals(searchMode)
-                    && openSearchMarkerCheckBox != null && openSearchMarkerCheckBox.isSelected();
             String customBasicPath = customBasicWorkflowField != null ? customBasicWorkflowField.getText() : null;
             String customCombinedPath = customCombinedWorkflowField != null ? customCombinedWorkflowField.getText() : null;
-            // Base template to build the GUI-configured (enzyme/mods/ion-mobility) temp
-            // file from, when no explicit custom override is supplied. Closed mode keeps
-            // the historical "LFQ-MBR" default (correct for both stages since the marker
-            // stage's quant flags are unused); Open mode uses "Open" only if the marker
-            // stage is independently opted into open search too, else "Basic-Search"
-            // (marker stage stays closed by default even in an overall Open analysis).
-            String workflow = (customBasicPath != null && !customBasicPath.isBlank()) ? null
-                    : openSearchAtMarkerStage ? "Open"
-                    : "Open".equals(searchMode) ? "Basic-Search"
-                    : "LFQ-MBR";
+            // FragPipe MAG is closed-search only here. Open search lives in the dedicated
+            // open-search workflow. Without a custom override, use the historical LFQ-MBR
+            // template (marker-stage quant flags are unused).
+            String workflow = (customBasicPath != null && !customBasicPath.isBlank()) ? null : "LFQ-MBR";
             String msDataType = msDataTypeComboBox.getValue() != null ? msDataTypeComboBox.getValue() : "Regular MS";
             
             // Create DDAMagFragPipeParameters with required constructor parameters
@@ -930,12 +869,15 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
             String genomeSelectorMode = genomeSelectorComboBox != null && genomeSelectorComboBox.getValue() != null
                     ? genomeSelectorComboBox.getValue() : MagDbItem.MARKER2;
             analysisParams.setGenomeSelectorMode(genomeSelectorMode);
-            String genomeSelectionStrategy = genomeSelectionStrategyComboBox != null && genomeSelectionStrategyComboBox.getValue() != null
-                    ? genomeSelectionStrategyComboBox.getValue() : MarkerGenomeSelector.KNEE_MODE_FOCUS;
-            analysisParams.setGenomeSelectionStrategy(genomeSelectionStrategy);
+            if (genomeStopControls != null) {
+                analysisParams.setGenomeSelectionStrategy(genomeStopControls.strategy());
+                analysisParams.setGenomeSelectionPsmCoverage(genomeStopControls.psmCoverage());
+                analysisParams.setGenomeSelectionStepGuard(genomeStopControls.stepGuard());
+                analysisParams.setGenomeSelectionMaxGenomes(genomeStopControls.maxGenomes());
+            }
 
-            analysisParams.setSearchMode(searchMode);
-            analysisParams.setOpenSearchAtMarkerStage(openSearchAtMarkerStage);
+            analysisParams.setSearchMode("Closed");
+            analysisParams.setOpenSearchAtMarkerStage(false);
             if (customBasicPath != null && !customBasicPath.isBlank()) {
                 analysisParams.setCustomBasicWorkflowPath(customBasicPath.trim());
             }
@@ -946,8 +888,8 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
             // Set quantitative mode based on workflow (default to label-free)
             analysisParams.setQuantitativeMode("Label-Free");
             
-            // Set modifications (convert from FragPipe format to standard format)
-            // Note: Modifications are set later in the workflow configuration section
+            analysisParams.setFixedModifications(modificationsPanel.getFixedModifications());
+            analysisParams.setVariableModifications(modificationsPanel.getVariableModifications());
             
             // Set experiment data - convert JavaFX rows to String arrays
             List<String[]> experimentArrays = new ArrayList<>();
@@ -963,6 +905,7 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
                     metadataArrays.add(row.toArray());
                 }
                 analysisParams.setMetadataTableData(metadataArrays);
+                metadataPanel.applyTo(metaData);
             }
             
             // Create and configure FragPipe workflow (skipped entirely when the user
@@ -989,40 +932,18 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
                                 if (fragpipeWorkflow != null) {
                                     // Configure the workflow with UI parameters
                                     
-                                    // Set enzyme configuration
-                                    String[] enzymeInfo = getEnzymeInfo(enzyme);
-                                    fragpipeWorkflow.setEnzyme(enzymeInfo[0], enzymeInfo[1], enzymeInfo[2], 2, missCleavages);
+                                    // The core runner writes enzyme, digestion and modifications
+                                    // into every stage's workflow; set here only so this file agrees.
+                                    String[] enzymeInfo = MSFraggerHeadlessRunner.enzymeInfo(enzyme);
+                                    fragpipeWorkflow.setEnzyme(enzymeInfo[0], enzymeInfo[1], enzymeInfo[2],
+                                            MSFraggerHeadlessRunner.enzymeTermini(digestMode, enzyme), missCleavages);
 
                                     // Precursor/fragment tolerance intentionally left untouched here -
-                                    // it comes from whichever base template (LFQ-MBR/Basic-Search/Open)
-                                    // was parsed above, per search mode. Forcing a fixed ppm window here
-                                    // would silently discard Open search's wide Da window.
+                                    // it comes from the LFQ-MBR (or custom) template parsed above.
 
                                     // Set ion mobility based on MS data type
                                     boolean isIonMobility = msDataType.contains("IM-MS");
                                     fragpipeWorkflow.setIonMobility(isIonMobility);
-                                    
-                                    // Set modifications from UI - convert from ModificationsPanel format to FragpipeWorkflow format
-                                    List<String> fixedMods = new ArrayList<>();
-                                    List<String> variableMods = new ArrayList<>();
-                                    
-                                    // Convert fixed modifications
-                                    for (ModificationsPanel.FixedModificationRow row : modificationsPanel.getFixedModData()) {
-                                        if (row.getDeltaMass() != 0.0) {
-                                            fixedMods.add(row.getSite() + ":" + row.getDeltaMass());
-                                        }
-                                    }
-                                    
-                                    // Convert variable modifications
-                                    for (ModificationsPanel.VariableModificationRow row : modificationsPanel.getVariableModData()) {
-                                        if (row.getUse()) {
-                                            variableMods.add(row.getModName() + ":" + row.getSites() + ":" + row.getDeltaMass());
-                                        }
-                                    }
-                                    
-                                    // Set modifications using the string format
-                                    analysisParams.setFixedModifications(fixedMods);
-                                    analysisParams.setVariableModifications(variableMods);
                                     
                                     // Store the configured workflow as member variable (will be passed to task separately)
                                     this.currentFragpipeWorkflow = fragpipeWorkflow;
@@ -1220,24 +1141,19 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
         if (params.getGenomeSelectorMode() != null && genomeSelectorComboBox != null) {
             genomeSelectorComboBox.setValue(params.getGenomeSelectorMode());
         }
-        if (params.getGenomeSelectionStrategy() != null && genomeSelectionStrategyComboBox != null) {
-            genomeSelectionStrategyComboBox.setValue(params.getGenomeSelectionStrategy());
+        if (genomeStopControls != null) {
+            genomeStopControls.apply(params.getGenomeSelectionStrategy(), params.getGenomeSelectionPsmCoverage(),
+                    params.getGenomeSelectionStepGuard(), params.getGenomeSelectionMaxGenomes());
+            String warning = GenomeSelectionCut.unusedCoverageKeysWarning(params.getGenomeSelectionStrategy(),
+                    params.getGenomeSelectionPsmCoverage(), params.getGenomeSelectionStepGuard(),
+                    params.getGenomeSelectionMaxGenomes());
+            if (warning != null && consolePanel != null) {
+                consolePanel.appendConsoleText("WARNING: " + warning + "\n");
+            }
         }
         
-        // Search mode / marker-stage / custom workflow overrides ARE persisted
-        // (search_mode, open_search_marker_stage, custom_basic_workflow_path,
-        // custom_combined_workflow_path) - restore them so re-launching the GUI
-        // shows the last-used selection instead of always falling back to the
-        // Closed default.
-        if (searchModeComboBox != null) {
-            String savedMode = params.getSearchMode();
-            searchModeComboBox.setValue("Open".equals(savedMode) ? "Open" : "Closed");
-        }
-        if (openSearchMarkerCheckBox != null) {
-            boolean open = "Open".equals(searchModeComboBox != null ? searchModeComboBox.getValue() : null);
-            openSearchMarkerCheckBox.setDisable(!open);
-            openSearchMarkerCheckBox.setSelected(open && params.isOpenSearchAtMarkerStage());
-        }
+        // Custom workflow path overrides are persisted; search mode is always Closed
+        // in this panel (open search uses the dedicated open-search workflow).
         if (customBasicWorkflowField != null) {
             customBasicWorkflowField.setText(
                     params.getCustomBasicWorkflowPath() != null ? params.getCustomBasicWorkflowPath() : "");
@@ -1247,13 +1163,29 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
                     params.getCustomCombinedWorkflowPath() != null ? params.getCustomCombinedWorkflowPath() : "");
         }
         
-        // MS data type - use default
         if (msDataTypeComboBox != null) {
-            msDataTypeComboBox.setValue("Regular MS");
+            boolean ionMobility = params.getMs2ScanMode() != null
+                    && params.getMs2ScanMode().toUpperCase().contains("IM-MS");
+            msDataTypeComboBox.setValue(msDataTypeComboBox.getItems().get(ionMobility ? 1 : 0));
         }
-        
-        // Note: Enzyme, modifications, and other UI parameters are not loaded from saved parameters
-        // They remain as user-configurable settings with their default values
+        if (enzymeComboBox != null && params.getEnzyme() != null
+                && MSFraggerHeadlessRunner.ENZYME_CHOICES.contains(params.getEnzyme())) {
+            enzymeComboBox.setValue(params.getEnzyme());
+        }
+        if (missedCleavagesSpinner != null) {
+            missedCleavagesSpinner.getValueFactory().setValue(params.getMissCleavages());
+        }
+        if (digestionModeComboBox != null) {
+            int termini = 2;
+            try {
+                termini = MSFraggerHeadlessRunner.enzymeTermini(params.getDigestModeString(), null);
+            } catch (IllegalArgumentException e) {
+                LOGGER.warn("{}; showing {}", e.getMessage(), MSFraggerHeadlessRunner.DIGEST_SPECIFIC);
+            }
+            digestionModeComboBox.setValue(termini == 2 ? MSFraggerHeadlessRunner.DIGEST_SPECIFIC
+                    : termini == 1 ? MSFraggerHeadlessRunner.DIGEST_SEMI_SPECIFIC
+                    : MSFraggerHeadlessRunner.DIGEST_NONSPECIFIC);
+        }
         
         // Apply database settings using reusable component
         if (magDatabasePanel != null) {
@@ -1288,60 +1220,12 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
             }
         }
         
-        // Apply modifications
+        // A file saved before modifications reached FragPipe keeps the defaults shown,
+        // which are the template modifications those runs searched.
         if (modificationsPanel != null) {
-            if (params.getFixedModifications() != null) {
-                // Apply saved fixed modifications
-                for (String mod : params.getFixedModifications()) {
-                    if (mod.contains(":")) {
-                        String[] parts = mod.split(":", 2);
-                        if (parts.length == 2) {
-                            String site = parts[0];
-                            try {
-                                double mass = Double.parseDouble(parts[1]);
-                                // Find and update the corresponding row
-                                for (ModificationsPanel.FixedModificationRow row : modificationsPanel.getFixedModData()) {
-                                    if (row.getSite().equals(site)) {
-                                        row.setDeltaMass(mass);
-                                        break;
-                                    }
-                                }
-                            } catch (NumberFormatException e) {
-                                LOGGER.warn("Invalid mass format in fixed modification: {}", mod);
-                            }
-                        }
-                    }
-                }
-                LOGGER.info("Applied {} fixed modifications", params.getFixedModifications().size());
-            }
-            
-            if (params.getVariableModifications() != null) {
-                // Apply saved variable modifications
-                for (String mod : params.getVariableModifications()) {
-                    if (mod.contains(":")) {
-                        String[] parts = mod.split(":", 3);
-                        if (parts.length == 3) {
-                            String modName = parts[0];
-                            String sites = parts[1];
-                            try {
-                                double mass = Double.parseDouble(parts[2]);
-                                // Find and update the corresponding row
-                                for (ModificationsPanel.VariableModificationRow row : modificationsPanel.getVariableModData()) {
-                                    if (row.getModName().equals(modName)) {
-                                        row.setUse(true);
-                                        row.setSites(sites);
-                                        row.setDeltaMass(mass);
-                                        break;
-                                    }
-                                }
-                            } catch (NumberFormatException e) {
-                                LOGGER.warn("Invalid mass format in variable modification: {}", mod);
-                            }
-                        }
-                    }
-                }
-                LOGGER.info("Applied {} variable modifications", params.getVariableModifications().size());
-            }
+            modificationsPanel.setModifications(params.getFixedModifications(), params.getVariableModifications());
+            LOGGER.info("Applied {} fixed and {} variable modifications", params.getFixedModifications().size(),
+                    params.getVariableModifications().size());
         }
         
         // Note: Quantitative mode is determined by workflow selection, no UI settings needed
@@ -1366,43 +1250,6 @@ public class MetaPilotDdaMagFragPipePanel extends AbstractWorkflowPanel<DDAMagFr
             String errorMsg = "ERROR: Failed to apply parameters to UI: " + e.getMessage();
             consolePanel.appendConsoleText(errorMsg + "\n");
             LOGGER.error("Failed to apply parameters to UI for MAG FragPipe workflow", e);
-        }
-    }
-    
-    /**
-     * Get enzyme information for FragPipe workflow configuration
-     * Returns [enzymeName, cutAfter, notCut] array
-     */
-    private String[] getEnzymeInfo(String enzyme) {
-        // Map common enzyme names to FragPipe format
-        switch (enzyme.toLowerCase()) {
-            case "trypsin":
-                return new String[]{"stricttrypsin", "KR", ""};
-            case "trypsin/p":
-                return new String[]{"trypsin", "KR", "P"};
-            case "chymotrypsin":
-                return new String[]{"chymotrypsin", "FWY", ""};
-            case "gluc":
-                return new String[]{"gluc", "DE", ""};
-            case "gluc-bicarb":
-                return new String[]{"gluc-bicarb", "DE", ""};
-            case "lysc":
-                return new String[]{"lysc", "K", ""};
-            case "lysc-p":
-                return new String[]{"lysc-p", "K", "P"};
-            case "argc":
-                return new String[]{"argc", "R", ""};
-            case "aspn":
-                return new String[]{"aspn", "D", ""};
-            case "elastase":
-                return new String[]{"elastase", "AGILV", ""};
-            case "proteinasek":
-                return new String[]{"proteinasek", "AEFILMVWY", ""};
-            case "thermolysin":
-                return new String[]{"thermolysin", "AEFILMV", ""};
-            default:
-                // Default to trypsin
-                return new String[]{"stricttrypsin", "KR", ""};
         }
     }
     

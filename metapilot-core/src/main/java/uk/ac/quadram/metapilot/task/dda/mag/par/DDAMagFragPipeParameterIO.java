@@ -10,8 +10,10 @@ import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.LogManager;
 
 import uk.ac.quadram.metapilot.core.msfragger.MSFraggerHeadlessRunner;
+import uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.task.par.BaseParameterIO;
+import uk.ac.quadram.metapilot.task.par.SampleMetadata;
 
 /**
  * Parameter I/O operations for DDA MAG FragPipe workflow
@@ -27,6 +29,19 @@ public class DDAMagFragPipeParameterIO extends BaseParameterIO {
     private static final String PARAMETER_FILENAME = "mag_fragpipe_analysis_parameters.json";
     private static final String LAST_PARAMETERS_FILENAME = "last_used_mag_fragpipe_parameters.json";
     private static final String PREFERENCES_FILENAME = "mag_fragpipe_preferences.json";
+
+    /** Marks files whose modification lists are written into the FragPipe workflow. */
+    static final String MODIFICATIONS_APPLIED_KEY = "modifications_applied";
+
+    private static List<String> stringList(JSONArray array) {
+        List<String> list = new ArrayList<>();
+        if (array != null) {
+            for (int i = 0; i < array.length(); i++) {
+                list.add(array.getString(i));
+            }
+        }
+        return list;
+    }
 
 	@Override
 	protected String getAnalysisParameterFileName() {
@@ -145,7 +160,30 @@ public class DDAMagFragPipeParameterIO extends BaseParameterIO {
 			);
 
 			params.setGenomeSelectorMode(genomeSelectorMode);
-			params.setGenomeSelectionStrategy(genomeSelectionStrategy);
+			String strategyWarning = GenomeSelectionCut.strategyReplacementWarning(genomeSelectionStrategy);
+			if (strategyWarning != null) {
+				LOGGER.warn(strategyWarning);
+			}
+			params.setGenomeSelectionStrategy(GenomeSelectionCut.strategyOrDefault(genomeSelectionStrategy));
+			if (json.has("additional_parameters")) {
+				JSONObject coverageKeys = json.getJSONObject("additional_parameters");
+				GenomeSelectionCut.LoadedCoverage loaded = GenomeSelectionCut.readAdditionalKeys(coverageKeys,
+						params.getGenomeSelectionPsmCoverage(), params.getGenomeSelectionStepGuard(),
+						params.getGenomeSelectionMaxGenomes());
+				params.setGenomeSelectionPsmCoverage(loaded.coverage);
+				params.setGenomeSelectionStepGuard(loaded.stepGuard);
+				params.setGenomeSelectionMaxGenomes(loaded.maxGenomes);
+				if (loaded.replacementWarning != null) {
+					LOGGER.warn(loaded.replacementWarning);
+				}
+				if (loaded.anyKey) {
+					String warning = GenomeSelectionCut.unusedCoverageKeysWarning(params.getGenomeSelectionStrategy(),
+							loaded.coverage, loaded.stepGuard, loaded.maxGenomes);
+					if (warning != null) {
+						LOGGER.warn(warning);
+					}
+				}
+			}
 			params.setFragpipeParallelTasks(fragpipeParallelTasks);
 			params.setSearchMode(searchMode);
 			params.setOpenSearchAtMarkerStage(openSearchAtMarkerStage);
@@ -187,26 +225,24 @@ public class DDAMagFragPipeParameterIO extends BaseParameterIO {
 			// Set quantitative mode (default to label-free)
 			params.setQuantitativeMode("Label-Free");
 
-			// Load fixed modifications
-			if (json.has("fixed_modifications")) {
-				JSONArray fixedMods = json.getJSONArray("fixed_modifications");
-				List<String> fixedModifications = new ArrayList<>();
-				for (int i = 0; i < fixedMods.length(); i++) {
-					fixedModifications.add(fixedMods.getString(i));
-				}
-				params.setFixedModifications(fixedModifications);
-				LOGGER.info("Loaded {} fixed modifications", fixedModifications.size());
+			if (json.optBoolean(MODIFICATIONS_APPLIED_KEY, false)) {
+				params.setFixedModifications(stringList(json.optJSONArray("fixed_modifications")));
+				params.setVariableModifications(stringList(json.optJSONArray("variable_modifications")));
+				LOGGER.info("Loaded {} fixed and {} variable modifications", params.getFixedModifications().size(),
+						params.getVariableModifications().size());
+			} else {
+				// Saved before the modifications reached FragPipe: those runs searched
+				// the workflow template's own modifications, so this file still does.
+				params.setApplyModifications(false);
+				LOGGER.warn("{} predates applying modifications to FragPipe; the workflow template's "
+						+ "modifications are searched. Save the parameters again to use the listed ones.",
+						inputFile.getName());
 			}
 
-			// Load variable modifications
-			if (json.has("variable_modifications")) {
-				JSONArray variableMods = json.getJSONArray("variable_modifications");
-				List<String> variableModifications = new ArrayList<>();
-				for (int i = 0; i < variableMods.length(); i++) {
-					variableModifications.add(variableMods.getString(i));
-				}
-				params.setVariableModifications(variableModifications);
-				LOGGER.info("Loaded {} variable modifications", variableModifications.size());
+			List<String[]> metadataRows = SampleMetadata.fromJson(json);
+			if (metadataRows != null) {
+				params.setMetadataTableData(metadataRows);
+				SampleMetadata.apply(params.getMetadata(), metadataRows);
 			}
 
 			LOGGER.info("Successfully loaded parameters from: {}", inputFile.getAbsolutePath());
@@ -306,6 +342,8 @@ public class DDAMagFragPipeParameterIO extends BaseParameterIO {
 			additionalParams.put("spectra_clustering", params.isSpectraCluster());
 			additionalParams.put("genome_selector_mode", params.getGenomeSelectorMode());
 			additionalParams.put("genome_selection_strategy", params.getGenomeSelectionStrategy());
+			GenomeSelectionCut.writeAdditionalKeys(additionalParams, params.getGenomeSelectionPsmCoverage(),
+					params.getGenomeSelectionStepGuard(), params.getGenomeSelectionMaxGenomes());
 			additionalParams.put("fragpipe_parallel_tasks", params.getFragpipeParallelTasks());
 			additionalParams.put("search_mode", params.getSearchMode());
 			additionalParams.put("open_search_marker_stage", params.isOpenSearchAtMarkerStage());
@@ -335,6 +373,8 @@ public class DDAMagFragPipeParameterIO extends BaseParameterIO {
 				LOGGER.info("Added {} variable modifications", variableModifications.size());
 			}
 			json.put("variable_modifications", variableMods);
+			json.put(MODIFICATIONS_APPLIED_KEY, params.isApplyModifications());
+			json.put(SampleMetadata.JSON_KEY, SampleMetadata.toJson(params.getMetadataTableData()));
 
 			// Write formatted JSON
 			LOGGER.info("Writing JSON to file...");

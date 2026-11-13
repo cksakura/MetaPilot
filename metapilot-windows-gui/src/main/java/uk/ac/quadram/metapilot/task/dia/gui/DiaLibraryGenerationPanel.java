@@ -4,12 +4,10 @@ import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
+import uk.ac.quadram.metapilot.task.common.gui.ParameterSection;
 import javafx.scene.layout.*;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
-import javafx.scene.text.Font;
-import javafx.scene.text.FontWeight;
-import javafx.scene.paint.Color;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
@@ -172,17 +170,13 @@ public class DiaLibraryGenerationPanel extends VBox {
 		this.metaParameter = metaParameter;
 	}
 
-	private VBox controlsSectionVBox;
-	private VBox tableSectionVBox;
+	private TitledPane controlsSection;
+	private TitledPane tableSection;
 
 	private void initializeUI() {
 		setSpacing(10);
-		setPadding(new Insets(10));
-		setStyle("-fx-background-color: #fff8dc; -fx-background-radius: 5;");
 		setMinHeight(400);
 		VBox.setVgrow(this, Priority.ALWAYS);
-
-		Label titleLabel = createSectionTitle("Spectral Library Generation");
 
 		// Input type selection
 		HBox inputTypeBox = createInputTypeSelection();
@@ -200,26 +194,24 @@ public class DiaLibraryGenerationPanel extends VBox {
 		VBox progressSection = createProgressSection();
 
 		// Available libraries table
-		tableSectionVBox = createLibraryTable();
+		tableSection = createLibraryTable();
 
 		// Left section: title + controls + progress
-		controlsSectionVBox = new VBox(10);
-		controlsSectionVBox.setPadding(new Insets(0));
-		controlsSectionVBox.getChildren().addAll(titleLabel, inputTypeBox, fileBox, enzymeBox, generationBox,
-				progressSection);
+		VBox controls = new VBox(10, inputTypeBox, fileBox, enzymeBox, generationBox, progressSection);
+		controlsSection = ParameterSection.create("Spectral Library Generation", controls);
 		VBox.setVgrow(progressSection, Priority.ALWAYS);
 
 		if (!splitMode) {
-			getChildren().addAll(controlsSectionVBox, tableSectionVBox);
+			getChildren().addAll(controlsSection, tableSection);
 		}
 	}
 
-	public VBox getControlsSection() {
-		return controlsSectionVBox;
+	public TitledPane getControlsSection() {
+		return controlsSection;
 	}
 
-	public VBox getTableSection() {
-		return tableSectionVBox;
+	public TitledPane getTableSection() {
+		return tableSection;
 	}
 
 	private HBox createInputTypeSelection() {
@@ -320,13 +312,13 @@ public class DiaLibraryGenerationPanel extends VBox {
 		return generationBox;
 	}
 
-	private VBox createLibraryTable() {
+	private TitledPane createLibraryTable() {
 		VBox tableSection = new VBox(10);
 
 		// Header with controls
 		HBox headerBox = new HBox(10);
 		headerBox.setAlignment(Pos.CENTER_LEFT);
-		Label availableLabel = new Label("Available Libraries (select for identification):");
+		Label availableLabel = new Label("Select libraries for identification");
 		availableLabel.setStyle("-fx-font-weight: bold;");
 
 		Button checkAvailableButton = new Button("Check Available");
@@ -445,7 +437,7 @@ public class DiaLibraryGenerationPanel extends VBox {
 		libraryTable.getColumns().addAll(columns);
 
 		tableSection.getChildren().addAll(headerBox, libraryTable);
-		return tableSection;
+		return ParameterSection.create("Available Libraries", tableSection);
 	}
 
 	private VBox createProgressSection() {
@@ -1010,13 +1002,6 @@ public class DiaLibraryGenerationPanel extends VBox {
 		}
 	}
 
-	private Label createSectionTitle(String title) {
-		Label label = new Label(title);
-		// Use default font instead of "System" to avoid PrismTextLayout issues
-		label.setFont(Font.font(null, FontWeight.BOLD, 14));
-		label.setTextFill(Color.DARKBLUE);
-		return label;
-	}
 
 	private void showError(String title, String content) {
 		Alert alert = new Alert(Alert.AlertType.ERROR);

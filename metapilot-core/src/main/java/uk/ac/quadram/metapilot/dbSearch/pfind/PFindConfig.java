@@ -839,6 +839,7 @@ public class PFindConfig {
 			int digestType, IsobaricTag tag) {
 
 		applyModifications(isOpenSearch, fixedMods, variMods, tag);
+		applyEnzyme(this.findMap, enzyme);
 
 		if (this.findMap.containsKey("max_clv_sites")) {
 			this.findMap.get("max_clv_sites").setValue(String.valueOf(missCleavages));
@@ -979,6 +980,7 @@ public class PFindConfig {
 			int digestType, IsobaricTag tag) {
 
 		applyModifications(isOpenSearch, fixedMods, variMods, tag);
+		applyEnzyme(this.findMap, enzyme);
 		if (this.findMap.containsKey("len_lower")) {
 			this.findMap.get("len_lower").setValue("6");
 		}
@@ -1327,6 +1329,7 @@ public class PFindConfig {
 			int digestType, IsobaricTag tag) {
 
 		applyModifications(isOpenSearch, fixedMods, variMods, tag);
+		applyEnzyme(this.findMap, enzyme);
 		if (this.findMap.containsKey("len_lower")) {
 			this.findMap.get("len_lower").setValue("6");
 		}
@@ -1627,6 +1630,23 @@ public class PFindConfig {
 		if (this.findMap.containsKey("open")) {
 			this.findMap.get("open").setValue(isOpenSearch ? "1" : "0");
 		}
+	}
+
+	/**
+	 * Writes the {@code enzyme=} line for the selected pFind enzyme.
+	 *
+	 * @throws IllegalStateException if the pFind parameter template has no
+	 *                               {@code enzyme} line to replace; pFind would
+	 *                               then digest with an enzyme nobody chose
+	 */
+	static void applyEnzyme(HashMap<String, PFindItem> findMap, String enzyme) {
+		String definition = PFindEnzymes.definition(enzyme);
+		PFindItem item = findMap.get("enzyme");
+		if (item == null) {
+			throw new IllegalStateException(
+					"The pFind parameter template has no 'enzyme' line, so the selected enzyme cannot be applied.");
+		}
+		item.setValue(definition);
 	}
 
 	/**

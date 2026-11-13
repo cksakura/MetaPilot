@@ -34,7 +34,7 @@ mvn clean package -pl metapilot-web -am -DskipTests
 
 ```bash
 # Run the web server
-java -jar metapilot-web/target/metapilot-web-1.1.1.jar
+java -jar metapilot-web/target/metapilot-web-1.2.0.jar
 
 # Or use Spring Boot Maven plugin
 mvn spring-boot:run -pl metapilot-web

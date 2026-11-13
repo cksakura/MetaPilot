@@ -1,321 +1,108 @@
 # MetaPilot
 
-MetaPilot is a metaproteomics workflow platform for DDA and DIA datasets. It helps users move from raw mass spectrometry files to MAG-aware genome selection, refined database or library searches, taxonomy reports, and functional annotation outputs.
+Source repository for MetaPilot 1.2.0, a metaproteomics workflow for DDA and DIA. MAG-aware workflows select genomes from a catalogue, build a sample-specific database or library, and search that reduced space. The user install and the HPC getting-started guide live in the release repository. This file explains how the workflows operate.
 
-This repository hosts the public MetaPilot release. The README is intended to be self-contained for release users, so it does not assume access to a separate documentation folder.
+The version under development is 1.2.0. User-facing changes are listed in [CHANGELOG.md](CHANGELOG.md). The open-search design history is in [docs/developer/opensearch-changelog.md](docs/developer/opensearch-changelog.md).
 
-MetaPilot supports two main ways of working:
+## Modules
 
-- A Windows desktop GUI for interactive setup and the broadest workflow coverage.
-- A command-line runner for Linux and HPC execution of supported headless workflows.
-
-This README is written for users who want to install MetaPilot, choose the right workflow, and understand the result folders.
-
-## What MetaPilot Does
-
-MetaPilot is designed for studies where the search space can be improved using metagenome-assembled genomes (MAGs). In MAG-aware workflows, MetaPilot usually follows this pattern:
-
-1. Run a small initial search using marker proteins, high-abundance proteins, or existing DIA libraries.
-2. Use the initial peptide evidence to rank candidate genomes.
-3. Select a focused or comprehensive set of genomes.
-4. Build a refined sample-specific FASTA or DIA spectral library.
-5. Run the final identification and quantification search.
-6. Export taxonomy, genome-level, peptide/protein, and functional annotation reports.
-
-Conventional DDA workflows are also available when users want to search an integrated gene catalogue or another standard protein database.
-
-## Installation And Setup
-
-### Release Package
-
-Download the latest MetaPilot release package from this repository's release page. A release package may include:
-
-- A Windows desktop application or runnable GUI JAR.
-- A Linux/HPC command-line JAR.
-- Example configuration files.
-- Optional MAG database registry templates.
-- Optional bundled report templates and helper resources.
-
-You do not need any additional repository to run a public release. Building from source is not part of the supported user installation path.
-
-### Requirements
-
-MetaPilot requires Java 17 or newer.
-
-External tools are required depending on the workflow:
-
-| Tool | Used for |
+| Module | Role |
 | --- | --- |
-| DIA-NN | DIA Marker, DIA Seed, DIA Target, DIA Real-Time |
-| FragPipe / MSFragger | DDA FragPipe workflows |
-| pFind | DDA pFind workflows |
-| MaxQuant | DDA MaxQuant workflow, mainly Windows-oriented |
-| Sage | DDA Sage workflows |
-| DeepDetect | Marker4 peptide detectability prediction |
-| Python | Report generation and helper scripts |
-| Functional annotation resources | Functional result export |
+| `metapilot-core` | Workflows, genome selection, open-search identification, result export |
+| `metapilot-cli` | Headless runner used on Linux and HPC |
+| `metapilot-windows-gui` | Windows desktop application |
 
-### Install Java
+External programs do the spectrum search and quantification. MetaPilot writes their parameter files, reads the results back, and decides which genomes, peptides, and mass shifts to keep. For open search those programs are MSFragger, Crystal-C, MSBooster, DIA-NN, and FlashLFQ.
 
-Install Java 17 or newer and confirm it is available:
+## MAG genome selection
 
-```bash
-java -version
-```
+Every MAG workflow starts from a registered catalogue (formal runs use human-gut v2.0.2). A first search is intentionally small: marker proteins, or an existing DIA library. Peptides from that search are assigned to genomes. Genomes are ranked by the new marker peptides they explain, and selection stops by one of two rules.
 
-The current formal release version is `1.1.1`.
+- **Focus** keeps the high-gain genomes and stops at the knee of the coverage curve.
+- **Comprehensive** keeps adding genomes further down the same ranking.
+- **PSM coverage** keeps genomes until a chosen share of the marker PSMs is explained. The ranking itself is unchanged.
 
-See [CHANGELOG.md](CHANGELOG.md) for release highlights and upgrade notes.
+The selected genomes become one sample-specific FASTA, or one refined DIA library. A later search uses only that database. A reversed genome that passes the same test is reported beside the accepted target genomes, which is the genome-level false-discovery check.
 
-### Windows Desktop Setup
+## DDA open search
 
-Use the Windows GUI when you want the full workflow set and an interactive setup experience. Start the application from the executable or GUI JAR included in the release package.
+`mag-opensearch` is the DDA MAG workflow that does not require the mass shifts to be named in advance. It has two stages. Stage 1 chooses the genomes. Stage 2 identifies peptides, including modified and variant forms, against the selected genomes.
 
-In the GUI, configure the external tool paths and MAG database locations through the resource/settings panels. Typical resource values include paths to `pFind.exe`, `MaxQuantCmd.exe`, `fragpipe.bat`, `sage.exe`, `diann.exe`, `DeepDetect.exe`, Python, and the functional annotation database.
+### Stage 1: marker search and rescoring
 
-Before running a study:
+Each raw file is searched against the target-decoy marker database (`Marker4_td.fasta`). The default marker search is closed: carbamidomethyl cysteine is fixed, and oxidation of methionine and protein N-terminal acetylation are variable. MSBooster and DIA-NN add predicted-spectrum and retention-time features.
 
-1. Confirm all required tool paths are set.
-2. Register or select a MAG database when using MAG-aware workflows.
-3. Select raw files or existing DIA libraries.
-4. Choose a workflow mode.
-5. Choose an output folder with enough disk space.
+A semi-supervised logistic model then rescores the marker PSMs. The model is trained per file at 1% FDR. Its ridge is 0.1 and the ranking score is the logit. A near-zero ridge lets the fit diverge when a marker search has only a few hundred confident PSMs: target probabilities collapse to 1, decoys tie with targets, and the file keeps no PSMs, so no sample database is built. Ridge 0.1 keeps at least the search engine's own accepted set on those files.
 
-### Linux And HPC Setup
+Only unmodified PSMs, those whose mass difference sits in the zero-peak window, are passed to genome selection. The selected genomes are written to `marker/<sample>.fasta`. An optional host proteome can be appended.
 
-Use the CLI JAR for supported headless workflows, especially on servers and clusters. Copy the release JAR to a stable location such as `/opt/metapilot/` or a shared project directory visible to compute nodes.
+### Stage 2: closed and open search of the sample database
 
-Initialize configuration:
+Each sample FASTA is searched twice with MSFragger.
 
-```bash
-java -jar metapilot-cli-1.1.1-shaded.jar init
-```
+- The closed search allows the same variable modifications as the marker search.
+- The open search uses a wide precursor window (by default −150 to +500 Da) and lets MSFragger localise the mass difference.
 
-Set tool paths:
+Crystal-C refines the open-search precursor masses. Candidates from both searches are then classified together.
 
-```bash
-java -jar metapilot-cli-1.1.1-shaded.jar resources-set \
-  --set DIANN=/opt/tools/diann/diann-linux \
-  --set FRAGPIPE=/opt/tools/fragpipe-24.0/bin/fragpipe \
-  --set FRAGPIPE_TOOLS=/opt/tools/fragpipe-24.0/tools \
-  --set PYTHON=/opt/conda/envs/metapilot/bin/python \
-  --set FUNCDB=/data/metapilot/function \
-  --print
-```
+### Joint identification
 
-Validate the setup:
+Joint identification (version `v2`) trains one XGBoost model on closed-search and open-search features, including the predicted-spectrum features. RESET walks the scored list at 1% FDR separately for each evidence group, so a modified population is not held to the error rate of the unmodified one. Decoys are pseudo-reversed.
 
-```bash
-java -jar metapilot-cli-1.1.1-shaded.jar resources-check
-```
+A mass shift ends in one of three classes.
 
-List registered MAG databases:
+- **Zero.** The precursor matches the unmodified peptide inside the calibration window.
+- **Established.** The shift matches a known modification, a residue substitution, or another accepted explanation, and the fragment evidence supports it.
+- **Unexplained.** The shift is reproducible but has no accepted explanation. These PSMs are reported apart from the validated set.
 
-```bash
-java -jar metapilot-cli-1.1.1-shaded.jar mag-list
-```
+An isotope guard stops a real modification from being absorbed as a satellite of a neighbouring peak. Acetyl (42.0106 Da) is the case that motivated it: it can sit on the −1 isotope position of carbamyl.
 
-Download and prepare a supported MAG catalogue before registration:
+Sequence variants are called from the substitution mass shifts. When a UHGP-100 catalogue is configured, each variant peptide is checked against that pangenome and against matched controls. The check reports whether the variant is already known in the species, including outside the selected genome.
 
-```bash
-java -jar metapilot-cli-1.1.1-shaded.jar mag-download \
-  --catalogue human-gut \
-  --version v2.0.2 \
-  --out /data/metapilot/MAG \
-  --resume
-```
+FlashLFQ quantifies the validated peptides. Taxonomy and functional annotation are exported from the accepted genomes and proteins. A genome confidence gate can move weak genomes, and the peptides that depend on them, into `excluded_evidence/`.
 
-Register the downloaded or otherwise prepared local MAG database:
+### What is reused when a run is repeated
 
-```bash
-java -jar metapilot-cli-1.1.1-shaded.jar mag-register \
-  --catalogue human-gut \
-  --version v2.0.2 \
-  --identifier MGYG \
-  --path /data/metapilot/MAG/human-gut/v2.0.2
-```
+Each step is skipped when its output already matches the current configuration.
 
-Validate and run a parameter file:
-
-```bash
-java -jar metapilot-cli-1.1.1-shaded.jar params-validate \
-  --params /data/studies/study_parameters.json
-
-java -jar metapilot-cli-1.1.1-shaded.jar run \
-  --params /data/studies/study_parameters.json
-```
-
-Current headless execution supports:
-
-- `DIA_MARKER`: Core/Focus, Comprehensive, Deep together, and Deep per file.
-- `DDA_MAG_FRAGPIPE`: MAG-aware DDA FragPipe workflow.
-
-Other workflows are currently GUI workflows.
-
-### MAG Database Preparation
-
-MAG-aware workflows need a registered MAG database. A typical database folder contains:
-
-- `original_db/`: per-genome protein FASTA files.
-- `genomes-taxa.tsv`: genome-to-taxonomy mapping.
-- `Marker4.fasta`: marker proteins used for marker-based evidence search.
-- `Marker4.predicted.tsv`: DeepDetect peptide detectability output.
-- `Marker4_highpep.fasta`: high-detectability marker peptides for large marker sets.
-- `libraries/Marker4/Marker4.speclib`: Marker4 spectral library for DIA Marker.
-- `predicted/`: per-genome predicted peptide files used by DIA Seed mapping.
-
-For DIA Marker, make sure the Marker4 library is available or can be generated before starting the study.
-
-## Choosing A Workflow
-
-Use this table as the first decision point.
-
-| Goal | Recommended workflow |
+| Existing output | What is skipped |
 | --- | --- |
-| Standard DDA search against an integrated gene catalogue or fixed protein database | DDA IGC |
-| MAG-aware DDA search with genome selection and refined sample FASTA | DDA MAG |
-| DIA search starting from a MAG database and Marker4 library | DIA Marker |
-| DIA search starting from existing user-selected spectral libraries | DIA Seed |
-| Broader DIA discovery with iterative refinement | DIA Marker Deep or DIA Seed Deep |
-| Focused follow-up for selected taxa, functions, or proteins | DIA Target |
-| Folder monitoring as DIA files arrive | DIA Real-Time |
-| Linux/HPC execution today | DIA Marker or DDA MAG FragPipe |
+| `marker/<sample>.pepXML` whose `fragger_open.params` matches the text that would be written now | The marker search |
+| MSBooster output newer than that pepXML | MSBooster |
+| `marker/<sample>.fasta` | Genome selection |
+| `sample_db/<sample>.pepXML` newer than the sample FASTA | The open stage-2 search |
 
-### DDA IGC
+The sample FASTA is the one to remove when stage 1 itself has changed. Deleting `marker/<sample>.fasta` makes genome selection run again, and the stage-2 searches then rerun because they are older than the new database. Leaving the FASTA in place keeps the genomes chosen by the previous stage 1.
 
-Choose DDA IGC when you already have a conventional protein database or integrated gene catalogue and do not need MAG genome selection.
+MSFragger writes `<sample>.mzBIN_calibrated` beside the mzML. Two jobs that search the same spectra will overwrite that file.
 
-Available search engines include MaxQuant, pFind, FragPipe, and Sage. This is the most familiar route for users who want a standard DDA search and protein-level outputs.
+### Entrapment evaluation
 
-### DDA MAG
+`mag-opensearch-entrapment` uses the same marker search and genome selection, then adds a paired shuffled-protein population to the stage-2 database. It reports separate closed, open, and joint results for the real and the shuffled proteins and stops before quantification and taxonomy. The summary is descriptive. It does not claim a calibrated false-discovery proportion. Results go to `opensearch_entrapment_MAG_search/` and do not replace a normal open-search run.
 
-Choose DDA MAG when you have DDA data and want MetaPilot to reduce the search space using MAG evidence.
+## Result folder
 
-The workflow performs an initial marker or high-abundance search, ranks candidate genomes, builds a sample-specific FASTA from selected genomes, and then performs the final DDA search and downstream taxonomy export.
+A normal open-search run writes `<output_directory>/opensearch_MAG_search/`.
 
-Use Focus/Core mode when you want a smaller, stricter genome set. Use Comprehensive mode when you prefer broader genome inclusion and can accept a larger refined search database.
-
-### DIA Marker
-
-Choose DIA Marker when your starting point is a MAG database and you want MetaPilot to use the database's Marker4 spectral library as the initial DIA evidence source.
-
-This is the main MAG-aware DIA workflow. It is a good default when users do not already have study-specific DIA libraries.
-
-Available modes:
-
-| Mode | When to use it |
+| Path | Contents |
 | --- | --- |
-| Core / Focus | Default mode; stricter genome selection and smaller refined library |
-| Comprehensive | Broader genome selection and larger refined library |
-| Deep together | Iterative discovery across all DIA files before final quantification |
-| Deep per file | Iterative discovery independently per raw file; useful for heterogeneous sample sets but more resource-intensive |
+| `search_results/<sample>/marker/` | Marker pepXML, pins, rescoring output, selected-genome FASTA |
+| `search_results/<sample>/sample_db/` | Open stage-2 search and Crystal-C output |
+| `search_results/<sample>/sample_db_closed/` | Closed stage-2 search |
+| `combined/validated_psms.tsv` | PSMs accepted by joint identification |
+| `combined/unexplained_psms.tsv` | Reproducible shifts with no accepted explanation |
+| `combined/joint_identification_summary.tsv` | Counts per evidence group |
+| `final_summary.tsv` | Per-file MS/MS identification rate, peptide count, and PSM count |
+| `final_peptides.tsv` | Peptide table, including the shift class |
+| `razor_proteins.tsv` | Protein groups after the genome confidence gate |
+| `sequence_variants/` | Substitution calls and the UHGP pangenome check |
+| `taxonomy_analysis/` | Genome and taxon tables |
+| `functional_annotation/` | eggNOG, KEGG, GO, EC, and COG summaries |
 
-### DIA Seed
+`final_summary.tsv` counts MS/MS identifications only. A peptide that FlashLFQ fills in by match-between-runs is quantified, and it is not counted as identified in that file.
 
-Choose DIA Seed when you already have spectral libraries and want to use them as the initial search space.
+## Other workflows
 
-Direct Seed searches the selected libraries directly. Seed Focus, Comprehensive, and Deep modes map identified peptides back to MAG proteins, rank genomes, build a refined library, and run a final quantifying search.
+DIA Marker, DIA Seed, DIA Target, and DIA Real-Time follow the same genome-selection idea, with DIA-NN and a spectral library in place of the DDA stage-2 search. DDA MAG FragPipe and DDA MAG pFind are the closed-search forms of the DDA MAG workflow: marker search, genome selection, sample FASTA, then one closed search. DDA IGC searches a catalogue or a user database directly and does not select genomes.
 
-Use DIA Seed when the existing libraries are relevant to the sample type or when you want to combine standalone libraries with MAG-aware refinement.
-
-### DIA Target
-
-Choose DIA Target for targeted follow-up analyses. This workflow is intended for selected taxa, functions, or proteins rather than whole-community genome selection.
-
-### DIA Real-Time
-
-Choose DIA Real-Time when DIA files are being generated over time and you want MetaPilot to monitor an input folder. This is a GUI workflow for interactive or operational monitoring.
-
-## Interpreting Results
-
-MetaPilot result folders vary by workflow, but the most important outputs are consistent across MAG-aware workflows.
-
-### Genome Selection Outputs
-
-| File | Meaning |
-| --- | --- |
-| `genome_evidence.tsv` | Evidence used to rank genomes, including peptide support and marker evidence where available |
-| `genome_ranked.tsv` | Candidate genomes ordered by evidence and incremental contribution |
-| `genome_selected.tsv` | Genomes selected for the refined FASTA or refined DIA library |
-
-Start with `genome_selected.tsv` to see which genomes MetaPilot kept for the final search. Then inspect `genome_ranked.tsv` to understand high-confidence genomes, borderline genomes, and the long tail of lower-evidence candidates.
-
-Focus/Core mode usually selects fewer genomes. Comprehensive mode usually selects more genomes. Deep modes may add evidence through iterative rounds before building the final refined search space.
-
-### Final DIA Outputs
-
-Common DIA outputs include:
-
-| File | Meaning |
-| --- | --- |
-| `combined/combined.parquet` | Final DIA-NN report used for downstream export |
-| `combined/combined.pr_matrix.tsv` | Precursor or peptide-level quantitative matrix |
-| `combined/combined.pg_matrix.tsv` | Protein-group quantitative matrix |
-| `marker/combined.speclib` or `seed/combined.speclib` | Refined DIA library built from selected genomes |
-
-Use the `.pr_matrix.tsv` file for peptide or precursor-level abundance patterns and the `.pg_matrix.tsv` file for protein-group abundance patterns.
-
-### DDA MAG Outputs
-
-DDA MAG workflows produce tool-specific identification and quantification files, plus a refined sample-specific FASTA for the final search.
-
-The key interpretation point is that the final DDA search is run against the refined FASTA built from selected genomes. Use the genome selection files to understand why that refined search space was chosen.
-
-### Taxonomy Outputs
-
-| File | Meaning |
-| --- | --- |
-| `taxonomy_analysis/Genome.tsv` | Genome-level abundance and support table |
-| `taxonomy_analysis/Taxa_report.tsv` | Aggregated taxonomic report across ranks |
-| `taxonomy_analysis/Genome.html` | Interactive genome-level report when generated |
-
-Use `Genome.tsv` when you need the most detailed genome-level view. Use `Taxa_report.tsv` when you want a higher-level summary by taxonomic rank.
-
-When interpreting taxonomy results, prioritize genomes or taxa with both abundance and peptide support. A high abundance estimate with weak peptide evidence should be reviewed cautiously.
-
-### Functional Annotation Outputs
-
-Functional outputs are written under `functional_annotation/` when functional annotation is enabled.
-
-| File | Meaning |
-| --- | --- |
-| `annotated_proteins.tsv` | Protein-level annotations with peptide or PSM support and intensities |
-| `functions.tsv` | Compatibility copy of the annotated protein table |
-| `functions.html` | Interactive functional annotation report |
-| `KEGG_ko_report.tsv` | KEGG Orthology summary |
-| `Gene_Ontology_id_report.tsv` | Gene Ontology summary |
-| `EC_id_report.tsv` | Enzyme Commission summary |
-| `COG_accession_report.tsv` | COG summary |
-| `NOG_accession_report.tsv` | eggNOG/NOG summary |
-
-Use functional reports to summarize biological activity after checking that the underlying protein and peptide evidence is strong enough for the question being asked.
-
-### Logs And Troubleshooting
-
-Check the workflow log when a run fails or produces unexpected output:
-
-- GUI runs write logs in the selected result folder and GUI log locations.
-- Headless runs write `logging.log` in the study output directory when the path can be resolved.
-
-Common checks:
-
-- Confirm the required external tool paths are valid.
-- Confirm the MAG database entry resolves to the expected local folder.
-- Confirm Marker4 files and libraries exist for DIA Marker.
-- Confirm `predicted/` peptide mapping files exist for DIA Seed.
-- Confirm the output directory is writable.
-- For Deep per file, reduce concurrency if memory usage is too high.
-
-## Notes For Release Users
-
-This README is the main user-facing guide for the public release repository. It is intentionally self-contained so users can start from the release page alone. If future releases add expanded examples, screenshots, or parameter templates, the essential installation, workflow-choice, and result-interpretation information should still remain here.
-
-When reporting a problem, include:
-
-- MetaPilot version.
-- Operating system.
-- Workflow name and mode.
-- External tool versions, especially DIA-NN, FragPipe, pFind, MaxQuant, Sage, and DeepDetect where relevant.
-- The parameter JSON or a description of the GUI settings.
-- The workflow log, such as `logging.log`.
-- The last visible error message.
+Closed DDA and the DIA modes are the right comparison when the question is what the open search adds. They do not discover a mass shift that was not declared as a variable modification.

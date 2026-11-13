@@ -6,29 +6,32 @@ import uk.ac.quadram.metapilot.core.workflow.ProgressCallback;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagPfindParameters;
 import uk.ac.quadram.metapilot.task.mag.MagDbConfigIO;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
+import uk.ac.quadram.metapilot.task.par.IsobaricLabelSettings;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 
 import java.io.File;
 import java.io.IOException;
 
 /**
- * Headless "resume from FlashLFQ output" runner for the DDA MAG pFind
+ * Headless "resume from quantification output" runner for the DDA MAG pFind
  * workflow.
  *
- * pFind identification and FlashLFQ quantification themselves still require
- * the Windows GUI ({@code DDAMagPfindTask}) - there is no headless
- * replacement for those steps here. What this class does is take an
- * already-produced {@code QuantifiedPeptides.tsv} + {@code psms.tsv} (the
- * same files {@code DDAMagPfindTask.lfQuant()}/{@code combineResults()}
- * write under {@code <result>/pfind_MAG_search/combined/}) and run the rest
- * of the pipeline headlessly: post-analysis TSV export, taxonomy analysis,
+ * Takes an already-produced peptide quantification + {@code psms.tsv} (the
+ * files {@code DDAMagPfindTask} / {@link PfindMagSearchHeadlessRunner} write
+ * under {@code <result>/pfind_MAG_search/combined/}) and runs the rest of the
+ * pipeline headlessly: post-analysis TSV export, taxonomy analysis,
  * functional annotation, and the final HTML report - reusing exactly the
  * same core services the GUI pFind path and the FragPipe/DIA headless
- * runners already share.
+ * runners already share. {@link PfindMagSearchHeadlessRunner} runs the
+ * identification and quantification steps before this and then calls
+ * {@link #postAnalysis}.
  *
- * Only {@code QuantifiedPeptides.tsv} and {@code psms.tsv} are required to
- * exist; no other intermediate result file (marker/sample_db search output,
- * ExperimentalDesign.tsv, etc.) is checked.
+ * The peptide table follows the quantitative mode in the parameters:
+ * FlashLFQ's {@code QuantifiedPeptides.tsv} for label-free,
+ * {@code IsobaricQuantifiedPeptides.tsv} (written by
+ * {@code PFindIsobaricTask}) for isobaric labelling. Only that file and
+ * {@code psms.tsv} are required to exist; no other intermediate result file
+ * (marker/sample_db search output, ExperimentalDesign.tsv, etc.) is checked.
  */
 public final class PfindMagHeadlessRunner {
 
@@ -99,15 +102,52 @@ public final class PfindMagHeadlessRunner {
 
 		File combinedDir = new File(resultRoot, "combined");
 		File quanPepFile = quantifiedPeptidesTsv != null ? quantifiedPeptidesTsv
-				: new File(combinedDir, "QuantifiedPeptides.tsv");
+				: defaultQuantifiedPeptides(combinedDir, params);
 		File psmsFile = psmsTsv != null ? psmsTsv : new File(combinedDir, "psms.tsv");
 
 		cb.onMessage("Resuming from existing quantification: " + quanPepFile.getAbsolutePath() + ", "
 				+ psmsFile.getAbsolutePath());
 
-		cb.onMessage("Step 1: post-analysis + TSV export ...");
+		PfindMagPostAnalysisTsvExporter.Result post = postAnalysis(params, mag, resultRoot, quanPepFile, psmsFile,
+				funcDbFile, cb, generateHtmlReport, reportPythonHint, reportResourceConfig, exportMetaAtlasParquet);
+
+		cb.onMessage("MAG+pFind headless post-analysis completed.");
+		cb.onComplete(resultRoot.getAbsolutePath());
+		return new Result(resultRoot, quanPepFile, psmsFile, post);
+	}
+
+	/**
+	 * The peptide table the parameters' quantitative mode produces in
+	 * {@code combinedDir}: {@code IsobaricQuantifiedPeptides.tsv} for isobaric
+	 * labelling, otherwise FlashLFQ's {@code QuantifiedPeptides.tsv}.
+	 */
+	static File defaultQuantifiedPeptides(File combinedDir, DDAMagPfindParameters params) {
+		return isIsobaric(params) ? new File(combinedDir, "IsobaricQuantifiedPeptides.tsv")
+				: new File(combinedDir, "QuantifiedPeptides.tsv");
+	}
+
+	static boolean isIsobaric(DDAMagPfindParameters params) {
+		return MetaConstants.isobaricLabel
+				.equals(IsobaricLabelSettings.normalizeQuantitativeMode(params.getQuantitativeMode()));
+	}
+
+	/**
+	 * Post-analysis TSV export, taxonomy, functional annotation and the HTML
+	 * report, from a peptide quantification and {@code psms.tsv}. Shared by
+	 * {@link #run} and {@link PfindMagSearchHeadlessRunner}.
+	 */
+	static PfindMagPostAnalysisTsvExporter.Result postAnalysis(DDAMagPfindParameters params, MagDbItem mag,
+			File resultRoot, File quanPepFile, File psmsFile, File funcDbFile, ProgressCallback cb,
+			boolean generateHtmlReport, String reportPythonHint, MetaPilotResourceConfig reportResourceConfig,
+			boolean exportMetaAtlasParquet) throws Exception {
+		String quanMode = IsobaricLabelSettings.normalizeQuantitativeMode(params.getQuantitativeMode());
+		if (quanMode == null || quanMode.isBlank()) {
+			quanMode = MetaConstants.labelFree;
+		}
+		cb.onMessage("Step 1: post-analysis + TSV export (" + quanMode + ") ...");
 		PfindMagPostAnalysisTsvExporter.Result post = PfindMagPostAnalysisTsvExporter.exportFinalTsvs(mag,
-				quanPepFile, psmsFile, resultRoot, params.getMetadata(), "DDA MAG pFind", cb);
+				quanPepFile, psmsFile, resultRoot, params.getMetadata(), "DDA MAG pFind", cb, quanMode,
+				params.isCombineLabel(), new File(params.getResult(), "spectra"));
 
 		cb.onMessage("Step 2: taxonomy report export ...");
 		exportTaxonomyTsvs(mag, resultRoot, post, cb, exportMetaAtlasParquet);
@@ -120,7 +160,7 @@ public final class PfindMagHeadlessRunner {
 			request.microDbCatalogueId = params.getMagDbCatalogueId();
 			request.functionDefinitionDb = funcDbFile;
 			request.analysisType = MetaConstants.pFindMag;
-			request.quantitativeMode = MetaConstants.labelFree;
+			request.quantitativeMode = quanMode;
 			request.intensityTitles = post.intensityTitles;
 			request.metaProteins = post.metaProteins;
 			request.exportMetaAtlasParquet = exportMetaAtlasParquet;
@@ -130,10 +170,7 @@ public final class PfindMagHeadlessRunner {
 		}
 
 		runHtmlReportIfRequested(resultRoot, params, generateHtmlReport, reportPythonHint, reportResourceConfig, cb);
-
-		cb.onMessage("MAG+pFind headless post-analysis completed.");
-		cb.onComplete(resultRoot.getAbsolutePath());
-		return new Result(resultRoot, quanPepFile, psmsFile, post);
+		return post;
 	}
 
 	private static void exportTaxonomyTsvs(MagDbItem mag, File resultRoot, PfindMagPostAnalysisTsvExporter.Result post,
@@ -146,6 +183,7 @@ public final class PfindMagHeadlessRunner {
 		request.magDb = mag;
 		request.generateFinalGenomeRanking = true;
 		request.genomeIntensityMap = post.genomeIntensityMap;
+		request.genomeUniqueIntensityMap = post.genomeUniqueIntensityMap;
 		request.genomeScoreMap = post.genomeScoreMap;
 		request.genomeStats = post.genomeDiaStats;
 		request.psmCountMap = post.psmCountMap;
@@ -171,14 +209,14 @@ public final class PfindMagHeadlessRunner {
 		cb.onMessage("MAG+pFind: generating shared HTML report");
 		MetaPilotHtmlReportService.Result report = MetaPilotHtmlReportService.runStandardReportWarningOnly(resultDir,
 				"DDA_MAG_PFIND", params != null ? params.getThreadCount() : 1, reportPythonHint, reportResourceConfig,
-				cb);
+				cb, params != null ? params.getMetadata() : null);
 		if (!report.warnings.isEmpty()) {
 			cb.onMessage(
 					"WARNING: HTML report generation completed with warnings: " + String.join("; ", report.warnings));
 		}
 	}
 
-	private static MagDbItem resolveMagDb(String catalogueId, String version, File magdbConfigJson) {
+	static MagDbItem resolveMagDb(String catalogueId, String version, File magdbConfigJson) {
 		if (catalogueId == null || catalogueId.isBlank())
 			return null;
 		if (magdbConfigJson == null || !magdbConfigJson.exists())

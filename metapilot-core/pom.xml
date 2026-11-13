@@ -7,7 +7,7 @@
     <parent>
         <groupId>uk.ac.quadram</groupId>
         <artifactId>metapilot-parent</artifactId>
-        <version>1.1.1</version>
+        <version>1.2.0</version>
     </parent>
     
     <artifactId>metapilot-core</artifactId>
@@ -157,6 +157,20 @@
             <groupId>nz.ac.waikato.cms.weka</groupId>
             <artifactId>weka-stable</artifactId>
             <version>3.8.6</version>
+        </dependency>
+
+        <!-- Gradient-boosted trees for the identification v2 joint model (docs/developer/identification-v2-design.md, C3).
+             The jar carries the native libraries for Linux, macOS and Windows. Only the Java API is used. -->
+        <dependency>
+            <groupId>ml.dmlc</groupId>
+            <artifactId>xgboost4j_2.12</artifactId>
+            <version>2.1.4</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.scala-lang</groupId>
+                    <artifactId>scala-compiler</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         
         <!-- Hadoop and Parquet -->

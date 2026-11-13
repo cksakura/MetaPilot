@@ -37,17 +37,19 @@ public class DDAMagOpenSearchParameters extends MetaBaseParameter {
 	private String magDbCatalogueId = "";
 	private String magDbIdentifier = "MGYG";
 	private String magDbVersion = "";
-	private String genomeSelectorMode = MagDbItem.MARKER2;
+	private String genomeSelectorMode = MagDbItem.MARKER4;
 	private String genomeSelectionStrategy = "Focus";
+	private double genomeSelectionPsmCoverage = uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut.DEFAULT_PSM_COVERAGE;
+	private double genomeSelectionStepGuard = uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut.DEFAULT_STEP_GUARD;
+	private int genomeSelectionMaxGenomes = uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut.DEFAULT_MAX_GENOMES;
 
-	/** MSFragger alone. The only mode currently implemented. */
+	/** MSFragger alone. The only engine this workflow runs. */
 	public static final String ENGINES_MSFRAGGER = "MSFragger only";
 	/**
-	 * MSFragger + Sage, pooled for union coverage with engine agreement as a
-	 * classifier feature. Present so the benefit of a second engine can be
-	 * measured against the single-engine baseline rather than assumed — on a
-	 * refined, genome-specific database the gain may not justify the cost, and
-	 * that is an empirical question. Not yet implemented.
+	 * Former second-engine mode. Closed and open MSFragger searches of the
+	 * refined database replaced it. Kept as a JSON token so old parameter files
+	 * still load; {@link #setSearchEngines(String)} coerces it to
+	 * {@link #ENGINES_MSFRAGGER}.
 	 */
 	public static final String ENGINES_MSFRAGGER_AND_SAGE = "MSFragger + Sage";
 
@@ -101,7 +103,9 @@ public class DDAMagOpenSearchParameters extends MetaBaseParameter {
 	 * oxidation and protein N-terminal acetyl, as the FragPipe closed workflow; Crystal-C is not run
 	 * on it. Open: the round-2 window and {@code isotope_error = 0}, with Crystal-C.
 	 * <p>
-	 * Round 1 keeps only the zero family plus allow-list shifts, which a closed search delivers. On
+	 * Round 1 keeps only the zero family, plus, in open mode, PSMs at UNIMOD masses that pass
+	 * {@code ExpectedPeakSelector}'s criteria; a closed search has no such peaks, so that step is
+	 * skipped. On
 	 * 12mix (9 runs) and PXD050781 (21 runs) the per-run genome lists of a closed and an open marker
 	 * search with the same selector carry the same spiked genomes (misses 6 and 5 of 108, all but one
 	 * the marker-poor <i>E. casseliflavus</i>; PXD050781 target in every run) from the same marker
@@ -119,13 +123,81 @@ public class DDAMagOpenSearchParameters extends MetaBaseParameter {
 	 * database is also searched closed (+-{@link #closedStagePrecursorPpm} ppm, isotope errors
 	 * 0/1/2, variable M oxidation and protein N-terminal acetyl); closed PSMs accepted at 1% FDR
 	 * are identifications, and the open search identifies only the spectra they leave, as
-	 * unmodified or known-shift PSMs. Unexplained shifts are reported but are not
-	 * identifications, the fragment-evidence gate no longer folds rejected peaks onto zero, and
-	 * allow-list masses are not withdrawn as substitutions. Off restores the open-only workflow.
+	 * unmodified or accepted-shift PSMs. Unexplained shifts are reported but are not
+	 * identifications, and the fragment-evidence gate no longer folds rejected peaks onto zero.
+	 * Off restores the open-only workflow.
 	 */
 	private boolean closedStageEnabled = true;
 	/** Closed-stage precursor window, +- ppm. */
 	private double closedStagePrecursorPpm = 20.0;
+
+	/** {@link #closedOpenIntegration}: one candidate pool, one score, FDR per evidence group. */
+	public static final String INTEGRATION_JOINT = "joint";
+	/** {@link #closedOpenIntegration}: closed first, open on the spectra the closed stage leaves. */
+	public static final String INTEGRATION_CASCADE = "cascade";
+	/**
+	 * How the closed and open searches are combined when the closed stage is enabled. Joint
+	 * ({@code docs/developer/joint-closed-open-identification-plan.md}) scores every candidate of a
+	 * spectrum from both searches on one model that sees both searches' evidence, then walks
+	 * target-decoy FDR within each evidence group (exact mass, open unmodified, open accepted shift).
+	 * Cascade is the earlier closed-then-open scheme, kept for comparison.
+	 */
+	private String closedOpenIntegration = INTEGRATION_JOINT;
+	/**
+	 * Candidates the closed search reports per spectrum, in every integration mode: the runners-up
+	 * are exact-mass alternatives for whatever method combines the searches. 3, matching the open
+	 * search ({@link #round2OutputReportTopN}), so both searches give each spectrum the same depth
+	 * (2026-10-21). The cascade still decides on each spectrum's best closed hit.
+	 */
+	private int closedStageTopN = 3;
+	/** Joint: score candidates against DIA-NN predicted spectra and retention times. */
+	private boolean jointMs2Features = true;
+	/** Joint: open candidates beyond this rank get no predicted-spectrum features (cost). */
+	private int jointMs2MaxOpenRank = 3;
+	/**
+	 * Cascade: give the closed-stage and open-search classifiers the DIA-NN predicted-spectrum and
+	 * retention-time features (every reported candidate is predicted). Off by default (2026-10-23,
+	 * under evaluation by entrapment).
+	 */
+	private boolean cascadeMs2Features = false;
+	/**
+	 * Cascade: the closed-stage classifier scores every closed candidate ({@link #closedStageTopN})
+	 * and each spectrum's winner is chosen after rescoring, instead of rescoring the closed rank 1
+	 * only. Off by default (2026-10-23, under evaluation by entrapment).
+	 */
+	private boolean cascadeClosedRerank = false;
+	/**
+	 * How the decoys of the stage-2 sample databases are made: {@code reverse} (whole protein, the
+	 * default) or {@code pseudo_reverse} (reversal within each cleavage segment, so every tryptic
+	 * decoy peptide has its target's mass; see {@code TargetDecoyFasta}). The shared marker database
+	 * keeps whole-protein reversal, so genome selection does not change. Default pseudo_reverse
+	 * (frozen workflow, 2026-11-02).
+	 */
+	private String sampleDecoyMethod = "pseudo_reverse";
+	/** {@code v1}: the joint identification as before. */
+	public static final String IDENTIFICATION_V1 = "v1";
+	/**
+	 * {@code v2} ({@code docs/developer/identification-v2-design.md}): precursor queries, RESET with
+	 * decoy weight 2 at every level, gradient-boosted trees, the one-peptide protein filter, and, unless
+	 * the parameter file says otherwise, pseudo-reversed sample decoys and DIA-NN predictions to open
+	 * rank 3. Runs the joint identification.
+	 */
+	public static final String IDENTIFICATION_V2 = "v2";
+	/** Default v2 (frozen workflow, 2026-11-02). */
+	private String identificationVersion = IDENTIFICATION_V2;
+	/** Joint: fragment tolerance for the predicted-spectrum match, ppm. */
+	private double jointFragmentTolerancePpm = 20.0;
+	/** Joint: accept the unexplained-shift group as identifications (off: walked and reported only). */
+	private boolean jointAcceptUnexplained = false;
+	/**
+	 * Joint: also compute closed-only, open-only and cascade identifications from the same searches
+	 * and write them beside the joint result ({@code identification_arms.tsv.gz}), so the methods can
+	 * be compared on one run. Costs the two extra classifier trainings the cascade needs. An evaluation
+	 * option: off by default.
+	 */
+	private boolean jointCompareArms = false;
+	/** Joint: comma-separated feature names the model never uses. */
+	private String jointWithheldFeatures = "";
 
 	// --- stage 1: unmodified selection -------------------------------------
 	/** Zero-peak membership half-width, in fitted sigmas. */
@@ -179,7 +251,7 @@ public class DDAMagOpenSearchParameters extends MetaBaseParameter {
 	private double kdeMaxMembershipDa = 0.050;
 	private int kdeMinReproducibleFiles = 2;
 	private double kdeMinFileSupport = 3.0;
-	private int kdeMaxModes = 2000;
+	private int kdeMaxModes = 500;
 
 	/**
 	 * Seed the stage-2 classifier's confident positives only from PSMs inside a
@@ -248,10 +320,13 @@ public class DDAMagOpenSearchParameters extends MetaBaseParameter {
 	 * <p>
 	 * Round 1 stays at 1 ({@code round1OutputReportTopN}): it has no classifier,
 	 * so nothing there can promote a lower-ranked candidate.
+	 * <p>
+	 * 3 since 2026-10-21, the same depth as the closed search ({@link #closedStageTopN}), for the
+	 * entrapment comparison of the integration strategies. The measurement above was made at 5.
 	 */
 	// REVIEWED 2026-09-17 (Claude session, source-verified against the javadoc above): rank
 	// policy re-confirmed, no open question. See Claude outputs/opensearch_optimization_review.md.
-	private int round2OutputReportTopN = 5;
+	private int round2OutputReportTopN = 3;
 	private int maxIsotopeOffset = 3;
 	/** Stage-1 folding is bounded separately; +2 is the last measured offset. */
 	private int round1MaxIsotopeOffset = 2;
@@ -420,6 +495,15 @@ public class DDAMagOpenSearchParameters extends MetaBaseParameter {
 	private boolean other = false;
 	private String ignoreRank = "Species";
 	private boolean ignoreEnvironmentalSamples = false;
+
+	/**
+	 * Evaluation switch: paired-shuffle entrapment after genome selection, isolated
+	 * under {@code opensearch_entrapment_MAG_search/}. Off by default so a production
+	 * run is unchanged. Same processing as {@code mag-opensearch-entrapment}.
+	 */
+	private boolean entrapmentEnabled = false;
+	private long entrapmentSeed = uk.ac.quadram.metapilot.core.opensearch.OpenSearchEntrapment.DEFAULT_SEED;
+	private int entrapmentIdDigit = uk.ac.quadram.metapilot.core.dia.EntrapmentShuffle.DEFAULT_ID_DIGIT;
 
 	/** MetadataData format: [sampleName, labelType, age, gender, ...]. */
 	private List<String[]> metadataTableData = new ArrayList<>();
@@ -763,7 +847,62 @@ public class DDAMagOpenSearchParameters extends MetaBaseParameter {
 	}
 
 	public void setGenomeSelectionStrategy(String genomeSelectionStrategy) {
-		this.genomeSelectionStrategy = genomeSelectionStrategy;
+		this.genomeSelectionStrategy = uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut
+				.requireStrategy(genomeSelectionStrategy);
+	}
+
+	public double getGenomeSelectionPsmCoverage() {
+		return genomeSelectionPsmCoverage;
+	}
+
+	public void setGenomeSelectionPsmCoverage(double genomeSelectionPsmCoverage) {
+		uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut.requireCoverage(genomeSelectionPsmCoverage);
+		this.genomeSelectionPsmCoverage = genomeSelectionPsmCoverage;
+	}
+
+	public double getGenomeSelectionStepGuard() {
+		return genomeSelectionStepGuard;
+	}
+
+	public void setGenomeSelectionStepGuard(double genomeSelectionStepGuard) {
+		uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut.requireStepGuard(genomeSelectionStepGuard);
+		this.genomeSelectionStepGuard = genomeSelectionStepGuard;
+	}
+
+	public int getGenomeSelectionMaxGenomes() {
+		return genomeSelectionMaxGenomes;
+	}
+
+	public void setGenomeSelectionMaxGenomes(int genomeSelectionMaxGenomes) {
+		uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut.requireMaxGenomes(genomeSelectionMaxGenomes);
+		this.genomeSelectionMaxGenomes = genomeSelectionMaxGenomes;
+	}
+
+	public boolean isEntrapmentEnabled() {
+		return entrapmentEnabled;
+	}
+
+	public void setEntrapmentEnabled(boolean entrapmentEnabled) {
+		this.entrapmentEnabled = entrapmentEnabled;
+	}
+
+	public long getEntrapmentSeed() {
+		return entrapmentSeed;
+	}
+
+	public void setEntrapmentSeed(long entrapmentSeed) {
+		this.entrapmentSeed = entrapmentSeed;
+	}
+
+	public int getEntrapmentIdDigit() {
+		return entrapmentIdDigit;
+	}
+
+	public void setEntrapmentIdDigit(int entrapmentIdDigit) {
+		if (entrapmentIdDigit < 1 || entrapmentIdDigit > 9) {
+			throw new IllegalArgumentException("Entrapment ID digit must be 1-9");
+		}
+		this.entrapmentIdDigit = entrapmentIdDigit;
 	}
 
 	public String getSearchEngines() {
@@ -771,7 +910,7 @@ public class DDAMagOpenSearchParameters extends MetaBaseParameter {
 	}
 
 	public void setSearchEngines(String searchEngines) {
-		this.searchEngines = searchEngines == null || searchEngines.isBlank() ? ENGINES_MSFRAGGER : searchEngines;
+		this.searchEngines = coerceEngineMode(searchEngines);
 	}
 
 	public boolean isMsfraggerOnly() {
@@ -815,15 +954,11 @@ public class DDAMagOpenSearchParameters extends MetaBaseParameter {
 	}
 
 	/**
-	 * Whether an engine mode can actually run today.
-	 * <p>
-	 * Single source of truth for what is implemented. The UI, the pre-flight
-	 * check and the headless runner all consult this, so enabling Sage means
-	 * changing one method rather than finding every place that happened to
-	 * hardcode the same condition.
+	 * Whether an engine mode can actually run today. MSFragger only: closed and
+	 * open searches of the selected genomes replaced a second search engine.
 	 */
 	public static boolean isEngineModeAvailable(String engineMode) {
-		return ENGINES_MSFRAGGER.equals(engineMode) || ENGINES_MSFRAGGER_AND_SAGE.equals(engineMode);
+		return ENGINES_MSFRAGGER.equals(engineMode);
 	}
 
 	/** Why {@code engineMode} cannot run, or null when it can. */
@@ -831,19 +966,57 @@ public class DDAMagOpenSearchParameters extends MetaBaseParameter {
 		if (isEngineModeAvailable(engineMode)) {
 			return null;
 		}
-		return "Engine mode '" + engineMode + "' is not recognised. Available modes: "
-				+ ENGINES_MSFRAGGER + ", " + ENGINES_MSFRAGGER_AND_SAGE + ".";
+		if (ENGINES_MSFRAGGER_AND_SAGE.equals(engineMode)) {
+			return "MSFragger + Sage has been removed. Closed and open MSFragger searches of the "
+					+ "selected genomes replace a second engine.";
+		}
+		return "Engine mode '" + engineMode + "' is not recognised. The open-search workflow runs MSFragger only.";
 	}
 
 	/**
-	 * Coerces an unavailable mode back to the only runnable one.
+	 * Coerces an unavailable or blank mode to MSFragger only.
 	 * <p>
-	 * Applied when loading saved parameters: a file written while the mode was
-	 * selectable, or hand-edited, must not put the workflow into a state that
-	 * only fails at run time.
+	 * Applied when loading saved parameters: a file written while MSFragger +
+	 * Sage was selectable must not put the workflow into a state that only
+	 * fails at run time.
 	 */
 	public static String coerceEngineMode(String engineMode) {
 		return isEngineModeAvailable(engineMode) ? engineMode : ENGINES_MSFRAGGER;
+	}
+
+	/**
+	 * Restores the method knobs the GUI no longer shows.
+	 * <p>
+	 * Rank depth, the open precursor window, round-1 mode, the closed stage,
+	 * search engine, and peak-fitting / local-FDR internals have a tested
+	 * default. A GUI run, or a last-used file written when those spinners still
+	 * existed, must not keep an experimental value. CLI and HPC still read the
+	 * same keys from the parameter JSON and never call this.
+	 */
+	public void applyGuiLockedDefaults() {
+		DDAMagOpenSearchParameters d = new DDAMagOpenSearchParameters();
+		setSearchEngines(ENGINES_MSFRAGGER);
+		setPrecursorMassLower(d.getPrecursorMassLower());
+		setPrecursorMassUpper(d.getPrecursorMassUpper());
+		setOutputReportTopN(d.getOutputReportTopN());
+		setRound1OutputReportTopN(d.getRound1OutputReportTopN());
+		setRound2OutputReportTopN(d.getRound2OutputReportTopN());
+		setClosedStageTopN(d.getClosedStageTopN());
+		setRound1SearchMode(d.getRound1SearchMode());
+		setClosedStageEnabled(d.isClosedStageEnabled());
+		setLocalFdr(d.getLocalFdr());
+		setClassifierFolds(d.getClassifierFolds());
+		setZeroPeakSigmas(d.getZeroPeakSigmas());
+		setPeakMinR2(d.getPeakMinR2());
+		setMembershipFloorDa(d.getMembershipFloorDa());
+		setPeakMinArea(d.getPeakMinArea());
+		setMaxPeaksToFit(d.getMaxPeaksToFit());
+		setMaxFitIterations(d.getMaxFitIterations());
+		setPeakMinFitBins(d.getPeakMinFitBins());
+		setPeakMinSigmaBins(d.getPeakMinSigmaBins());
+		setPeakMinSnr(d.getPeakMinSnr());
+		setPeakMinSeparationBins(d.getPeakMinSeparationBins());
+		setPeakMinSeparationSigmas(d.getPeakMinSeparationSigmas());
 	}
 
 	public int getParallelTasks() {
@@ -1070,6 +1243,144 @@ public class DDAMagOpenSearchParameters extends MetaBaseParameter {
 		return closedStagePrecursorPpm;
 	}
 
+	public String getClosedOpenIntegration() {
+		return closedOpenIntegration;
+	}
+
+	public void setClosedOpenIntegration(String closedOpenIntegration) {
+		String value = closedOpenIntegration == null ? "" : closedOpenIntegration.trim();
+		boolean cascade = INTEGRATION_CASCADE.equalsIgnoreCase(value);
+		if (!cascade && !value.isEmpty() && !INTEGRATION_JOINT.equalsIgnoreCase(value)) {
+			// A typo must not silently pick a method.
+			org.apache.logging.log4j.LogManager.getLogger(DDAMagOpenSearchParameters.class)
+					.warn("closed_open_integration = '" + value + "' is neither '" + INTEGRATION_JOINT + "' nor '"
+							+ INTEGRATION_CASCADE + "'; using '" + INTEGRATION_JOINT + "'");
+		}
+		this.closedOpenIntegration = cascade ? INTEGRATION_CASCADE : INTEGRATION_JOINT;
+	}
+
+	/** Closed stage on and combined jointly with the open search. */
+	public boolean isJointIdentification() {
+		return closedStageEnabled && INTEGRATION_JOINT.equals(closedOpenIntegration);
+	}
+
+	public int getClosedStageTopN() {
+		return closedStageTopN;
+	}
+
+	public void setClosedStageTopN(int closedStageTopN) {
+		this.closedStageTopN = Math.max(1, Math.min(10, closedStageTopN));
+	}
+
+	public boolean isJointMs2Features() {
+		return jointMs2Features;
+	}
+
+	public void setJointMs2Features(boolean jointMs2Features) {
+		this.jointMs2Features = jointMs2Features;
+	}
+
+	public boolean isCascadeMs2Features() {
+		return cascadeMs2Features;
+	}
+
+	public void setCascadeMs2Features(boolean cascadeMs2Features) {
+		this.cascadeMs2Features = cascadeMs2Features;
+	}
+
+	public boolean isCascadeClosedRerank() {
+		return cascadeClosedRerank;
+	}
+
+	public void setCascadeClosedRerank(boolean cascadeClosedRerank) {
+		this.cascadeClosedRerank = cascadeClosedRerank;
+	}
+
+	public String getIdentificationVersion() {
+		return identificationVersion;
+	}
+
+	/** Blank means the default, v2. @throws IllegalArgumentException for anything other than v1 or v2 */
+	public void setIdentificationVersion(String identificationVersion) {
+		String v = identificationVersion == null || identificationVersion.isBlank() ? IDENTIFICATION_V2
+				: identificationVersion.trim().toLowerCase(java.util.Locale.ROOT);
+		if (!IDENTIFICATION_V1.equals(v) && !IDENTIFICATION_V2.equals(v)) {
+			throw new IllegalArgumentException("identification_version must be v1 or v2: " + identificationVersion);
+		}
+		this.identificationVersion = v;
+	}
+
+	public boolean isIdentificationV2() {
+		return IDENTIFICATION_V2.equals(identificationVersion);
+	}
+
+	public String getSampleDecoyMethod() {
+		return sampleDecoyMethod;
+	}
+
+	/** @throws IllegalArgumentException for anything other than reverse or pseudo_reverse */
+	public void setSampleDecoyMethod(String sampleDecoyMethod) {
+		this.sampleDecoyMethod = uk.ac.quadram.metapilot.core.prodb.TargetDecoyFasta.DecoyMethod
+				.fromLabel(sampleDecoyMethod).label;
+	}
+
+	public uk.ac.quadram.metapilot.core.prodb.TargetDecoyFasta.DecoyMethod sampleDecoyMethod() {
+		return uk.ac.quadram.metapilot.core.prodb.TargetDecoyFasta.DecoyMethod.fromLabel(sampleDecoyMethod);
+	}
+
+	public int getJointMs2MaxOpenRank() {
+		return jointMs2MaxOpenRank;
+	}
+
+	public void setJointMs2MaxOpenRank(int jointMs2MaxOpenRank) {
+		this.jointMs2MaxOpenRank = Math.max(1, jointMs2MaxOpenRank);
+	}
+
+	public double getJointFragmentTolerancePpm() {
+		return jointFragmentTolerancePpm;
+	}
+
+	public void setJointFragmentTolerancePpm(double jointFragmentTolerancePpm) {
+		this.jointFragmentTolerancePpm = Double.isFinite(jointFragmentTolerancePpm) && jointFragmentTolerancePpm > 0
+				? jointFragmentTolerancePpm
+				: 20.0;
+	}
+
+	public boolean isJointAcceptUnexplained() {
+		return jointAcceptUnexplained;
+	}
+
+	public void setJointAcceptUnexplained(boolean jointAcceptUnexplained) {
+		this.jointAcceptUnexplained = jointAcceptUnexplained;
+	}
+
+	public boolean isJointCompareArms() {
+		return jointCompareArms;
+	}
+
+	public void setJointCompareArms(boolean jointCompareArms) {
+		this.jointCompareArms = jointCompareArms;
+	}
+
+	public String getJointWithheldFeatures() {
+		return jointWithheldFeatures;
+	}
+
+	public void setJointWithheldFeatures(String jointWithheldFeatures) {
+		this.jointWithheldFeatures = jointWithheldFeatures == null ? "" : jointWithheldFeatures.trim();
+	}
+
+	/** {@link #jointWithheldFeatures} as a set of names. */
+	public java.util.Set<String> jointWithheldFeatureSet() {
+		java.util.Set<String> out = new java.util.LinkedHashSet<>();
+		for (String name : jointWithheldFeatures.split(",")) {
+			if (!name.isBlank()) {
+				out.add(name.trim());
+			}
+		}
+		return out;
+	}
+
 	public void setClosedStagePrecursorPpm(double closedStagePrecursorPpm) {
 		this.closedStagePrecursorPpm = closedStagePrecursorPpm;
 	}
@@ -1128,7 +1439,10 @@ public class DDAMagOpenSearchParameters extends MetaBaseParameter {
 	 */
 	public ExpectedPeakSelector.Config toExpectedPeakConfig() {
 		ExpectedPeakSelector.Config cfg = new ExpectedPeakSelector.Config();
-		cfg.enabled = expectedPeaksEnabled;
+		// Closed marker search: oxidation and N-terminal acetyl are variable
+		// modifications at mass difference zero, and no other shifted peak forms in a
+		// ppm window, so there is nothing to test (ExpectedPeakSelector, "When it runs").
+		cfg.enabled = expectedPeaksEnabled && !isRound1ClosedSearch();
 		cfg.toleranceDa = expectedPeakToleranceDa;
 		cfg.minTargetsInWindow = expectedPeakMinTargets;
 		cfg.maxWindowFdr = expectedPeakMaxWindowFdr;

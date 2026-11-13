@@ -4,6 +4,7 @@ import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
+import uk.ac.quadram.metapilot.task.common.gui.ParameterSection;
 import javafx.scene.control.Alert.AlertType;
 import javafx.scene.layout.*;
 import javafx.collections.FXCollections;
@@ -285,7 +286,6 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 		VBox tabContent = new VBox(10);
 		tabContent.setPadding(new Insets(10));
 		tabContent.setMinWidth(960);
-		tabContent.setMinHeight(760);
 
 		// Create main grid layout for parameters with 2-column responsive sizing
 		GridPane mainGrid = new GridPane();
@@ -293,8 +293,6 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 		mainGrid.setVgap(15);
 		mainGrid.setPadding(new Insets(10));
 		mainGrid.setMinWidth(940);
-		mainGrid.setMinHeight(740);
-		VBox.setVgrow(mainGrid, Priority.ALWAYS);
 
 		// Column constraints for 2-column layout
 		ColumnConstraints col1 = new ColumnConstraints();
@@ -309,49 +307,43 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 
 		// Row constraints for better layout control
 		RowConstraints row1 = new RowConstraints();
-		row1.setMinHeight(60);
 		row1.setVgrow(Priority.NEVER);
 		RowConstraints row2 = new RowConstraints();
 		row2.setVgrow(Priority.ALWAYS);
-		row2.setMinHeight(300);
 		RowConstraints row3 = new RowConstraints();
 		row3.setVgrow(Priority.ALWAYS);
-		row3.setMinHeight(200);
 		mainGrid.getRowConstraints().addAll(row1, row2, row3);
 
 		// Thread Count Settings (spans both columns)
-		VBox threadSection = createThreadCountSection();
+		TitledPane threadSection = createThreadCountSection();
 		mainGrid.add(threadSection, 0, 0, 2, 1);
 
 		// Row 2: Taxa Selection Panel (left) | Function Selection Panel (right)
-		VBox taxaSection = createTaxaSelectionPanel();
+		TitledPane taxaSection = createTaxaSelectionPanel();
 		mainGrid.add(taxaSection, 0, 1);
 		GridPane.setVgrow(taxaSection, Priority.ALWAYS);
 
-		VBox functionSection = createFunctionSelectionPanel();
+		TitledPane functionSection = createFunctionSelectionPanel();
 		mainGrid.add(functionSection, 1, 1);
 		GridPane.setVgrow(functionSection, Priority.ALWAYS);
 
 		// Row 3: Library Generation Panel (left) | Metadata Configuration (right)
-		VBox librarySection = createLibraryGenerationPanel();
+		TitledPane librarySection = createLibraryGenerationPanel();
 		mainGrid.add(librarySection, 0, 2);
 		GridPane.setVgrow(librarySection, Priority.ALWAYS);
 
 		// Create reusable metadata configuration panel
-		metadataPanel = new MetadataConfigurationPanel();
+		metadataPanel = new MetadataConfigurationPanel(true);
 		mainGrid.add(metadataPanel, 1, 2);
 		GridPane.setVgrow(metadataPanel, Priority.ALWAYS);
 
-		tabContent.getChildren().add(mainGrid);
+		tabContent.getChildren().add(ParameterSection.createViewport(mainGrid));
 		return tabContent;
 	}
 
-	private VBox createThreadCountSection() {
+	private TitledPane createThreadCountSection() {
 		VBox section = new VBox(10);
-		section.setPadding(new Insets(10));
-		section.setStyle("-fx-background-color: #f0f8ff; -fx-background-radius: 5;");
 
-		Label titleLabel = createSectionTitle("Performance & Modifications");
 
 		// Performance (threads) row
 		HBox threadBox = new HBox(15);
@@ -409,18 +401,17 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 				phosphoSTYCheckBox,
 				kGGCheckBox);
 
-		section.getChildren().addAll(titleLabel, threadBox, modsBox);
-		return section;
+		section.getChildren().addAll(threadBox, modsBox);
+		return ParameterSection.create("Performance & Modifications", section);
 	}
 
-	private VBox createLibraryGenerationPanel() {
+	private TitledPane createLibraryGenerationPanel() {
 		VBox section = new VBox(10);
-		section.setPadding(new Insets(10));
-		section.setStyle("-fx-background-color: #ffefd5; -fx-background-radius: 5;");
+
+
 		section.setMinHeight(180);
 		VBox.setVgrow(section, Priority.ALWAYS);
 
-		Label titleLabel = createSectionTitle("Library Generation");
 
 		// Threshold selection and buttons in one row
 		HBox thresholdAndButtonsBox = new HBox(15);
@@ -514,19 +505,18 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 		libraryConsoleOutput.setStyle("-fx-font-family: monospace; -fx-font-size: 12px;");
 		VBox.setVgrow(libraryConsoleOutput, Priority.ALWAYS);
 
-		section.getChildren().addAll(titleLabel, thresholdAndButtonsBox, libraryNameBox, libraryPathBox,
+		section.getChildren().addAll(thresholdAndButtonsBox, libraryNameBox, libraryPathBox,
 				progressSection, consoleLabel, libraryConsoleOutput);
-		return section;
+		return ParameterSection.create("Library Generation", section);
 	}
 
-	private VBox createTaxaSelectionPanel() {
+	private TitledPane createTaxaSelectionPanel() {
 		VBox section = new VBox(10);
-		section.setPadding(new Insets(10));
-		section.setStyle("-fx-background-color: #fff8dc; -fx-background-radius: 5;");
+
+
 		section.setMinHeight(250);
 		VBox.setVgrow(section, Priority.ALWAYS);
 
-		Label titleLabel = createSectionTitle("Taxa Selection");
 
 		// Taxa level selection
 		HBox levelBox = new HBox(10);
@@ -611,18 +601,17 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 
 		controlBox.getChildren().addAll(selectAllTaxaButton, deselectAllTaxaButton);
 
-		section.getChildren().addAll(titleLabel, levelBox, taxaTable, controlBox);
-		return section;
+		section.getChildren().addAll(levelBox, taxaTable, controlBox);
+		return ParameterSection.create("Taxa Selection", section);
 	}
 
-	private VBox createFunctionSelectionPanel() {
+	private TitledPane createFunctionSelectionPanel() {
 		VBox section = new VBox(10);
-		section.setPadding(new Insets(10));
-		section.setStyle("-fx-background-color: #f0fff0; -fx-background-radius: 5;");
+
+
 		section.setMinHeight(250);
 		VBox.setVgrow(section, Priority.ALWAYS);
 
-		Label titleLabel = createSectionTitle("Function Selection");
 
 		// Function level selection
 		HBox levelBox = new HBox(10);
@@ -708,8 +697,8 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 
 		controlBox.getChildren().addAll(selectAllFunctionButton, deselectAllFunctionButton);
 
-		section.getChildren().addAll(titleLabel, levelBox, functionTable, controlBox);
-		return section;
+		section.getChildren().addAll(levelBox, functionTable, controlBox);
+		return ParameterSection.create("Function Selection", section);
 	}
 
 	// Taxa Row class
@@ -1428,27 +1417,8 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 			// Create MetaData object
 			MetaData metaData = new MetaData(rawFiles, expNames, fractions, replicates);
 
-		// Collect metadata information using column order from Metadata configuration panel
-		ObservableList<MetaPilotDdaIgcMaxQuantPanel.MetadataRow> metadataRows = metadataPanel
-				.getMetadataTableData();
-		List<String> colNames = metadataPanel != null ? metadataPanel.getMetadataColumnNames() : java.util.Collections.emptyList();
-		int metaTypeCount = Math.max(1, colNames.size());
-		String[][] metaInfo = new String[metadataRows.size()][metaTypeCount];
-		if (!colNames.isEmpty()) {
-			for (int i = 0; i < metadataRows.size(); i++) {
-				MetaPilotDdaIgcMaxQuantPanel.MetadataRow row = metadataRows.get(i);
-				for (int j = 0; j < colNames.size(); j++) {
-					String v = row.getValueByColumnName(colNames.get(j));
-					metaInfo[i][j] = v != null ? v : "";
-				}
-			}
-		}
-		// Set both metaTypeCount and metaInfo - metaTypeCount must be set for exportMetadata to work correctly
-		metaData.setMetaTypeCount(metaTypeCount);
-		metaData.setMetaInfo(metaInfo);
-		// Pass column names from UI so export uses them as headers (no "meta1", "meta2", etc.)
-		if (!colNames.isEmpty()) {
-			metaData.setMetaTypeTitles(colNames.toArray(new String[0]));
+		if (metadataPanel != null) {
+			metadataPanel.applyTo(metaData);
 		}
 
 			// Get result directory
@@ -3162,6 +3132,12 @@ public class MetaPilotDiaTargetPanel extends AbstractWorkflowPanel<MetaParameter
 			DiaNNTask diaNNTask = new DiaNNTask(resourceParams.getToolPath(ToolType.DIANN));
 			DiannParameter diannPar = new DiannParameter();
 			diannPar.setThreads(threadsComboBox.getValue()); // Use selected thread count
+			diannPar.setM_excision(mExcisionCheckBox.isSelected());
+			diannPar.setCarbami_C(carbamiCCheckBox.isSelected());
+			diannPar.setOxidation_M(oxidationMCheckBox.isSelected());
+			diannPar.setAcety_proN(acetyProNCheckBox.isSelected());
+			diannPar.setPhospho_STY(phosphoSTYCheckBox.isSelected());
+			diannPar.setK_GG(kGGCheckBox.isSelected());
 			diaNNTask.addTask(diannPar, fastaFile.getAbsolutePath(), libFile.getAbsolutePath(), false);
 
 			LOGGER.debug("[DIA Target] DiaNN task created, about to run...");

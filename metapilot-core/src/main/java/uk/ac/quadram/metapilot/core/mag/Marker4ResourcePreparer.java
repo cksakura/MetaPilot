@@ -1,28 +1,67 @@
 package uk.ac.quadram.metapilot.core.mag;
 
 import uk.ac.quadram.metapilot.core.MGYG.HapExtractor;
+import uk.ac.quadram.metapilot.core.deepdetect.DeepDetectPythonRunner;
+import uk.ac.quadram.metapilot.core.deepdetect.DeepDetectWindowsRunner;
+import uk.ac.quadram.metapilot.core.resources.MetaPilotResourceConfig;
+import uk.ac.quadram.metapilot.core.resources.ToolKey;
 import uk.ac.quadram.metapilot.core.workflow.ProgressCallback;
+import uk.ac.quadram.metapilot.dbSearch.deepDetect.DeepDetectParameter;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
+import uk.ac.quadram.metapilot.task.mag.MarkerGenomeSelector;
 
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 /**
- * Prepares the small Marker4 resource files needed by genome selection.
+ * Prepares Marker4 resource files needed by genome selection and DIA Marker library build.
+ *
+ * <p>Selection resources ({@link #ensureSelectionResources}) ensure {@code Marker4.fasta} and
+ * {@code genomes-taxa.tsv}. Library resources ({@link #ensureLibraryResources}) additionally
+ * enforce the GUI highpep rule: catalogues with more than {@link #HIGHPEP_PROTEIN_THRESHOLD}
+ * proteins require DeepDetect and {@code Marker4_highpep.fasta} at detectability
+ * {@link #HIGHPEP_DETECTABILITY_THRESHOLD}.
  */
 public final class Marker4ResourcePreparer {
 
     public static final String MARKER4_FASTA_NAME = "Marker4.fasta";
+    public static final String MARKER4_HIGHPEP_FASTA_NAME = "Marker4_highpep.fasta";
+    public static final String MARKER4_PREDICTED_TSV_NAME = "Marker4.predicted.tsv";
     public static final String GENOMES_TAXA_TSV_NAME = "genomes-taxa.tsv";
+
+    /** Same threshold as the GUI Marker4 library path. */
+    public static final int HIGHPEP_PROTEIN_THRESHOLD = 100_000;
+
+    /** Same export threshold as the GUI Marker4 library path. */
+    public static final double HIGHPEP_DETECTABILITY_THRESHOLD = 0.8;
+
+    private static final int DEEPDETECT_TIMEOUT_HOURS = 4;
+
+    /**
+     * Runs DeepDetect prediction for a single FASTA → predicted TSV.
+     */
+    @FunctionalInterface
+    public interface DeepDetectPredictor {
+        void predict(File inputFasta, File outputPredictedTsv, ProgressCallback cb) throws IOException;
+    }
 
     private Marker4ResourcePreparer() {
     }
 
+    /**
+     * Ensures {@code Marker4.fasta} and {@code genomes-taxa.tsv} exist (selection path).
+     * Does not require DeepDetect / highpep.
+     */
     public static SelectionResources ensureSelectionResources(MagDbItem magDb, ProgressCallback cb) throws IOException {
         if (cb == null) {
             cb = new ProgressCallback.NoOp();
@@ -42,6 +81,222 @@ public final class Marker4ResourcePreparer {
         ensureGenomesTaxaTsv(magDb, genomesTaxaTsv, cb);
 
         return new SelectionResources(marker4Fasta, genomesTaxaTsv);
+    }
+
+    /**
+     * Same as {@link #ensureSelectionResources}, then applies the DIA Marker highpep rule
+     * used by the GUI: if {@code Marker4.fasta} has more than
+     * {@link #HIGHPEP_PROTEIN_THRESHOLD} proteins, ensure {@code Marker4_highpep.fasta}
+     * exists (DeepDetect + export at {@link #HIGHPEP_DETECTABILITY_THRESHOLD}).
+     *
+     * <p>Fails with a clear {@link IOException} when the catalogue is above the threshold,
+     * highpep is missing, and DeepDetect is not configured or fails — no silent fallback
+     * to the full FASTA.
+     *
+     * @param predictor may be null only when highpep is already present or protein count ≤ threshold
+     */
+    public static SelectionResources ensureLibraryResources(MagDbItem magDb, ProgressCallback cb,
+            DeepDetectPredictor predictor) throws IOException {
+        SelectionResources base = ensureSelectionResources(magDb, cb);
+        ensureHighpepIfNeeded(base.marker4Fasta, magDb.getCurrentFile(), cb, predictor);
+        return base;
+    }
+
+    /**
+     * Build a DeepDetect predictor from CLI/headless resource config.
+     * Returns {@code null} when DEEPDETECT is not configured or missing on disk.
+     */
+    public static DeepDetectPredictor predictorFromResources(MetaPilotResourceConfig resources,
+            ProgressCallback cb) {
+        if (resources == null) {
+            return null;
+        }
+        ProgressCallback progress = cb == null ? new ProgressCallback.NoOp() : cb;
+        Optional<Path> deepDetectPath = resources.resolveToolPath(ToolKey.DEEPDETECT, progress);
+        if (deepDetectPath.isEmpty() || !Files.exists(deepDetectPath.get())) {
+            return null;
+        }
+        File deepDetect = deepDetectPath.get().toFile();
+        File python = resources.resolveToolPath(ToolKey.PYTHON, progress).map(Path::toFile).orElse(null);
+        return predictorFromTool(deepDetect, python);
+    }
+
+    /**
+     * Build a DeepDetect predictor from an explicit tool path (GUI {@code DeepDetect.exe}
+     * or HPC {@code main.py}).
+     */
+    public static DeepDetectPredictor predictorFromTool(File deepDetectTool, File pythonExe) {
+        if (deepDetectTool == null || !deepDetectTool.exists()) {
+            return null;
+        }
+        final File tool = deepDetectTool;
+        final File python = pythonExe;
+        return (inputFasta, outputPredictedTsv, cb) -> runDeepDetect(tool, python, inputFasta, outputPredictedTsv, cb);
+    }
+
+    public static void ensureHighpepIfNeeded(File marker4Fasta, File currentFile, ProgressCallback cb,
+            DeepDetectPredictor predictor) throws IOException {
+        if (cb == null) {
+            cb = new ProgressCallback.NoOp();
+        }
+        if (marker4Fasta == null || !marker4Fasta.exists()) {
+            throw new IOException("Marker4.fasta missing; cannot evaluate highpep requirement");
+        }
+        if (currentFile == null) {
+            throw new IOException("MAG DB current folder is null");
+        }
+
+        int proteinCount = countFastaProteins(marker4Fasta);
+        if (proteinCount < 0) {
+            throw new IOException("Failed to read protein count from " + marker4Fasta.getAbsolutePath());
+        }
+
+        File highpep = new File(currentFile, MARKER4_HIGHPEP_FASTA_NAME);
+        if (proteinCount <= HIGHPEP_PROTEIN_THRESHOLD) {
+            cb.onMessage(String.format(Locale.ROOT,
+                    "Marker4.fasta has %,d proteins (≤%,d); using full FASTA for library",
+                    proteinCount, HIGHPEP_PROTEIN_THRESHOLD));
+            return;
+        }
+
+        cb.onMessage(String.format(Locale.ROOT,
+                "Marker4.fasta has %,d proteins (>%s); Marker4_highpep.fasta required",
+                proteinCount, String.format(Locale.ROOT, "%,d", HIGHPEP_PROTEIN_THRESHOLD)));
+
+        if (highpep.exists() && highpep.length() > 0) {
+            cb.onMessage("Marker4_highpep.fasta already present: " + highpep.getAbsolutePath());
+            return;
+        }
+
+        if (predictor == null) {
+            throw new IOException(String.format(Locale.ROOT,
+                    "Marker4.fasta has %,d proteins (>%s) but DeepDetect is not configured. "
+                            + "Configure DEEPDETECT (and PYTHON when using main.py) and retry, "
+                            + "or pre-generate %s. Refusing to build the Marker4 library from the full FASTA.",
+                    proteinCount,
+                    String.format(Locale.ROOT, "%,d", HIGHPEP_PROTEIN_THRESHOLD),
+                    MARKER4_HIGHPEP_FASTA_NAME));
+        }
+
+        File predictedTsv = new File(currentFile, MARKER4_PREDICTED_TSV_NAME);
+        if (!predictedTsv.exists() || predictedTsv.length() == 0) {
+            cb.onMessage("Running DeepDetect for Marker4 peptide detectability → " + predictedTsv.getName());
+            predictor.predict(marker4Fasta, predictedTsv, cb);
+            if (!predictedTsv.exists() || predictedTsv.length() == 0) {
+                throw new IOException("DeepDetect did not produce " + predictedTsv.getAbsolutePath());
+            }
+        } else {
+            cb.onMessage("Reusing existing " + predictedTsv.getName());
+        }
+
+        cb.onMessage(String.format(Locale.ROOT,
+                "Exporting peptides with detectability > %.1f → %s",
+                HIGHPEP_DETECTABILITY_THRESHOLD, MARKER4_HIGHPEP_FASTA_NAME));
+        MarkerGenomeSelector.exportPeptideFasta(predictedTsv.getAbsolutePath(), highpep.getAbsolutePath(),
+                HIGHPEP_DETECTABILITY_THRESHOLD);
+        if (!highpep.exists() || highpep.length() == 0) {
+            throw new IOException("Failed to write " + highpep.getAbsolutePath()
+                    + " (no peptides above detectability " + HIGHPEP_DETECTABILITY_THRESHOLD + "?)");
+        }
+        cb.onMessage("Generated " + highpep.getAbsolutePath());
+    }
+
+    private static void runDeepDetect(File deepDetectTool, File pythonExe, File inputFasta,
+            File outputPredictedTsv, ProgressCallback cb) throws IOException {
+        ProgressCallback progress = cb == null ? new ProgressCallback.NoOp() : cb;
+        DeepDetectParameter par = new DeepDetectParameter();
+        par.setInput(inputFasta);
+        par.setOutput(outputPredictedTsv);
+
+        File outDir = outputPredictedTsv.getParentFile();
+        if (outDir != null && !outDir.exists() && !outDir.mkdirs()) {
+            throw new IOException("Could not create DeepDetect output folder: " + outDir.getAbsolutePath());
+        }
+
+        try {
+            if (isPythonEntrypoint(deepDetectTool)) {
+                if (pythonExe == null || !pythonExe.exists()) {
+                    throw new IOException("PYTHON executable is required when DEEPDETECT points to "
+                            + deepDetectTool.getName() + " (" + deepDetectTool.getAbsolutePath() + ")");
+                }
+                int exit = DeepDetectPythonRunner.run(pythonExe, deepDetectTool, par, null, progress);
+                if (exit != 0) {
+                    throw new IOException("DeepDetect (python) exited with code " + exit);
+                }
+                return;
+            }
+
+            File workDir = outDir != null ? outDir : inputFasta.getParentFile();
+            File prepared = DeepDetectPythonRunner.ensureFastaHeadersHaveProteinName(inputFasta, workDir);
+            if (prepared != null) {
+                par.setInput(prepared);
+            }
+            File batFile = new File(workDir != null ? workDir : new File(System.getProperty("java.io.tmpdir")),
+                    "Marker4_deepDetect.bat");
+            DeepDetectWindowsRunner.createBatchFile(deepDetectTool, par, batFile);
+            progress.onMessage("Running DeepDetect (Windows): " + batFile.getAbsolutePath());
+
+            ProcessBuilder pb = new ProcessBuilder("cmd.exe", "/c", batFile.getAbsolutePath());
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+            try (BufferedReader reader = new BufferedReader(
+                    new java.io.InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (Thread.currentThread().isInterrupted()) {
+                        process.destroyForcibly();
+                        throw new IOException("Interrupted while running DeepDetect");
+                    }
+                    String t = line.trim();
+                    if (!t.isEmpty()) {
+                        progress.onMessage(t);
+                    }
+                }
+            }
+            boolean finished = process.waitFor(DEEPDETECT_TIMEOUT_HOURS, TimeUnit.HOURS);
+            if (!finished) {
+                process.destroyForcibly();
+                throw new IOException("DeepDetect timed out after " + DEEPDETECT_TIMEOUT_HOURS + " hour(s)");
+            }
+            int exit = process.exitValue();
+            try {
+                Files.deleteIfExists(batFile.toPath());
+            } catch (Exception ignored) {
+                // best-effort cleanup
+            }
+            if (exit != 0) {
+                throw new IOException("DeepDetect (Windows) exited with code " + exit);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Interrupted while running DeepDetect", e);
+        }
+    }
+
+    private static boolean isPythonEntrypoint(File tool) {
+        if (tool == null) {
+            return false;
+        }
+        String name = tool.getName().toLowerCase(Locale.ROOT);
+        return name.endsWith(".py") || name.equals("main.py") || name.contains("deepdetect_pred");
+    }
+
+    public static int countFastaProteins(File fastaFile) {
+        if (fastaFile == null || !fastaFile.exists()) {
+            return -1;
+        }
+        int count = 0;
+        try (BufferedReader r = new BufferedReader(new FileReader(fastaFile))) {
+            String line;
+            while ((line = r.readLine()) != null) {
+                if (line.startsWith(">")) {
+                    count++;
+                }
+            }
+        } catch (IOException e) {
+            return -1;
+        }
+        return count;
     }
 
     public static File ensureGenomesTaxaTsv(MagDbItem magDb, File genomeTaxaFile, ProgressCallback cb)

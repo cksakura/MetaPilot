@@ -24,6 +24,7 @@ import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.math.NumberUtils;
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 import org.apache.commons.math3.stat.inference.MannWhitneyUTest;
+import uk.ac.quadram.metapilot.core.dia.DiaHostLibrarySupport;
 import uk.ac.quadram.metapilot.core.dia.DiaMagScoringService;
 import uk.ac.quadram.metapilot.core.mag.MagPostAnalysisScoringService;
 import uk.ac.quadram.metapilot.core.dia.MagPredictedPeptideProteinMapper;
@@ -45,6 +46,7 @@ import uk.ac.quadram.metapilot.task.MetaPythonReportCopyTask;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDia;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaTg;
 import uk.ac.quadram.metapilot.task.dia.par.MetaParameterDiaMarker;
+import uk.ac.quadram.metapilot.task.par.MetaBaseParameter;
 import uk.ac.quadram.metapilot.task.par.MetaConstants;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import javafx.application.Platform;
@@ -84,6 +86,20 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 	// Logger is inherited from MetaPilotMagTask -> MetaPilotTask as an instance
 	// field
 	private static final String taskName = "DIA data analysis";
+
+	/** Copies the DIA-NN modification settings chosen in the UI onto a DIA-NN parameter set. */
+	static void applyModifications(MetaBaseParameter metaPar, DiannParameter diannPar) {
+		if (!(metaPar instanceof MetaParameterDia)) {
+			return;
+		}
+		MetaParameterDia diaParams = (MetaParameterDia) metaPar;
+		diannPar.setM_excision(diaParams.isMExcision());
+		diannPar.setCarbami_C(diaParams.isCarbamiC());
+		diannPar.setOxidation_M(diaParams.isOxidationM());
+		diannPar.setAcety_proN(diaParams.isAcetyProN());
+		diannPar.setPhospho_STY(diaParams.isPhosphoSTY());
+		diannPar.setK_GG(diaParams.isKGG());
+	}
 
 	public MetaDiaTask(MetaParameterDia metaPar, MetaResourceParameters mrp, ProgressBar bar1, ProgressBar bar2) {
 		super(metaPar, mrp, bar1, bar2);
@@ -135,23 +151,7 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 		this.diannPar = new DiannParameter();
 		this.diannPar.setThreads(metaPar.getThreadCount());
 		logger.info("DiannParameter initialized with thread count: {}", metaPar.getThreadCount());
-		if (metaPar instanceof MetaParameterDiaMarker) {
-			MetaParameterDiaMarker markerParams = (MetaParameterDiaMarker) metaPar;
-			this.diannPar.setM_excision(markerParams.isMExcision());
-			this.diannPar.setCarbami_C(markerParams.isCarbamiC());
-			this.diannPar.setOxidation_M(markerParams.isOxidationM());
-			this.diannPar.setAcety_proN(markerParams.isAcetyProN());
-			this.diannPar.setPhospho_STY(markerParams.isPhosphoSTY());
-			this.diannPar.setK_GG(markerParams.isKGG());
-		} else if (metaPar instanceof MetaParameterDia) {
-			MetaParameterDia diaParams = (MetaParameterDia) metaPar;
-			this.diannPar.setM_excision(diaParams.isMExcision());
-			this.diannPar.setCarbami_C(diaParams.isCarbamiC());
-			this.diannPar.setOxidation_M(diaParams.isOxidationM());
-			this.diannPar.setAcety_proN(diaParams.isAcetyProN());
-			this.diannPar.setPhospho_STY(diaParams.isPhosphoSTY());
-			this.diannPar.setK_GG(diaParams.isKGG());
-		}
+		applyModifications(metaPar, this.diannPar);
 
 		// Set result directory if not already set (DIA Target and DIA Marker/Seed iterative set it here; Seed Direct sets it in initResultFolderIfNeeded())
 		if (metaPar.getDbSearchResultFile() == null) {
@@ -1678,6 +1678,7 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 		updateProgress(82, 100);
 
 		HashMap<String, double[]> genomeIntensityMap = new HashMap<String, double[]>();
+		HashMap<String, double[]> genomeUniqueIntensityMap = new HashMap<String, double[]>();
 		HashMap<String, double[]> proteinIntensityMap = new HashMap<String, double[]>();
 		HashMap<String, Double> proteinTotalIntenMap = new HashMap<String, Double>();
 
@@ -1744,6 +1745,37 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 				double[] pepIntensity = new double[peps[i].getIntensity().length];
 				for (int j = 0; j < pepIntensity.length; j++) {
 					pepIntensity[j] = peps[i].getIntensity()[j] / (double) count;
+				}
+				String uniqueGenome = null;
+				boolean uniqueToOneGenome = true;
+				for (int j = 0; j < proteins.length; j++) {
+					if (proteins[j] == null || proteins[j].isEmpty()) {
+						continue;
+					}
+					if (proteins[j].startsWith(magDb.getIdentifier())) {
+						String genome = proteins[j].split("_")[0];
+						if (uniqueGenome == null) {
+							uniqueGenome = genome;
+						} else if (!uniqueGenome.equals(genome)) {
+							uniqueToOneGenome = false;
+							break;
+						}
+					} else {
+						uniqueToOneGenome = false;
+						break;
+					}
+				}
+				if (uniqueToOneGenome && uniqueGenome != null
+						&& isConfidentDiaGenomeScore(genomeScoreMap, uniqueGenome)) {
+					double[] src = peps[i].getIntensity();
+					double[] uniqueInt = genomeUniqueIntensityMap.get(uniqueGenome);
+					if (uniqueInt == null) {
+						uniqueInt = new double[src.length];
+						genomeUniqueIntensityMap.put(uniqueGenome, uniqueInt);
+					}
+					for (int k = 0; k < uniqueInt.length && k < src.length; k++) {
+						uniqueInt[k] += src[k];
+					}
 				}
 
 				int pepMs2Count = 0;
@@ -2214,7 +2246,7 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 		updateProgress(94, 100);
 		if (!performTaxonomyAnalysis(genomeIntensityMap, genomeScoreForTaxonomy, psmCountMap, totalPepCountMap,
 				razorPepCountMap, uniquePepCountMap, totalPepWithILMap, razorPepWithILMap, uniquePepWithILMap, expNames,
-				getTaskName())) {
+				getTaskName(), genomeUniqueIntensityMap)) {
 			this.lastDiaStyleGenomeStats = prevDiaStats;
 			return false;
 		}
@@ -4502,6 +4534,15 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 		DiaNNPrecursor[] precursorsQ01 = diannReader.getDiaNNPrecursors();
 		if (precursorsQ01 == null)
 			precursorsQ01 = new DiaNNPrecursor[0];
+		// Host searched together in the final search (combined/host_library.txt): remove host precursors (host
+		// takes shared peptides) and write host_peptides.tsv / host_summary.tsv, as the headless exporter does.
+		try {
+			precursorsQ01 = DiaHostLibrarySupport.removeHostPrecursors(precursorsQ01, parquetFile.getParentFile(),
+					parquetFile.getParentFile().getParentFile(), null);
+		} catch (IOException e) {
+			logger.error(getTaskName() + ": reading the host library for the export failed", e);
+			return false;
+		}
 		precursorsQ01 = mapPrecursorsToGenomes(precursorsQ01);
 		if (precursorsQ01 == null)
 			precursorsQ01 = new DiaNNPrecursor[0];
@@ -4510,15 +4551,40 @@ public abstract class MetaDiaTask extends MetaPilotMagTask {
 		precursorsQ01 = applyPostParquetTransforms(precursorsQ01, parquetFolder);
 		if (precursorsQ01 == null)
 			precursorsQ01 = new DiaNNPrecursor[0];
-		MagPostAnalysisScoringService.DiaResult scoring = MagPostAnalysisScoringService.scoreDia(precursorsQ01);
-		this.diaPp = scoring.filteredPrecursors;
-		logger.info(getTaskName() + ": " + (this.diaPp == null ? 0 : this.diaPp.length)
-				+ " precursors retained after genome/protein scoring (from " + precursorsQ01.length
-				+ " parquet precursors)");
-		// Delegate the rest of report generation (peptide report, HTML, etc.) to the
-		// existing export flow in subclasses if they override it; otherwise run the
-		// same downstream as Marker.
-		return exportReportDownstreamFromNewScoring(scoring.genomeScoreMap, scoring.proteinScoreMap);
+
+        if (!(this instanceof DiaMarkerCoreTask) && !(this instanceof DiaSeedDirectTask)) {
+            MagPostAnalysisScoringService.DiaResult scoring = MagPostAnalysisScoringService.scoreDia(precursorsQ01);
+            this.diaPp = scoring.filteredPrecursors;
+            return exportReportDownstreamFromNewScoring(scoring.genomeScoreMap, scoring.proteinScoreMap);
+        }
+        this.diaPp = precursorsQ01;
+        return exportPreparedReport(precursorsQ01);
+    }
+
+    /** GUI presentation around the canonical core finalisation and export. */
+    protected boolean exportPreparedReport(DiaNNPrecursor[] precursorsQ01) {
+
+        try {
+            uk.ac.quadram.metapilot.core.workflow.ProgressCallback cb = new uk.ac.quadram.metapilot.core.workflow.ProgressCallback.NoOp();
+            String funcPath = mrp.getToolPath(ToolType.FUNCDB);
+            uk.ac.quadram.metapilot.core.runner.DiaMagPostAnalysisTsvExporter.exportPrepared(
+                    resultFolderFile, magDb, quan_pep_file, null,
+                    funcPath == null || funcPath.isBlank() ? null : new File(funcPath),
+                    getExportMetaPar().getMicroDb(), getExportMetaPar().getQuantitativeMode(), cb,
+                    precursorsQ01, false);
+            File metadataFile = uk.ac.quadram.metapilot.task.par.SampleMetadata.reportFile(resultFolderFile, metadata);
+            uk.ac.quadram.metapilot.core.report.MetaPilotHtmlReportService.Request report =
+                    uk.ac.quadram.metapilot.core.report.MetaPilotHtmlReportService.buildStandardRequest(
+                            resultFolderFile, "DIA_MAG", 1, mrp.getToolPath(ToolType.PYTHON), metadataFile, cb);
+            report.resourceParameters = mrp;
+            report.warnOnly = true;
+            report.installTemplate = true;
+            uk.ac.quadram.metapilot.core.report.MetaPilotHtmlReportService.run(report);
+            return true;
+        } catch (Exception e) {
+            logger.error(getTaskName() + ": shared DIA finalisation/export failed", e);
+            return false;
+        }
 	}
 
 	/**

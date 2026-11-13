@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import uk.ac.quadram.metapilot.core.msfragger.MSFraggerHeadlessRunner;
+import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagOpenSearchParameterIO;
 import uk.ac.quadram.metapilot.task.dda.mag.par.DDAMagOpenSearchParameters;
 
 class MagOpenSearchRound1SettingsTest {
@@ -35,6 +36,110 @@ class MagOpenSearchRound1SettingsTest {
 		DDAMagOpenSearchParameters params = new DDAMagOpenSearchParameters();
 		assertTrue(params.isRound1ClosedSearch());
 		assertEquals(DDAMagOpenSearchParameters.ROUND1_SEARCH_CLOSED, params.getRound1SearchMode());
+	}
+
+	@Test
+	void guiLockedDefaultsRestoreRankDepthAndRound1Mode() {
+		DDAMagOpenSearchParameters params = new DDAMagOpenSearchParameters();
+		params.setRound1OutputReportTopN(5);
+		params.setRound2OutputReportTopN(1);
+		params.setClosedStageTopN(1);
+		params.setOutputReportTopN(1);
+		params.setRound1SearchMode(DDAMagOpenSearchParameters.ROUND1_SEARCH_OPEN);
+		params.setClosedStageEnabled(false);
+		params.setPrecursorMassLower(-20);
+		params.setPrecursorMassUpper(20);
+		params.setLocalFdr(0.05);
+
+		params.applyGuiLockedDefaults();
+
+		assertEquals(1, params.getRound1OutputReportTopN());
+		assertEquals(3, params.getRound2OutputReportTopN());
+		assertEquals(3, params.getClosedStageTopN());
+		assertEquals(5, params.getOutputReportTopN());
+		assertEquals(DDAMagOpenSearchParameters.ROUND1_SEARCH_CLOSED, params.getRound1SearchMode());
+		assertTrue(params.isClosedStageEnabled());
+		assertEquals(-150.0, params.getPrecursorMassLower());
+		assertEquals(500.0, params.getPrecursorMassUpper());
+		assertEquals(0.01, params.getLocalFdr());
+		assertEquals(DDAMagOpenSearchParameters.ENGINES_MSFRAGGER, params.getSearchEngines());
+	}
+
+	@Test
+	void entrapmentIsOffByDefaultAndSurvivesGuiLockedDefaults() {
+		DDAMagOpenSearchParameters params = new DDAMagOpenSearchParameters();
+		assertFalse(params.isEntrapmentEnabled());
+		assertEquals(1L, params.getEntrapmentSeed());
+		assertEquals(8, params.getEntrapmentIdDigit());
+		params.setEntrapmentEnabled(true);
+		params.setEntrapmentSeed(7);
+		params.setEntrapmentIdDigit(3);
+		params.applyGuiLockedDefaults();
+		assertTrue(params.isEntrapmentEnabled());
+		assertEquals(7L, params.getEntrapmentSeed());
+		assertEquals(3, params.getEntrapmentIdDigit());
+	}
+
+	@Test
+	void entrapmentFlagRoundTripsThroughParameterJson() throws Exception {
+		DDAMagOpenSearchParameters params = new DDAMagOpenSearchParameters();
+		params.setResult(tmp.toString());
+		params.setEntrapmentEnabled(true);
+		params.setEntrapmentSeed(2);
+		params.setEntrapmentIdDigit(5);
+		File out = tmp.resolve("mag_opensearch_parameters.json").toFile();
+		assertTrue(new DDAMagOpenSearchParameterIO().saveParameters(params, out));
+		DDAMagOpenSearchParameters loaded = new DDAMagOpenSearchParameterIO().loadParameters(out);
+		assertTrue(loaded.isEntrapmentEnabled());
+		assertEquals(2L, loaded.getEntrapmentSeed());
+		assertEquals(5, loaded.getEntrapmentIdDigit());
+	}
+
+	@Test
+	void guiLockedDefaultsLeaveGenomeSelectionAndEnzymeAlone() {
+		DDAMagOpenSearchParameters params = new DDAMagOpenSearchParameters();
+		params.setEnzyme("Trypsin/P");
+		params.setMissCleavages(3);
+		params.setGenomeSelectorMode(uk.ac.quadram.metapilot.task.mag.MagDbItem.MARKER4);
+		params.setGenomeSelectionStrategy(
+				uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut.STRATEGY_PSM_COVERAGE);
+		params.setGenomeSelectionPsmCoverage(0.99);
+		params.setGenomeSelectionStepGuard(0.0);
+		params.setGenomeSelectionMaxGenomes(500);
+		params.setThreadCount(8);
+		params.setMsfraggerMaxHeap("16g");
+		params.applyGuiLockedDefaults();
+		assertEquals("Trypsin/P", params.getEnzyme());
+		assertEquals(3, params.getMissCleavages());
+		assertEquals(uk.ac.quadram.metapilot.task.mag.MagDbItem.MARKER4, params.getGenomeSelectorMode());
+		assertEquals(uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut.STRATEGY_PSM_COVERAGE,
+				params.getGenomeSelectionStrategy());
+		assertEquals(0.99, params.getGenomeSelectionPsmCoverage(), 1e-12);
+		assertEquals(0.0, params.getGenomeSelectionStepGuard(), 1e-12);
+		assertEquals(500, params.getGenomeSelectionMaxGenomes());
+		assertEquals(8, params.getThreadCount());
+		assertEquals("16g", params.getMsfraggerMaxHeap());
+
+		uk.ac.quadram.metapilot.core.mag.MagGenomeSelectionService.Request request =
+				new uk.ac.quadram.metapilot.core.mag.MagGenomeSelectionService.Request();
+		MagOpenSearchHeadlessRunner.copyGenomeSelection(request, params);
+		assertEquals(uk.ac.quadram.metapilot.task.mag.MagDbItem.MARKER4, request.genomeSelectorMode);
+		assertEquals(uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut.STRATEGY_PSM_COVERAGE,
+				request.genomeSelectionStrategy);
+		assertEquals(0.99, request.genomeSelectionPsmCoverage, 1e-12);
+		assertEquals(0.0, request.genomeSelectionStepGuard, 1e-12);
+		assertEquals(500, request.genomeSelectionMaxGenomes);
+		assertEquals("PSM coverage, target 0.99, step guard 0.0, max genomes 500",
+				MagOpenSearchHeadlessRunner.genomeSelectionSummary(params));
+	}
+
+	@Test
+	void sageEngineModeIsCoercedToMsfragger() {
+		DDAMagOpenSearchParameters params = new DDAMagOpenSearchParameters();
+		params.setSearchEngines(DDAMagOpenSearchParameters.ENGINES_MSFRAGGER_AND_SAGE);
+		assertEquals(DDAMagOpenSearchParameters.ENGINES_MSFRAGGER, params.getSearchEngines());
+		assertFalse(params.usesSage());
+		assertTrue(params.isMsfraggerOnly());
 	}
 
 	@Test
@@ -88,16 +193,23 @@ class MagOpenSearchRound1SettingsTest {
 	}
 
 	@Test
-	void closedStageSearchesTheRefinedDatabaseClosedWithOneCandidate() throws Exception {
+	void closedStageSearchesTheRefinedDatabaseClosed() throws Exception {
 		DDAMagOpenSearchParameters params = new DDAMagOpenSearchParameters();
 		assertTrue(params.isClosedStageEnabled());
-		params.setRound2OutputReportTopN(5);
+		// Both searches keep the top 3 candidates by default.
+		assertEquals(3, params.getClosedStageTopN());
+		assertEquals(3, params.getRound2OutputReportTopN());
 
+		// Every integration mode searches closed at closed_stage_topn.
+		assertTrue(params.isJointIdentification());
+		assertEquals(3, MagOpenSearchHeadlessRunner.closedStageSettings(params, fasta()).outputReportTopN);
+		params.setClosedOpenIntegration(DDAMagOpenSearchParameters.INTEGRATION_CASCADE);
 		MSFraggerHeadlessRunner.OpenSearchSettings settings = MagOpenSearchHeadlessRunner.closedStageSettings(params,
 				fasta());
 		String text = MSFraggerHeadlessRunner.previewOpenSearchParamsText(settings);
 
-		assertEquals(1, settings.outputReportTopN);
+		assertEquals(3, settings.outputReportTopN);
+		assertTrue(hasLine(text, "output_report_topN", "3"), text);
 		assertTrue(hasLine(text, "precursor_mass_units", "1"), text);
 		assertTrue(hasLine(text, "precursor_mass_lower", "-20.0"), text);
 		assertTrue(hasLine(text, "precursor_mass_upper", "20.0"), text);
@@ -119,6 +231,25 @@ class MagOpenSearchRound1SettingsTest {
 		MagOpenSearchHeadlessRunner.writeIdentificationModeStamp(params, root, null);
 		assertNotEquals(1_000_000L, stamp.lastModified());
 		assertEquals("open_only", Files.readString(stamp.toPath()).trim());
+	}
+
+	@Test
+	void identificationModeStampChangesWhenDiannBecomesAvailable() throws Exception {
+		DDAMagOpenSearchParameters params = new DDAMagOpenSearchParameters();
+		params.setClosedStageEnabled(true);
+		params.setClosedOpenIntegration(DDAMagOpenSearchParameters.INTEGRATION_JOINT);
+		File root = tmp.resolve("ms2").toFile();
+		params.setDiannExecutablePath(new File(root, "missing-diann.exe").getAbsolutePath());
+		File stamp = MagOpenSearchHeadlessRunner.writeIdentificationModeStamp(params, root, null);
+		String before = Files.readString(stamp.toPath()).trim();
+		assertTrue(before.contains("ms2_inputs=no_diann"), before);
+
+		File diann = new File(root, "DiaNN.exe");
+		Files.write(diann.toPath(), new byte[] { 0 });
+		params.setDiannExecutablePath(diann.getAbsolutePath());
+		MagOpenSearchHeadlessRunner.writeIdentificationModeStamp(params, root, null);
+		String after = Files.readString(stamp.toPath()).trim();
+		assertNotEquals(before, after, "installing DIA-NN must make the joint validation stale");
 	}
 
 	@Test

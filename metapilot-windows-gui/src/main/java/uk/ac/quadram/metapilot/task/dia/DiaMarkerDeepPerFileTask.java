@@ -1,5 +1,7 @@
 package uk.ac.quadram.metapilot.task.dia;
 
+import uk.ac.quadram.metapilot.core.dia.PeptideListLibrarySupport;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
@@ -606,13 +608,20 @@ public class DiaMarkerDeepPerFileTask extends DiaMarkerCoreTask {
 		if (!DeepIterativeCommonSupport.ensureCombinedSpeclib(combinedDir, combinedSpeclib, () -> {
 			diannPar.setThreads(threadCount);
 			diannPar.setExportDecoy(true);
-			diaNNTask.addTask(diannPar, combinedFasta.getAbsolutePath(), combinedSpeclib.getAbsolutePath(), false);
-			diaNNTask.run(12);
+			// combined.fasta holds one entry per round peptide: no protein N-terminal rules
+			PeptideListLibrarySupport.runWithPeptideEntryRules(diannPar, () -> {
+				diaNNTask.addTask(diannPar, combinedFasta.getAbsolutePath(), combinedSpeclib.getAbsolutePath(), false);
+				diaNNTask.run(12);
+			});
 		}, logger, getTaskName())) {
 			return false;
 		}
 
-		// 3) Final quantifying search across ALL DIA files using the combined speclib.
+		// 3) Final quantifying search across ALL DIA files using the combined speclib (+ host library, if any).
+		final String[] finalLibs = finalSearchLibraries(combinedSpeclib, combinedDir);
+		if (finalLibs == null) {
+			return false;
+		}
 		boolean combinedOk = DeepIterativeCommonSupport.ensureCombinedParquet(combinedParquet, () -> {
 			diaLibSearchPar.setMbr(true);
 			diaLibSearchPar.setDiaFiles(originalDiaFiles);
@@ -625,8 +634,7 @@ public class DiaMarkerDeepPerFileTask extends DiaMarkerCoreTask {
 			diannPar.setExportDecoy(true);
 			logger.info(getTaskName() + ": global combined search using combined.speclib {} → {} ({} files)",
 					combinedSpeclib.getAbsolutePath(), combinedParquet.getAbsolutePath(), originalDiaFiles.length);
-			diaNNTask.addTask(diannPar, diaLibSearchPar, combinedParquet.getAbsolutePath(),
-					new String[] { combinedSpeclib.getAbsolutePath() });
+			diaNNTask.addTask(diannPar, diaLibSearchPar, combinedParquet.getAbsolutePath(), finalLibs);
 			diaNNTask.run(originalDiaFiles.length * 12);
 		});
 		if (!combinedOk || !combinedParquet.exists() || !combinedPepMatrix.exists()) {
@@ -886,14 +894,21 @@ public class DiaMarkerDeepPerFileTask extends DiaMarkerCoreTask {
 			if (!DeepIterativeCommonSupport.ensureCombinedSpeclib(combinedDir, combinedSpeclib, () -> {
 					diannPar.setThreads(threadCount);
 					diannPar.setExportDecoy(true);
-					diaNNTask.addTask(diannPar, combinedFasta.getAbsolutePath(), combinedSpeclib.getAbsolutePath(), false);
-					diaNNTask.run(12);
+					// combined.fasta holds one entry per round peptide: no protein N-terminal rules
+					PeptideListLibrarySupport.runWithPeptideEntryRules(diannPar, () -> {
+						diaNNTask.addTask(diannPar, combinedFasta.getAbsolutePath(), combinedSpeclib.getAbsolutePath(), false);
+						diaNNTask.run(12);
+					});
 				}, logger, getTaskName())) {
 				return false;
 			}
 			logger.info(getTaskName() + ": combined.speclib ready: {} ({} bytes)", combinedSpeclib.getAbsolutePath(), combinedSpeclib.length());
 
 			String[] finalSearchFiles = initialSearchSeparate ? goodDiaFiles : diaFiles;
+			final String[] finalLibs = finalSearchLibraries(combinedSpeclib, combinedDir);
+			if (finalLibs == null) {
+				return false;
+			}
 			boolean combinedOk = DeepIterativeCommonSupport.ensureCombinedParquet(combinedParquet, () -> {
 				diaLibSearchPar.setMbr(true);
 				diaLibSearchPar.setDiaFiles(finalSearchFiles);
@@ -906,8 +921,7 @@ public class DiaMarkerDeepPerFileTask extends DiaMarkerCoreTask {
 				diannPar.setExportDecoy(true);
 				logger.info(getTaskName() + ": combined search using combined.speclib {} → {} ({} files)",
 						combinedSpeclib.getAbsolutePath(), combinedParquet.getAbsolutePath(), finalSearchFiles.length);
-				diaNNTask.addTask(diannPar, diaLibSearchPar, combinedParquet.getAbsolutePath(),
-						new String[] { combinedSpeclib.getAbsolutePath() });
+				diaNNTask.addTask(diannPar, diaLibSearchPar, combinedParquet.getAbsolutePath(), finalLibs);
 				diaNNTask.run(finalSearchFiles.length * 12);
 			});
 			if (!combinedOk) {

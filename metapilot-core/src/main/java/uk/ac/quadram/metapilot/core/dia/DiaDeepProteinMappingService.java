@@ -9,7 +9,9 @@ import java.nio.file.Files;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -103,17 +105,12 @@ public final class DiaDeepProteinMappingService {
         }
         boolean hasPrebuiltMap = request != null && request.prebuiltMap != null;
         if (request == null || (!hasPrebuiltMap && (request.roundRoot == null || !request.roundRoot.isDirectory()))) {
-            log.debug("{}: deep peptide-protein remap skipped; round root is unavailable", name);
-            return new RemapResult(precursors, 0, countDistinctProteins(precursors), countDistinctProteins(precursors));
+            throw new IllegalStateException(name + ": recorded round protein mappings are unavailable");
         }
 
         HashMap<String, HashSet<String>> pepProMap = buildPeptideProteinMap(request, log, name);
-        if (pepProMap.isEmpty()) {
-            log.warn("{}: deep peptide-protein remap found no peptide mappings under {}", name,
-                    hasPrebuiltMap ? "(prebuilt map)" : request.roundRoot.getAbsolutePath());
-            int proteins = countDistinctProteins(precursors);
-            return new RemapResult(precursors, 0, proteins, proteins);
-        }
+        if (pepProMap.isEmpty()) throw new IllegalStateException(name + ": no recorded round protein mappings");
+        pepProMap = mapFinalPeptides(precursors, pepProMap);
 
         int proteinsBefore = countDistinctProteins(precursors);
         int mappedPrecursors = 0;
@@ -121,21 +118,52 @@ public final class DiaDeepProteinMappingService {
             if (precursor == null) {
                 continue;
             }
+            if (precursor.getIsDecoy()) continue; // preserve the original scoring background
             String sequence = precursor.getSeqString();
             if (sequence == null || sequence.isEmpty()) {
                 continue;
             }
             HashSet<String> proteins = pepProMap.get(sequence);
             if (proteins == null || proteins.isEmpty()) {
+                if (!precursor.getIsDecoy() && precursor.getGlobalQvalue() < 0.01)
+                    throw new IllegalStateException(name + ": missing round protein mapping for " + sequence);
                 continue;
             }
-            precursor.setProGroups(proteins.toArray(new String[0]));
+            precursor.setProGroups(proteins.stream().sorted().toArray(String[]::new));
             mappedPrecursors++;
         }
         int proteinsAfter = countDistinctProteins(precursors);
         log.info("{}: deep peptide-protein remap applied; mapping peptides={}, mapped precursors={}, proteins before={}, proteins after={}",
                 name, pepProMap.size(), mappedPrecursors, proteinsBefore, proteinsAfter);
         return new RemapResult(precursors, pepProMap.size(), proteinsBefore, proteinsAfter);
+    }
+
+    /** The final peptide FASTA can yield shorter cleavage products. Restore all
+     * associations from containing recorded peptides, including when an exact
+     * match also exists. This never falls back to arbitrary combined protein IDs. */
+    static HashMap<String, HashSet<String>> mapFinalPeptides(DiaNNPrecursor[] precursors,
+            Map<String, HashSet<String>> recorded) {
+        HashSet<String> queries = new HashSet<>();
+        java.util.TreeSet<Integer> lengths = new java.util.TreeSet<>();
+        for (DiaNNPrecursor p : precursors) {
+            if (p != null && !p.getIsDecoy() && p.getSeqString() != null && !p.getSeqString().isEmpty()) {
+                queries.add(p.getSeqString());
+                lengths.add(p.getSeqString().length());
+            }
+        }
+        HashMap<String, HashSet<String>> result = new HashMap<>();
+        for (Map.Entry<String, HashSet<String>> e : recorded.entrySet()) {
+            String source = e.getKey();
+            for (int length : lengths) {
+                if (length > source.length()) break;
+                for (int start = 0; start <= source.length() - length; start++) {
+                    String peptide = source.substring(start, start + length);
+                    if (queries.contains(peptide))
+                        result.computeIfAbsent(peptide, k -> new HashSet<>()).addAll(e.getValue());
+                }
+            }
+        }
+        return result;
     }
 
     public static HashMap<String, HashSet<String>> buildPeptideProteinMap(Request request,
@@ -164,12 +192,23 @@ public final class DiaDeepProteinMappingService {
                 return pepProMap;
             }
             Arrays.sort(perFileDirs, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
+            LinkedHashMap<File, HashSet<String>> genomesByDir = new LinkedHashMap<>();
+            HashSet<String> searchedInAllRounds = new HashSet<>();
             for (File perFileDir : perFileDirs) {
                 int lastRound = detectLastRound(perFileDir, request);
-                if (lastRound <= 0) {
-                    continue;
-                }
-                mergeInto(pepProMap, buildPeptideProteinMapFromRounds(perFileDir, lastRound, request, log, name));
+                HashMap<String, HashSet<String>> rounds = lastRound > 0
+                        ? buildPeptideProteinMapFromRounds(perFileDir, lastRound, request, log, name)
+                        : new HashMap<>();
+                HashSet<String> genomes = genomesOf(rounds);
+                genomesByDir.put(perFileDir, genomes);
+                searchedInAllRounds.addAll(genomes);
+                mergeInto(pepProMap, rounds);
+            }
+            // BALANCED clustering can leave a sample with initial Marker
+            // evidence but no iterative rounds of its own.
+            for (Map.Entry<File, HashSet<String>> e : genomesByDir.entrySet()) {
+                Set<String> searched = e.getValue().isEmpty() ? searchedInAllRounds : e.getValue();
+                mergeInto(pepProMap, markerEvidence(e.getKey(), searched, request, log, name));
             }
             log.info("{}: DEEP_PER_FILE remap collected {} peptides from all per-file round parquets",
                     name, pepProMap.size());
@@ -177,12 +216,92 @@ public final class DiaDeepProteinMappingService {
         }
 
         int lastRound = request.lastRoundHint > 0 ? request.lastRoundHint : detectLastRound(request.roundRoot, request);
-        if (lastRound <= 0) {
-            return pepProMap;
-        }
-        pepProMap = buildPeptideProteinMapFromRounds(request.roundRoot, lastRound, request, log, name);
+        HashMap<String, HashSet<String>> rounds = lastRound > 0
+                ? buildPeptideProteinMapFromRounds(request.roundRoot, lastRound, request, log, name)
+                : new HashMap<>();
+        mergeInto(pepProMap, markerEvidence(request.roundRoot, rounds, request, log, name));
+        mergeInto(pepProMap, rounds);
         log.info("{}: deep remap collected {} peptides from round parquets", name, pepProMap.size());
         return pepProMap;
+    }
+
+    /**
+     * Marker-search evidence ({@code marker.parquet}) of one round folder, restricted to the genomes searched in its
+     * rounds. The marker search runs against the Marker4 library of the whole catalogue, so without this restriction its
+     * peptides would bring proteins of genomes that were never selected into the final library and the export.
+     */
+    public static HashMap<String, HashSet<String>> markerEvidence(File dir, Map<String, HashSet<String>> rounds,
+                                                           Request request, Logger log, String name) {
+        return markerEvidence(dir, genomesOf(rounds), request, log, name);
+    }
+
+    /**
+     * Marker-search evidence of one folder, restricted to {@code searchedGenomes}. A sample without rounds of its own
+     * (BALANCED clustering) is searched through the rounds of its representative, so callers pass the genomes searched
+     * in all rounds. An empty set (no rounds at all) falls back to the folder's selected genomes.
+     */
+    public static HashMap<String, HashSet<String>> markerEvidence(File dir, Set<String> searchedGenomes,
+                                                           Request request, Logger log, String name) {
+        HashMap<String, HashSet<String>> marker = new HashMap<>();
+        File parquet = new File(dir, "marker.parquet");
+        if (!parquet.isFile()) {
+            return marker;
+        }
+        addRecordedParquet(marker, parquet, request, name);
+        HashSet<String> genomes = new HashSet<>(searchedGenomes);
+        if (genomes.isEmpty()) {
+            genomes.addAll(readSelectedGenomes(new File(dir, "genome_selected.tsv"), name));
+        }
+        int before = marker.size();
+        restrictToGenomes(marker, genomes);
+        log.info("{}: marker evidence of {} kept for {} searched genomes: {} of {} peptides",
+                name, dir.getName(), genomes.size(), marker.size(), before);
+        return marker;
+    }
+
+    public static HashSet<String> genomesOf(Map<String, HashSet<String>> pepProMap) {
+        HashSet<String> genomes = new HashSet<>();
+        for (HashSet<String> proteins : pepProMap.values()) {
+            for (String protein : proteins) {
+                genomes.add(genomeOf(protein));
+            }
+        }
+        return genomes;
+    }
+
+    /** Drops proteins of other genomes, and peptides left without a protein. */
+    static void restrictToGenomes(Map<String, HashSet<String>> pepProMap, java.util.Set<String> genomes) {
+        pepProMap.values().forEach(proteins -> proteins.removeIf(p -> !genomes.contains(genomeOf(p))));
+        pepProMap.values().removeIf(HashSet::isEmpty);
+    }
+
+    /** Same genome rule as DdaMagPostAnalysisService / DdaMagProteinInferenceService. */
+    static String genomeOf(String protein) {
+        int idx = protein.indexOf('_');
+        return idx > 0 ? protein.substring(0, idx) : protein;
+    }
+
+    private static HashSet<String> readSelectedGenomes(File tsv, String name) {
+        HashSet<String> genomes = new HashSet<>();
+        if (!tsv.isFile()) {
+            return genomes;
+        }
+        try (BufferedReader reader = Files.newBufferedReader(tsv.toPath(), StandardCharsets.UTF_8)) {
+            String line = reader.readLine(); // header: Genome ...
+            while ((line = reader.readLine()) != null) {
+                line = line.trim();
+                if (line.isEmpty() || line.startsWith("#")) {
+                    break;
+                }
+                String genome = line.split("\t", 2)[0].trim();
+                if (!genome.isEmpty()) {
+                    genomes.add(genome);
+                }
+            }
+        } catch (IOException e) {
+            throw new IllegalStateException(name + ": failed to read " + tsv, e);
+        }
+        return genomes;
     }
 
     /**
@@ -261,19 +380,28 @@ public final class DiaDeepProteinMappingService {
             DiaNNPrecursor[] precursors = null;
             File roundParquet = new File(roundDir, "round" + round + ".parquet");
             if (roundParquet.isFile()) {
-                try {
-                    DiaNNParquetReader reader = new DiaNNParquetReader(roundParquet.getAbsolutePath(), request.cut);
-                    precursors = reader.getDiaNNPrecursors(0.01);
-                } catch (Exception e) {
-                    logger.warn("{}: failed to read round parquet {}", taskName, roundParquet.getAbsolutePath(), e);
-                }
+                addRecordedParquet(pepProMap, roundParquet, request, taskName);
             } else if (request.diaFiles != null && request.diaFiles.length > 0) {
                 precursors = DeepIterativeCommonSupport.readPrecursorsFromPerFileParquets(
-                        roundDir, 0.01, request.diaFiles, request.cut, logger, taskName);
+                        roundDir, null, request.diaFiles, request.cut, logger, taskName);
             }
             addPrecursors(pepProMap, precursors);
         }
         return pepProMap;
+    }
+
+    private static void addRecordedParquet(HashMap<String, HashSet<String>> map, File parquet,
+                                            Request request, String taskName) {
+        if (!parquet.isFile()) return;
+        try {
+            // This restores sequence-to-protein evidence, not peptide acceptance.
+            // Round and final searches have independent q-values. Final scoring
+            // and the genome gate still control the exported identifications.
+            DiaNNParquetReader reader = new DiaNNParquetReader(parquet.getAbsolutePath(), request.cut);
+            addPrecursors(map, reader.getDiaNNPrecursors());
+        } catch (Exception e) {
+            throw new IllegalStateException(taskName + ": failed to read recorded mapping " + parquet, e);
+        }
     }
 
     private static void addPrecursors(HashMap<String, HashSet<String>> pepProMap, DiaNNPrecursor[] precursors) {

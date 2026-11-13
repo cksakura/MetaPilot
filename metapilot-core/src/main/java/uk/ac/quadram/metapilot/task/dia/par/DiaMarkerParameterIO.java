@@ -9,6 +9,7 @@ import org.apache.logging.log4j.LogManager;
 
 import uk.ac.quadram.metapilot.task.par.BaseParameterIO;
 import uk.ac.quadram.metapilot.task.par.MetaData;
+import uk.ac.quadram.metapilot.task.par.SampleMetadata;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.mag.MagDbConfigIO;
 
@@ -211,6 +212,9 @@ public class DiaMarkerParameterIO extends BaseParameterIO {
 			diaSettings.put("representative_genome_top_n", params.getRepresentativeGenomeTopN());
 			diaSettings.put("representative_min_marker_peptides", params.getRepresentativeMinMarkerPeptides());
 			diaSettings.put("representative_grouping_dry_run", params.isRepresentativeClusteringDryRun());
+			diaSettings.put("entrapment_enabled", params.isEntrapmentEnabled());
+			diaSettings.put("entrapment_seed", params.getEntrapmentSeed());
+			diaSettings.put("entrapment_id_digit", params.getEntrapmentIdDigit());
 
 			// Modification settings
 			diaSettings.put("mExcision", params.isMExcision());
@@ -248,20 +252,7 @@ public class DiaMarkerParameterIO extends BaseParameterIO {
 			basicParams.put("meta_workflow", params.isMetaWorkflow());
 			json.put("basic_parameters", basicParams);
 
-			// Metadata (sample-level meta info, if available)
-			JSONArray metadata = new JSONArray();
-			if (metaData != null && metaData.getMetaInfo() != null) {
-				String[][] metaInfo = metaData.getMetaInfo();
-				for (int i = 0; i < metaInfo.length; i++) {
-					JSONObject meta = new JSONObject();
-					meta.put("sample_index", i);
-					if (metaInfo[i].length > 0) meta.put("age", metaInfo[i][0]);
-					if (metaInfo[i].length > 1) meta.put("gender", metaInfo[i][1]);
-					if (metaInfo[i].length > 2) meta.put("condition", metaInfo[i][2]);
-					metadata.put(meta);
-				}
-			}
-			json.put("metadata", metadata);
+			json.put(SampleMetadata.JSON_KEY, SampleMetadata.toJson(metaData));
 
 			return writeJsonToFile(json, outputFile);
 
@@ -339,6 +330,7 @@ public class DiaMarkerParameterIO extends BaseParameterIO {
 							ioSettings.optString("input_dir", ""));
 				}
 			}
+			SampleMetadata.apply(metadata, SampleMetadata.fromJson(json));
 
 			// Create MetaBaseParameter first
 			uk.ac.quadram.metapilot.task.par.MetaBaseParameter metaBasePar = new uk.ac.quadram.metapilot.task.par.MetaBaseParameter(
@@ -414,6 +406,9 @@ public class DiaMarkerParameterIO extends BaseParameterIO {
 			int representativeGenomeTopN = 50;
 			int representativeMinMarkerPeptides = 100;
 			boolean representativeClusteringDryRun = false;
+			boolean entrapmentEnabled = false;
+			long entrapmentSeed = 1L;
+			int entrapmentIdDigit = 8;
 
 			if (json.has("dia_settings")) {
 				JSONObject diaSettings = json.getJSONObject("dia_settings");
@@ -451,6 +446,9 @@ public class DiaMarkerParameterIO extends BaseParameterIO {
 						representativeMinMarkerPeptides);
 				representativeClusteringDryRun = diaSettings.optBoolean("representative_grouping_dry_run",
 						diaSettings.optBoolean("representative_clustering_dry_run", representativeClusteringDryRun));
+				entrapmentEnabled = diaSettings.optBoolean("entrapment_enabled", entrapmentEnabled);
+				entrapmentSeed = diaSettings.optLong("entrapment_seed", entrapmentSeed);
+				entrapmentIdDigit = diaSettings.optInt("entrapment_id_digit", entrapmentIdDigit);
 			}
 
 			// Create MetaParameterDiaMarker (no self model / external models for now)
@@ -483,6 +481,11 @@ public class DiaMarkerParameterIO extends BaseParameterIO {
 			params.setRepresentativeGenomeTopN(representativeGenomeTopN);
 			params.setRepresentativeMinMarkerPeptides(representativeMinMarkerPeptides);
 			params.setRepresentativeClusteringDryRun(representativeClusteringDryRun);
+			params.setEntrapmentEnabled(entrapmentEnabled);
+			params.setEntrapmentSeed(entrapmentSeed);
+			if (entrapmentIdDigit >= 1 && entrapmentIdDigit <= 9) {
+				params.setEntrapmentIdDigit(entrapmentIdDigit);
+			}
 
 			return params;
 

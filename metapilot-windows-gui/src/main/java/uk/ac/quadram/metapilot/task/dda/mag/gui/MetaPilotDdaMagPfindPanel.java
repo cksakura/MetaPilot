@@ -17,14 +17,17 @@ import uk.ac.quadram.metapilot.task.common.gui.MetadataConfigurationPanel;
 import uk.ac.quadram.metapilot.task.common.gui.IsobaricLabelingPanel;
 import uk.ac.quadram.metapilot.task.common.gui.MagDatabaseSettingsPanel;
 import uk.ac.quadram.metapilot.task.common.gui.PFindModificationPanel;
+import uk.ac.quadram.metapilot.task.common.gui.ParameterSection;
 import uk.ac.quadram.metapilot.core.mag.Marker4ResourcePreparer;
 import uk.ac.quadram.metapilot.core.MGYG.HapExtractor;
+import uk.ac.quadram.metapilot.dbSearch.pfind.PFindEnzymes;
 import uk.ac.quadram.metapilot.task.mag.MagDbItem;
 import uk.ac.quadram.metapilot.task.dda.igc.gui.MetaPilotDdaIgcMaxQuantPanel;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters.ToolType;
 import uk.ac.quadram.metapilot.resources.MetaResourceIO;
+import uk.ac.quadram.metapilot.task.mag.GenomeSelectionCut;
 import uk.ac.quadram.metapilot.task.mag.MarkerGenomeSelector;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX.ExperimentRow;
 import javafx.application.Platform;
@@ -76,7 +79,7 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
     private ComboBox<String> ms2ScanModeComboBox;
     private ComboBox<String> searchModeComboBox;
     private ComboBox<String> genomeSelectorComboBox;
-    private ComboBox<String> genomeSelectionStrategyComboBox;
+    private GenomeStopControls genomeStopControls;
     private ProgressBar genomeSelectorProgressBar;
     private Label genomeSelectorStatusLabel;
     /** Flag to suppress Marker4 popup when programmatically loading parameters (setOnAction fires on setValue) */
@@ -108,7 +111,7 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
 		
         System.out.println("DEBUG: MetaPilotDdaMagPfindPanel() constructor started");
         try {
-            loadEnzymesFromIni();
+            loadEnzymes();
             // Initialize MAG databases from parameter
             System.out.println("DEBUG: Loading MAG databases...");
             System.out.println("DEBUG: Found " + (magDbItems != null ? magDbItems.length : 0) + " MAG database items");
@@ -137,7 +140,7 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
             System.out.println("DEBUG: Creating reusable UI components...");
             // Initialize reusable components
             consolePanel = new ConsolePanel();
-            metadataPanel = new MetadataConfigurationPanel();
+            metadataPanel = new MetadataConfigurationPanel(true);
             isobaricPanel = new IsobaricLabelingPanel();
             // pFind doesn't use the ModificationsPanel - it has its own modification system
             magDatabasePanel = new MagDatabaseSettingsPanel();
@@ -283,7 +286,6 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
         VBox tabContent = new VBox(10);
         tabContent.setPadding(new Insets(10));
         tabContent.setMinWidth(960);
-        tabContent.setMinHeight(760);
         
         // Create main grid layout for parameters with 2-column responsive sizing
         GridPane mainGrid = new GridPane();
@@ -291,8 +293,6 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
         mainGrid.setVgap(15);
         mainGrid.setPadding(new Insets(10));
         mainGrid.setMinWidth(940);
-        mainGrid.setMinHeight(740);
-        VBox.setVgrow(mainGrid, Priority.ALWAYS);
         
         // Column constraints for 2-column layout (50% + 50%) with minimum widths
         ColumnConstraints col1 = new ColumnConstraints();
@@ -308,13 +308,12 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
         // Row constraints for proper height distribution
         RowConstraints row1 = new RowConstraints();
         row1.setVgrow(Priority.ALWAYS);
-        row1.setMinHeight(400);
         mainGrid.getRowConstraints().add(row1);
         
         // Left column: Enzyme Settings, Additional Parameters, Modifications (stacked) - NO taxonomic analysis for MAG
         VBox leftColumn = new VBox(15);
         leftColumn.setMinWidth(430);
-        VBox enzymeSection = createEnzymeSection();
+        TitledPane enzymeSection = createEnzymeSection();
         VBox additionalParamsSection = createAdditionalParametersSection();
         
         pfindModificationsPanel = new PFindModificationPanel(this::updateParameterView);
@@ -324,7 +323,7 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
         // Right column: Quantitative Mode and Metadata Configuration (stacked)
         VBox rightColumn = new VBox(15);
         rightColumn.setMinWidth(430);
-        VBox quantModeSection = createQuantitativeModeSection();
+        TitledPane quantModeSection = createQuantitativeModeSection();
         
         rightColumn.getChildren().addAll(quantModeSection, metadataPanel);
         GridPane.setVgrow(rightColumn, Priority.ALWAYS);
@@ -333,18 +332,13 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
         mainGrid.add(leftColumn, 0, 0);
         mainGrid.add(rightColumn, 1, 0);
         
-        tabContent.getChildren().add(mainGrid);
+        tabContent.getChildren().add(ParameterSection.createViewport(mainGrid));
         return tabContent;
     }
     
-    private VBox createQuantitativeModeSection() {
+    private TitledPane createQuantitativeModeSection() {
         VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #f5f5f5; -fx-background-radius: 5;");
-        section.setMinHeight(300);
-        VBox.setVgrow(section, Priority.ALWAYS);
         
-        Label titleLabel = createSectionTitle("Quantitative Mode");
         quantModeGroup = new ToggleGroup();
         
         // Radio buttons for quantitative modes
@@ -360,7 +354,6 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
         
         // StackPane for overlapping panels
         StackPane labelingStackPane = new StackPane();
-        labelingStackPane.setMinHeight(200);
         labelingStackPane.setMaxHeight(Double.MAX_VALUE);
         VBox.setVgrow(labelingStackPane, Priority.ALWAYS);
         
@@ -385,8 +378,8 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
             updateMetadataTable();
         });
         
-        section.getChildren().addAll(titleLabel, radioBox, labelingStackPane);
-        return section;
+        section.getChildren().addAll(radioBox, labelingStackPane);
+        return ParameterSection.create("Quantitative Mode", section);
     }
     
     private Label createSectionTitle(String title) {
@@ -396,12 +389,7 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
         return label;
     }
     
-    private VBox createEnzymeSection() {
-        VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #f5f5f5; -fx-background-radius: 5;");
-        
-        Label titleLabel = createSectionTitle("Enzyme Settings");
+    private TitledPane createEnzymeSection() {
         
         HBox enzymeParamsBox = new HBox(15);
         enzymeParamsBox.setAlignment(Pos.CENTER_LEFT);
@@ -417,6 +405,7 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
         enzymeComboBox.setMinWidth(140);
         enzymeComboBox.setPrefWidth(160);
         enzymeComboBox.setMaxWidth(Double.MAX_VALUE);
+        enzymeComboBox.setTooltip(new Tooltip(PFindEnzymes.TOOLTIP));
         if (enzymes.size() > 0) {
             enzymeComboBox.setValue(enzymes.get(0));
         }
@@ -454,27 +443,18 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
         
         enzymeParamsBox.getChildren().addAll(enzymeBox, missedCleavagesBox, digestionModeBox);
         
-        section.getChildren().addAll(titleLabel, enzymeParamsBox);
-        return section;
+        return ParameterSection.create("Enzyme settings", enzymeParamsBox);
     }
     
 	private VBox createAdditionalParametersSection() {
-		VBox section = new VBox(10);
-		section.setPadding(new Insets(10));
-		section.setStyle("-fx-background-color: #f0f8ff; -fx-background-radius: 5;");
-
-		Label titleLabel = createSectionTitle("Additional Parameters");
-
 		GridPane paramGrid = new GridPane();
 		paramGrid.setHgap(15);
 		paramGrid.setVgap(8);
 
 		ColumnConstraints col1 = new ColumnConstraints();
-		col1.setMinWidth(150);
-		col1.setHgrow(Priority.ALWAYS);
+		col1.setPercentWidth(50);
 		ColumnConstraints col2 = new ColumnConstraints();
-		col2.setMinWidth(150);
-		col2.setHgrow(Priority.ALWAYS);
+		col2.setPercentWidth(50);
 		paramGrid.getColumnConstraints().addAll(col1, col2);
 
 		Label threadsLabel = new Label("Threads:");
@@ -520,11 +500,12 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
 		VBox searchModeBox = new VBox(5);
 		searchModeBox.getChildren().addAll(searchModeLabel, searchModeComboBox);
 
-		paramGrid.add(threadsBox, 0, 0);
+		paramGrid.add(searchModeBox, 0, 0);
 		paramGrid.add(ms2Box, 1, 0);
-		paramGrid.add(searchModeBox, 0, 1);
+		paramGrid.add(threadsBox, 1, 1);
+		GridPane.setValignment(threadsBox, javafx.geometry.VPos.TOP);
 
-		Label genomeSelectorLabel = new Label("Genome Selection:");
+		Label genomeSelectorLabel = new Label("Marker set");
 		genomeSelectorLabel.setStyle("-fx-font-weight: bold;");
 		genomeSelectorComboBox = new ComboBox<>(
 				FXCollections.observableArrayList(MagDbItem.MARKER2, MagDbItem.MARKER4));
@@ -585,37 +566,24 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
 		VBox genomeSelectorBox = new VBox(5);
 		genomeSelectorBox.getChildren().addAll(genomeSelectorLabel, genomeSelectorComboBox);
 
-		Label genomeSelectionStrategyLabel = new Label("Selection Strategy:");
-		genomeSelectionStrategyLabel.setStyle("-fx-font-weight: bold;");
-		genomeSelectionStrategyComboBox = new ComboBox<>(
-				FXCollections.observableArrayList(MarkerGenomeSelector.KNEE_MODE_FOCUS,
-						MarkerGenomeSelector.KNEE_MODE_COMPREHENSIVE));
-		genomeSelectionStrategyComboBox.setMinWidth(140);
-		genomeSelectionStrategyComboBox.setPrefWidth(160);
-		genomeSelectionStrategyComboBox.setMaxWidth(Double.MAX_VALUE);
-		genomeSelectionStrategyComboBox.setValue(MarkerGenomeSelector.KNEE_MODE_FOCUS);
-		genomeSelectionStrategyComboBox.setOnAction(e -> updateParameterView());
-		VBox genomeSelectionStrategyBox = new VBox(5);
-		genomeSelectionStrategyBox.getChildren().addAll(genomeSelectionStrategyLabel, genomeSelectionStrategyComboBox);
+		genomeStopControls = new GenomeStopControls(this::updateParameterView);
 
 		genomeSelectorProgressBar = new ProgressBar(0);
 		genomeSelectorProgressBar.setVisible(false);
+		genomeSelectorProgressBar.managedProperty().bind(genomeSelectorProgressBar.visibleProperty());
 		genomeSelectorProgressBar.setPrefWidth(200);
 		genomeSelectorProgressBar.setMaxWidth(Double.MAX_VALUE);
 		genomeSelectorStatusLabel = new Label();
 		genomeSelectorStatusLabel.setMinHeight(Label.USE_PREF_SIZE);
 		genomeSelectorStatusLabel.setStyle("-fx-text-fill: gray;");
-		Label progressLabel = new Label("Availability:");
-		progressLabel.setStyle("-fx-font-weight: bold;");
-		VBox progressBox = new VBox(5);
-		progressBox.getChildren().addAll(progressLabel, genomeSelectorProgressBar, genomeSelectorStatusLabel);
+		genomeSelectorStatusLabel.visibleProperty().bind(genomeSelectorStatusLabel.textProperty().isNotEmpty());
+		genomeSelectorStatusLabel.managedProperty().bind(genomeSelectorStatusLabel.visibleProperty());
+		genomeSelectorBox.getChildren().addAll(genomeSelectorStatusLabel, genomeSelectorProgressBar);
 
-		paramGrid.add(genomeSelectorBox, 0, 2);
-		paramGrid.add(progressBox, 1, 2);
-		paramGrid.add(genomeSelectionStrategyBox, 0, 3);
-
-		section.getChildren().addAll(titleLabel, paramGrid);
-		return section;
+		paramGrid.add(genomeSelectorBox, 0, 1);
+		TitledPane searchSection = ParameterSection.create("Search", paramGrid);
+		TitledPane genomeSection = ParameterSection.create("Genome selection", genomeStopControls);
+		return new VBox(10, searchSection, genomeSection);
 	}
 
 	/**
@@ -736,6 +704,21 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
 	}
     
     
+	private void applyGenomeCutToControls(DDAMagPfindParameters params) {
+		if (params == null || genomeStopControls == null) {
+			return;
+		}
+		genomeStopControls.apply(params.getGenomeSelectionStrategy(), params.getGenomeSelectionPsmCoverage(),
+				params.getGenomeSelectionStepGuard(), params.getGenomeSelectionMaxGenomes());
+		String warning = GenomeSelectionCut.unusedCoverageKeysWarning(params.getGenomeSelectionStrategy(),
+				params.getGenomeSelectionPsmCoverage(), params.getGenomeSelectionStepGuard(),
+				params.getGenomeSelectionMaxGenomes());
+		if (warning != null && consolePanel != null) {
+			consolePanel.appendConsoleText("WARNING: " + warning + "\n");
+		}
+	}
+
+
     @Override
     protected void startAnalysis() {
         try {
@@ -832,6 +815,15 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
                         if (result != null && result) {
                             consolePanel.appendConsoleText("✓ Analysis completed successfully!\n");
                             consolePanel.enableViewReportButton();
+                            if (analysisParams.getResult() != null) {
+                                java.io.File resultDir = new java.io.File(analysisParams.getResult());
+                                for (String note : GenomeSelectionCurveDialog.notes(resultDir)) {
+                                    consolePanel.appendConsoleText(note + "\n");
+                                }
+                                GenomeSelectionCurveDialog.show(
+                                        consolePanel.getScene() == null ? null : consolePanel.getScene().getWindow(),
+                                        resultDir);
+                            }
                         } else {
                             consolePanel.appendConsoleText("⚠ Analysis completed but may not have been fully successful.\n");
                         }
@@ -934,23 +926,8 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
         }
     }
 
-    private void loadEnzymesFromIni() {
-        try (InputStream in = getClass().getClassLoader().getResourceAsStream("enzyme_default.ini")) {
-            if (in != null) {
-                BufferedReader reader = new BufferedReader(new InputStreamReader(in));
-                Pattern pattern = Pattern.compile("EN\\d+=(.+?) ");
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    Matcher m = pattern.matcher(line);
-                    if (m.find()) {
-                        String enzymeName = m.group(1).trim();
-                        enzymes.add(enzymeName);
-                    }
-                }
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+    private void loadEnzymes() {
+        enzymes.addAll(PFindEnzymes.names());
     }
     
 
@@ -1007,10 +984,10 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
             sb.append("  Search mode: ").append(searchModeComboBox.getValue()).append("\n");
         }
         if (genomeSelectorComboBox != null) {
-            sb.append("  Genome Selection: ").append(genomeSelectorComboBox.getValue()).append("\n");
+            sb.append("  Marker set: ").append(genomeSelectorComboBox.getValue()).append("\n");
         }
-        if (genomeSelectionStrategyComboBox != null) {
-            sb.append("  Selection Strategy: ").append(genomeSelectionStrategyComboBox.getValue()).append("\n");
+        if (genomeStopControls != null) {
+            sb.append("  When to stop adding genomes: ").append(genomeStopControls.summary()).append("\n");
         }
         if (generateSampleSpecificDBCheckBox != null) {
             sb.append("  Generate Sample-specific DB: ").append(generateSampleSpecificDBCheckBox.isSelected()).append("\n");
@@ -1032,11 +1009,12 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
         }
         sb.append("\n");
         
-        // Modifications
-        sb.append("Modifications:\n");
-        sb.append("  Fixed: ").append(pfindModificationsPanel.getFixedModifications().toString()).append("\n");
-        sb.append("  Variable: ").append(pfindModificationsPanel.getVariableModifications().toString()).append("\n");
-        sb.append("\n");
+        if (pfindModificationsPanel != null) {
+            sb.append("Modifications:\n");
+            sb.append("  Fixed: ").append(pfindModificationsPanel.getFixedModifications().toString()).append("\n");
+            sb.append("  Variable: ").append(pfindModificationsPanel.getVariableModifications().toString()).append("\n");
+            sb.append("\n");
+        }
         
         consolePanel.setParameterText(sb.toString());
     }
@@ -1163,33 +1141,9 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
 			// Set label titles in metadata
 			metaData.setLabelTitle(labelTitles);
 
-			// Collect metadata information using column order from Metadata configuration panel
-			LOGGER.info("Collecting metadata information...");
-			ObservableList<MetaPilotDdaIgcMaxQuantPanel.MetadataRow> metadataRows = metadataPanel != null
-					? metadataPanel.getMetadataTableData()
-					: null;
-			List<String> colNames = metadataPanel != null ? metadataPanel.getMetadataColumnNames() : java.util.Collections.emptyList();
-			int metaTypeCount = colNames.size();
-			LOGGER.info("Metadata rows: {}, columns: {}", metadataRows != null ? metadataRows.size() : 0,
-					metaTypeCount);
-
-		String[][] metaInfo = new String[metadataRows != null ? metadataRows.size() : 0][Math.max(1, metaTypeCount)];
-		if (metadataRows != null && !colNames.isEmpty()) {
-			for (int i = 0; i < metadataRows.size(); i++) {
-				MetaPilotDdaIgcMaxQuantPanel.MetadataRow row = metadataRows.get(i);
-				for (int j = 0; j < colNames.size(); j++) {
-					String v = row.getValueByColumnName(colNames.get(j));
-					metaInfo[i][j] = v != null ? v : "";
-				}
+			if (metadataPanel != null) {
+				metadataPanel.applyTo(metaData);
 			}
-		}
-		// Set both metaTypeCount and metaInfo - metaTypeCount must be set for exportMetadata to work correctly
-		metaData.setMetaTypeCount(Math.max(1, metaTypeCount));
-		metaData.setMetaInfo(metaInfo);
-		// Pass column names from UI so export uses them as headers (no "meta1", "meta2", etc.)
-		if (!colNames.isEmpty()) {
-			metaData.setMetaTypeTitles(colNames.toArray(new String[0]));
-		}
 
 			// Create DDAMagPfindParameters with required constructor parameters
 			LOGGER.info("Creating DDAMagPfindParameters object...");
@@ -1211,11 +1165,14 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
 			analysisParams.setGenomeSelectorMode(genomeSelectorMode);
 			LOGGER.info("Genome selection: {}", genomeSelectorMode);
 
-			String genomeSelectionStrategy = genomeSelectionStrategyComboBox != null
-					&& genomeSelectionStrategyComboBox.getValue() != null
-							? genomeSelectionStrategyComboBox.getValue()
-							: MarkerGenomeSelector.KNEE_MODE_FOCUS;
+			String genomeSelectionStrategy = genomeStopControls != null ? genomeStopControls.strategy()
+					: MarkerGenomeSelector.KNEE_MODE_FOCUS;
 			analysisParams.setGenomeSelectionStrategy(genomeSelectionStrategy);
+			if (genomeStopControls != null) {
+				analysisParams.setGenomeSelectionPsmCoverage(genomeStopControls.psmCoverage());
+				analysisParams.setGenomeSelectionStepGuard(genomeStopControls.stepGuard());
+				analysisParams.setGenomeSelectionMaxGenomes(genomeStopControls.maxGenomes());
+			}
 			LOGGER.info("Genome selection strategy: {}", genomeSelectionStrategy);
 
 			// Search mode: open vs closed (only closed writes fixmod/selectmod in pFind.cfg)
@@ -1266,7 +1223,18 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
 			analysisParams.setQuantitativeMode(quanMode);
 
 			// Set isobaric labeling
-			analysisParams.setIsobaricType(quanMode.contains("Isobaric") ? quanMode : "");
+			boolean isobaricMode = quanMode.contains("Isobaric") && isobaricPanel != null;
+			String selectedIsobaricType = isobaricMode ? isobaricPanel.getSelectedIsobaricType() : null;
+			analysisParams.setIsobaricType(isobaricMode
+					? (selectedIsobaricType != null ? selectedIsobaricType : quanMode)
+					: "");
+			List<String[]> isobaricDataArray = new ArrayList<>();
+			if (isobaricMode) {
+				for (IsobaricLabelingPanel.IsobaricLabelRow row : isobaricPanel.getIsobaricTableData()) {
+					isobaricDataArray.add(row.toArray());
+				}
+			}
+			analysisParams.setIsobaricTableData(isobaricDataArray);
 
 			// Set isotopic labeling
 			analysisParams.setLightLabels(new ArrayList<>()); // TODO: Get from isotopic labeling panel
@@ -1280,10 +1248,9 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
 			}
 			analysisParams.setExperimentData(experimentArrays);
 
-			// Set metadata table data - convert JavaFX rows to String arrays
-			if (metadataRows != null) {
+			if (metadataPanel != null) {
 				List<String[]> metadataArrays = new ArrayList<>();
-				for (var row : metadataRows) {
+				for (var row : metadataPanel.getMetadataTableData()) {
 					metadataArrays.add(row.toArray());
 				}
 				analysisParams.setMetadataTableData(metadataArrays);
@@ -1615,11 +1582,7 @@ public class MetaPilotDdaMagPfindPanel extends AbstractWorkflowPanel<DDAMagPfind
                 suppressMarker4CheckOnLoad = false;
             }
         }
-        if (genomeSelectionStrategyComboBox != null) {
-            genomeSelectionStrategyComboBox.setValue(
-                    params.getGenomeSelectionStrategy() != null ? params.getGenomeSelectionStrategy()
-                            : MarkerGenomeSelector.KNEE_MODE_FOCUS);
-        }
+        applyGenomeCutToControls(params);
         if (searchModeComboBox != null && params.getOsp() != null) {
             searchModeComboBox.setValue(params.getOsp().isOpenSearch() ? "Open search" : "Closed search");
         }

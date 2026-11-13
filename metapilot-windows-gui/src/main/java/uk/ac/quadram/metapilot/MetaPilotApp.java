@@ -4,6 +4,7 @@ import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.control.Alert;
@@ -531,13 +532,13 @@ public class MetaPilotApp extends Application {
 
 		igcWorkflows.getChildren()
 				.addAll(createWorkflowBox("MaxQuant", "Run DDA workflow using MaxQuant",
-						e -> launchWorkflow(WorkflowType.DDA_IGC_MAXQUANT)),
+						WorkflowType.DDA_IGC_MAXQUANT),
 						createWorkflowBox("pFind", "Run DDA workflow using pFind",
-								e -> launchWorkflow(WorkflowType.DDA_IGC_PFIND)),
+								WorkflowType.DDA_IGC_PFIND),
 						createWorkflowBox("FragPipe", "Run DDA workflow using FragPipe",
-								e -> launchWorkflow(WorkflowType.DDA_IGC_FRAGPIPE)),
+								WorkflowType.DDA_IGC_FRAGPIPE),
 						createWorkflowBox("Sage", "Run DDA workflow using Sage",
-								e -> launchWorkflow(WorkflowType.DDA_IGC_SAGE)));
+								WorkflowType.DDA_IGC_SAGE));
 
 		igcPanel.setContent(igcWorkflows);
 
@@ -552,15 +553,18 @@ public class MetaPilotApp extends Application {
 
 		magWorkflows.getChildren()
 				.addAll(createWorkflowBox("pFind", "Run DDA workflow using pFind",
-						e -> launchWorkflow(WorkflowType.DDA_MAG_PFIND)),
+						WorkflowType.DDA_MAG_PFIND),
 						createWorkflowBox("FragPipe", "Run DDA workflow using FragPipe",
-								e -> launchWorkflow(WorkflowType.DDA_MAG_FRAGPIPE)),
+								WorkflowType.DDA_MAG_FRAGPIPE),
 						createWorkflowBox("Sage", "Run DDA workflow using Sage",
-								e -> launchWorkflow(WorkflowType.DDA_MAG_SAGE)),
-						createWorkflowBox("Open Search",
-								"Open search for PTM discovery using MSFragger directly, with MetaPilot's own "
-										+ "delta-mass peak fitting and machine-learning validation",
-								e -> launchWorkflow(WorkflowType.DDA_MAG_OPENSEARCH)));
+								WorkflowType.DDA_MAG_SAGE));
+		if (ReleaseFeatures.OPEN_SEARCH_WORKFLOW) {
+			magWorkflows.getChildren()
+					.add(createWorkflowBox("Open Search",
+							"Open search for PTM discovery using MSFragger directly, with MetaPilot's own "
+									+ "delta-mass peak fitting and machine-learning validation",
+							WorkflowType.DDA_MAG_OPENSEARCH));
+		}
 
 		magPanel.setContent(magWorkflows);
 
@@ -581,22 +585,21 @@ public class MetaPilotApp extends Application {
 
 		workflowBox.getChildren().addAll(
 				createWorkflowBox("Marker", "No prior knowledge needed - process data directly using marker strategy",
-						e -> launchWorkflow(WorkflowType.DIA_MARKER)),
+						WorkflowType.DIA_MARKER),
 				createWorkflowBox("Seeded",
 						"Run DIA workflow using a user-supplied seed spectral library (requires prior knowledge).",
-						e -> launchWorkflow(WorkflowType.DIA_SEED)),
+						WorkflowType.DIA_SEED),
 				createWorkflowBox("Target", "Run DIA workflow in target mode",
-						e -> launchWorkflow(WorkflowType.DIA_TARGET)),
+						WorkflowType.DIA_TARGET),
 				createWorkflowBox("Real-time", "Run DIA workflow in real-time mode",
-						e -> launchWorkflow(WorkflowType.DIA_REALTIME)));
+						WorkflowType.DIA_REALTIME));
 
 		panel.setContent(workflowBox);
 
 		return panel;
 	}
 
-	private VBox createWorkflowBox(String title, String description,
-			javafx.event.EventHandler<javafx.event.ActionEvent> action) {
+	private VBox createWorkflowBox(String title, String description, WorkflowType type) {
 		VBox box = new VBox(10);
 		box.setAlignment(Pos.CENTER);
 		box.setPadding(new Insets(15));
@@ -612,11 +615,20 @@ public class MetaPilotApp extends Application {
 		descLabel.setAlignment(Pos.CENTER);
 
 		Button launchButton = new Button("Launch");
-		launchButton.setOnAction(action);
+		launchButton.setOnAction(event -> launchWorkflow(type));
 
 		box.getChildren().addAll(titleLabel, descLabel, launchButton);
 
 		return box;
+	}
+
+	private BorderPane createWorkflowView(String title, Node panel) {
+		Label name = new Label(title);
+		HBox header = new HBox(name);
+		header.getStyleClass().add("workflow-header");
+		BorderPane view = new BorderPane(panel);
+		view.setTop(header);
+		return view;
 	}
 
 	private boolean checkRequiredResources(WorkflowType type) {
@@ -687,6 +699,10 @@ public class MetaPilotApp extends Application {
 	}
 
 	private void launchWorkflow(WorkflowType type) {
+		if (!ReleaseFeatures.isAvailable(type)) {
+			showWarning("Workflow Not Available", "This workflow is not available in this version of MetaPilot.");
+			return;
+		}
 		// First check if registration is required and enabled
 		if (REGISTRATION_ENABLED && !checkRegistration()) {
 			showWarning("Registration Required",
@@ -735,7 +751,8 @@ public class MetaPilotApp extends Application {
 				MetaPilotDdaIgcMaxQuantPanel maxQuantPanel = new MetaPilotDdaIgcMaxQuantPanel();
 
 				// Create a scene with the panel
-				Scene scene = new Scene(maxQuantPanel);
+				Scene scene = new Scene(
+						createWorkflowView(maxQuantStage.getTitle(), maxQuantPanel));
 				try {
 					scene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
 				} catch (Exception e) {
@@ -761,7 +778,8 @@ public class MetaPilotApp extends Application {
 				MetaPilotDdaIgcPFindPanel pFindPanel = new MetaPilotDdaIgcPFindPanel();
 
 				// Create a scene with the panel
-				Scene pFindScene = new Scene(pFindPanel);
+				Scene pFindScene = new Scene(
+						createWorkflowView(pFindStage.getTitle(), pFindPanel));
 				try {
 					pFindScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
 				} catch (Exception e) {
@@ -787,7 +805,8 @@ public class MetaPilotApp extends Application {
 				MetaPilotDdaIgcFragPipePanel fragPipePanel = new MetaPilotDdaIgcFragPipePanel();
 
 				// Create a scene with the panel
-				Scene fragPipeScene = new Scene(fragPipePanel);
+				Scene fragPipeScene = new Scene(
+						createWorkflowView(fragPipeStage.getTitle(), fragPipePanel));
 				try {
 					fragPipeScene.getStylesheets()
 							.add(getClass().getResource("/styles/metapilot.css").toExternalForm());
@@ -814,7 +833,8 @@ public class MetaPilotApp extends Application {
 				MetaPilotDdaIgcSagePanel sagePanel = new MetaPilotDdaIgcSagePanel();
 
 				// Create a scene with the panel
-				Scene sageScene = new Scene(sagePanel);
+				Scene sageScene = new Scene(
+						createWorkflowView(sageStage.getTitle(), sagePanel));
 				try {
 					sageScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
 				} catch (Exception e) {
@@ -842,7 +862,8 @@ public class MetaPilotApp extends Application {
 				MetaPilotDdaMagPfindPanel pFindMagPanel = new MetaPilotDdaMagPfindPanel(items, resourceParams);
 
 				// Create a scene with the panel
-				Scene pFindMagScene = new Scene(pFindMagPanel);
+				Scene pFindMagScene = new Scene(
+						createWorkflowView(pFindMagStage.getTitle(), pFindMagPanel));
 				try {
 					pFindMagScene.getStylesheets()
 							.add(getClass().getResource("/styles/metapilot.css").toExternalForm());
@@ -869,7 +890,8 @@ public class MetaPilotApp extends Application {
 				MetaPilotDdaMagFragPipePanel fragPipeMagPanel = new MetaPilotDdaMagFragPipePanel(items, resourceParams);
 
 				// Create a scene with the panel
-				Scene fragPipeMagScene = new Scene(fragPipeMagPanel);
+				Scene fragPipeMagScene = new Scene(
+						createWorkflowView(fragPipeMagStage.getTitle(), fragPipeMagPanel));
 				try {
 					fragPipeMagScene.getStylesheets()
 							.add(getClass().getResource("/styles/metapilot.css").toExternalForm());
@@ -891,7 +913,8 @@ public class MetaPilotApp extends Application {
 				Stage magSageStage = new Stage();
 				magSageStage.setTitle("DDA MAG Sage Workflow");
 				MetaPilotDdaMagSagePanel magSagePanel = new MetaPilotDdaMagSagePanel(items);
-				Scene magSageScene = new Scene(magSagePanel, 1600, 900);
+				Scene magSageScene = new Scene(
+						createWorkflowView(magSageStage.getTitle(), magSagePanel), 1600, 900);
 				try {
 					magSageScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
 				} catch (Exception e) {
@@ -909,7 +932,8 @@ public class MetaPilotApp extends Application {
 				magOpenSearchStage.setTitle("DDA MAG Open Search Workflow");
 				MetaPilotDdaMagOpenSearchPanel magOpenSearchPanel = new MetaPilotDdaMagOpenSearchPanel(items,
 						resourceParams);
-				Scene magOpenSearchScene = new Scene(magOpenSearchPanel, 1600, 900);
+				Scene magOpenSearchScene = new Scene(
+						createWorkflowView(magOpenSearchStage.getTitle(), magOpenSearchPanel), 1600, 900);
 				try {
 					magOpenSearchScene.getStylesheets()
 							.add(getClass().getResource("/styles/metapilot.css").toExternalForm());
@@ -935,7 +959,8 @@ public class MetaPilotApp extends Application {
 				Stage diaMarkerStage = new Stage();
 				diaMarkerStage.setTitle("DIA Marker Workflow");
 				MetaPilotDiaMarkerPanel diaMarkerPanel = new MetaPilotDiaMarkerPanel(items, resourceParams);
-				Scene diaMarkerScene = new Scene(diaMarkerPanel, 1600, 900);
+				Scene diaMarkerScene = new Scene(
+						createWorkflowView(diaMarkerStage.getTitle(), diaMarkerPanel), 1600, 900);
 				try {
 					diaMarkerScene.getStylesheets()
 							.add(getClass().getResource("/styles/metapilot.css").toExternalForm());
@@ -963,7 +988,8 @@ public class MetaPilotApp extends Application {
 				Stage diaSeedStage = new Stage();
 				diaSeedStage.setTitle("DIA Seed Workflow");
 				MetaPilotDiaSeedPanel diaSeedPanel = new MetaPilotDiaSeedPanel(items, resourceParams);
-				Scene diaSeedScene = new Scene(diaSeedPanel, 1600, 900);
+				Scene diaSeedScene = new Scene(
+						createWorkflowView(diaSeedStage.getTitle(), diaSeedPanel), 1600, 900);
 				try {
 					diaSeedScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
 				} catch (Exception e) {
@@ -988,7 +1014,8 @@ public class MetaPilotApp extends Application {
 				Stage diaTargetStage = new Stage();
 				diaTargetStage.setTitle("DIA Target Workflow");
 				MetaPilotDiaTargetPanel diaTargetPanel = new MetaPilotDiaTargetPanel(items, resourceParams);
-				Scene diaTargetScene = new Scene(diaTargetPanel, 1600, 900);
+				Scene diaTargetScene = new Scene(
+						createWorkflowView(diaTargetStage.getTitle(), diaTargetPanel), 1600, 900);
 				try {
 					diaTargetScene.getStylesheets()
 							.add(getClass().getResource("/styles/metapilot.css").toExternalForm());
@@ -1017,7 +1044,8 @@ public class MetaPilotApp extends Application {
 				Stage diaRealTimeStage = new Stage();
 				diaRealTimeStage.setTitle("DIA Real-time Workflow");
 				MetaPilotDiaRealTimePanel diaRealTimePanel = new MetaPilotDiaRealTimePanel(items, resourceParams);
-				Scene diaRealTimeScene = new Scene(diaRealTimePanel, 1600, 900);
+				Scene diaRealTimeScene = new Scene(
+						createWorkflowView(diaRealTimeStage.getTitle(), diaRealTimePanel), 1600, 900);
 				try {
 					diaRealTimeScene.getStylesheets()
 							.add(getClass().getResource("/styles/metapilot.css").toExternalForm());
@@ -1145,6 +1173,10 @@ public class MetaPilotApp extends Application {
 	 * Launch workflow with pre-loaded parameters
 	 */
 	private void launchWorkflowWithParameters(WorkflowType type, Object parameters) {
+		if (!ReleaseFeatures.isAvailable(type)) {
+			showWarning("Workflow Not Available", "This workflow is not available in this version of MetaPilot.");
+			return;
+		}
 		// First check if registration is required and enabled
 		if (REGISTRATION_ENABLED && !checkRegistration()) {
 			showWarning("Registration Required",
@@ -1234,7 +1266,8 @@ public class MetaPilotApp extends Application {
 
 		MetaPilotDdaIgcMaxQuantPanel maxQuantPanel = new MetaPilotDdaIgcMaxQuantPanel();
 
-		Scene scene = new Scene(maxQuantPanel);
+		Scene scene = new Scene(
+				createWorkflowView(maxQuantStage.getTitle(), maxQuantPanel));
 		try {
 			scene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
 		} catch (Exception e) {
@@ -1257,7 +1290,8 @@ public class MetaPilotApp extends Application {
 
 		MetaPilotDdaIgcPFindPanel pFindPanel = new MetaPilotDdaIgcPFindPanel();
 
-		Scene pFindScene = new Scene(pFindPanel);
+		Scene pFindScene = new Scene(
+				createWorkflowView(pFindStage.getTitle(), pFindPanel));
 		try {
 			pFindScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
 		} catch (Exception e) {
@@ -1280,7 +1314,8 @@ public class MetaPilotApp extends Application {
 
 		MetaPilotDdaIgcFragPipePanel fragPipePanel = new MetaPilotDdaIgcFragPipePanel();
 
-		Scene fragPipeScene = new Scene(fragPipePanel);
+		Scene fragPipeScene = new Scene(
+				createWorkflowView(fragPipeStage.getTitle(), fragPipePanel));
 		try {
 			fragPipeScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
 		} catch (Exception e) {
@@ -1303,7 +1338,8 @@ public class MetaPilotApp extends Application {
 
 		MetaPilotDdaIgcSagePanel sagePanel = new MetaPilotDdaIgcSagePanel();
 
-		Scene sageScene = new Scene(sagePanel);
+		Scene sageScene = new Scene(
+				createWorkflowView(sageStage.getTitle(), sagePanel));
 		try {
 			sageScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
 		} catch (Exception e) {
@@ -1326,7 +1362,8 @@ public class MetaPilotApp extends Application {
 
 		MetaPilotDdaMagPfindPanel pFindMagPanel = new MetaPilotDdaMagPfindPanel(items, resourceParams);
 
-		Scene pFindMagScene = new Scene(pFindMagPanel);
+		Scene pFindMagScene = new Scene(
+				createWorkflowView(pFindMagStage.getTitle(), pFindMagPanel));
 		try {
 			pFindMagScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
 		} catch (Exception e) {
@@ -1349,7 +1386,8 @@ public class MetaPilotApp extends Application {
 
 		MetaPilotDdaMagFragPipePanel fragPipeMagPanel = new MetaPilotDdaMagFragPipePanel(items, resourceParams);
 
-		Scene fragPipeMagScene = new Scene(fragPipeMagPanel);
+		Scene fragPipeMagScene = new Scene(
+				createWorkflowView(fragPipeMagStage.getTitle(), fragPipeMagPanel));
 		try {
 			fragPipeMagScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
 		} catch (Exception e) {
@@ -1372,7 +1410,8 @@ public class MetaPilotApp extends Application {
 
 		MetaPilotDdaMagSagePanel magSagePanel = new MetaPilotDdaMagSagePanel(items);
 
-		Scene magSageScene = new Scene(magSagePanel, 1600, 900);
+		Scene magSageScene = new Scene(
+				createWorkflowView(magSageStage.getTitle(), magSagePanel), 1600, 900);
 		try {
 			magSageScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
 		} catch (Exception e) {
@@ -1395,7 +1434,8 @@ public class MetaPilotApp extends Application {
 
 		MetaPilotDdaMagOpenSearchPanel magOpenSearchPanel = new MetaPilotDdaMagOpenSearchPanel(items, resourceParams);
 
-		Scene magOpenSearchScene = new Scene(magOpenSearchPanel, 1600, 900);
+		Scene magOpenSearchScene = new Scene(
+				createWorkflowView(magOpenSearchStage.getTitle(), magOpenSearchPanel), 1600, 900);
 		try {
 			magOpenSearchScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
 		} catch (Exception e) {
@@ -1417,7 +1457,8 @@ public class MetaPilotApp extends Application {
 
 		MetaPilotDiaMarkerPanel diaMarkerPanel = new MetaPilotDiaMarkerPanel(items, resourceParams);
 
-		Scene diaMarkerScene = new Scene(diaMarkerPanel, 1600, 900);
+		Scene diaMarkerScene = new Scene(
+				createWorkflowView(diaMarkerStage.getTitle(), diaMarkerPanel), 1600, 900);
 		try {
 			diaMarkerScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
 		} catch (Exception e) {
@@ -1450,7 +1491,8 @@ public class MetaPilotApp extends Application {
 
 		MetaPilotDiaSeedPanel diaSeedPanel = new MetaPilotDiaSeedPanel(items, resourceParams);
 
-		Scene diaSeedScene = new Scene(diaSeedPanel, 1600, 900);
+		Scene diaSeedScene = new Scene(
+				createWorkflowView(diaSeedStage.getTitle(), diaSeedPanel), 1600, 900);
 		try {
 			diaSeedScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
 		} catch (Exception e) {
@@ -1480,7 +1522,8 @@ public class MetaPilotApp extends Application {
 
 		MetaPilotDiaTargetPanel diaTargetPanel = new MetaPilotDiaTargetPanel(items, resourceParams);
 
-		Scene diaTargetScene = new Scene(diaTargetPanel, 1600, 900);
+		Scene diaTargetScene = new Scene(
+				createWorkflowView(diaTargetStage.getTitle(), diaTargetPanel), 1600, 900);
 		try {
 			diaTargetScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
 		} catch (Exception e) {
@@ -1513,7 +1556,8 @@ public class MetaPilotApp extends Application {
 
 		MetaPilotDiaRealTimePanel diaRealTimePanel = new MetaPilotDiaRealTimePanel(items, resourceParams);
 
-		Scene diaRealTimeScene = new Scene(diaRealTimePanel, 1600, 900);
+		Scene diaRealTimeScene = new Scene(
+				createWorkflowView(diaRealTimeStage.getTitle(), diaRealTimePanel), 1600, 900);
 		try {
 			diaRealTimeScene.getStylesheets().add(getClass().getResource("/styles/metapilot.css").toExternalForm());
 		} catch (Exception e) {

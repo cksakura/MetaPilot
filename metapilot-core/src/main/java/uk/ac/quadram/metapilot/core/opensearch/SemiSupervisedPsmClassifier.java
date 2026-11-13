@@ -75,38 +75,53 @@ public final class SemiSupervisedPsmClassifier {
 	 * Bayes, whose independence assumption is badly violated here, since
 	 * hyperscore, nextscore, expect and matched-ion counts all covary strongly.
 	 */
-	public static final ModelFactory LOGISTIC_REGRESSION = new ModelFactory() {
-		@Override
-		public Classifier create() {
-			Logistic logistic = new Logistic();
-			logistic.setRidge(1e-8);
-			// Standardise every attribute to zero mean and unit variance before
-			// fitting. weka's Logistic does not do this itself, and with ridge at
-			// 1e-8 there is effectively nothing bounding the coefficients, so one
-			// wide-ranging feature can drive the linear predictor past the point
-			// where the sigmoid underflows: on 2026-09-12 a MSFragger+Sage run
-			// returned a probability of EXACTLY 0.0 for 74.0% of candidates
-			// (4,391,627 rows, including every one of the 4,383,711 outside any
-			// peak), collapsing target/decoy AUC in that group from 0.784 to
-			// 0.5000 - a column of perfect ties. The feature scales that provoked
-			// it are real: local_density alone spanned 0 to 289,614.
-			//
-			// This is a conditioning change, not a modelling one. Standardising
-			// inputs to a linear model leaves the fitted decision function
-			// unchanged in exact arithmetic; it only stops the optimiser and the
-			// sigmoid being asked to work at scales where double precision runs
-			// out.
-			FilteredClassifier filtered = new FilteredClassifier();
-			filtered.setClassifier(logistic);
-			filtered.setFilter(new Standardize());
-			return filtered;
-		}
+	public static final ModelFactory LOGISTIC_REGRESSION = logisticRegression(1e-8);
 
-		@Override
-		public String describe() {
-			return "logistic regression (weka.classifiers.functions.Logistic, standardised inputs)";
-		}
-	};
+	/**
+	 * {@link #LOGISTIC_REGRESSION} with its own ridge.
+	 * <p>
+	 * 1e-8 is safe only while the positives overlap the decoys. Positives seeded
+	 * by a q-value cut sit above a score threshold with about 1% decoys among
+	 * them, so with a few hundred positives almost nothing overlaps and the fit
+	 * is unbounded: on PXD066732 stage 1 (2026-11) the coefficients reached
+	 * thousands, signs flipped between folds, and held-out decoys tied with
+	 * targets at a probability of exactly 1.0.
+	 */
+	public static ModelFactory logisticRegression(double ridge) {
+		return new ModelFactory() {
+			@Override
+			public Classifier create() {
+				Logistic logistic = new Logistic();
+				logistic.setRidge(ridge);
+				// Standardise every attribute to zero mean and unit variance before
+				// fitting. weka's Logistic does not do this itself, and with ridge at
+				// 1e-8 there is effectively nothing bounding the coefficients, so one
+				// wide-ranging feature can drive the linear predictor past the point
+				// where the sigmoid underflows: on 2026-09-12 a MSFragger+Sage run
+				// returned a probability of EXACTLY 0.0 for 74.0% of candidates
+				// (4,391,627 rows, including every one of the 4,383,711 outside any
+				// peak), collapsing target/decoy AUC in that group from 0.784 to
+				// 0.5000 - a column of perfect ties. The feature scales that provoked
+				// it are real: local_density alone spanned 0 to 289,614.
+				//
+				// This is a conditioning change, not a modelling one. Standardising
+				// inputs to a linear model leaves the fitted decision function
+				// unchanged in exact arithmetic; it only stops the optimiser and the
+				// sigmoid being asked to work at scales where double precision runs
+				// out.
+				FilteredClassifier filtered = new FilteredClassifier();
+				filtered.setClassifier(logistic);
+				filtered.setFilter(new Standardize());
+				return filtered;
+			}
+
+			@Override
+			public String describe() {
+				return "logistic regression (weka.classifiers.functions.Logistic, standardised inputs"
+						+ (ridge == 1e-8 ? "" : ", ridge " + ridge) + ")";
+			}
+		};
+	}
 
 	public static final class Config {
 		public int folds = 3;
@@ -214,6 +229,21 @@ public final class SemiSupervisedPsmClassifier {
 		 */
 		public int maxTrainingInstances = 500_000;
 		public ModelFactory modelFactory = LOGISTIC_REGRESSION;
+		/**
+		 * Logits from both class probabilities ({@link #logitOf}) instead of the logit of the
+		 * clamped target probability ({@link #toLogit}, +-27.63). Needed where candidates of one
+		 * spectrum compete on the logit: confident candidates otherwise tie at the clamp. Off by
+		 * default, so the existing classifiers' scores are unchanged.
+		 */
+		public boolean unclampedLogits = false;
+		/**
+		 * Seed positives and compute q-values on the unclamped logit instead of the target
+		 * probability. Probabilities round to exactly 1.0 once the linear predictor passes
+		 * about 37, and a decoy inside that tie block makes the whole block one q-value.
+		 * Implies unclamped logits. Off by default, so the existing classifiers' scores are
+		 * unchanged.
+		 */
+		public boolean rankByLogit = false;
 	}
 
 	public static final class Result {
@@ -330,7 +360,7 @@ public final class SemiSupervisedPsmClassifier {
 			for (int i = 0; i < n; i++) {
 				if (fold[i] == f) {
 					scores[i] = outcome.scores[i];
-					logits[i] = toLogit(outcome.scores[i]);
+					logits[i] = outcome.logits != null ? outcome.logits[i] : toLogit(outcome.scores[i]);
 				}
 			}
 		}
@@ -340,8 +370,9 @@ public final class SemiSupervisedPsmClassifier {
 		// as an identification count: with output_report_topN > 1 one spectrum
 		// contributes several rows here. The reportable numbers come from
 		// SpectrumLevelCollapse + TargetDecoyFdr on one PSM per spectrum.
-		double[] q = TargetDecoyFdr.qValues(scores, isTarget);
-		int accepted = TargetDecoyFdr.countAcceptedTargets(scores, isTarget, 0.01);
+		double[] ranking = cfg.rankByLogit ? logits : scores;
+		double[] q = TargetDecoyFdr.qValues(ranking, isTarget);
+		int accepted = TargetDecoyFdr.countAcceptedTargets(ranking, isTarget, 0.01);
 
 		LOGGER.info("PSM classifier: " + cfg.modelFactory.describe() + ", " + cfg.folds
 				+ "-fold cross-validated (split by spectrum), " + iterationsUsed + " iterations; " + accepted
@@ -353,10 +384,17 @@ public final class SemiSupervisedPsmClassifier {
 
 	private static final class FoldOutcome {
 		final double[] scores;
+		/** Unclamped logits ({@link Config#unclampedLogits}), else null. */
+		final double[] logits;
 		final int iterations;
 
 		FoldOutcome(double[] scores, int iterations) {
+			this(scores, null, iterations);
+		}
+
+		FoldOutcome(double[] scores, double[] logits, int iterations) {
 			this.scores = scores;
+			this.logits = logits;
 			this.iterations = iterations;
 		}
 	}
@@ -447,7 +485,8 @@ public final class SemiSupervisedPsmClassifier {
 			model = candidate;
 
 			for (int i = 0; i < n; i++) {
-				working[i] = probabilityOfTarget(model, all.instance(i));
+				working[i] = cfg.rankByLogit ? logitOf(model.distributionForInstance(all.instance(i)))
+						: probabilityOfTarget(model, all.instance(i));
 			}
 
 			// Convergence is measured on the same quantity that seeds the next
@@ -481,10 +520,17 @@ public final class SemiSupervisedPsmClassifier {
 		reportCoefficients(model, featureNamesOf(all), "fold " + (heldOutFold + 1), progress);
 
 		double[] finalScores = new double[n];
+		double[] finalLogits = cfg.unclampedLogits || cfg.rankByLogit ? new double[n] : null;
 		for (int i = 0; i < n; i++) {
-			finalScores[i] = probabilityOfTarget(model, all.instance(i));
+			if (finalLogits == null) {
+				finalScores[i] = probabilityOfTarget(model, all.instance(i));
+			} else {
+				double[] distribution = model.distributionForInstance(all.instance(i));
+				finalScores[i] = distribution.length > 0 ? distribution[0] : Double.NaN;
+				finalLogits[i] = logitOf(distribution);
+			}
 		}
-		return new FoldOutcome(finalScores, iterations);
+		return new FoldOutcome(finalScores, finalLogits, iterations);
 	}
 
 	/** Attribute names of a training table, class attribute excluded. */
@@ -839,5 +885,48 @@ public final class SemiSupervisedPsmClassifier {
 		}
 		double clamped = Math.min(1 - 1e-12, Math.max(1e-12, probability));
 		return Math.log(clamped / (1 - clamped));
+	}
+
+	/** Below {@code exp(-LOGIT_LIMIT)} a probability is 0 in double precision. */
+	static final double LOGIT_LIMIT = 745.0;
+
+	/**
+	 * The log-odds of a two-class distribution {target, decoy}, without the clamp of
+	 * {@link #toLogit}.
+	 * <p>
+	 * weka's {@code Logistic} computes each class probability separately, so the
+	 * decoy probability keeps full relative precision (2.4e-303 at a linear
+	 * predictor of 697) while the target probability has long since rounded to
+	 * exactly 1.0. {@code log(p_target) - log(p_decoy)} is therefore the linear
+	 * predictor itself up to about +-700. Recovering the logit from one rounded
+	 * probability instead tied 251,164 of 1,132,941 closed winners at +27.63 on the
+	 * 12mix cascade run (2026-10-20), which a target-decoy walk then breaks by row
+	 * order.
+	 */
+	static double logitOf(double[] distribution) {
+		if (distribution == null || distribution.length < 2 || Double.isNaN(distribution[0])
+				|| Double.isNaN(distribution[1])) {
+			return distribution != null && distribution.length == 1 ? toLogit(distribution[0]) : Double.NaN;
+		}
+		double target = distribution[0];
+		double decoy = distribution[1];
+		if (target <= 0 && decoy <= 0) {
+			return Double.NaN;
+		}
+		if (decoy <= 0) {
+			return LOGIT_LIMIT;
+		}
+		if (target <= 0) {
+			return -LOGIT_LIMIT;
+		}
+		return Math.max(-LOGIT_LIMIT, Math.min(LOGIT_LIMIT, Math.log(target) - Math.log(decoy)));
+	}
+
+	/** Inverse of the logit, for reporting a probability beside it. */
+	static double sigmoid(double logit) {
+		if (Double.isNaN(logit)) {
+			return Double.NaN;
+		}
+		return logit >= 0 ? 1.0 / (1.0 + Math.exp(-logit)) : Math.exp(logit) / (1.0 + Math.exp(logit));
 	}
 }

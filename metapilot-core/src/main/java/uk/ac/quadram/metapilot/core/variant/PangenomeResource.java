@@ -4,6 +4,10 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Locale;
 import java.util.function.Consumer;
 
 import org.json.JSONObject;
@@ -93,8 +97,7 @@ public final class PangenomeResource {
 			faa = new File(dir, FAA);
 		}
 		if (archive == null) {
-			File a = new File(dir, ARCHIVE);
-			archive = a.isFile() ? a : null;
+			archive = fullCatalogueArchive(dir);
 		}
 		File metadata = firstFile(new File(dir, METADATA), dir.getParentFile() == null ? null
 				: new File(dir.getParentFile(), METADATA),
@@ -140,6 +143,77 @@ public final class PangenomeResource {
 		} catch (IOException | RuntimeException e) {
 			return false;
 		}
+	}
+
+	/**
+	 * The 100% clustered catalogue archive in {@code dir}, under whatever name
+	 * MGnify used ({@code uhgp-100.tar.gz}, {@code protein_catalogue-100.tar.gz},
+	 * or another {@code *-100.tar.gz}). Null when none is present. The 50/90/95
+	 * cut-offs and {@code proteins.faa.gz} are not this archive.
+	 */
+	static File fullCatalogueArchive(File dir) {
+		File[] files = dir == null ? null : dir.listFiles();
+		if (files == null) {
+			return null;
+		}
+		List<String> names = new ArrayList<>();
+		for (File file : files) {
+			if (file.isFile()) {
+				names.add(file.getName());
+			}
+		}
+		String chosen = selectFullCatalogueArchive(names);
+		return chosen == null ? null : new File(dir, chosen);
+	}
+
+	/**
+	 * Picks the 100% identity {@code .tar.gz} from a directory listing. Prefers
+	 * {@code uhgp-100.tar.gz} when several match. Returns null when the listing
+	 * has no such archive.
+	 */
+	static String selectFullCatalogueArchive(Collection<String> names) {
+		if (names == null || names.isEmpty()) {
+			return null;
+		}
+		List<String> hits = new ArrayList<>();
+		for (String raw : names) {
+			String name = baseName(raw);
+			if (name != null && isFullIdentityCatalogueArchive(name) && !hits.contains(name)) {
+				hits.add(name);
+			}
+		}
+		if (hits.isEmpty()) {
+			return null;
+		}
+		for (String hit : hits) {
+			if (hit.equalsIgnoreCase(ARCHIVE)) {
+				return hit;
+			}
+		}
+		hits.sort(String.CASE_INSENSITIVE_ORDER);
+		return hits.get(0);
+	}
+
+	/** True for {@code uhgp-100.tar.gz} and {@code protein_catalogue-100.tar.gz}, not the 50/90/95 archives. */
+	static boolean isFullIdentityCatalogueArchive(String fileName) {
+		String name = baseName(fileName);
+		return name != null && name.toLowerCase(Locale.ROOT).matches(".*[-_]100\\.tar\\.gz");
+	}
+
+	private static String baseName(String path) {
+		if (path == null) {
+			return null;
+		}
+		String name = path.trim();
+		int query = name.indexOf('?');
+		if (query >= 0) {
+			name = name.substring(0, query);
+		}
+		int slash = Math.max(name.lastIndexOf('/'), name.lastIndexOf('\\'));
+		if (slash >= 0) {
+			name = name.substring(slash + 1);
+		}
+		return name.isBlank() ? null : name;
 	}
 
 	private static File firstFile(File... candidates) {

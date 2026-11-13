@@ -23,8 +23,9 @@ import uk.ac.quadram.metapilot.task.io.pep.MetaPSM;
 public class MarkerGenomeSelector {
 
 	private static final Logger LOGGER = LogManager.getLogger(MarkerGenomeSelector.class);
-	public static final String KNEE_MODE_FOCUS = "Focus";
-	public static final String KNEE_MODE_COMPREHENSIVE = "Comprehensive";
+	public static final String KNEE_MODE_FOCUS = GenomeSelectionCut.STRATEGY_FOCUS;
+	public static final String KNEE_MODE_COMPREHENSIVE = GenomeSelectionCut.STRATEGY_COMPREHENSIVE;
+	public static final String KNEE_MODE_PSM_COVERAGE = GenomeSelectionCut.STRATEGY_PSM_COVERAGE;
 
 	/** When marker peptides are less than this fraction of total identified peptides, genome selection uses all peptides (no privilege, no representative, greedy only). */
 	public static final double MARKER_PEPTIDE_RATIO_THRESHOLD = 0.05;
@@ -41,6 +42,10 @@ public class MarkerGenomeSelector {
 
 	private RepresentativeLevel representativeLevel = RepresentativeLevel.GENUS;
 	private String kneeSelectionMode = KNEE_MODE_FOCUS;
+	private double psmCoverageThreshold = GenomeSelectionCut.DEFAULT_PSM_COVERAGE;
+	private double psmStepGuard = GenomeSelectionCut.DEFAULT_STEP_GUARD;
+	private int psmMaxGenomes = GenomeSelectionCut.DEFAULT_MAX_GENOMES;
+	private SelectionResult lastSelectionResult;
 
 	// Regex patterns for the 4-category markers (case-insensitive)
 	private static final Pattern ANCHOR_PATTERN = Pattern.compile("(?i)\\bribosomal\\s+protein\\b");
@@ -185,6 +190,22 @@ public class MarkerGenomeSelector {
 		public int kneeStepCurvature; // max curvature knee (1-based)
 		public int kneeStepPiecewise; // piecewise fit breakpoint (1-based)
 		public int kneeStepSlope; // slope change knee (1-based)
+		public String selectionStrategy = KNEE_MODE_FOCUS;
+		public String stopReason = "";
+		public String markerSet = "";
+		public double psmCoverageReached = Double.NaN;
+		public String psmCoverageThresholdText = "";
+		public String stepGuardText = "";
+		public String maxGenomesText = "";
+		public int focusGenomes = -1;
+		public double focusCoverage = Double.NaN;
+		public int comprehensiveGenomes = -1;
+		public double comprehensiveCoverage = Double.NaN;
+		public int genomesFor080 = -1;
+		public int genomesFor090 = -1;
+		public int genomesFor095 = -1;
+		public int genomesFor099 = -1;
+		public Set<String> inRanking = new LinkedHashSet<>();
 	}
 
 	/**
@@ -315,11 +336,13 @@ public class MarkerGenomeSelector {
 			try {
 				Map<String, String> catMap = new MarkerGenomeSelector().loadMarkerProteinCategoriesFromFasta(markerFasta);
 				markerProteinIds.addAll(catMap.keySet());
-				// Also allow proteins that match as baseId (genome_protid)
+				// Also allow proteins that match as baseId (genome_protid). Only strip a suffix when the rest is
+				// still a protein ID: stripping "MGYG000000001_00005" would give the genome ID, and every protein
+				// of that genome would then count as a marker.
 				for (String id : new ArrayList<>(catMap.keySet())) {
-					int last = id.lastIndexOf('_');
-					if (last > 0) {
-						markerProteinIds.add(id.substring(0, last));
+					String base = stripLastSuffixKeepingProteinId(id);
+					if (base != null) {
+						markerProteinIds.add(base);
 					}
 				}
 			} catch (IOException e) {
@@ -347,8 +370,8 @@ public class MarkerGenomeSelector {
 					hasMarker = true;
 					break;
 				}
-				int last = lookupId.lastIndexOf('_');
-				if (last > 0 && markerProteinIds.contains(lookupId.substring(0, last))) {
+				String base = stripLastSuffixKeepingProteinId(lookupId);
+				if (base != null && markerProteinIds.contains(base)) {
 					hasMarker = true;
 					break;
 				}
@@ -361,6 +384,17 @@ public class MarkerGenomeSelector {
 		int marker = markerUnique.size();
 		double ratio = total > 0 ? (double) marker / total : 1.0;
 		return new MarkerPeptideRatioResult(total, marker, ratio);
+	}
+
+	/**
+	 * "MGYG000000001_00005_1" -&gt; "MGYG000000001_00005"; null when the remainder would no longer contain '_'
+	 * (i.e. would be a genome ID, not a protein ID).
+	 */
+	static String stripLastSuffixKeepingProteinId(String id) {
+		int last = id.lastIndexOf('_');
+		if (last <= 0) return null;
+		String base = id.substring(0, last);
+		return base.indexOf('_') > 0 ? base : null;
 	}
 
 	public void selectMarkerGenomesWithKnee(MetaPSM[] psms, File markerFasta, File genomesTaxaTsv,
@@ -676,15 +710,15 @@ public class MarkerGenomeSelector {
 		try (PrintWriter writer = new PrintWriter(outputRankedTsv)) {
 			if (useMarkerCategories) {
 				writer.println(
-						"Rank\tGenome\tGenusKey\tFamilyKey\tRibosomal\tReplication\tElongation\tSynthetase\tUniqueRibosomal\tUniqueReplication\tUniqueElongation\tUniqueSynthetase\tTotalMarkers\tTotalUniqueMarkers\tTotalPSM\tnCat\tnCatUnique\tReason\tGreedyGain\tGreedyStep\tGreedyRatio\tGreedyMA\tKneeStep\tKneeKneedle\tKneeCurvature\tKneePiecewise\tKneeSlope\tTotalCoveredPeptides\tCoverage\tIncrement\tTotalCoveredPSM\tPsmCoverage\tPsmIncrement");
+						"Rank\tGenome\tGenusKey\tFamilyKey\tRibosomal\tReplication\tElongation\tSynthetase\tUniqueRibosomal\tUniqueReplication\tUniqueElongation\tUniqueSynthetase\tTotalMarkers\tTotalUniqueMarkers\tTotalPSM\tnCat\tnCatUnique\tReason\tGreedyGain\tGreedyStep\tGreedyRatio\tGreedyMA\tKneeStep\tKneeKneedle\tKneeCurvature\tKneePiecewise\tKneeSlope\tTotalCoveredPeptides\tCoverage\tIncrement\tTotalCoveredPSM\tPsmCoverage\tPsmIncrement\tCutStep\tInRanking");
 			} else {
 				writer.println(
-						"Rank\tGenome\tTotalPeptides\tUniquePeptides\tTotalPSM\tReason\tGreedyGain\tGreedyStep\tGreedyRatio\tGreedyMA\tKneeStep\tKneeKneedle\tKneeCurvature\tKneePiecewise\tKneeSlope\tTotalCoveredPeptides\tCoverage\tIncrement\tTotalCoveredPSM\tPsmCoverage\tPsmIncrement");
+						"Rank\tGenome\tTotalPeptides\tUniquePeptides\tTotalPSM\tReason\tGreedyGain\tGreedyStep\tGreedyRatio\tGreedyMA\tKneeStep\tKneeKneedle\tKneeCurvature\tKneePiecewise\tKneeSlope\tTotalCoveredPeptides\tCoverage\tIncrement\tTotalCoveredPSM\tPsmCoverage\tPsmIncrement\tCutStep\tInRanking");
 			}
 
 			int rank = 0;
 			HashSet<String> covered = new HashSet<>();
-			HashSet<Integer> coveredPsm = new HashSet<>();
+			PsmCoverageAccumulator psmAcc = new PsmCoverageAccumulator(totalMarkerPsms);
 			for (String g : outOrder) {
 				GenomeRow r = byId.get(g);
 				if (r == null)
@@ -711,30 +745,28 @@ public class MarkerGenomeSelector {
 				int increment = totalCovered - before;
 				double coverage = res.totalPeptides == 0 ? 1.0 : ((double) totalCovered / (double) res.totalPeptides);
 
-				int beforePsm = coveredPsm.size();
-				Set<Integer> psmIds = genomePsmIds.get(r.genome);
-				if (psmIds != null) {
-					coveredPsm.addAll(psmIds);
-				}
-				int totalCoveredPsm = coveredPsm.size();
-				int psmIncrement = totalCoveredPsm - beforePsm;
-				double psmCoverage = totalMarkerPsms == 0 ? 1.0 : ((double) totalCoveredPsm / (double) totalMarkerPsms);
+				PsmCoveragePoint psmPoint = psmAcc.add(genomePsmIds.get(r.genome));
+				int totalCoveredPsm = psmPoint.totalCovered;
+				int psmIncrement = psmPoint.increment;
+				double psmCoverage = psmPoint.coverage;
+				int cutStep = res.selected != null && res.selected.contains(r.genome) ? 1 : 0;
+				int inRanking = res.inRanking != null && res.inRanking.contains(r.genome) ? 1 : 0;
 
 				if (useMarkerCategories) {
 					writer.printf(Locale.ROOT,
-							"%d\t%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%.6f\t%d\t%d\t%.6f\t%d%n",
+							"%d\t%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%.6f\t%d\t%d\t%.6f\t%d\t%d\t%d%n",
 							rank++, r.genome, r.genusKey == null ? "NA" : r.genusKey,
 							r.familyKey == null ? "NA" : r.familyKey, r.anchor, r.highRes, r.growth, r.housekeeping,
 							r.uAnchor, r.uHighRes, r.uGrowth, r.uHousekeeping, r.totalMarkers, r.totalUnique,
 							r.totalPsm, r.nCat(), r.nCatUnique(), reason, gain, gStepStr, gRatioStr, gMaStr, kneeStr,
 							kneeKneedleStr, kneeCurvStr, kneePieceStr, kneeSlopeStr, totalCovered, coverage, increment,
-							totalCoveredPsm, psmCoverage, psmIncrement);
+							totalCoveredPsm, psmCoverage, psmIncrement, cutStep, inRanking);
 				} else {
 					writer.printf(Locale.ROOT,
-							"%d\t%s\t%d\t%d\t%d\t%s\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%.6f\t%d\t%d\t%.6f\t%d%n",
+							"%d\t%s\t%d\t%d\t%d\t%s\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%.6f\t%d\t%d\t%.6f\t%d\t%d\t%d%n",
 							rank++, r.genome, r.totalMarkers, r.totalUnique, r.totalPsm, reason, gain, gStepStr,
 							gRatioStr, gMaStr, kneeStr, kneeKneedleStr, kneeCurvStr, kneePieceStr, kneeSlopeStr,
-							totalCovered, coverage, increment, totalCoveredPsm, psmCoverage, psmIncrement);
+							totalCovered, coverage, increment, totalCoveredPsm, psmCoverage, psmIncrement, cutStep, inRanking);
 				}
 			}
 		} catch (Exception e) {
@@ -750,10 +782,7 @@ public class MarkerGenomeSelector {
 			for (String g : res.selected) {
 				writer.println(g + "\t" + res.reason.getOrDefault(g, ""));
 			}
-			writer.println();
-			writer.println("#TotalMarkerPeptides\t" + res.totalPeptides);
-			writer.println("#TotalMarkerPSMs\t" + totalMarkerPsms);
-			writer.println("#SelectedGenomes\t" + res.selected.size());
+			writeSelectionFooter(writer, res, totalMarkerPsms);
 		} catch (Exception e) {
 			throw new RuntimeException("Error writing selected TSV: " + outputSelectedTsv, e);
 		}
@@ -1100,10 +1129,10 @@ public class MarkerGenomeSelector {
 		try (PrintWriter writer = new PrintWriter(outputRankedTsv)) {
 			if (useMarkerCategories) {
 				writer.println(
-						"Rank\tGenome\tGenusKey\tFamilyKey\tRibosomal\tReplication\tElongation\tSynthetase\tUniqueRibosomal\tUniqueReplication\tUniqueElongation\tUniqueSynthetase\tTotalMarkers\tTotalUniqueMarkers\tTotalPSM\tnCat\tnCatUnique\tReason\tGreedyGain\tGreedyStep\tGreedyRatio\tGreedyMA\tKneeStep\tKneeKneedle\tKneeCurvature\tKneePiecewise\tKneeSlope\tTotalCoveredPeptides\tCoverage\tIncrement\tTotalCoveredPSM\tPsmCoverage\tPsmIncrement");
+						"Rank\tGenome\tGenusKey\tFamilyKey\tRibosomal\tReplication\tElongation\tSynthetase\tUniqueRibosomal\tUniqueReplication\tUniqueElongation\tUniqueSynthetase\tTotalMarkers\tTotalUniqueMarkers\tTotalPSM\tnCat\tnCatUnique\tReason\tGreedyGain\tGreedyStep\tGreedyRatio\tGreedyMA\tKneeStep\tKneeKneedle\tKneeCurvature\tKneePiecewise\tKneeSlope\tTotalCoveredPeptides\tCoverage\tIncrement\tTotalCoveredPSM\tPsmCoverage\tPsmIncrement\tCutStep\tInRanking");
 			} else {
 				writer.println(
-						"Rank\tGenome\tGenusKey\tFamilyKey\tTotalPeptides\tUniquePeptides\tTotalPSM\tReason\tGreedyGain\tGreedyStep\tGreedyRatio\tGreedyMA\tKneeStep\tKneeKneedle\tKneeCurvature\tKneePiecewise\tKneeSlope\tTotalCoveredPeptides\tCoverage\tIncrement\tTotalCoveredPSM\tPsmCoverage\tPsmIncrement");
+						"Rank\tGenome\tGenusKey\tFamilyKey\tTotalPeptides\tUniquePeptides\tTotalPSM\tReason\tGreedyGain\tGreedyStep\tGreedyRatio\tGreedyMA\tKneeStep\tKneeKneedle\tKneeCurvature\tKneePiecewise\tKneeSlope\tTotalCoveredPeptides\tCoverage\tIncrement\tTotalCoveredPSM\tPsmCoverage\tPsmIncrement\tCutStep\tInRanking");
 			}
 
 			// Build map for quick access
@@ -1120,7 +1149,7 @@ public class MarkerGenomeSelector {
 			}
 
 			HashSet<String> covered = new HashSet<>();
-			HashSet<Integer> coveredPsm = new HashSet<>();
+			PsmCoverageAccumulator psmAcc = new PsmCoverageAccumulator(totalMarkerPsms);
 			for (String g : outOrder) {
 				GenomeRow r = byId.get(g);
 				if (r == null)
@@ -1147,32 +1176,30 @@ public class MarkerGenomeSelector {
 				int increment = totalCovered - before;
 				double coverage = res.totalPeptides == 0 ? 1.0 : ((double) totalCovered / (double) res.totalPeptides);
 
-				int beforePsm = coveredPsm.size();
-				Set<Integer> psmIds = genomePsmIds.get(r.genome);
-				if (psmIds != null) {
-					coveredPsm.addAll(psmIds);
-				}
-				int totalCoveredPsm = coveredPsm.size();
-				int psmIncrement = totalCoveredPsm - beforePsm;
-				double psmCoverage = totalMarkerPsms == 0 ? 1.0 : ((double) totalCoveredPsm / (double) totalMarkerPsms);
+				PsmCoveragePoint psmPoint = psmAcc.add(genomePsmIds.get(r.genome));
+				int totalCoveredPsm = psmPoint.totalCovered;
+				int psmIncrement = psmPoint.increment;
+				double psmCoverage = psmPoint.coverage;
+				int cutStep = res.selected != null && res.selected.contains(r.genome) ? 1 : 0;
+				int inRanking = res.inRanking != null && res.inRanking.contains(r.genome) ? 1 : 0;
 
 				if (useMarkerCategories) {
 					writer.printf(Locale.ROOT,
-							"%d\t%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%.6f\t%d\t%d\t%.6f\t%d%n",
+							"%d\t%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%.6f\t%d\t%d\t%.6f\t%d\t%d\t%d%n",
 							rank++, r.genome, r.genusKey == null ? "NA" : r.genusKey,
 							r.familyKey == null ? "NA" : r.familyKey, r.anchor, r.highRes, r.growth, r.housekeeping,
 							r.uAnchor, r.uHighRes, r.uGrowth, r.uHousekeeping, r.totalMarkers, r.totalUnique,
 							r.totalPsm, r.nCat(), r.nCatUnique(), reason, gain, gStepStr, gRatioStr, gMaStr, kneeStr,
 							kneeKneedleStr, kneeCurvStr, kneePieceStr, kneeSlopeStr, totalCovered, coverage, increment,
-							totalCoveredPsm, psmCoverage, psmIncrement);
+							totalCoveredPsm, psmCoverage, psmIncrement, cutStep, inRanking);
 				} else {
 					writer.printf(Locale.ROOT,
-							"%d\t%s\t%s\t%s\t%d\t%d\t%d\t%s\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%.6f\t%d\t%d\t%.6f\t%d%n",
+							"%d\t%s\t%s\t%s\t%d\t%d\t%d\t%s\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%.6f\t%d\t%d\t%.6f\t%d\t%d\t%d%n",
 							rank++, r.genome, r.genusKey == null ? "NA" : r.genusKey,
 							r.familyKey == null ? "NA" : r.familyKey, r.totalMarkers, r.totalUnique, r.totalPsm,
 							reason, gain, gStepStr, gRatioStr, gMaStr, kneeStr, kneeKneedleStr, kneeCurvStr,
 							kneePieceStr, kneeSlopeStr, totalCovered, coverage, increment, totalCoveredPsm,
-							psmCoverage, psmIncrement);
+							psmCoverage, psmIncrement, cutStep, inRanking);
 				}
 			}
 		} catch (Exception e) {
@@ -1188,10 +1215,7 @@ public class MarkerGenomeSelector {
 			for (String g : res.selected) {
 				writer.println(g + "\t" + res.reason.getOrDefault(g, ""));
 			}
-			writer.println();
-			writer.println("#TotalMarkerPeptides\t" + res.totalPeptides);
-			writer.println("#TotalMarkerPSMs\t" + totalMarkerPsms);
-			writer.println("#SelectedGenomes\t" + res.selected.size());
+			writeSelectionFooter(writer, res, totalMarkerPsms);
 		} catch (Exception e) {
 			throw new RuntimeException("Error writing selected TSV: " + outputSelectedTsv, e);
 		}
@@ -1228,6 +1252,11 @@ public class MarkerGenomeSelector {
 		// Ensure we can always select at least 1 genome when there is evidence.
 		if (effectiveMaximumSelected < 1) {
 			effectiveMaximumSelected = 1;
+		}
+		// Automatic stays on the caller's cap (300). PSM coverage uses the user's cap,
+		// except the full-coverage fallback, which still runs until peptide coverage is complete.
+		if (GenomeSelectionCut.isPsmCoverage(kneeSelectionMode) && !fullCoverageFallback) {
+			effectiveMaximumSelected = Math.max(1, psmMaxGenomes);
 		}
 
 		// Maps for greedy set cover
@@ -1470,7 +1499,18 @@ public class MarkerGenomeSelector {
 			}
 			res.ranked = new ArrayList<>(greedyOrder);
 			res.ranked.addAll(leftovers);
-			return res;
+			List<String> ranking = new ArrayList<>(res.selected);
+			boolean fallbackMin1 = false;
+			for (String g : res.selected) {
+				if ("FALLBACK_MIN1".equals(res.reason.get(g))) {
+					fallbackMin1 = true;
+					break;
+				}
+			}
+			String stopReason = fallbackMin1 ? GenomeSelectionCut.STOP_FALLBACK_MIN1
+					: stopReasonForSeedsOnly(ranking, genomePsmIds, totalMarkerPsms);
+			return finishSelection(res, ranking, genomePsmIds, totalMarkerPsms, stopReason, maximumSelected,
+					applyHardFilter);
 		}
 
 		// Fallback (limited identifications): no knee — select all greedy steps until 100% coverage
@@ -1488,7 +1528,10 @@ public class MarkerGenomeSelector {
 			res.ranked = new ArrayList<>(greedyOrder);
 			res.ranked.addAll(leftovers);
 			LOGGER.info("Full-coverage fallback: selected={} genomes (no knee, 100% coverage)", res.selected.size());
-			return res;
+			List<String> ranking = new ArrayList<>(res.seedIncluded);
+			ranking.addAll(greedyOrder);
+			return finishSelection(res, ranking, genomePsmIds, totalMarkerPsms, GenomeSelectionCut.STOP_FULL_COVERAGE,
+					maximumSelected, applyHardFilter);
 		}
 
 		// Compute moving-average ratio curve for greedy steps only (knee strategy)
@@ -1548,13 +1591,32 @@ public class MarkerGenomeSelector {
 			res.kneeStepSlope = kneeStep;
 		}
 
-		// Final selection: privilege + greedy up to selected knee mode
+		// Knees are computed for both cuts, so a report can show where Automatic would have stopped.
+		List<String> ranking = new ArrayList<>(res.seedIncluded);
+		ranking.addAll(greedyOrder);
+		List<PsmCoveragePoint> series = accumulatePsmCoverage(ranking, genomePsmIds, totalMarkerPsms);
+
 		res.selected.addAll(res.seedIncluded);
-		int selectStep = selectKneeStep(res, kneeStep, T, kneeSelectionMode);
-		for (int i = 0; i < selectStep; i++) {
-			String g = greedyOrder.get(i);
-			res.selected.add(g);
-			res.reason.putIfAbsent(g, "GREEDY");
+		String stopReason;
+		int selectStep;
+		if (GenomeSelectionCut.isPsmCoverage(kneeSelectionMode)) {
+			GenomeSelectionCut.Decision decision = decideCoverage(series, totalMarkerPsms, res.seedIncluded.size());
+			int greedyTake = Math.max(0, decision.selectedCount - res.seedIncluded.size());
+			for (int i = 0; i < greedyTake && i < greedyOrder.size(); i++) {
+				String g = greedyOrder.get(i);
+				res.selected.add(g);
+				res.reason.putIfAbsent(g, "GREEDY_COVERAGE");
+			}
+			selectStep = greedyTake;
+			stopReason = decision.stopReason;
+		} else {
+			selectStep = selectKneeStep(res, kneeStep, T, kneeSelectionMode);
+			for (int i = 0; i < selectStep; i++) {
+				String g = greedyOrder.get(i);
+				res.selected.add(g);
+				res.reason.putIfAbsent(g, "GREEDY");
+			}
+			stopReason = GenomeSelectionCut.STOP_KNEE;
 		}
 
 		// For ranked output: greedy order first, then leftovers (zero gain) by id
@@ -1566,10 +1628,168 @@ public class MarkerGenomeSelector {
 		res.ranked = new ArrayList<>(greedyOrder);
 		res.ranked.addAll(leftovers);
 
-		LOGGER.info("Greedy (knee) complete: selected={}, mode={}, selectedStep={}, kneeStep={}, greedySteps={}",
-				res.selected.size(), kneeSelectionMode, selectStep, kneeStep, T);
+		LOGGER.info("Greedy complete: selected={}, mode={}, selectedStep={}, kneeStep={}, greedySteps={}, stop={}",
+				res.selected.size(), kneeSelectionMode, selectStep, kneeStep, T, stopReason);
 
+		return finishSelection(res, ranking, genomePsmIds, totalMarkerPsms, stopReason, maximumSelected,
+				applyHardFilter);
+	}
+
+	private String stopReasonForSeedsOnly(List<String> ranking, Map<String, Set<Integer>> genomePsmIds,
+			int totalMarkerPsms) {
+		if (!GenomeSelectionCut.isPsmCoverage(kneeSelectionMode) || ranking == null || ranking.isEmpty()) {
+			return GenomeSelectionCut.STOP_END_OF_RANKING;
+		}
+		List<PsmCoveragePoint> series = accumulatePsmCoverage(ranking, genomePsmIds, totalMarkerPsms);
+		return decideCoverage(series, totalMarkerPsms, ranking.size()).stopReason;
+	}
+
+	private GenomeSelectionCut.Decision decideCoverage(List<PsmCoveragePoint> series, int totalMarkerPsms, int seedCount) {
+		double[] coverage = new double[series.size()];
+		int[] increment = new int[series.size()];
+		for (int i = 0; i < series.size(); i++) {
+			coverage[i] = series.get(i).coverage;
+			increment[i] = series.get(i).increment;
+		}
+		return GenomeSelectionCut.decide(coverage, increment, totalMarkerPsms, seedCount, psmCoverageThreshold,
+				psmStepGuard, psmMaxGenomes);
+	}
+
+	private SelectionResult finishSelection(SelectionResult res, List<String> ranking,
+			Map<String, Set<Integer>> genomePsmIds, int totalMarkerPsms, String stopReason, int configuredMaxGenomes,
+			boolean marker4) {
+		if (ranking == null) {
+			ranking = new ArrayList<>();
+		}
+		List<PsmCoveragePoint> series = accumulatePsmCoverage(ranking, genomePsmIds, totalMarkerPsms);
+		res.inRanking = new LinkedHashSet<>(ranking);
+		res.markerSet = marker4 ? "Marker4" : "Marker2";
+		res.selectionStrategy = kneeSelectionMode == null ? KNEE_MODE_FOCUS : kneeSelectionMode;
+		res.stopReason = stopReason == null ? "" : stopReason;
+		boolean coverageMode = GenomeSelectionCut.isPsmCoverage(res.selectionStrategy);
+		res.psmCoverageThresholdText = coverageMode ? String.format(Locale.ROOT, "%.6f", psmCoverageThreshold) : "";
+		res.stepGuardText = coverageMode ? String.format(Locale.ROOT, "%.6f", psmStepGuard) : "";
+		res.maxGenomesText = Integer.toString(coverageMode ? psmMaxGenomes : configuredMaxGenomes);
+
+		int selectedCount = res.selected == null ? 0 : res.selected.size();
+		if (selectedCount > 0 && selectedCount <= series.size()) {
+			res.psmCoverageReached = series.get(selectedCount - 1).coverage;
+		} else if (!series.isEmpty() && selectedCount > series.size()) {
+			res.psmCoverageReached = series.get(series.size() - 1).coverage;
+		}
+
+		int seedCount = res.seedIncluded == null ? 0 : res.seedIncluded.size();
+		int greedySteps = Math.max(0, ranking.size() - seedCount);
+		if (greedySteps > 0 && res.kneeStep > 0) {
+			int focusSteps = selectKneeStep(res, res.kneeStep, greedySteps, KNEE_MODE_FOCUS);
+			int comprehensiveSteps = selectKneeStep(res, res.kneeStep, greedySteps, KNEE_MODE_COMPREHENSIVE);
+			assignKnee(res, series, seedCount, focusSteps, true);
+			assignKnee(res, series, seedCount, comprehensiveSteps, false);
+		}
+		res.genomesFor080 = firstReaching(series, 0.80);
+		res.genomesFor090 = firstReaching(series, 0.90);
+		res.genomesFor095 = firstReaching(series, 0.95);
+		res.genomesFor099 = firstReaching(series, 0.99);
+		lastSelectionResult = res;
+		LOGGER.info("Genome selection: strategy={} genomes={} psmCoverage={} stop={}", res.selectionStrategy,
+				selectedCount,
+				Double.isNaN(res.psmCoverageReached) ? "" : String.format(Locale.ROOT, "%.6f", res.psmCoverageReached),
+				res.stopReason);
 		return res;
+	}
+
+	private static void assignKnee(SelectionResult res, List<PsmCoveragePoint> series, int seedCount, int steps,
+			boolean focus) {
+		if (steps <= 0 || series.isEmpty()) {
+			return;
+		}
+		int count = seedCount + steps;
+		if (count > series.size()) {
+			count = series.size();
+		}
+		if (count < 1) {
+			return;
+		}
+		if (focus) {
+			res.focusGenomes = count;
+			res.focusCoverage = series.get(count - 1).coverage;
+		} else {
+			res.comprehensiveGenomes = count;
+			res.comprehensiveCoverage = series.get(count - 1).coverage;
+		}
+	}
+
+	private static int firstReaching(List<PsmCoveragePoint> series, double target) {
+		for (int i = 0; i < series.size(); i++) {
+			if (series.get(i).coverage >= target) {
+				return i + 1;
+			}
+		}
+		return -1;
+	}
+
+	static final class PsmCoveragePoint {
+		final int totalCovered;
+		final int increment;
+		final double coverage;
+
+		PsmCoveragePoint(int totalCovered, int increment, double coverage) {
+			this.totalCovered = totalCovered;
+			this.increment = increment;
+			this.coverage = coverage;
+		}
+	}
+
+	/**
+	 * Cumulative marker-PSM coverage in list order. The same accumulator writes the
+	 * ranked table and supplies the coverage cut, so both see one definition.
+	 */
+	static final class PsmCoverageAccumulator {
+		private final HashSet<Integer> covered = new HashSet<>();
+		private final int totalMarkerPsms;
+
+		PsmCoverageAccumulator(int totalMarkerPsms) {
+			this.totalMarkerPsms = totalMarkerPsms;
+		}
+
+		PsmCoveragePoint add(Set<Integer> psmIds) {
+			int before = covered.size();
+			if (psmIds != null) {
+				covered.addAll(psmIds);
+			}
+			int total = covered.size();
+			int increment = total - before;
+			double coverage = totalMarkerPsms == 0 ? 1.0 : (double) total / (double) totalMarkerPsms;
+			return new PsmCoveragePoint(total, increment, coverage);
+		}
+	}
+
+	static List<PsmCoveragePoint> accumulatePsmCoverage(List<String> order, Map<String, Set<Integer>> genomePsmIds,
+			int totalMarkerPsms) {
+		PsmCoverageAccumulator accumulator = new PsmCoverageAccumulator(totalMarkerPsms);
+		List<PsmCoveragePoint> points = new ArrayList<>();
+		if (order == null) {
+			return points;
+		}
+		for (String genome : order) {
+			Set<Integer> ids = genomePsmIds == null ? null : genomePsmIds.get(genome);
+			points.add(accumulator.add(ids));
+		}
+		return points;
+	}
+
+	private static void writeSelectionFooter(PrintWriter writer, SelectionResult res, int totalMarkerPsms) {
+		writer.println();
+		writer.println("#TotalMarkerPeptides\t" + res.totalPeptides);
+		writer.println("#TotalMarkerPSMs\t" + totalMarkerPsms);
+		writer.println("#SelectedGenomes\t" + (res.selected == null ? 0 : res.selected.size()));
+		writer.println("#SelectionStrategy\t" + (res.selectionStrategy == null ? "" : res.selectionStrategy));
+		writer.println("#PsmCoverageThreshold\t" + (res.psmCoverageThresholdText == null ? "" : res.psmCoverageThresholdText));
+		writer.println("#StepGuard\t" + (res.stepGuardText == null ? "" : res.stepGuardText));
+		writer.println("#MaxGenomes\t" + (res.maxGenomesText == null ? "" : res.maxGenomesText));
+		writer.println("#StopReason\t" + (res.stopReason == null ? "" : res.stopReason));
+		writer.println("#PsmCoverageReached\t" + (Double.isNaN(res.psmCoverageReached) ? ""
+				: String.format(Locale.ROOT, "%.6f", res.psmCoverageReached)));
 	}
 
 	private static int incrementalGain(Set<String> covered, Set<String> candidate) {
@@ -1895,8 +2115,11 @@ public class MarkerGenomeSelector {
 			this.kneeSelectionMode = KNEE_MODE_FOCUS;
 			return;
 		}
-		if (KNEE_MODE_COMPREHENSIVE.equalsIgnoreCase(mode)) {
+		String trimmed = mode.trim();
+		if (KNEE_MODE_COMPREHENSIVE.equalsIgnoreCase(trimmed)) {
 			this.kneeSelectionMode = KNEE_MODE_COMPREHENSIVE;
+		} else if (KNEE_MODE_PSM_COVERAGE.equalsIgnoreCase(trimmed)) {
+			this.kneeSelectionMode = KNEE_MODE_PSM_COVERAGE;
 		} else {
 			this.kneeSelectionMode = KNEE_MODE_FOCUS;
 		}
@@ -1904,6 +2127,19 @@ public class MarkerGenomeSelector {
 
 	public String getKneeSelectionMode() {
 		return kneeSelectionMode;
+	}
+
+	public void setPsmCoverageCut(double threshold, double stepGuard, int maxGenomes) {
+		GenomeSelectionCut.requireCoverage(threshold);
+		GenomeSelectionCut.requireStepGuard(stepGuard);
+		GenomeSelectionCut.requireMaxGenomes(maxGenomes);
+		this.psmCoverageThreshold = threshold;
+		this.psmStepGuard = stepGuard;
+		this.psmMaxGenomes = maxGenomes;
+	}
+
+	public SelectionResult getLastSelectionResult() {
+		return lastSelectionResult;
 	}
 
 	/**
@@ -2092,22 +2328,24 @@ public class MarkerGenomeSelector {
 		return null;
 	}
 	
-	public static void exportPeptideFasta(String in, String out, double threshold) {
-		try (BufferedReader reader = new BufferedReader(new FileReader(in))) {
-			PrintWriter writer = new PrintWriter(out);
-			String line = reader.readLine();
+	public static void exportPeptideFasta(String in, String out, double threshold) throws IOException {
+		if (in == null || out == null) {
+			throw new IOException("exportPeptideFasta requires input and output paths");
+		}
+		try (BufferedReader reader = new BufferedReader(new FileReader(in));
+				PrintWriter writer = new PrintWriter(out)) {
+			String line = reader.readLine(); // header
 			int count = 0;
-			while((line=reader.readLine())!=null) {
+			while ((line = reader.readLine()) != null) {
 				String[] cs = line.split("\t");
-				if(Double.parseDouble(cs[2])>threshold) {
-					writer.println(">"+cs[0]+"_"+count++);
+				if (cs.length < 3) {
+					continue;
+				}
+				if (Double.parseDouble(cs[2]) > threshold) {
+					writer.println(">" + cs[0] + "_" + count++);
 					writer.println(cs[1]);
 				}
 			}
-			reader.close();
-			writer.close();
-		} catch (IOException e) {
-
 		}
 	}
 	

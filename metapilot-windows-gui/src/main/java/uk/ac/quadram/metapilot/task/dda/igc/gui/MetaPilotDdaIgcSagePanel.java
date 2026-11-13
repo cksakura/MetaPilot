@@ -7,9 +7,6 @@ import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
-import javafx.scene.text.Font;
-import javafx.scene.text.FontWeight;
-import javafx.scene.paint.Color;
 import javafx.scene.control.Alert.AlertType;
 import java.util.Optional;
 import javafx.scene.control.cell.PropertyValueFactory;
@@ -17,6 +14,7 @@ import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.util.converter.DefaultStringConverter;
 import javafx.beans.property.SimpleStringProperty;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX;
+import uk.ac.quadram.metapilot.task.common.gui.ParameterSection;
 import uk.ac.quadram.metapilot.task.common.gui.MetaPilotIOPanelFX.ExperimentRow;
 import uk.ac.quadram.metapilot.task.common.gui.IsobaricLabelingPanel;
 import uk.ac.quadram.metapilot.task.common.gui.DdaIgcInputOutputPanel;
@@ -27,6 +25,7 @@ import uk.ac.quadram.metapilot.task.dda.igc.par.DDAIgcSageParameterIO;
 import uk.ac.quadram.metapilot.resources.MetaResourceIO;
 import uk.ac.quadram.metapilot.resources.MetaResourceParameters;
 import uk.ac.quadram.metapilot.task.common.gui.AbstractWorkflowPanel;
+import uk.ac.quadram.metapilot.task.common.gui.MetadataConfigurationPanel;
 import uk.ac.quadram.metapilot.task.par.MetaData;
 import java.util.ArrayList;
 import java.util.List;
@@ -162,7 +161,6 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
         VBox tabContent = new VBox(10);
         tabContent.setPadding(new Insets(10));
         tabContent.setMinWidth(960);
-        tabContent.setMinHeight(760);
 
         // Create main grid layout for parameters with 2-column responsive sizing
         GridPane mainGrid = new GridPane();
@@ -170,8 +168,6 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
         mainGrid.setVgap(15);
         mainGrid.setPadding(new Insets(10));
         mainGrid.setMinWidth(940);
-        mainGrid.setMinHeight(740);
-        VBox.setVgrow(mainGrid, Priority.ALWAYS);
 
         // Column constraints for 2-column layout
         ColumnConstraints col1 = new ColumnConstraints();
@@ -187,15 +183,14 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
         // Row constraints
         RowConstraints row1 = new RowConstraints();
         row1.setVgrow(Priority.ALWAYS);
-        row1.setMinHeight(400);
         mainGrid.getRowConstraints().add(row1);
 
         // Left column: Sage Parameters, Enzyme Settings, Additional Parameters, and Modifications Panel
         VBox leftColumn = new VBox(15);
         leftColumn.setMinWidth(430);
-        VBox sageParamsSection = createSageParametersSection();
-        VBox enzymeSection = createEnzymeSection();
-        VBox additionalParamsSection = createAdditionalParametersSection();
+        TitledPane sageParamsSection = createSageParametersSection();
+        TitledPane enzymeSection = createEnzymeSection();
+        TitledPane additionalParamsSection = createAdditionalParametersSection();
         
         // Create horizontal modifications panel with fixed mods (narrow) and variable mods (wider)
         modificationsPanel = new ModificationsPanel(this::updateParameterView);
@@ -206,8 +201,8 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
         // Right column: Quantitative Mode and Metadata Configuration (keeping original layout)
         VBox rightColumn = new VBox(15);
         rightColumn.setMinWidth(430);
-        VBox quantModeSection = createQuantitativeModeSection();
-        VBox metadataSection = createMetadataConfigurationSection();
+        TitledPane quantModeSection = createQuantitativeModeSection();
+        TitledPane metadataSection = createMetadataConfigurationSection();
         rightColumn.getChildren().addAll(quantModeSection, metadataSection);
         GridPane.setVgrow(rightColumn, Priority.ALWAYS);
 
@@ -215,7 +210,7 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
         mainGrid.add(leftColumn, 0, 0);
         mainGrid.add(rightColumn, 1, 0);
         
-        tabContent.getChildren().add(mainGrid);
+        tabContent.getChildren().add(ParameterSection.createViewport(mainGrid));
         return tabContent;
     }
     
@@ -248,19 +243,9 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
         }
     }
 
-    private Label createSectionTitle(String title) {
-        Label label = new Label(title);
-        label.setFont(Font.font("System", FontWeight.BOLD, 14));
-        label.setTextFill(Color.DARKBLUE);
-        return label;
-    }
 
-    private VBox createSageParametersSection() {
+    private TitledPane createSageParametersSection() {
         VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #e8f5e8; -fx-background-radius: 5;");
-
-        Label titleLabel = createSectionTitle("Sage-Specific Parameters");
 
         // Search type selection
         VBox searchTypeBox = new VBox(8);
@@ -285,10 +270,10 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
         VBox toleranceContainer = new VBox(10);
 
         // Closed search parameters (symmetric)
-        VBox closedSearchParams = createClosedSearchParameters();
+        TitledPane closedSearchParams = createClosedSearchParameters();
 
         // Open search parameters (asymmetric)
-        VBox openSearchParams = createOpenSearchParameters();
+        TitledPane openSearchParams = createOpenSearchParameters();
         openSearchParams.setVisible(false);
         openSearchParams.setManaged(false);
 
@@ -311,17 +296,12 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
             updateParameterView();
         });
 
-        section.getChildren().addAll(titleLabel, searchTypeBox, toleranceContainer);
-        return section;
+        section.getChildren().addAll(searchTypeBox, toleranceContainer);
+        return ParameterSection.create("Sage-Specific Parameters", section);
     }
 
-    private VBox createClosedSearchParameters() {
+    private TitledPane createClosedSearchParameters() {
         VBox section = new VBox(10);
-        section.setPadding(new Insets(5));
-        section.setStyle("-fx-background-color: #f0f8f0; -fx-background-radius: 3;");
-
-        Label titleLabel = new Label("Closed Search Parameters");
-        titleLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: #2E8B57;");
 
         GridPane paramGrid = new GridPane();
         paramGrid.setHgap(15);
@@ -374,17 +354,12 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
         paramGrid.add(precursorContainer, 0, 0);
         paramGrid.add(fragmentContainer, 1, 0);
 
-        section.getChildren().addAll(titleLabel, paramGrid);
-        return section;
+        section.getChildren().addAll(paramGrid);
+        return ParameterSection.create("Closed Search Parameters", section);
     }
 
-    private VBox createOpenSearchParameters() {
+    private TitledPane createOpenSearchParameters() {
         VBox section = new VBox(10);
-        section.setPadding(new Insets(5));
-        section.setStyle("-fx-background-color: #fff8dc; -fx-background-radius: 3;");
-
-        Label titleLabel = new Label("Open Search Parameters");
-        titleLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: #B8860B;");
 
         GridPane paramGrid = new GridPane();
         paramGrid.setHgap(15);
@@ -456,16 +431,12 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
         paramGrid.add(precursorContainer, 0, 0);
         paramGrid.add(fragmentContainer, 1, 0);
 
-        section.getChildren().addAll(titleLabel, paramGrid);
-        return section;
+        section.getChildren().addAll(paramGrid);
+        return ParameterSection.create("Open Search Parameters", section);
     }
 
-    private VBox createEnzymeSection() {
+    private TitledPane createEnzymeSection() {
         VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #f5f5f5; -fx-background-radius: 5;");
-
-        Label titleLabel = createSectionTitle("Enzyme Settings");
 
         HBox enzymeParamsBox = new HBox(15);
         enzymeParamsBox.setAlignment(Pos.CENTER_LEFT);
@@ -517,16 +488,12 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
 
         enzymeParamsBox.getChildren().addAll(enzymeBox, missedCleavagesBox, digestionModeBox);
 
-        section.getChildren().addAll(titleLabel, enzymeParamsBox);
-        return section;
+        section.getChildren().addAll(enzymeParamsBox);
+        return ParameterSection.create("Enzyme Settings", section);
     }
 
-    private VBox createAdditionalParametersSection() {
+    private TitledPane createAdditionalParametersSection() {
         VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #f0f8ff; -fx-background-radius: 5;");
-
-        Label titleLabel = createSectionTitle("Additional Parameters");
 
         GridPane paramGrid = new GridPane();
         paramGrid.setHgap(15);
@@ -585,19 +552,14 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
 
         checkBoxContainer.getChildren().addAll(generateSampleSpecificDBCheckBox, spectraClusteringCheckBox);
 
-        section.getChildren().addAll(titleLabel, paramGrid, checkBoxContainer);
-        return section;
+        section.getChildren().addAll(paramGrid, checkBoxContainer);
+        return ParameterSection.create("Additional Parameters", section);
     }
 
 
-    private VBox createQuantitativeModeSection() {
+    private TitledPane createQuantitativeModeSection() {
         VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #f5f5f5; -fx-background-radius: 5;");
-        section.setMinHeight(300);
-        VBox.setVgrow(section, Priority.ALWAYS);
 
-        Label titleLabel = createSectionTitle("Quantitative Mode");
         quantModeGroup = new ToggleGroup();
 
         // Radio buttons for quantitative modes
@@ -613,7 +575,6 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
 
         // StackPane for overlapping panels
         StackPane labelingStackPane = new StackPane();
-        labelingStackPane.setMinHeight(200);
         labelingStackPane.setMaxHeight(Double.MAX_VALUE);
         VBox.setVgrow(labelingStackPane, Priority.ALWAYS);
 
@@ -639,14 +600,13 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
             updateMetadataTable();
         });
 
-        section.getChildren().addAll(titleLabel, radioBox, labelingStackPane);
-        return section;
+        section.getChildren().addAll(radioBox, labelingStackPane);
+        return ParameterSection.create("Quantitative Mode", section);
     }
 
     private VBox createCompactIsobaricLabelingPanel() {
         VBox panel = new VBox(8);
         panel.setPadding(new Insets(8));
-        panel.setStyle("-fx-background-color: #f8e8f4; -fx-background-radius: 5;");
 
         HBox typeBox = new HBox(10);
         typeBox.setAlignment(Pos.CENTER_LEFT);
@@ -748,14 +708,9 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
         }
     }
 
-    private VBox createMetadataConfigurationSection() {
+    private TitledPane createMetadataConfigurationSection() {
         VBox section = new VBox(10);
-        section.setPadding(new Insets(10));
-        section.setStyle("-fx-background-color: #fff8f0; -fx-background-radius: 5;");
-        section.setMinHeight(200);
-        VBox.setVgrow(section, Priority.ALWAYS);
 
-        Label titleLabel = createSectionTitle("Metadata Configuration");
         Label infoLabel = new Label("Metadata will be configured based on selected quantitative mode");
         infoLabel.setStyle("-fx-font-style: italic; -fx-text-fill: #666666;");
 
@@ -829,8 +784,11 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
             resetMetadataButton
         );
 
-        section.getChildren().addAll(titleLabel, infoLabel, metadataTable, controlBox);
-        return section;
+        section.getChildren().addAll(infoLabel, metadataTable, controlBox);
+        TitledPane pane = ParameterSection.create("Metadata Configuration", section);
+        pane.setMinHeight(200);
+        VBox.setVgrow(pane, Priority.ALWAYS);
+        return pane;
     }
 
     private void createMetadataTableColumns() {
@@ -1480,6 +1438,8 @@ public class MetaPilotDdaIgcSagePanel extends AbstractWorkflowPanel<DDAIgcSagePa
             metadataDataArray.add(row.toArray());
         }
         params.setMetadataTableData(metadataDataArray);
+        MetadataConfigurationPanel.applyRows(params.getMetadata(), new ArrayList<>(metadataTableData),
+                MetadataConfigurationPanel.columnNames(metadataTable));
         
         consolePanel.appendConsoleText("✓ Successfully collected parameters from UI\n");
         LOGGER.info("Successfully collected parameters from UI for IGC Sage workflow");

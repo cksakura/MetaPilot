@@ -13,6 +13,8 @@ import java.util.function.Consumer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import uk.ac.quadram.metapilot.task.io.qpx.UnimodCatalog;
+
 /**
  * Stage 1, second pass: admits PSMs carrying an <em>expected</em> mass shift into
  * the genome-mapping evidence set, alongside the zero family that
@@ -30,19 +32,30 @@ import org.apache.logging.log4j.Logger;
  * PSMs this workflow was discarding, and the discarded set was 96% consistent
  * with the ground truth — as good as the zero family itself.
  *
+ * <h2>When it runs</h2>
+ * Only with the open marker search ({@code round1_search_mode = open}). The
+ * default closed marker search declares oxidation and protein N-terminal acetyl
+ * as variable modifications, so those PSMs already sit at mass difference zero,
+ * and no other shifted peak can form in a ppm window; the caller skips this class.
+ * Measured (2026-11-08) on all 158 closed stage-1 runs under
+ * {@code Publication_data/MetaPilot_open}: nothing was ever admitted, and the only
+ * populated window, 0.984 Da (isotope-error matches), sat at 0.77-1.04
+ * decoys/targets.
+ *
  * <h2>Why it is not peak discovery</h2>
  * {@link UnmodifiedPsmSelector} declines to run the classifier at stage 1
  * because a well-trained classifier wants the refined database that stage 1
  * exists to produce. The same objection would apply to discovering mass shifts
- * here, so this class does not discover: it tests a fixed, auditable allow-list
- * of shifts that are expected a priori, and every one of them must earn its place
- * in <em>this run's</em> data. Discovery remains stage 2's job.
+ * here, so this class does not discover: it tests the masses of an external,
+ * published catalogue (UNIMOD), and every one of them must earn its place in
+ * <em>this run's</em> data. No mass is chosen by hand. Discovery remains stage
+ * 2's job.
  *
  * <h2>The four criteria</h2>
  * A shift is admitted only if all of these hold, evaluated per run:
  * <ol>
- * <li><b>On the allow-list</b> ({@link #DEFAULT_SHIFTS}), within
- * {@link Config#toleranceDa} of the run's calibrated position. Assignment is
+ * <li><b>A UNIMOD mass</b> ({@link #unimodShifts}, isotopic labels excluded),
+ * within {@link Config#toleranceDa} of the run's calibrated position. Assignment is
  * exclusive: the zero family claims its own members (including its isotope
  * satellites) first, and each remaining PSM goes to its nearest single shift.</li>
  * <li><b>The peak is present</b>: at least {@link Config#minTargetsInWindow}
@@ -72,9 +85,13 @@ import org.apache.logging.log4j.Logger;
  * dominated by shifted evidence. On the 12mix the real figure was ~5%.
  *
  * <h2>Measured effect</h2>
- * Nine 12mix runs, marker stage: +2,877 accepted PSMs on 52,970 (+5.4%) at 94.6%
- * entrapment consistency, against the zero family's own 93.9%. The change is
- * purity-positive, not a trade.
+ * Nine 12mix runs, open marker stage, with the earlier hand-picked list of seven
+ * masses: +2,877 accepted PSMs on 52,970 (+5.4%) at 94.6% entrapment consistency,
+ * against the zero family's own 93.9%. The list was replaced by UNIMOD on
+ * 2026-11-08 and the open marker mode has not been re-measured with it. The
+ * criteria are unchanged, and the masses the list excluded by hand (methyl,
+ * dimethyl, acetyl, carbamyl, phospho and others) failed on corroboration
+ * (0-14.3%), which still applies to them.
  *
  * <h2>Known limitation</h2>
  * Isotope satellites of a shifted peak are not folded onto their root here, only
@@ -88,7 +105,7 @@ public final class ExpectedPeakSelector {
 
 	private static final Logger LOGGER = LogManager.getLogger(ExpectedPeakSelector.class);
 
-	/** One entry on the allow-list: a name for the audit trail and a mass in Da. */
+	/** One candidate shift: a name for the audit trail and a mass in Da. */
 	public static final class ExpectedShift {
 		public final String name;
 		public final double massDa;
@@ -104,42 +121,62 @@ public final class ExpectedPeakSelector {
 		}
 	}
 
+	/** Masses closer than this are one candidate: UNIMOD lists many entries of identical mass. */
+	private static final double SAME_MASS_DA = 1e-4;
+
+	private static volatile List<ExpectedShift> unimodShifts;
+
 	/**
-	 * The allow-list, as measured on the 12mix mock community against its 12 known
-	 * genomes. Every entry here passed all four criteria in all nine runs; the
-	 * candidates that failed are listed below so the list is auditable in both
-	 * directions.
+	 * The candidate shifts: every UNIMOD mass except the isotopic labels, which exist
+	 * only in a sample labelled on purpose (in a label-free one a delta at their mass
+	 * is an isotope peak or a wrong precursor mass), and except zero. Entries of the
+	 * same mass are one candidate, named by all their titles; sorted by mass.
 	 * <p>
-	 * Note that these are <b>expected mass shifts</b>, not strictly biological
-	 * modifications: Na-H and Ca-2H are metal adducts and carbamidomethyl here is
-	 * over-alkylation beyond the fixed modification. For genome mapping that
-	 * distinction does not matter — they are real peptides — and dropping them
-	 * would discard two of the cleanest entries measured (96.8% and 95.1%
-	 * ground-truth consistency).
-	 * <p>
-	 * <b>Deliberately excluded, with measured reasons</b> (12mix, nine runs,
-	 * ground-truth consistency of the accepted set / peptide corroboration):
-	 * methyl +14.0157 (37.9% / 12.1%), dimethyl +28.0313 (33.3% / 6.3%), Lys loss
-	 * -128.0950 (28.6% / 4.3%), Met loss -131.0405 (16.7% / 0%), acetyl +42.0106
-	 * (28.6% / 14.3%), trimethyl +42.0470 (0% / 0%), carbamylation +43.0058
-	 * (15.8% / 10.5%), dioxidation +31.9898 (67.5%, present in only 2 of 9 runs),
-	 * trioxidation +47.9847 (11.5%), phospho +79.9663 (0%), propionamide +71.0371
-	 * (27.6%), cysteinylation +119.0041 (0%).
-	 * <p>
-	 * Two further candidates passed every criterion and are still excluded on
-	 * principle: -0.9840 (87.9%) sits 19.3 mDa from the zero family's -1 isotope
-	 * and the separation is not safe at production tolerances, and an unnamed
-	 * +3.9949 (91.1%) would be discovery by the back door. Revisit both only with
-	 * a measurement, not an argument.
+	 * This replaced a hand-picked list of seven masses (oxidation, deamidation,
+	 * pyroGlu/ammonia loss, water loss, Na-H, Ca-2H, carbamidomethyl) on 2026-11-08,
+	 * so no mass reaches genome selection because someone chose it.
 	 */
-	public static final List<ExpectedShift> DEFAULT_SHIFTS = Collections.unmodifiableList(new ArrayList<>(List.of(
-			new ExpectedShift("oxidation M/W", 15.99491),
-			new ExpectedShift("deamidation N/Q", 0.98402),
-			new ExpectedShift("pyroGlu from Q / ammonia loss", -17.02655),
-			new ExpectedShift("water loss / pyroGlu from E", -18.01056),
-			new ExpectedShift("Na-H", 21.98194),
-			new ExpectedShift("Ca-2H", 37.94694),
-			new ExpectedShift("carbamidomethyl beyond the fixed mod", 57.02146))));
+	public static List<ExpectedShift> unimodShifts() {
+		List<ExpectedShift> s = unimodShifts;
+		if (s == null) {
+			synchronized (ExpectedPeakSelector.class) {
+				s = unimodShifts;
+				if (s == null) {
+					s = buildUnimodShifts(UnimodCatalog.get().entries());
+					unimodShifts = s;
+				}
+			}
+		}
+		return s;
+	}
+
+	static List<ExpectedShift> buildUnimodShifts(List<UnimodCatalog.Entry> entries) {
+		List<UnimodCatalog.Entry> kept = new ArrayList<>();
+		for (UnimodCatalog.Entry e : entries) {
+			if (!e.isIsotopicLabelOnly() && Double.isFinite(e.monoMass) && Math.abs(e.monoMass) > SAME_MASS_DA) {
+				kept.add(e);
+			}
+		}
+		kept.sort((a, b) -> Double.compare(a.monoMass, b.monoMass));
+		List<ExpectedShift> out = new ArrayList<>();
+		int i = 0;
+		while (i < kept.size()) {
+			int j = i;
+			StringBuilder name = new StringBuilder("UNIMOD ");
+			double sum = 0;
+			while (j < kept.size() && kept.get(j).monoMass - kept.get(i).monoMass <= SAME_MASS_DA) {
+				if (j > i) {
+					name.append('/');
+				}
+				name.append(kept.get(j).title);
+				sum += kept.get(j).monoMass;
+				j++;
+			}
+			out.add(new ExpectedShift(name.toString(), sum / (j - i)));
+			i = j;
+		}
+		return Collections.unmodifiableList(out);
+	}
 
 	/** Thresholds for the four criteria, plus the global cap. */
 	public static final class Config {
@@ -148,8 +185,8 @@ public final class ExpectedPeakSelector {
 		 * zero-family-only behaviour stays one flag away.
 		 */
 		public boolean enabled = true;
-		/** Allow-list; defaults to {@link #DEFAULT_SHIFTS}. */
-		public List<ExpectedShift> shifts = DEFAULT_SHIFTS;
+		/** Candidate shifts, sorted by mass; null means {@link #unimodShifts()}. */
+		public List<ExpectedShift> shifts = null;
 		/**
 		 * Half-width of each shift's window, in Da, around the run's calibrated
 		 * position. 8 mDa separates acetyl (+42.0106) from trimethyl (+42.0470),
@@ -203,7 +240,7 @@ public final class ExpectedPeakSelector {
 		 * the genome-level FDR downstream needs them.
 		 */
 		public final List<OpenSearchPsm> admitted;
-		/** Every candidate on the allow-list, admitted or rejected, with its reason. */
+		/** Every candidate with PSMs in its window, admitted or rejected, with its reason. */
 		public final List<Verdict> verdicts;
 		/** Shift name per admitted PSM, by identity; for the audit trail. */
 		public final Map<OpenSearchPsm, String> shiftLabels;
@@ -235,7 +272,7 @@ public final class ExpectedPeakSelector {
 	}
 
 	/**
-	 * The allow-list entry nearest {@code massDa}, or null when none lies within
+	 * The candidate shift nearest {@code massDa}, or null when none lies within
 	 * {@code toleranceDa} or the mass is not finite.
 	 */
 	public static ExpectedShift matching(double massDa, List<ExpectedShift> shifts, double toleranceDa) {
@@ -295,7 +332,12 @@ public final class ExpectedPeakSelector {
 			claimed.addAll(zero.zeroFamily);
 		}
 
-		List<ExpectedShift> shifts = cfg.shifts == null ? DEFAULT_SHIFTS : cfg.shifts;
+		List<ExpectedShift> shifts = new ArrayList<>(cfg.shifts == null ? unimodShifts() : cfg.shifts);
+		shifts.sort((a, b) -> Double.compare(a.massDa, b.massDa));
+		double[] masses = new double[shifts.size()];
+		for (int i = 0; i < masses.length; i++) {
+			masses[i] = shifts.get(i).massDa;
+		}
 		List<List<OpenSearchPsm>> windows = new ArrayList<>();
 		for (int i = 0; i < shifts.size(); i++) {
 			windows.add(new ArrayList<>());
@@ -305,25 +347,22 @@ public final class ExpectedPeakSelector {
 				continue;
 			}
 			double observed = psm.getMassDiff() - zero.calibrationOffset;
-			int best = -1;
-			double bestDistance = Double.MAX_VALUE;
-			for (int i = 0; i < shifts.size(); i++) {
-				double distance = Math.abs(observed - shifts.get(i).massDa);
-				if (distance <= cfg.toleranceDa && distance < bestDistance) {
-					bestDistance = distance;
-					best = i;
-				}
-			}
-			if (best >= 0) {
+			int best = nearest(masses, observed);
+			if (best >= 0 && Math.abs(observed - masses[best]) <= cfg.toleranceDa) {
 				windows.get(best).add(psm);
 			}
 		}
 
 		// --- test each window, independently --------------------------------
+		// A candidate with no PSM in its window is not reported: with a catalogue
+		// of over a thousand masses, the audit file would otherwise be all absences.
 		List<Candidate> passed = new ArrayList<>();
 		for (int i = 0; i < shifts.size(); i++) {
 			ExpectedShift shift = shifts.get(i);
 			List<OpenSearchPsm> window = windows.get(i);
+			if (window.isEmpty()) {
+				continue;
+			}
 			int targets = 0;
 			for (OpenSearchPsm psm : window) {
 				if (psm.isTarget()) {
@@ -451,6 +490,25 @@ public final class ExpectedPeakSelector {
 		return new Result(admitted, verdicts, labels, admittedTargets, admittedDecoys);
 	}
 
+	/** Index of the value in sorted {@code masses} nearest {@code x}; -1 when empty or x is not finite. */
+	static int nearest(double[] masses, double x) {
+		if (masses.length == 0 || !Double.isFinite(x)) {
+			return -1;
+		}
+		int i = java.util.Arrays.binarySearch(masses, x);
+		if (i >= 0) {
+			return i;
+		}
+		int hi = -i - 1;
+		if (hi == 0) {
+			return 0;
+		}
+		if (hi == masses.length) {
+			return masses.length - 1;
+		}
+		return x - masses[hi - 1] <= masses[hi] - x ? hi - 1 : hi;
+	}
+
 	private static double fdrOf(int targets, int decoys) {
 		return targets == 0 ? Double.NaN : (double) decoys / (double) targets;
 	}
@@ -470,7 +528,7 @@ public final class ExpectedPeakSelector {
 					v.shift.toString(), v.acceptedTargets, v.windowFdr, 100.0 * v.corroboration));
 		}
 		String summary = String.format(Locale.ROOT,
-				"Stage 1 expected peaks: %d of %d candidate shifts admitted, adding %d target/%d decoy PSMs "
+				"Stage 1 expected peaks: %d of %d UNIMOD shifts with PSMs in their window admitted, adding %d target/%d decoy PSMs "
 						+ "(%.1f%% of the zero family's %d accepted targets). %s",
 				admittedCount, verdicts.size(), admittedTargets, admittedDecoys,
 				zeroAcceptedTargets <= 0 ? 0.0 : 100.0 * admittedTargets / zeroAcceptedTargets, zeroAcceptedTargets,

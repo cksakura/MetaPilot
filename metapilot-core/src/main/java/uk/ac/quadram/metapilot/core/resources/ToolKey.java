@@ -15,6 +15,11 @@ public enum ToolKey {
     DIANN,
     DEEPDETECT,
 
+    /** pFind.exe; its parent folder is the pFind bin directory (Windows only). */
+    PFIND,
+    /** FlashLFQ CMD.exe (Windows only for the pFind workflow). */
+    FLASHLFQ,
+
     FUNCDB;
 
     public String key() {
